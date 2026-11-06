@@ -3735,23 +3735,100 @@ def _c9_ext_bar_pivots(
         return trimmed
 
     if str(tf) == "60":
-        # 掃門檻：優先「最後一浪＝C7 且靠近末日」（七走完、準備往八）
+        # 七走完＝窗內官方最低當 C7；其前剛好 C1…C6。不准把之後反彈收當 C7。
+        i_lo = min(range(ib, i_end + 1), key=lambda i: float(lows[i]))
+        y_lo = float(lows[i_lo])
         cands: List[Tuple[float, float, List[Tuple[int, float, str]]]] = []
-        for mult in (3.2, 3.6, 4.0, 4.4, 4.8, 5.2):
+        for mult in (3.2, 3.6, 4.0, 4.2, 4.4, 4.8, 5.2):
             thr = max(float(atr) * mult, abs(yb) * 0.018, 900.0)
-            piv = _run(thr)
-            labs = {lab: (i, y) for i, y, lab in piv}
-            score = 0.0
-            if "C7" in labs and "C8" not in labs:
-                score += 40.0
-            elif "C7" in labs:
-                score += 20.0
-            if "C7" in labs:
-                score += 30.0 * (1.0 - abs(labs["C7"][0] - i_end) / max(1, i_end - ib))
-            score += min(8, sum(1 for lab in labs if lab.startswith("C"))) * 2.0
-            cands.append((score, -thr, piv))
-        cands.sort(reverse=True)
-        return cands[0][2] if cands else _run(max(float(atr) * 4.0, abs(yb) * 0.018, 950.0))
+            # 只切到絕對低之前，目標 C1…C6
+            out_pre: List[Tuple[int, float, str]] = [(ib, yb, "B")]
+            looking_low = True
+            ext_i, ext_y = ib, yb
+            wave = 0
+            stop = max(ib + 1, i_lo - 1)
+            for i in range(ib + 1, stop + 1):
+                try:
+                    hi = float(highs[i])
+                    lo = float(lows[i])
+                except (TypeError, ValueError):
+                    continue
+                if looking_low:
+                    if lo <= ext_y:
+                        ext_i, ext_y = i, lo
+                    elif hi >= ext_y + thr:
+                        wave += 1
+                        out_pre.append((int(ext_i), float(ext_y), f"C{wave}"))
+                        looking_low = False
+                        ext_i, ext_y = i, hi
+                        if wave >= 6:
+                            break
+                else:
+                    if hi >= ext_y:
+                        ext_i, ext_y = i, hi
+                    elif lo <= ext_y - thr:
+                        wave += 1
+                        out_pre.append((int(ext_i), float(ext_y), f"C{wave}"))
+                        looking_low = True
+                        ext_i, ext_y = i, lo
+                        if wave >= 6:
+                            break
+            if wave == 5 and ext_i < i_lo and not looking_low:
+                # 差 C6：取 C5 後、絕對低前最高為 C6
+                i5 = out_pre[-1][0]
+                if i5 < i_lo:
+                    i6 = max(range(i5, i_lo), key=lambda j: float(highs[j]))
+                    out_pre.append((int(i6), float(highs[i6]), "C6"))
+                    wave = 6
+            if wave < 6:
+                # 門檻不合适：退回全窗 _run 再截斷
+                full = _run(thr)
+                out_pre = [(i, y, lab) for i, y, lab in full if lab == "B" or i < i_lo]
+                wave = sum(1 for _i, _y, lab in out_pre if str(lab).startswith("C"))
+            if wave >= 6:
+                # 只留到 C6，再釘 C7＝絕對低
+                trimmed = []
+                for i, y, lab in out_pre:
+                    if lab == "B":
+                        trimmed.append((i, y, lab))
+                        continue
+                    try:
+                        num = int(str(lab).lstrip("C"))
+                    except ValueError:
+                        continue
+                    if num <= 6:
+                        trimmed.append((i, y, lab))
+                trimmed.append((int(i_lo), float(y_lo), "C7"))
+                # 品質：C7 必須低於 C5；C6 愈靠近 C7 愈好（避免 5～7 擠怪／過早收束）
+                labs = {lab: (i, y) for i, y, lab in trimmed}
+                score = 50.0
+                if "C5" in labs and labs["C7"][1] < labs["C5"][1] - 1.0:
+                    score += 40.0
+                else:
+                    score -= 40.0
+                if "C6" in labs and "C7" in labs:
+                    span = max(1, labs["C7"][0] - ib)
+                    score += 35.0 * (labs["C6"][0] - ib) / span
+                    # C6→C7 至少隔一日盤（≥2根），但不要隔整段窗
+                    gap67 = labs["C7"][0] - labs["C6"][0]
+                    if 2 <= gap67 <= 40:
+                        score += 18.0
+                    elif gap67 == 1:
+                        score -= 8.0
+                idxs = [i for i, _y, lab in trimmed if lab != "B"]
+                if len(idxs) >= 2:
+                    gaps = [idxs[k + 1] - idxs[k] for k in range(len(idxs) - 1)]
+                    score += min(gaps) * 0.35 + (sum(1 for g in gaps if g >= 2) * 2.0)
+                cands.append((score, -thr, trimmed))
+        if cands:
+            cands.sort(reverse=True)
+            return cands[0][2]
+        # 保底：全窗切完，强制末錨＝絕對低當 C7
+        base = [row for row in _run(max(float(atr) * 4.0, abs(yb) * 0.018, 950.0)) if row[2] == "B" or row[0] < i_lo]
+        while len([r for r in base if str(r[2]).startswith("C")]) > 6:
+            base.pop()
+        base.append((int(i_lo), float(y_lo), "C7"))
+        return base
     thr_d = max(float(atr) * 1.15, abs(yb) * 0.0075, 220.0)
     return _run(thr_d)
 
@@ -9985,8 +10062,12 @@ def _paint_c9_daily_thumb(
     rows_60: Sequence[Dict[str, Any]],
     fp: Any,
     candle_up: Any,
+    note: str = "",
 ) -> None:
-    """左下日K縮圖：10/6→最新日收；浪轉折日用同色點對齊60分。"""
+    """左下日K：10/6→日收；B→C1…C7 分色浪線對齊上方60分。"""
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import Rectangle
+
     ax.set_facecolor("#0b0f14")
     for sp in ax.spines.values():
         sp.set_color("#546e7a")
@@ -10014,10 +10095,10 @@ def _paint_c9_daily_thumb(
         o, h, l, c = opens[i], highs[i], lows[i], closes[i]
         up = bool(candle_up(o, c))
         col = _LIVE_UP if up else _LIVE_DOWN
-        ax.plot([i, i], [l, h], color=col, lw=0.9, solid_capstyle="round", zorder=2)
+        ax.plot([i, i], [l, h], color=col, lw=0.95, solid_capstyle="round", zorder=2)
         body_lo, body_hi = (o, c) if c >= o else (c, o)
         ax.add_patch(
-            __import__("matplotlib.pyplot", fromlist=["plt"]).Rectangle(
+            Rectangle(
                 (i - 0.32, body_lo),
                 0.64,
                 max(0.5, body_hi - body_lo),
@@ -10027,56 +10108,88 @@ def _paint_c9_daily_thumb(
                 zorder=3,
             )
         )
-    # 60分浪轉折日 → 日K同色釘
+    # 60分轉折 → 日K同價錨＋分色浪線（B→C1…C7 共七段；同日兩點微偏X才畫得出下上）
     day_to_i = {_ymd(b.get("date")): i for i, b in enumerate(daily)}
+    path: List[Tuple[float, float, str]] = []
     for ii, yy, lab in pivots_60:
-        if lab == "B" or ii < 0 or ii >= len(rows_60):
+        if ii < 0 or ii >= len(rows_60):
             continue
         d = _ymd(rows_60[ii].get("date"))
         di = day_to_i.get(d)
         if di is None:
             continue
-        try:
-            y_pin = float(lows[di]) if lab in {"C1", "C3", "C5", "C7"} else float(highs[di])
-        except (TypeError, ValueError):
+        x = float(di)
+        if path and abs(path[-1][0] - x) < 0.05:
+            # 同日連續轉折：左低／右高微開，避免七段黏成五段
+            path[-1] = (path[-1][0] - 0.18, path[-1][1], path[-1][2])
+            x = float(di) + 0.18
+        path.append((x, float(yy), str(lab)))
+    for a, b in zip(path, path[1:]):
+        col = _c9_wave_color(b[2])
+        ax.plot(
+            [a[0], b[0]],
+            [a[1], b[1]],
+            color="#0b0f14",
+            lw=2.8,
+            solid_capstyle="round",
+            zorder=4.2,
+        )
+        ax.plot(
+            [a[0], b[0]],
+            [a[1], b[1]],
+            color=col,
+            lw=2.05,
+            solid_capstyle="round",
+            zorder=4.4,
+        )
+    for di, yy, lab in path:
+        if lab == "B":
+            ax.scatter([di], [yy], s=22, c=_c9_wave_color("B"), zorder=5.4, edgecolors="#111", linewidths=0.4)
             continue
         col = _c9_wave_color(lab)
-        ax.scatter([di], [y_pin], s=28, c=col, zorder=5, edgecolors="#111", linewidths=0.4)
+        odd = lab in {"C1", "C3", "C5", "C7"}
+        ax.scatter(
+            [di],
+            [yy],
+            s=40 if lab in {"C7", "C8"} else 30,
+            c=col,
+            zorder=5.5,
+            edgecolors="#111",
+            linewidths=0.45,
+        )
         ax.text(
             di,
-            y_pin,
+            yy,
             lab.replace("C", ""),
-            fontproperties=fp(6, "bold"),
+            fontproperties=fp(8, "bold"),
             color=col,
             ha="center",
-            va="top" if lab in {"C1", "C3", "C5", "C7"} else "bottom",
+            va="top" if odd else "bottom",
             zorder=6,
         )
-    # 日期軸：首／中／尾＋每約5根
     ticks, labs = [], []
     for i, b in enumerate(daily):
         d = _ymd(b.get("date"))
         if len(d) != 8:
             continue
-        if i == 0 or i == n - 1 or i % max(1, n // 6) == 0:
+        if i == 0 or i == n - 1 or i % max(1, n // 7) == 0:
             ticks.append(i)
             labs.append(f"{int(d[4:6])}/{int(d[6:8])}")
     ax.set_xticks(ticks)
-    ax.set_xticklabels(labs, fontproperties=fp(7, "bold"), color=_LIVE_TEXT)
-    ax.tick_params(axis="y", labelsize=7, colors=_LIVE_MUTED)
+    ax.set_xticklabels(labs, fontproperties=fp(8, "bold"), color=_LIVE_TEXT)
+    ax.tick_params(axis="y", labelsize=8, colors=_LIVE_MUTED)
     for lab in ax.get_yticklabels():
-        lab.set_fontproperties(fp(7, "bold"))
+        lab.set_fontproperties(fp(8, "bold"))
         lab.set_color(_LIVE_MUTED)
     ax.set_xlim(-0.6, n - 0.4)
-    pad = (max(highs) - min(lows)) * 0.08
-    ax.set_ylim(min(lows) - pad, max(highs) + pad)
-    ax.set_title(
-        "日K（10/6→日收・對齊浪號）",
-        fontproperties=fp(8, "bold"),
-        color="#ce93d8",
-        loc="left",
-        pad=2,
-    )
+    ys_all = list(lows) + list(highs) + [p[1] for p in path]
+    pad = (max(ys_all) - min(ys_all)) * 0.10
+    ax.set_ylim(min(ys_all) - pad, max(ys_all) + pad)
+    title = "日K＋分色浪線（對齊上方60分）"
+    if note:
+        title = f"{title}｜{note}"
+    ax.set_title(title, fontproperties=fp(9, "bold"), color="#ce93d8", loc="left", pad=3)
+    # 說明改由外層 fig 文字，不准蓋住浪線／日期長條
 
 
 def _render_twii_super_near_c9_60m(
@@ -10091,7 +10204,6 @@ def _render_twii_super_near_c9_60m(
 
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
-        from matplotlib.gridspec import GridSpecFromSubplotSpec
         from decision_card_signals import candle_up_taiwan
         from wayne_navigator import NAV_CHART_DPI, _fp
     except Exception:
@@ -10129,7 +10241,6 @@ def _render_twii_super_near_c9_60m(
     pivots = _c9_ext_bar_pivots(
         highs, lows, closes, i_bhi=i_b, i_now=i_now, tf="60"
     )
-    ladder = _wave_now_ladder(pack)
     tip_anchors = _tw_tip_anchors(pack)
     tip = _c_forecast_tip(
         i_now=i_now,
@@ -10139,33 +10250,36 @@ def _render_twii_super_near_c9_60m(
         anchors=tip_anchors or (37300.0, 35500.0),
     )
 
-    fig = plt.figure(figsize=(15.8, 11.8), dpi=NAV_CHART_DPI)
+    # 上＝60分K｜中＝量｜日期長條｜下＝左日K滿格＋右九波
+    fig = plt.figure(figsize=(15.8, 12.2), dpi=NAV_CHART_DPI)
     _gs = fig.add_gridspec(
-        3,
+        4,
         2,
-        height_ratios=(5.15, 2.85, 1.05),
-        width_ratios=(1.18, 1.0),
-        hspace=0.12,
+        height_ratios=(4.85, 0.95, 0.38, 3.15),
+        width_ratios=(1.22, 1.0),
+        hspace=0.08,
         wspace=0.06,
     )
     ax = fig.add_subplot(_gs[0, :])
-    gs_left = GridSpecFromSubplotSpec(
-        2, 1, subplot_spec=_gs[1, 0], height_ratios=(1.0, 1.35), hspace=0.18
-    )
-    ax_leg = fig.add_subplot(gs_left[0])
-    ax_daily = fig.add_subplot(gs_left[1])
-    ax_wave_host = fig.add_subplot(_gs[1, 1])
-    axv = fig.add_subplot(_gs[2, :], sharex=ax)
+    axv = fig.add_subplot(_gs[1, :], sharex=ax)
+    ax_date = fig.add_subplot(_gs[2, :], sharex=ax)
+    ax_daily = fig.add_subplot(_gs[3, 0])
+    ax_wave_host = fig.add_subplot(_gs[3, 1])
     fig.patch.set_facecolor(_LIVE_BG)
     _style_live_ax(ax, axv)
-    for _ax_info in (ax_leg, ax_wave_host):
-        _ax_info.set_facecolor("#0b0f14")
-        for _sp in _ax_info.spines.values():
-            _sp.set_color("#546e7a")
-            _sp.set_linewidth(0.95)
-        _ax_info.set_xticks([])
-        _ax_info.set_yticks([])
-        _ax_info.tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
+    ax_date.set_facecolor("#0b0f14")
+    for _sp in ax_date.spines.values():
+        _sp.set_color("#546e7a")
+        _sp.set_linewidth(0.9)
+    ax_date.set_yticks([])
+    ax_date.tick_params(left=False, labelleft=False)
+    ax_wave_host.set_facecolor("#0b0f14")
+    for _sp in ax_wave_host.spines.values():
+        _sp.set_color("#546e7a")
+        _sp.set_linewidth(0.95)
+    ax_wave_host.set_xticks([])
+    ax_wave_host.set_yticks([])
+    ax_wave_host.tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
 
     tw_supports = _tw_support_ladder(pack)
     ymin = min([min(lows)] + list(tw_supports) + [35500.0]) - 420
@@ -10261,14 +10375,27 @@ def _render_twii_super_near_c9_60m(
         min_gap=(y_top - y_bot) * 0.045,
         x_col=x_col,
     )
-    ax.set_xlim(-0.6, max(n + 6.5, float(tip.get("fut_x") or n) + 2.2))
+    x_right = max(n + 6.5, float(tip.get("fut_x") or n) + 2.2)
+    ax.set_xlim(-0.6, x_right)
+    axv.set_xlim(-0.6, x_right)
+    ax_date.set_xlim(-0.6, x_right)
     axv.set_ylim(0, (max(vols) if any(vols) else 1) * 1.35)
     axv.set_ylabel("量", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)
 
-    # X軸：一日一標，末根加時刻；上圖隱藏重複字
-    axv.set_xticks(_xticks)
-    axv.set_xticklabels(_xlabs, fontproperties=_fp(8, "bold"), color=_LIVE_TEXT)
+    # 日期長條放中間（量下方、日K上方）；只留日期，不塞說明
+    # 過密時隔日顯示，末根必留
+    if len(_xticks) > 12:
+        keep = list(range(0, len(_xticks) - 1, 2)) + [len(_xticks) - 1]
+        _xticks = [_xticks[i] for i in keep]
+        _xlabs = [_xlabs[i] for i in keep]
+    ax_date.set_xticks(_xticks)
+    ax_date.set_xticklabels(_xlabs, fontproperties=_fp(9, "bold"), color=_LIVE_TEXT)
+    ax_date.set_ylabel(
+        "日", fontproperties=_fp(8, "bold"), color=_LIVE_MUTED, rotation=0, labelpad=8
+    )
+    ax_date.set_xlabel("")
     plt.setp(ax.get_xticklabels(), visible=False)
+    plt.setp(axv.get_xticklabels(), visible=False)
     for lab in list(ax.get_yticklabels()) + list(axv.get_yticklabels()):
         lab.set_fontproperties(_fp(9, "bold"))
         lab.set_color(_LIVE_MUTED)
@@ -10279,6 +10406,17 @@ def _render_twii_super_near_c9_60m(
         if len(last_ts) >= 12
         else ""
     )
+    # C7 錨時刻（絕對低）方便對上面
+    c7_bit = ""
+    for ii, yy, lab in pivots:
+        if lab == "C7" and 0 <= ii < n:
+            ts7 = str(rows[ii].get("ts") or "")
+            if len(ts7) >= 12:
+                c7_bit = (
+                    f"｜C7={int(ts7[4:6])}/{int(ts7[6:8])} "
+                    f"{ts7[8:10]}:{ts7[10:12]}低 {_px(yy)}"
+                )
+            break
     fig.text(
         0.03,
         0.972,
@@ -10291,15 +10429,14 @@ def _render_twii_super_near_c9_60m(
     fig.text(
         0.03,
         0.945,
-        f"上＝60分分色浪｜左下＝說明＋日K｜右下＝九波圓標｜{last_day}｜非買訊",
+        f"上＝60分分色｜中＝量＋日期長條｜左下＝日K浪線｜右下＝九波｜{last_day}{c7_bit}｜非買訊",
         fontproperties=_fp(9, "bold"),
         color="#ce93d8",
         ha="left",
         va="top",
     )
-    fig.subplots_adjust(left=0.05, right=0.98, top=0.90, bottom=0.055)
+    fig.subplots_adjust(left=0.05, right=0.98, top=0.90, bottom=0.045)
 
-    # 黃框：優先用最新日收（若日收日≥60分末日）；否則用60分末
     stamp_bars: Sequence[Dict[str, Any]] = rows
     stamp_close = closes[-1]
     if daily:
@@ -10315,31 +10452,10 @@ def _render_twii_super_near_c9_60m(
         fig, stamp_bars, pack=pack, close=stamp_close, fp=_fp, x=0.995, y=0.855
     )
 
-    hierarchy = str(ladder.get("teach_box") or "")
-    if "七走完" not in hierarchy and "不是整段" not in hierarchy:
-        hierarchy = f"{hierarchy}\n{_c9_oral_now_line()}"
     labs_line = " ".join(
         f"{lab}@{_ymd(rows[i].get('date'))[4:6]}/{_ymd(rows[i].get('date'))[6:8]}"
         for i, _y, lab in pivots
         if lab.startswith("C")
-    )
-    ax_leg.text(
-        0.03,
-        0.96,
-        "\n".join(
-            [
-                hierarchy.strip(),
-                f"浪序：{labs_line}"[:110],
-                "色線＝右下九波同色｜虛線＝C9",
-            ]
-        ),
-        transform=ax_leg.transAxes,
-        ha="left",
-        va="top",
-        fontproperties=_fp(8, "bold"),
-        color=_LIVE_TEXT,
-        linespacing=1.22,
-        zorder=3,
     )
     _paint_c9_daily_thumb(
         ax_daily,
@@ -10348,12 +10464,22 @@ def _render_twii_super_near_c9_60m(
         rows_60=rows,
         fp=_fp,
         candle_up=candle_up_taiwan,
+        note="",
     )
     foot_m = _c9_oral_now_line().replace(" ", "")
     fig.text(
         0.03,
-        0.010,
-        f"{foot_m}｜上＝60分K｜左下說明＋日K｜右下九波｜下＝量｜C走完≠新五波升",
+        0.028,
+        f"{_c9_oral_now_line()}｜浪序：{labs_line}"[:140],
+        fontproperties=_fp(8, "bold"),
+        color="#ce93d8",
+        ha="left",
+        va="bottom",
+    )
+    fig.text(
+        0.03,
+        0.008,
+        f"{foot_m}｜上＝60分K｜中＝量＋日期長條｜左下日K七段分色浪線｜右下九波｜C走完≠新五波升",
         fontproperties=_fp(9, "bold"),
         color=_LIVE_TEXT,
         ha="left",
