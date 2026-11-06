@@ -630,6 +630,63 @@ def test_wave_now_ladder_c9_extension_oral():
     assert "題旨日 11/6" in out["now_line"]
 
 
+def test_nine_wave_inset_c9_ext_labels():
+    """波浪循環縮圖：9波擴延畫 C1…C9，金＝C7→C8，虛線＝C9。"""
+    import inspect
+
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from biaoke_level_learn import (
+        _c9_ext_flash_step,
+        _c9_extension_active,
+        _eight_wave_now_key,
+        _paint_eight_wave_inset,
+    )
+    from wayne_navigator import _fp
+
+    assert _c9_ext_flash_step("C-8") == 8
+    assert _c9_ext_flash_step("C-9") == 9
+    pack = {
+        "thesis": "大A→大B→大C｜9波擴延・C-7轉C-8→C-9（預估）",
+        "snippet": "9波擴延，C-7轉 C-8，C-9，35500~37300",
+        "pred_levels": {
+            "tw": [
+                {"level": 37300.0, "role": "C9低上沿"},
+                {"level": 35500.0, "role": "C9低下沿"},
+            ]
+        },
+    }
+    assert _c9_extension_active(pack)
+    assert _eight_wave_now_key(pack) == "C-8"
+    src = inspect.getsource(_paint_eight_wave_inset)
+    assert "c9_ext" in src
+    assert "此刻＝C-7轉C-8｜虛線＝C-9" in src
+    assert "框內9波｜金＝C7→C8｜虛線＝C9" in src
+    fig = plt.figure(figsize=(4, 3), dpi=80)
+    _paint_eight_wave_inset(
+        fig,
+        fp=_fp,
+        now_key="C-8",
+        detail=True,
+        c_flash=True,
+        c9_ext=True,
+        rect=(0.1, 0.1, 0.8, 0.8),
+        title="九波擴延・C",
+    )
+    fig.savefig("/tmp/c9_inset_unit.png")
+    plt.close(fig)
+    import os
+
+    assert os.path.getsize("/tmp/c9_inset_unit.png") > 2000
+    # 三窗呼叫都傳 c9_ext
+    import biaoke_level_learn as bll
+
+    full = open(bll.__file__, encoding="utf-8").read()
+    assert full.count("c9_ext=") >= 3
+
+
 def test_thesis_pred_c9_band_and_38000_broke():
     """35500~37300 進 pred；有 C9 時 38000 標已破；虛線下一錨改走 C9。"""
     from biaoke_level_learn import (

@@ -3529,6 +3529,74 @@ def _tw_pred_break_tag(
     return br
 
 
+def _c9_extension_active(pack: Optional[Dict[str, Any]] = None) -> bool:
+    """題旨是否為 9波擴延 C-7轉C-8→C-9（只認他文／pred，不准自創）。"""
+    if _tw_has_c9_low_zone(pack):
+        return True
+    thesis = str((pack or {}).get("thesis") or "")
+    snip = str((pack or {}).get("snippet") or "")
+    wait = str((pack or {}).get("wait_struct") or "")
+    blob = f"{thesis} {snip} {wait}"
+    if "9波擴延" in blob or "C-7轉C-8" in blob:
+        return True
+    return bool(
+        re.search(r"C\s*[-–]\s*7.{0,24}C\s*[-–]\s*8", blob)
+        and re.search(r"C\s*[-–]\s*9", blob)
+    )
+
+
+def _paint_c9_extension_on_bars(
+    ax: Any,
+    *,
+    pack: Optional[Dict[str, Any]],
+    i_now: int,
+    y_now: float,
+    n: int,
+    fp: Any,
+    tip: Optional[Dict[str, Any]] = None,
+    pin_now: bool = True,
+    side: str = "left",
+    fontsize: float = 9,
+) -> bool:
+    """三窗 K 上標：今＝C-7轉C-8；預估虛線端＝→C-9。不准發明 C-7／C-8 轉折價。"""
+    if not _c9_extension_active(pack):
+        return False
+    if pin_now:
+        _pin_pivot_name(
+            ax,
+            int(i_now),
+            float(y_now),
+            "C-7轉C-8（今・預估）",
+            "#ea80fc",
+            fp,
+            side=side,
+            tip="mid",
+            n=n,
+            pad_x=0.5,
+            fontsize=fontsize,
+        )
+    if tip is not None:
+        try:
+            fx = float(tip.get("fut_x"))
+            fy = float(tip.get("fut_y"))
+        except (TypeError, ValueError):
+            return True
+        _pin_pivot_name(
+            ax,
+            fx,
+            fy,
+            "→C-9（預估・跌完＝這段完）",
+            "#ce93d8",
+            fp,
+            side="right",
+            tip="mid",
+            n=n,
+            pad_x=0.4,
+            fontsize=max(8.0, float(fontsize) - 0.5),
+        )
+    return True
+
+
 def _paint_c9_low_zone_band(
     ax: Any,
     pack: Optional[Dict[str, Any]],
@@ -6295,7 +6363,15 @@ def _eight_wave_now_key(pack: Optional[Dict[str, Any]] = None) -> str:
     """從層級鏈取八浪縮圖此刻鍵（大結構落在修正波 C）。
 
     C3-3-x 細碼必須完整保留給閃折①～⑤，不准裁成裸 C。
+    9波擴延題旨回 C-8（C-7轉C-8；虛線接 C-9）。
     """
+    if _c9_extension_active(pack):
+        now = str((_wave_now_ladder(pack) or {}).get("now") or "").strip()
+        if now == "C-9" or now.endswith("C-9"):
+            return "C-9"
+        if now == "C-7":
+            return "C-7"
+        return "C-8"
     now = str((_wave_now_ladder(pack) or {}).get("now") or "").strip()
     if not now:
         return "C"
@@ -6328,6 +6404,18 @@ def _c_flash_step(now_key: str) -> int:
     if "C3-3" in nk or nk.startswith("C3"):
         return 3
     return 4
+
+
+def _c9_ext_flash_step(now_key: str) -> int:
+    """9波擴延縮圖：此刻落在 C-1…C-9 哪一尖（1-based；C-8＝轉折中）。"""
+    nk = str(now_key or "").upper().replace(" ", "")
+    if "C-9" in nk or nk.endswith("9"):
+        return 9
+    if "C-7" in nk and "8" not in nk:
+        return 7
+    if "C-8" in nk or "C-7轉C-8" in str(now_key or ""):
+        return 8
+    return 8
 
 
 def _c_teach_flash_pivots(
@@ -6450,8 +6538,12 @@ def _paint_eight_wave_inset(
     flash_pivots: Optional[Sequence[Tuple[int, float, str]]] = None,
     rect: Sequence[float] = (0.72, 0.62, 0.26, 0.28),
     title: str = "八浪對位",
+    c9_ext: bool = False,
 ) -> None:
-    """三張教具共用：教科書八浪縮圖；detail 框此刻；c_flash＝超近在C內畫下殺閃折①～⑤。"""
+    """三張教具共用：教科書八浪縮圖；detail 框此刻；c_flash＝超近在C內畫下殺閃折①～⑤。
+
+    c9_ext＝True：C 內改畫 9 波擴延（C1…C9）；此刻 C-7轉C-8，C8→C9 虛線（教具示意，非買訊）。
+    """
     try:
         import matplotlib.pyplot as plt
     except Exception:
@@ -6463,10 +6555,16 @@ def _paint_eight_wave_inset(
         sp.set_linewidth(1.0)
     ax.set_xticks([])
     ax.set_yticks([])
+    nk = str(now_key or "C")
+    use_c9 = bool(c9_ext) or nk.startswith("C-")
+    if use_c9 and not title:
+        title = "九波擴延"
+    elif use_c9 and ("八浪" in str(title) or title == "八浪對位"):
+        title = "九波擴延・C"
     # 簡化八浪折線；色碼跟主圖一致：藍⑤／粉A／金虛B／紫C
     # 鐵律：起→1…5→A→B→C 的 x 嚴格遞增；A 必須在黃框（B→C）左側外
-    if c_flash:
-        # 左：推進；中：A低→B反彈（都在黃框外）；右黃框：只裝 B→C 緩坡閃折
+    if c_flash or use_c9:
+        # 左：推進；中：A低→B反彈（都在黃框外）；右黃框：只裝 B→C 緩坡閃折／9波
         pts = [
             (0.00, 0.20),
             (0.07, 0.38),  # 1
@@ -6557,15 +6655,17 @@ def _paint_eight_wave_inset(
         "C3-3": 8,
         "C3-3-4": 8,
         "C3-3-3": 8,
+        "C-7": 8,
+        "C-8": 8,
+        "C-9": 8,
     }
-    nk = str(now_key or "C")
     hi = 8
     for k, v in key_map.items():
         if nk == k or nk.upper().startswith(str(k).upper()):
             hi = v
             break
     # 高亮此刻：只墊底層光暈（z 低於色線），不准金光蓋掉粉A／金虛B／紫C
-    if 1 <= hi < len(pts) and not c_flash:
+    if 1 <= hi < len(pts) and not c_flash and not use_c9:
         seg_x = [pts[hi - 1][0], pts[hi][0]]
         seg_y = [pts[hi - 1][1], pts[hi][1]]
         ax.plot(
@@ -6620,58 +6720,133 @@ def _paint_eight_wave_inset(
         )
     # 超近：黃框只包 B→C；閃折＝主圖同一套官方柱錨（flash_pivots），不准另編點
     # 真窗：B高→①C起日低→②反彈高→③更深低→④c4反彈→⑤今收
+    # 9波擴延：框內改畫 C1…C9（教具示意）；C7→C8 金圈、C8→C9 虛線
     flash_pts: List[Tuple[float, float]] = []
     flash_step = 0
-    if c_flash and hi >= 8:
+    flash_spec: List[Tuple[float, float, str]] = []
+    do_flash = (c_flash or use_c9) and hi >= 8
+    if do_flash:
         bx, by = pts[7]
         cx, cy = pts[8]
         dx, dy = cx - bx, cy - by
-        # 優先用主圖傳入的官方柱錨；缺才退回近似比例（仍須六點）
-        flash_spec = _flash_spec_from_pivots(list(flash_pivots or ()))
-        if len(flash_spec) < 6:
+        if use_c9:
+            # 教具 9 波下殺：奇＝低、偶＝反彈；不准發明真價，只示意結構
             flash_spec = [
                 (0.00, 0.00, "B"),
-                (0.10, 0.59, "①"),
-                (0.20, 0.40, "②"),
-                (0.40, 0.75, "③"),
-                (0.60, 0.45, "④"),
-                (1.00, 1.00, "⑤"),
+                (0.08, 0.22, "C1"),
+                (0.17, 0.12, "C2"),
+                (0.27, 0.38, "C3"),
+                (0.37, 0.26, "C4"),
+                (0.47, 0.52, "C5"),
+                (0.57, 0.40, "C6"),
+                (0.68, 0.72, "C7"),
+                (0.80, 0.58, "C8"),
+                (1.00, 1.00, "C9"),
             ]
+            flash_step = _c9_ext_flash_step(nk)
+        else:
+            # 優先用主圖傳入的官方柱錨；缺才退回近似比例（仍須六點）
+            flash_spec = _flash_spec_from_pivots(list(flash_pivots or ()))
+            if len(flash_spec) < 6:
+                flash_spec = [
+                    (0.00, 0.00, "B"),
+                    (0.10, 0.59, "①"),
+                    (0.20, 0.40, "②"),
+                    (0.40, 0.75, "③"),
+                    (0.60, 0.45, "④"),
+                    (1.00, 1.00, "⑤"),
+                ]
+            flash_step = _c_flash_step(nk)
         for t, drop, _lab in flash_spec:
             flash_pts.append((bx + dx * t, by + dy * drop))
         flash_pts[0] = (bx, by)
         flash_pts[-1] = (cx, cy)
-        fx = [p[0] for p in flash_pts]
-        fy = [p[1] for p in flash_pts]
-        ax.plot(fx, fy, color="#0b0f14", lw=2.35, zorder=6.1, solid_capstyle="round")
-        ax.plot(fx, fy, color="#ffffff", lw=1.45, zorder=6.2, solid_capstyle="round")
-        ax.plot(fx, fy, color="#ff5252", lw=1.05, zorder=6.3, solid_capstyle="round")
-        flash_step = _c_flash_step(nk)
+        if use_c9 and len(flash_pts) >= 10:
+            # C1…C8 實線；C8→C9 虛線（還有最後一小段）
+            solid = flash_pts[:9]  # B…C8
+            fx = [p[0] for p in solid]
+            fy = [p[1] for p in solid]
+            ax.plot(fx, fy, color="#0b0f14", lw=2.35, zorder=6.1, solid_capstyle="round")
+            ax.plot(fx, fy, color="#ffffff", lw=1.45, zorder=6.2, solid_capstyle="round")
+            ax.plot(fx, fy, color="#ff5252", lw=1.05, zorder=6.3, solid_capstyle="round")
+            # 金亮 C7→C8（目前最有可能）
+            ax.plot(
+                [flash_pts[7][0], flash_pts[8][0]],
+                [flash_pts[7][1], flash_pts[8][1]],
+                color="#ffd54f",
+                lw=2.4,
+                zorder=6.5,
+                solid_capstyle="round",
+            )
+            ax.plot(
+                [flash_pts[8][0], flash_pts[9][0]],
+                [flash_pts[8][1], flash_pts[9][1]],
+                color="#ce93d8",
+                lw=1.55,
+                ls=(0, (3.2, 1.6)),
+                zorder=6.4,
+            )
+        else:
+            fx = [p[0] for p in flash_pts]
+            fy = [p[1] for p in flash_pts]
+            ax.plot(fx, fy, color="#0b0f14", lw=2.35, zorder=6.1, solid_capstyle="round")
+            ax.plot(fx, fy, color="#ffffff", lw=1.45, zorder=6.2, solid_capstyle="round")
+            ax.plot(fx, fy, color="#ff5252", lw=1.05, zorder=6.3, solid_capstyle="round")
         for j, ((x, y), (_t, _d, lab)) in enumerate(zip(flash_pts, flash_spec)):
             if lab == "B":
                 continue
-            step_i = j
-            is_now = step_i == flash_step
+            # flash_step：①～⑤ 用 j；C1…C9 用浪號
+            if use_c9:
+                try:
+                    step_i = int(str(lab).lstrip("C"))
+                except ValueError:
+                    step_i = j
+                is_now = step_i in (7, 8) if flash_step == 8 else step_i == flash_step
+            else:
+                step_i = j
+                is_now = step_i == flash_step
             ax.scatter(
                 [x],
                 [y],
-                s=36 if is_now else 20,
-                c="#ffd54f" if is_now else "#ffffff",
+                s=36 if is_now else 18,
+                c="#ffd54f" if is_now else ("#ce93d8" if lab == "C9" else "#ffffff"),
                 zorder=7,
                 edgecolors="#111111",
                 linewidths=0.5,
             )
+            show_lab = lab if not use_c9 else str(lab).replace("C", "")
             ax.text(
-                x + 0.012,
-                y + (0.045 if lab in ("②", "④") else -0.05),
-                lab,
-                fontproperties=fp(7 if is_now else 6, "bold"),
-                color="#ffd54f" if is_now else "#ffffff",
+                x + 0.010,
+                y + (0.045 if (lab in ("②", "④", "C2", "C4", "C6", "C8")) else -0.048),
+                show_lab,
+                fontproperties=fp(7 if is_now else 5.5, "bold"),
+                color="#ffd54f" if is_now else ("#ce93d8" if lab == "C9" else "#ffffff"),
                 ha="left",
                 va="center",
                 zorder=8,
             )
-        if 1 <= flash_step < len(flash_pts):
+        if use_c9 and len(flash_pts) >= 9:
+            # 金圈在 C8（轉折中）；C9 虛線端另圈淡紫
+            sx, sy = flash_pts[8]
+            ax.scatter(
+                [sx],
+                [sy],
+                s=78,
+                facecolors="none",
+                edgecolors="#ffd54f",
+                linewidths=1.55,
+                zorder=9,
+            )
+            ax.scatter(
+                [flash_pts[9][0]],
+                [flash_pts[9][1]],
+                s=52,
+                facecolors="none",
+                edgecolors="#ce93d8",
+                linewidths=1.2,
+                zorder=9,
+            )
+        elif 1 <= flash_step < len(flash_pts):
             sx, sy = flash_pts[flash_step]
             ax.scatter(
                 [sx],
@@ -6689,7 +6864,7 @@ def _paint_eight_wave_inset(
         x_r = min(1.04, x0 + 0.10)
         y_b = min(y0, pts[max(0, hi - 1)][1]) - 0.12
         y_t = max(y0, pts[max(0, hi - 1)][1]) + 0.14
-        if c_flash and flash_pts:
+        if do_flash and flash_pts:
             # 黃框只包閃折（自 B 起），不准把 A 包進去造成「B→A→①」錯位感
             xs_f = [p[0] for p in flash_pts]
             ys_f = [p[1] for p in flash_pts]
@@ -6697,7 +6872,7 @@ def _paint_eight_wave_inset(
             x_r = max(xs_f) + 0.06
             y_b = min(ys_f) - 0.08
             y_t = max(ys_f) + 0.10
-        if detail:
+        if detail or use_c9:
             ax.add_patch(
                 plt.Rectangle(
                     (x_l, y_b),
@@ -6710,7 +6885,9 @@ def _paint_eight_wave_inset(
                 )
             )
             tip = f"此刻＝{nk}"
-            if c_flash and flash_step:
+            if use_c9:
+                tip = "此刻＝C-7轉C-8｜虛線＝C-9"
+            elif c_flash and flash_step:
                 tip = f"此刻＝{nk}・閃①～⑤之{flash_step}"
             ax.text(
                 (x_l + x_r) / 2,
@@ -6724,7 +6901,9 @@ def _paint_eight_wave_inset(
             )
             # 細註：大結構對位（⑤＝4/1→6/23；今在修正 C）
             note = _macro_wave_calendar_line()
-            if c_flash:
+            if use_c9:
+                note = "大＝⑤A B C｜框內＝9波擴延 C1…C9"
+            elif c_flash:
                 # 大結構同上；黃框內＝C內震盪①～⑤（＝主圖橙線）
                 note = "大＝⑤A B C｜框內＝C震盪①～⑤"
             ax.text(
@@ -6751,7 +6930,7 @@ def _paint_eight_wave_inset(
             ax.text(
                 x0,
                 y0 - 0.14,
-                f"今={nk}",
+                f"今={nk}" if not use_c9 else "今=C-7→C-8",
                 fontproperties=fp(6, "bold"),
                 color="#ffd54f",
                 ha="center",
@@ -6768,7 +6947,9 @@ def _paint_eight_wave_inset(
         loc="left",
     )
     foot = "藍＝1→5｜粉＝A｜金虛＝B｜紫＝C"
-    if c_flash:
+    if use_c9:
+        foot = "框內9波｜金＝C7→C8｜虛線＝C9"
+    elif c_flash:
         foot = "⑤AB框外對齊｜B末→C內①…⑤｜金圈＝此刻"
     ax.text(
         0.02,
@@ -7980,8 +8161,21 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         pad_x=0.22,
         fontsize=10,
     )
-    # 遠窗：C進行中只留轉折點（紫點），字併右欄「C今」——不准再蓋最後幾根縮圖K
+    # 遠窗：C進行中只留轉折點（紫點）；9波擴延時 K 上釘 C-7轉C-8／→C-9
+    _paint_c9_extension_on_bars(
+        ax,
+        pack=pack,
+        i_now=i_now,
+        y_now=y_now,
+        n=n_axis,
+        fp=_fp,
+        tip=tip,
+        pin_now=True,
+        side="left",
+        fontsize=9,
+    )
     tip_skip: set = set()
+    _c9_now = _c9_extension_active(pack)
     right_notes = [
         {"x": i5s, "y": y5s, "text": f"⑤起 {_px(y5s)}", "color": "#40c4ff"},
         {"x": i5e, "y": y5e, "text": f"⑤終 {_px(y5e)}", "color": "#40c4ff"},
@@ -7992,7 +8186,16 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             "text": f"大B末＝假突破 {_px(y_b_end)}",
             "color": "#ffd54f",
         },
-        {"x": i_now, "y": y_now, "text": f"大C今 {_px(y_now)}", "color": "#ea80fc"},
+        {
+            "x": i_now,
+            "y": y_now,
+            "text": (
+                f"C-7轉C-8今 {_px(y_now)}"
+                if _c9_now
+                else f"大C今 {_px(y_now)}"
+            ),
+            "color": "#ea80fc",
+        },
     ]
     # 近窗細分（若窗內有）淡標，不搶大結構
     if anc:
@@ -8557,13 +8760,15 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         _far_ins = (float(_ins_l), float(_ins_b), float(_ins_w), float(_ins_h))
     except Exception:
         pass
+    _c9_far = _c9_extension_active(pack)
     _paint_eight_wave_inset(
         fig,
         fp=_fp,
         now_key=_eight_wave_now_key(pack),
         detail=False,
         rect=_far_ins,
-        title="八浪",
+        title="九波擴延" if _c9_far else "八浪",
+        c9_ext=_c9_far,
     )
     fig.savefig(save_path, facecolor=_LIVE_BG, bbox_inches="tight", pad_inches=0.22)
     plt.close(fig)
@@ -9006,25 +9211,38 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         pad_x=0.35,
         fontsize=9,
     )
-    _pin_pivot_name(
+    if not _paint_c9_extension_on_bars(
         ax,
-        i_now,
-        y_now,
-        "C進行中",
-        "#ea80fc",
-        _fp,
-        side="right",
-        tip="mid",
+        pack=pack,
+        i_now=i_now,
+        y_now=y_now,
         n=n,
-        pad_x=1.05,
+        fp=_fp,
+        tip=tip,
+        pin_now=True,
+        side="right",
         fontsize=9,
-    )
+    ):
+        _pin_pivot_name(
+            ax,
+            i_now,
+            y_now,
+            "C進行中",
+            "#ea80fc",
+            _fp,
+            side="right",
+            tip="mid",
+            n=n,
+            pad_x=1.05,
+            fontsize=9,
+        )
     # c4／c5 只走右欄，不准再浮主圖壓紫C線／K
     # Fib／錨／撐壓虛線改走右標函式（自 note['x'] 連到同欄標左緣），不准再左一截短虛線
     sr = zone.get("sr") or {}
     sr_skip = zone.get("sr_skip") or {}
     tip_anchor = tip.get("anchor_y")
     tip_skip: set = set()
+    _c9_near_now = _c9_extension_active(pack)
     right_notes = [
         {"x": i5s, "y": y5s, "text": f"⑤起 {_px(y5s)}", "color": "#40c4ff"},
         {"x": i5e, "y": y5e, "text": f"⑤末 {_px(y5e)}", "color": "#40c4ff"},
@@ -9035,7 +9253,16 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
             "text": f"大B末＝假突破 {_px(y_b_end)}",
             "color": "#ffd54f",
         },
-        {"x": i_now, "y": y_now, "text": f"大C今 {_px(y_now)}", "color": "#ea80fc"},
+        {
+            "x": i_now,
+            "y": y_now,
+            "text": (
+                f"C-7轉C-8今 {_px(y_now)}"
+                if _c9_near_now
+                else f"大C今 {_px(y_now)}"
+            ),
+            "color": "#ea80fc",
+        },
     ]
     for y_fib, lab_fib, col_fib in fib_levels:
         right_notes.append(
@@ -9268,13 +9495,15 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         ymax=float(ymax),
         n_bars=n,
     )
+    _c9_near = _c9_extension_active(pack)
     _paint_eight_wave_inset(
         fig,
         fp=_fp,
         now_key=_eight_wave_now_key(pack),
         detail=True,
         rect=_near_inset,
-        title="八浪對位",
+        title="九波擴延・C" if _c9_near else "八浪對位",
+        c9_ext=_c9_near,
     )
     fig.savefig(save_path, facecolor=_LIVE_BG, bbox_inches="tight")
     plt.close(fig)
@@ -9441,29 +9670,39 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
             float(highs[i_c2]),
             float(closes[i_now]),
         ]
-    # 雙描邊＋實折，讓 B→①～⑤ 一眼對得上縮圖閃折（不准淡虛線看不見）
+    _c9_micro = _c9_extension_active(pack)
+    # 雙描邊＋實折；9波題旨時橙線改輔讀，主視覺改 C-7轉C-8＋虛線→C-9
     ax.plot(
         geom_xs,
         geom_ys,
         color="#0b0f14",
-        lw=3.4,
+        lw=3.4 if not _c9_micro else 2.2,
         solid_capstyle="round",
         solid_joinstyle="round",
         zorder=6.2,
+        alpha=1.0 if not _c9_micro else 0.35,
     )
     ax.plot(
         geom_xs,
         geom_ys,
         color="#ffab40",
-        lw=2.15,
+        lw=2.15 if not _c9_micro else 1.35,
         solid_capstyle="round",
         solid_joinstyle="round",
         zorder=6.4,
-        label="日K小波①～⑤（＝縮圖）",
+        alpha=1.0 if not _c9_micro else 0.40,
+        label=(
+            "日K輔讀①～⑤"
+            if _c9_micro
+            else "日K小波①～⑤（＝縮圖）"
+        ),
     )
     flash_step = _c_flash_step(str(ladder.get("now") or ""))
+    if _c9_micro:
+        # 9波：金圈釘在今＝C-7轉C-8；虛線端＝C-9（跟預估 tip 同點）
+        flash_step = len(geom_xs) - 1
     for j, (gx, gy) in enumerate(zip(geom_xs, geom_ys)):
-        is_now = j == flash_step  # 0=B；1…5＝①…⑤
+        is_now = j == flash_step  # 0=B；1…5＝①～⑤；9波題旨＝末日
         ax.scatter(
             [gx],
             [gy],
@@ -9472,6 +9711,7 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
             zorder=8.5,
             edgecolors="#111111",
             linewidths=0.7,
+            alpha=1.0 if (is_now or not _c9_micro) else 0.45,
         )
         if is_now:
             ax.scatter(
@@ -9483,6 +9723,18 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
                 linewidths=1.8,
                 zorder=8.6,
             )
+    _paint_c9_extension_on_bars(
+        ax,
+        pack=pack,
+        i_now=i_now,
+        y_now=float(closes[i_now]),
+        n=n,
+        fp=_fp,
+        tip=tip,
+        pin_now=False,  # 下面 now_lab 已釘人話
+        side="right",
+        fontsize=9,
+    )
     # c5 只釘點（對他60分），不再另畫紫折線搶①～⑤浪階
     if c_sub.get("ok"):
         i5c, y5c = int(c_sub["i_c5_lo"]), float(c_sub["y_c5"])
@@ -9502,31 +9754,42 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     c_hi = max(float(highs[i]) for i in range(i_b_peak, n))
     pad = (c_hi - c_lo) * 0.04
     _now_pin = str(ladder.get("now") or "").strip()
-    if _now_pin in ("C-7轉C-8", "C-8", "C-7", "C-9") or "9波擴延" in str(
+    if _c9_micro:
+        now_lab = "今＝C-7轉C-8（預估）"
+    elif _now_pin in ("C-7轉C-8", "C-8", "C-7", "C-9") or "9波擴延" in str(
         ladder.get("chain") or ""
     ):
         now_lab = "今＝C-7轉C-8→C-9（預估）"
     else:
         now_lab = f"今＝{_now_pin or 'C進行中'}（預估）"
     # 大B末日期用右欄／B釘；近B(10/14)不釘名（非峰、非縮圖B）
-    # B＋①～⑤ 全釘（與右縮圖一一對）；金圈＝浪級此刻
+    # B＋①～⑤ 全釘（與右縮圖一一對）；金圈＝浪級此刻；9波題旨末日改釘 C-7轉C-8
     _flash_side = {"B": "left", "①": "left", "②": "right", "③": "left", "④": "right", "⑤": "left"}
     _flash_tip = {"B": "high", "①": "low", "②": "high", "③": "low", "④": "high", "⑤": "mid"}
     for _fi, _fy, _flab in flash_pivots:
         if _flab == "B":
             _name = f"B {_px(_fy)}"
-        elif _flab == "④" and c_sub.get("ok"):
+        elif _flab == "④" and c_sub.get("ok") and not _c9_micro:
             _name = f"④＝c4 {_px(_fy)}"
         elif _flab == "⑤":
-            _name = f"⑤今 {_px(_fy)}"
+            _name = (
+                f"C-7轉C-8 {_px(_fy)}"
+                if _c9_micro
+                else f"⑤今 {_px(_fy)}"
+            )
         else:
+            if _c9_micro and _flab in ("①", "②", "③", "④"):
+                continue  # 9波題旨：輔線留點、字只留 B／今，免跟 C7／C9 搶讀
             _name = f"{_flab} {_px(_fy)}"
         _pin_pivot_name(
             ax,
             int(_fi),
             float(_fy),
             _name,
-            "#ffd54f" if _flab == "④" and flash_step == 4 else "#ffab40",
+            "#ffd54f"
+            if (_flab == "⑤" and _c9_micro)
+            or (_flab == "④" and flash_step == 4 and not _c9_micro)
+            else "#ffab40",
             _fp,
             side=_flash_side.get(_flab, "auto"),
             tip=_flash_tip.get(_flab, "mid"),
@@ -9856,7 +10119,11 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     fig.text(
         0.03,
         0.945,
-        f"{_ol}｜{_macro_wave_calendar_line()}｜超近＝C內震盪①～⑤｜C走完≠新五波升",
+        (
+            f"{_ol}｜{_macro_wave_calendar_line()}｜超近＝9波・C7→C8虛線C9｜C走完≠新五波升"
+            if _c9_micro
+            else f"{_ol}｜{_macro_wave_calendar_line()}｜超近＝C內震盪①～⑤｜C走完≠新五波升"
+        ),
         fontproperties=_fp(9, "bold"),
         color="#ce93d8",
         ha="left",
@@ -9893,7 +10160,8 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         c_flash=True,
         flash_pivots=flash_pivots,
         rect=(float(_pos.x0), float(_pos.y0), float(_pos.width), float(_pos.height)),
-        title="八浪・C閃",
+        title="九波擴延・C" if _c9_micro else "八浪・C閃",
+        c9_ext=_c9_micro,
     )
     fig.savefig(save_path, facecolor=_LIVE_BG, bbox_inches="tight")
     plt.close(fig)
