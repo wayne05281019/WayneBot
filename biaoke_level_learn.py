@@ -3617,6 +3617,25 @@ def _c9_oral_now_line() -> str:
     )
 
 
+# 主圖／右下九波縮圖共用色（C1…C9）；虛線 C9 用紫
+_C9_WAVE_COLORS: Dict[str, str] = {
+    "B": "#40c4ff",
+    "C1": "#ff8a80",
+    "C2": "#ffd54f",
+    "C3": "#ffab40",
+    "C4": "#69f0ae",
+    "C5": "#ea80fc",
+    "C6": "#80d8ff",
+    "C7": "#ff5252",
+    "C8": "#ffd54f",
+    "C9": "#ce93d8",
+}
+
+
+def _c9_wave_color(lab: str) -> str:
+    return str(_C9_WAVE_COLORS.get(str(lab or "").strip(), "#ff8a80"))
+
+
 def _c9_ext_bar_pivots(
     highs: Sequence[float],
     lows: Sequence[float],
@@ -3746,7 +3765,7 @@ def _paint_c9_ext_k_path(
     tip: Optional[Dict[str, Any]] = None,
     fontsize: float = 9,
 ) -> bool:
-    """主圖 K：畫 B→C1…C8 折線＋浪號釘點；C9 只走預估虛線端。"""
+    """主圖 K：B→C1…C8 各段分色折線＋浪號釘點；C9 只走預估虛線端。"""
     rows = [(int(i), float(y), str(lab)) for i, y, lab in (pivots or [])]
     if len(rows) < 3:
         return False
@@ -3755,47 +3774,40 @@ def _paint_c9_ext_k_path(
     # 找到 C7／C8 索引
     i_c7 = next((j for j, r in enumerate(rows) if r[2] == "C7"), None)
     i_c8 = next((j for j, r in enumerate(rows) if r[2] == "C8"), None)
-    # 實線到 C7（或 C8 若已走出反彈高）
+    # 實線到 C7（或 C8 若已走出反彈高）；每段用浪色對齊右下縮圖
     solid_end = i_c8 if i_c8 is not None else (i_c7 if i_c7 is not None else len(rows) - 1)
     solid_end = max(1, int(solid_end))
-    ax.plot(
-        xs[: solid_end + 1],
-        ys[: solid_end + 1],
-        color="#0b0f14",
-        lw=3.2,
-        solid_capstyle="round",
-        solid_joinstyle="round",
-        zorder=6.3,
-    )
-    ax.plot(
-        xs[: solid_end + 1],
-        ys[: solid_end + 1],
-        color="#ff5252",
-        lw=2.05,
-        solid_capstyle="round",
-        solid_joinstyle="round",
-        zorder=6.4,
-        label="C段9波・C1…C8（官方柱）",
-    )
-    # C7→C8 金線強調（他說此刻）
-    if i_c7 is not None and i_c8 is not None and i_c8 > i_c7:
+    for j in range(solid_end):
+        x0, y0, _lab0 = rows[j]
+        x1, y1, lab1 = rows[j + 1]
+        col = _c9_wave_color(lab1)
+        lw = 2.75 if lab1 in {"C7", "C8"} else 2.05
         ax.plot(
-            [xs[i_c7], xs[i_c8]],
-            [ys[i_c7], ys[i_c8]],
-            color="#ffd54f",
-            lw=2.6,
-            zorder=6.6,
+            [x0, x1],
+            [y0, y1],
+            color="#0b0f14",
+            lw=lw + 1.15,
             solid_capstyle="round",
+            zorder=6.3,
+        )
+        ax.plot(
+            [x0, x1],
+            [y0, y1],
+            color=col,
+            lw=lw,
+            solid_capstyle="round",
+            zorder=6.4,
         )
     for j, (ii, yy, lab) in enumerate(rows):
         if lab == "B":
             continue
         is_hot = lab in {"C7", "C8"}
+        col = _c9_wave_color(lab)
         ax.scatter(
             [ii],
             [yy],
-            s=70 if is_hot else 40,
-            c="#ffd54f" if is_hot else "#ffffff",
+            s=70 if is_hot else 42,
+            c=col,
             zorder=8.7,
             edgecolors="#111111",
             linewidths=0.65,
@@ -3806,22 +3818,19 @@ def _paint_c9_ext_k_path(
                 [yy],
                 s=118,
                 facecolors="none",
-                edgecolors="#ffd54f",
+                edgecolors=col,
                 linewidths=1.7,
                 zorder=8.8,
             )
         # 浪號要一眼對得上哪一根 K：C1…C8
         odd = lab in {"C1", "C3", "C5", "C7"}
         tip_side = "low" if odd else "high"
-        name = lab if lab != "C8" else "C8"
-        if lab == "C7":
-            name = "C7"
         _pin_pivot_name(
             ax,
             int(ii),
             float(yy),
-            name,
-            "#ffd54f" if is_hot else "#ff8a80",
+            lab,
+            col,
             fp,
             side="left" if odd else "right",
             tip=tip_side,
@@ -7147,40 +7156,47 @@ def _paint_eight_wave_inset(
             str(lab): j for j, (_t, _d, lab) in enumerate(flash_spec) if j < len(flash_pts)
         }
         if use_c9 and lab_idx:
-            # 實線到 C7／C8（已走出的）；C7／C8→C9 虛線
+            # 實線到 C7／C8：每段分色對齊主圖；C7／C8→C9 紫虛線
             solid_labs = [
                 lab
                 for lab in ("B", "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8")
                 if lab in lab_idx
             ]
             solid_i = [lab_idx[lab] for lab in solid_labs]
-            fx = [flash_pts[i][0] for i in solid_i]
-            fy = [flash_pts[i][1] for i in solid_i]
-            ax.plot(fx, fy, color="#0b0f14", lw=2.35, zorder=6.1, solid_capstyle="round")
-            ax.plot(fx, fy, color="#ffffff", lw=1.45, zorder=6.2, solid_capstyle="round")
-            ax.plot(fx, fy, color="#ff5252", lw=1.05, zorder=6.3, solid_capstyle="round")
+            for a, b in zip(solid_i, solid_i[1:]):
+                lab_b = next(
+                    (lb for lb, idx in lab_idx.items() if idx == b),
+                    "C1",
+                )
+                col = _c9_wave_color(lab_b)
+                ax.plot(
+                    [flash_pts[a][0], flash_pts[b][0]],
+                    [flash_pts[a][1], flash_pts[b][1]],
+                    color="#0b0f14",
+                    lw=2.2,
+                    zorder=6.1,
+                    solid_capstyle="round",
+                )
+                ax.plot(
+                    [flash_pts[a][0], flash_pts[b][0]],
+                    [flash_pts[a][1], flash_pts[b][1]],
+                    color=col,
+                    lw=1.35 if lab_b not in {"C7", "C8"} else 2.05,
+                    zorder=6.3,
+                    solid_capstyle="round",
+                )
             i7 = lab_idx.get("C7")
             i8 = lab_idx.get("C8")
             i9 = lab_idx.get("C9")
-            if i7 is not None and i8 is not None:
-                ax.plot(
-                    [flash_pts[i7][0], flash_pts[i8][0]],
-                    [flash_pts[i7][1], flash_pts[i8][1]],
-                    color="#ffd54f",
-                    lw=2.4,
-                    zorder=6.5,
-                    solid_capstyle="round",
-                )
-                dash_from = i8
-            elif i7 is not None:
-                dash_from = i7
+            if i7 is not None:
+                dash_from = i8 if i8 is not None else i7
             else:
                 dash_from = solid_i[-1] if solid_i else None
             if dash_from is not None and i9 is not None:
                 ax.plot(
                     [flash_pts[dash_from][0], flash_pts[i9][0]],
                     [flash_pts[dash_from][1], flash_pts[i9][1]],
-                    color="#ce93d8",
+                    color=_c9_wave_color("C9"),
                     lw=1.55,
                     ls=(0, (3.2, 1.6)),
                     zorder=6.4,
@@ -7201,14 +7217,16 @@ def _paint_eight_wave_inset(
                 except ValueError:
                     step_i = j
                 is_now = step_i in (7, 8) if flash_step == 8 else step_i == flash_step
+                seg_col = _c9_wave_color(lab)
             else:
                 step_i = j
                 is_now = step_i == flash_step
+                seg_col = "#ffd54f" if is_now else "#ffffff"
             ax.scatter(
                 [x],
                 [y],
                 s=36 if is_now else 18,
-                c="#ffd54f" if is_now else ("#ce93d8" if lab == "C9" else "#ffffff"),
+                c=seg_col,
                 zorder=7,
                 edgecolors="#111111",
                 linewidths=0.5,
@@ -7219,7 +7237,7 @@ def _paint_eight_wave_inset(
                 y + (0.045 if (lab in ("②", "④", "C2", "C4", "C6", "C8")) else -0.048),
                 show_lab,
                 fontproperties=fp(7 if is_now else 5.5, "bold"),
-                color="#ffd54f" if is_now else ("#ce93d8" if lab == "C9" else "#ffffff"),
+                color=seg_col,
                 ha="left",
                 va="center",
                 zorder=8,
@@ -9932,27 +9950,168 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     return save_path if os.path.isfile(save_path) and os.path.getsize(save_path) > 4000 else ""
 
 
+def _c9_60m_day_boundary_ticks(
+    rows: Sequence[Dict[str, Any]],
+) -> Tuple[List[int], List[str], List[int]]:
+    """60分軸：每個交易日只標一次日期；另回日界線索引（開盤柱）。"""
+    ticks: List[int] = []
+    labs: List[str] = []
+    bounds: List[int] = []
+    prev = ""
+    n = len(rows)
+    for i, r in enumerate(rows):
+        ts = str(r.get("ts") or "")
+        if len(ts) < 12:
+            continue
+        day = ts[:8]
+        if day != prev:
+            bounds.append(i)
+            ticks.append(i)
+            labs.append(f"{int(ts[4:6])}/{int(ts[6:8])}")
+            prev = day
+    if n and (not ticks or ticks[-1] != n - 1):
+        ts = str(rows[-1].get("ts") or "")
+        if len(ts) >= 12:
+            ticks.append(n - 1)
+            labs.append(f"{int(ts[4:6])}/{int(ts[6:8])} {ts[8:10]}:{ts[10:12]}")
+    return ticks, labs, bounds
+
+
+def _paint_c9_daily_thumb(
+    ax: Any,
+    daily: Sequence[Dict[str, Any]],
+    *,
+    pivots_60: Sequence[Tuple[int, float, str]],
+    rows_60: Sequence[Dict[str, Any]],
+    fp: Any,
+    candle_up: Any,
+) -> None:
+    """左下日K縮圖：10/6→最新日收；浪轉折日用同色點對齊60分。"""
+    ax.set_facecolor("#0b0f14")
+    for sp in ax.spines.values():
+        sp.set_color("#546e7a")
+        sp.set_linewidth(0.9)
+    if len(daily) < 8:
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.text(
+            0.5,
+            0.5,
+            "日K不足",
+            transform=ax.transAxes,
+            ha="center",
+            va="center",
+            color=_LIVE_MUTED,
+            fontproperties=fp(9, "bold"),
+        )
+        return
+    opens = [float(b["open"]) for b in daily]
+    highs = [float(b["high"]) for b in daily]
+    lows = [float(b["low"]) for b in daily]
+    closes = [float(b["close"]) for b in daily]
+    n = len(daily)
+    for i in range(n):
+        o, h, l, c = opens[i], highs[i], lows[i], closes[i]
+        up = bool(candle_up(o, c))
+        col = _LIVE_UP if up else _LIVE_DOWN
+        ax.plot([i, i], [l, h], color=col, lw=0.9, solid_capstyle="round", zorder=2)
+        body_lo, body_hi = (o, c) if c >= o else (c, o)
+        ax.add_patch(
+            __import__("matplotlib.pyplot", fromlist=["plt"]).Rectangle(
+                (i - 0.32, body_lo),
+                0.64,
+                max(0.5, body_hi - body_lo),
+                facecolor=col,
+                edgecolor=col,
+                lw=0.4,
+                zorder=3,
+            )
+        )
+    # 60分浪轉折日 → 日K同色釘
+    day_to_i = {_ymd(b.get("date")): i for i, b in enumerate(daily)}
+    for ii, yy, lab in pivots_60:
+        if lab == "B" or ii < 0 or ii >= len(rows_60):
+            continue
+        d = _ymd(rows_60[ii].get("date"))
+        di = day_to_i.get(d)
+        if di is None:
+            continue
+        try:
+            y_pin = float(lows[di]) if lab in {"C1", "C3", "C5", "C7"} else float(highs[di])
+        except (TypeError, ValueError):
+            continue
+        col = _c9_wave_color(lab)
+        ax.scatter([di], [y_pin], s=28, c=col, zorder=5, edgecolors="#111", linewidths=0.4)
+        ax.text(
+            di,
+            y_pin,
+            lab.replace("C", ""),
+            fontproperties=fp(6, "bold"),
+            color=col,
+            ha="center",
+            va="top" if lab in {"C1", "C3", "C5", "C7"} else "bottom",
+            zorder=6,
+        )
+    # 日期軸：首／中／尾＋每約5根
+    ticks, labs = [], []
+    for i, b in enumerate(daily):
+        d = _ymd(b.get("date"))
+        if len(d) != 8:
+            continue
+        if i == 0 or i == n - 1 or i % max(1, n // 6) == 0:
+            ticks.append(i)
+            labs.append(f"{int(d[4:6])}/{int(d[6:8])}")
+    ax.set_xticks(ticks)
+    ax.set_xticklabels(labs, fontproperties=fp(7, "bold"), color=_LIVE_TEXT)
+    ax.tick_params(axis="y", labelsize=7, colors=_LIVE_MUTED)
+    for lab in ax.get_yticklabels():
+        lab.set_fontproperties(fp(7, "bold"))
+        lab.set_color(_LIVE_MUTED)
+    ax.set_xlim(-0.6, n - 0.4)
+    pad = (max(highs) - min(lows)) * 0.08
+    ax.set_ylim(min(lows) - pad, max(highs) + pad)
+    ax.set_title(
+        "日K（10/6→日收・對齊浪號）",
+        fontproperties=fp(8, "bold"),
+        color="#ce93d8",
+        loc="left",
+        pad=2,
+    )
+
+
 def _render_twii_super_near_c9_60m(
     db_path: str, save_path: str, pack: Dict[str, Any]
 ) -> str:
     """超近窗・9波擴延專用：加權日盤 60 分 K（10/6→最新日盤收）釘 C1…C8。
 
-    日K切不出細浪時改 60 分；價／量只認 minute_bars 官方柱。非買訊。
+    上＝60分分色浪；左下＝說明＋日K；右下＝九波圓標；黃框＝最新官方日／60收。
     """
     try:
         import matplotlib
 
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
+        from matplotlib.gridspec import GridSpecFromSubplotSpec
         from decision_card_signals import candle_up_taiwan
         from wayne_navigator import NAV_CHART_DPI, _fp
     except Exception:
         return ""
     if not save_path:
         return ""
+    # 補齊最新 60 分，避免黃框停在昨日
+    try:
+        from kline_hop import fetch_yahoo_minutes
+
+        fetch_yahoo_minutes("TWII", "60", db_path)
+    except Exception:
+        pass
     rows = _load_twii60_day_rows(db_path, since_ymd="20261006")
     if len(rows) < 24:
         return ""
+    daily_all = _twii_bars_for_teach(db_path, 80, pack) or []
+    daily = [b for b in daily_all if _ymd(b.get("date")) >= "20261006"]
+    if len(daily) < 8:
+        daily = daily_all[-40:]
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
     n = len(rows)
     opens = [float(r["open"]) for r in rows]
@@ -9960,7 +10119,6 @@ def _render_twii_super_near_c9_60m(
     lows = [float(r["low"]) for r in rows]
     closes = [float(r["close"]) for r in rows]
     vols = [float(r["volume"]) for r in rows]
-    # B 峰＝10/6 起窗內最高（大B末假突破）
     i_b = max(range(min(12, n)), key=lambda i: float(highs[i]))
     for i, r in enumerate(rows):
         if str(r.get("date") or "") == "20261006" and float(highs[i]) >= float(highs[i_b]):
@@ -9973,7 +10131,6 @@ def _render_twii_super_near_c9_60m(
     )
     ladder = _wave_now_ladder(pack)
     tip_anchors = _tw_tip_anchors(pack)
-    # 預估虛線：往 C9 低點區（他原文 35500~37300）
     tip = _c_forecast_tip(
         i_now=i_now,
         y_now=y_now,
@@ -9982,17 +10139,21 @@ def _render_twii_super_near_c9_60m(
         anchors=tip_anchors or (37300.0, 35500.0),
     )
 
-    fig = plt.figure(figsize=(15.6, 11.4), dpi=NAV_CHART_DPI)
+    fig = plt.figure(figsize=(15.8, 11.8), dpi=NAV_CHART_DPI)
     _gs = fig.add_gridspec(
         3,
         2,
-        height_ratios=(5.4, 2.55, 1.15),
-        width_ratios=(1.12, 1.0),
-        hspace=0.10,
-        wspace=0.05,
+        height_ratios=(5.15, 2.85, 1.05),
+        width_ratios=(1.18, 1.0),
+        hspace=0.12,
+        wspace=0.06,
     )
     ax = fig.add_subplot(_gs[0, :])
-    ax_leg = fig.add_subplot(_gs[1, 0])
+    gs_left = GridSpecFromSubplotSpec(
+        2, 1, subplot_spec=_gs[1, 0], height_ratios=(1.0, 1.35), hspace=0.18
+    )
+    ax_leg = fig.add_subplot(gs_left[0])
+    ax_daily = fig.add_subplot(gs_left[1])
     ax_wave_host = fig.add_subplot(_gs[1, 1])
     axv = fig.add_subplot(_gs[2, :], sharex=ax)
     fig.patch.set_facecolor(_LIVE_BG)
@@ -10009,7 +10170,7 @@ def _render_twii_super_near_c9_60m(
     tw_supports = _tw_support_ladder(pack)
     ymin = min([min(lows)] + list(tw_supports) + [35500.0]) - 420
     ymax = max(highs) + 720
-    zone = _paint_window_dual_zones(
+    _paint_window_dual_zones(
         ax,
         highs=highs,
         lows=lows,
@@ -10023,15 +10184,19 @@ def _render_twii_super_near_c9_60m(
         vol_lookback=40,
     )
     _paint_c9_low_zone_band(ax, pack, fp=_fp)
+    # 交易日界線：垂直淡線，對日期
+    _xticks, _xlabs, _bounds = _c9_60m_day_boundary_ticks(rows)
+    for bi in _bounds[1:]:
+        ax.axvline(bi - 0.5, color="#37474f", lw=0.7, ls=":", alpha=0.85, zorder=1.2)
+        axv.axvline(bi - 0.5, color="#37474f", lw=0.7, ls=":", alpha=0.85, zorder=1.2)
     _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_up_taiwan)
-    # 預估虛線（C9）
     ax.plot(
         [i_now, float(tip["fut_x"])],
         [y_now, float(tip["fut_y"])],
-        color="#ea80fc",
+        color=_c9_wave_color("C9"),
         lw=1.55,
         ls=(0, (4, 2)),
-        alpha=0.8,
+        alpha=0.85,
         zorder=6,
     )
     _paint_c9_extension_on_bars(
@@ -10052,7 +10217,7 @@ def _render_twii_super_near_c9_60m(
         int(i_b),
         float(y_b),
         f"B {_px(y_b)}",
-        "#40c4ff",
+        _c9_wave_color("B"),
         _fp,
         side="left",
         tip="high",
@@ -10061,7 +10226,6 @@ def _render_twii_super_near_c9_60m(
         fontsize=10,
     )
 
-    # 右欄：C1…C8 價＋低點區
     right_notes: List[Dict[str, Any]] = []
     tip_skip: set = set()
     for ii, yy, lab in pivots:
@@ -10072,14 +10236,12 @@ def _render_twii_super_near_c9_60m(
                 "x": int(ii),
                 "y": float(yy),
                 "text": f"{lab} {_px(yy)}",
-                "color": "#ffd54f" if lab in {"C7", "C8"} else "#ff8a80",
+                "color": _c9_wave_color(lab),
             }
         )
         tip_skip.add(round(float(yy), 1))
     right_notes.extend(
-        _tw_pred_right_notes(
-            pack, n=n, lows=lows, tip_skip=tip_skip, bars=rows
-        )
+        _tw_pred_right_notes(pack, n=n, lows=lows, tip_skip=tip_skip, bars=rows)
     )
     y_bot, y_top = float(ymin), float(ymax)
     ax.set_ylim(y_bot, y_top)
@@ -10103,17 +10265,10 @@ def _render_twii_super_near_c9_60m(
     axv.set_ylim(0, (max(vols) if any(vols) else 1) * 1.35)
     axv.set_ylabel("量", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)
 
-    # 時間軸：日＋時
-    ticks, labs = [], []
-    for i, r in enumerate(rows):
-        ts = str(r.get("ts") or "")
-        if len(ts) < 12:
-            continue
-        if i == 0 or i == n - 1 or ts[8:12] in {"0900", "1300"} or i % 8 == 0:
-            ticks.append(i)
-            labs.append(f"{int(ts[4:6])}/{int(ts[6:8])} {ts[8:10]}")
-    axv.set_xticks(ticks)
-    axv.set_xticklabels(labs, fontproperties=_fp(8, "bold"), color=_LIVE_TEXT)
+    # X軸：一日一標，末根加時刻；上圖隱藏重複字
+    axv.set_xticks(_xticks)
+    axv.set_xticklabels(_xlabs, fontproperties=_fp(8, "bold"), color=_LIVE_TEXT)
+    plt.setp(ax.get_xticklabels(), visible=False)
     for lab in list(ax.get_yticklabels()) + list(axv.get_yticklabels()):
         lab.set_fontproperties(_fp(9, "bold"))
         lab.set_color(_LIVE_MUTED)
@@ -10136,20 +10291,32 @@ def _render_twii_super_near_c9_60m(
     fig.text(
         0.03,
         0.945,
-        f"加權日盤60分｜{last_day}收 {_px(y_now)}｜金＝C7→C8｜虛線＝C9｜非買訊",
+        f"上＝60分分色浪｜左下＝說明＋日K｜右下＝九波圓標｜{last_day}｜非買訊",
         fontproperties=_fp(9, "bold"),
         color="#ce93d8",
         ha="left",
         va="top",
     )
-    fig.subplots_adjust(left=0.05, right=0.98, top=0.90, bottom=0.06)
+    fig.subplots_adjust(left=0.05, right=0.98, top=0.90, bottom=0.055)
+
+    # 黃框：優先用最新日收（若日收日≥60分末日）；否則用60分末
+    stamp_bars: Sequence[Dict[str, Any]] = rows
+    stamp_close = closes[-1]
+    if daily:
+        d_last = _ymd(daily[-1].get("date"))
+        r_last = _ymd(rows[-1].get("date"))
+        if d_last and (not r_last or d_last >= r_last):
+            stamp_bars = daily
+            try:
+                stamp_close = float(daily[-1].get("close") or closes[-1])
+            except (TypeError, ValueError):
+                stamp_close = closes[-1]
     _paint_teach_query_stamp(
-        fig, rows, pack=pack, close=closes[-1], fp=_fp, x=0.995, y=0.855
+        fig, stamp_bars, pack=pack, close=stamp_close, fp=_fp, x=0.995, y=0.855
     )
 
-    # 中排左＝人話層級
     hierarchy = str(ladder.get("teach_box") or "")
-    if "七走完" not in hierarchy and "目前最有可能" not in hierarchy:
+    if "七走完" not in hierarchy and "不是整段" not in hierarchy:
         hierarchy = f"{hierarchy}\n{_c9_oral_now_line()}"
     labs_line = " ".join(
         f"{lab}@{_ymd(rows[i].get('date'))[4:6]}/{_ymd(rows[i].get('date'))[6:8]}"
@@ -10157,30 +10324,37 @@ def _render_twii_super_near_c9_60m(
         if lab.startswith("C")
     )
     ax_leg.text(
-        0.04,
+        0.03,
         0.96,
         "\n".join(
             [
-                hierarchy,
-                "底圖＝加權日盤60分（10/6→日盤收）",
-                f"浪序：{labs_line}"[:120],
-                f"日K小波柱讀略｜口述主＝{_c9_now_step_label()}→C-9",
+                hierarchy.strip(),
+                f"浪序：{labs_line}"[:110],
+                "色線＝右下九波同色｜虛線＝C9",
             ]
         ),
         transform=ax_leg.transAxes,
         ha="left",
         va="top",
-        fontproperties=_fp(9, "bold"),
+        fontproperties=_fp(8, "bold"),
         color=_LIVE_TEXT,
-        linespacing=1.28,
+        linespacing=1.22,
         zorder=3,
+    )
+    _paint_c9_daily_thumb(
+        ax_daily,
+        daily,
+        pivots_60=pivots,
+        rows_60=rows,
+        fp=_fp,
+        candle_up=candle_up_taiwan,
     )
     foot_m = _c9_oral_now_line().replace(" ", "")
     fig.text(
         0.03,
-        0.012,
-        f"{foot_m}｜上＝60分K｜中＝說明＋九波縮圖｜下＝量｜C走完≠新五波升",
-        fontproperties=_fp(10, "bold"),
+        0.010,
+        f"{foot_m}｜上＝60分K｜左下說明＋日K｜右下九波｜下＝量｜C走完≠新五波升",
+        fontproperties=_fp(9, "bold"),
         color=_LIVE_TEXT,
         ha="left",
         va="bottom",
