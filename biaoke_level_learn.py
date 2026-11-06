@@ -5718,17 +5718,36 @@ def _sparse_xticks(
     *,
     min_gap: int = 2,
 ) -> Tuple[List[int], List[str]]:
-    """日期刻度稀釋：相鄰索引少於 min_gap 只留前一個，不准 10/15 壓 10/16。"""
+    """日期刻度稀釋：相鄰索引少於 min_gap 只留前一個，不准 10/15 壓 10/16。
+
+    首尾必留：最新交易日刻度不准被稀釋掉（否則會以為沒畫 11/6）。
+    """
     pairs = sorted(((int(i), str(lab)) for i, lab in zip(idxs, labels)), key=lambda t: t[0])
+    if not pairs:
+        return [], []
     out_i: List[int] = []
     out_l: List[str] = []
     last = -10**9
+    first_i, first_lab = pairs[0]
+    last_i, last_lab = pairs[-1]
     for i, lab in pairs:
+        if i == last_i:
+            continue  # 末日最後強制補
         if out_i and i - last < int(min_gap):
             continue
         out_i.append(i)
         out_l.append(lab)
         last = i
+    if not out_i or out_i[0] != first_i:
+        out_i.insert(0, first_i)
+        out_l.insert(0, first_lab)
+    if out_i[-1] != last_i:
+        if out_i and last_i - out_i[-1] < int(min_gap):
+            out_i[-1] = last_i
+            out_l[-1] = last_lab
+        else:
+            out_i.append(last_i)
+            out_l.append(last_lab)
     return out_i, out_l
 
 
