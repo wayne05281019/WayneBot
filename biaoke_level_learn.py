@@ -10228,7 +10228,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         fp=_fp,
         tip=tip,
         pin_now=True,
-        side="right",
+        side="left",  # 與遠窗同一套：浪號靠左，右欄留給價標
         fontsize=9,
         pivots=_c9_pivots_near,
     ):
@@ -10251,53 +10251,66 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     sr_skip = zone.get("sr_skip") or {}
     tip_anchor = tip.get("anchor_y")
     tip_skip: set = set()
-    right_notes = [
-        {"x": i5s, "y": y5s, "text": f"⑤起 {_px(y5s)}", "color": "#40c4ff"},
-        {"x": i5e, "y": y5e, "text": f"⑤末 {_px(y5e)}", "color": "#40c4ff"},
-        {"x": i_alow, "y": y_alow, "text": rule14_lab, "color": "#ff8a80"},
-        {
-            "x": i_b_end,
-            "y": y_b_end,
-            "text": f"大B末＝假突破 {_px(y_b_end)}",
-            "color": "#ffd54f",
-        },
-        {
-            "x": i_now,
-            "y": y_now,
-            "text": (
-                f"{_c9_now_step_label()}今 {_px(y_now)}"
-                if _c9_near_now
-                else f"大C今 {_px(y_now)}"
-            ),
-            "color": "#ea80fc",
-        },
-    ]
-    for y_fib, lab_fib, col_fib in fib_levels:
-        right_notes.append(
+    # 9波擴延：右欄跟遠窗同一套精簡（大B末／此刻）；⑤起終／大A 已有圖上釘點
+    if _c9_near_now:
+        right_notes = [
             {
-                "x": 0,
-                "y": float(y_fib),
-                "text": f"切{lab_fib}" if lab_fib == "0.75" else _biaoke_pred_label(float(y_fib)),
-                "color": col_fib,
-            }
-        )
-    if c_sub.get("ok"):
-        right_notes.append(
+                "x": i_b_end,
+                "y": y_b_end,
+                "text": f"大B末 {_px(y_b_end)}",
+                "color": "#ffd54f",
+            },
             {
-                "x": int(c_sub["i_c4_hi"]),
-                "y": float(c_sub["y_c4"]),
-                "text": f"c4細 {_px(c_sub['y_c4'])}",
-                "color": "#ce93d8",
-            }
-        )
-        right_notes.append(
+                "x": i_now,
+                "y": y_now,
+                "text": f"{_c9_now_step_label()}今 {_px(y_now)}",
+                "color": "#ea80fc",
+            },
+        ]
+    else:
+        right_notes = [
+            {"x": i5s, "y": y5s, "text": f"⑤起 {_px(y5s)}", "color": "#40c4ff"},
+            {"x": i5e, "y": y5e, "text": f"⑤末 {_px(y5e)}", "color": "#40c4ff"},
+            {"x": i_alow, "y": y_alow, "text": rule14_lab, "color": "#ff8a80"},
             {
-                "x": int(c_sub["i_c5_lo"]),
-                "y": float(c_sub["y_c5"]),
-                "text": f"c5細 {_px(c_sub['y_c5'])}",
-                "color": "#ce93d8",
-            }
-        )
+                "x": i_b_end,
+                "y": y_b_end,
+                "text": f"大B末＝假突破 {_px(y_b_end)}",
+                "color": "#ffd54f",
+            },
+            {
+                "x": i_now,
+                "y": y_now,
+                "text": f"大C今 {_px(y_now)}",
+                "color": "#ea80fc",
+            },
+        ]
+        for y_fib, lab_fib, col_fib in fib_levels:
+            right_notes.append(
+                {
+                    "x": 0,
+                    "y": float(y_fib),
+                    "text": f"切{lab_fib}" if lab_fib == "0.75" else _biaoke_pred_label(float(y_fib)),
+                    "color": col_fib,
+                }
+            )
+        if c_sub.get("ok"):
+            right_notes.append(
+                {
+                    "x": int(c_sub["i_c4_hi"]),
+                    "y": float(c_sub["y_c4"]),
+                    "text": f"c4細 {_px(c_sub['y_c4'])}",
+                    "color": "#ce93d8",
+                }
+            )
+            right_notes.append(
+                {
+                    "x": int(c_sub["i_c5_lo"]),
+                    "y": float(c_sub["y_c5"]),
+                    "text": f"c5細 {_px(c_sub['y_c5'])}",
+                    "color": "#ce93d8",
+                }
+            )
     # 圖上若沒浮預估標（有 c4／c5 時 show_label=False）→ 端點錨改上右欄
     if tip_anchor is not None and bool(c_sub.get("ok")):
         right_notes.append(
@@ -10352,7 +10365,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
             }
         )
         have_ys.add(round(float(yv), 1))
-    # 與遠窗同一套：同欄右標＋自點位拉滿虛線；比例間距（不准絕對 floor）
+    # 與遠窗同一套：同欄右標＋自點位拉滿虛線；C9 略鬆間距＋字盒 nudge
     x_near_col = float(n) + 2.55
     try:
         x_near_col = max(x_near_col, float(tip.get("fut_x") or n) + 0.85)
@@ -10366,8 +10379,10 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         ymax=ymax,
         fp=_fp,
         level_dash=True,
-        min_gap=(ymax - ymin) * 0.055,
+        min_gap=(ymax - ymin) * (0.062 if _c9_near_now else 0.055),
         x_col=x_near_col,
+        nudge=True,
+        fontsize=8.5 if _c9_near_now else 9.0,
     )
     _finish_last_twii_candle(
         ax,
@@ -10494,7 +10509,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         ha="left",
         va="bottom",
     )
-    # 近窗縮圖：超近窗同吋大小，右緣貼垂直黃虛線（最大量日）左側
+    # 近窗九波／八浪：跟遠窗同一套縮小貼左下（不准擋右標／縮圖K）
     _near_inset = _eight_wave_inset_rect_left_of_vmax(
         ax,
         fig,
@@ -10502,15 +10517,26 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         ymin=float(ymin),
         ymax=float(ymax),
         n_bars=n,
+        scale=0.56,
+        pin_bottom=True,
     )
+    try:
+        _ins_l, _ins_b, _ins_w, _ins_h = _near_inset
+        _axpos = ax.get_position()
+        _max_right = float(_axpos.x0) + float(_axpos.width) * 0.42
+        if _ins_l + _ins_w > _max_right:
+            _ins_l = max(float(_axpos.x0) + 0.006, _max_right - _ins_w)
+        _near_inset = (float(_ins_l), float(_ins_b), float(_ins_w), float(_ins_h))
+    except Exception:
+        pass
     _c9_near = _c9_extension_active(pack)
     _paint_eight_wave_inset(
         fig,
         fp=_fp,
         now_key=_eight_wave_now_key(pack),
-        detail=True,
+        detail=False,  # 與遠窗同：細線九段，手機縮圖才不糊
         rect=_near_inset,
-        title="九波擴延・C" if _c9_near else "八浪對位",
+        title="九波擴延" if _c9_near else "八浪",
         c9_ext=_c9_near,
         flash_pivots=_c9_pivots_near if _c9_near else None,
     )
@@ -10814,7 +10840,7 @@ def _render_twii_super_near_c9_60m(
         fp=_fp,
         tip=tip,
         pin_now=True,
-        side="right",
+        side="left",  # 與遠／近窗同一套：浪號靠左，右欄留給價標
         fontsize=9,
         pivots=pivots,
     )
@@ -10832,26 +10858,57 @@ def _render_twii_super_near_c9_60m(
         fontsize=10,
     )
 
-    right_notes: List[Dict[str, Any]] = []
-    tip_skip: set = set()
-    for ii, yy, lab in pivots:
-        if lab == "B":
+    # 右欄跟遠窗同一套精簡：B末／此刻＋預測錨；C1…C8 已釘在 K 上不准再堆
+    right_notes: List[Dict[str, Any]] = [
+        {
+            "x": int(i_b),
+            "y": float(y_b),
+            "text": f"大B末 {_px(y_b)}",
+            "color": "#ffd54f",
+        },
+        {
+            "x": int(i_now),
+            "y": float(y_now),
+            "text": f"{_c9_now_step_label()}今 {_px(y_now)}",
+            "color": "#ea80fc",
+        },
+    ]
+    tip_skip: set = {round(float(y_b), 1), round(float(y_now), 1)}
+    tip_anchor = tip.get("anchor_y")
+    if tip_anchor is not None and round(float(tip_anchor), 1) not in tip_skip:
+        right_notes.append(
+            {
+                "x": n - 1,
+                "y": float(tip_anchor),
+                "text": _biaoke_pred_label(
+                    float(tip_anchor),
+                    _tw_pred_break_tag(float(tip_anchor), lows, pack=pack),
+                ),
+                "color": "#ea80fc",
+            }
+        )
+        tip_skip.add(round(float(tip_anchor), 1))
+    for anch in tip_anchors:
+        if round(float(anch), 1) in tip_skip:
             continue
         right_notes.append(
             {
-                "x": int(ii),
-                "y": float(yy),
-                "text": f"{lab} {_px(yy)}",
-                "color": _c9_wave_color(lab),
+                "x": n - 1,
+                "y": float(anch),
+                "text": _biaoke_pred_label(
+                    float(anch),
+                    _tw_pred_break_tag(float(anch), lows, pack=pack),
+                ),
+                "color": "#82b1ff",
             }
         )
-        tip_skip.add(round(float(yy), 1))
+        tip_skip.add(round(float(anch), 1))
     right_notes.extend(
         _tw_pred_right_notes(pack, n=n, lows=lows, tip_skip=tip_skip, bars=rows)
     )
     y_bot, y_top = float(ymin), float(ymax)
     ax.set_ylim(y_bot, y_top)
-    x_col = float(n) + 1.55
+    x_col = float(n) + 1.95
     try:
         x_col = max(x_col, float(tip.get("fut_x") or n) + 0.35)
     except (TypeError, ValueError):
@@ -10864,8 +10921,10 @@ def _render_twii_super_near_c9_60m(
         ymax=y_top,
         fp=_fp,
         level_dash=True,
-        min_gap=(y_top - y_bot) * 0.045,
+        min_gap=(y_top - y_bot) * 0.062,
         x_col=x_col,
+        nudge=True,
+        fontsize=8.5,
     )
     x_right = max(n + 6.5, float(tip.get("fut_x") or n) + 2.2)
     ax.set_xlim(-0.6, x_right)
@@ -10984,11 +11043,11 @@ def _render_twii_super_near_c9_60m(
         fig,
         fp=_fp,
         now_key=_eight_wave_now_key(pack),
-        detail=True,
-        c_flash=True,
+        detail=False,  # 與遠／近窗同：細線九段
+        c_flash=False,
         flash_pivots=pivots,
         rect=(float(_pos.x0), float(_pos.y0), float(_pos.width), float(_pos.height)),
-        title="九波擴延・C（對60分）",
+        title="九波擴延",
         c9_ext=True,
     )
     fig.savefig(save_path, facecolor=_LIVE_BG, bbox_inches="tight")
@@ -11189,7 +11248,7 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
             fp=_fp,
             tip=tip,
             pin_now=True,
-            side="right",
+            side="left",  # 與遠／近窗同一套
             fontsize=9,
             pivots=_c9_pivots_micro,
         )
@@ -11246,7 +11305,7 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
             fp=_fp,
             tip=tip,
             pin_now=False,
-            side="right",
+            side="left",
             fontsize=9,
         )
     # c5 只釘點（對他60分）；9波題旨時讓路給 C1…C8
@@ -11478,15 +11537,37 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     ax.set_ylim(y_bot, y_top)
     tip_anchor = tip.get("anchor_y")
     tip_skip: set = set()
-    right_notes = [
-        {
-            "x": i_b_peak,
-            "y": y_b_peak,
-            "text": f"大B末＝假突破 {_px(y_b_peak)}",
-            "color": "#40c4ff",
-        },
-        {"x": i_now, "y": float(closes[i_now]), "text": f"今 {_px(closes[i_now])}", "color": "#ea80fc"},
-    ]
+    # 9波擴延：右欄跟遠窗同一套精簡；否則保留大B末＝假突破＋今
+    if _c9_micro:
+        right_notes = [
+            {
+                "x": i_b_peak,
+                "y": y_b_peak,
+                "text": f"大B末 {_px(y_b_peak)}",
+                "color": "#ffd54f",
+            },
+            {
+                "x": i_now,
+                "y": float(closes[i_now]),
+                "text": f"{_c9_now_step_label()}今 {_px(closes[i_now])}",
+                "color": "#ea80fc",
+            },
+        ]
+    else:
+        right_notes = [
+            {
+                "x": i_b_peak,
+                "y": y_b_peak,
+                "text": f"大B末＝假突破 {_px(y_b_peak)}",
+                "color": "#40c4ff",
+            },
+            {
+                "x": i_now,
+                "y": float(closes[i_now]),
+                "text": f"今 {_px(closes[i_now])}",
+                "color": "#ea80fc",
+            },
+        ]
     # 超近圖上不准浮預估標 → 端點錨改上右欄（跟遠窗同一套）
     if tip_anchor is not None:
         right_notes.append(
@@ -11517,7 +11598,7 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
             }
         )
         tip_skip.add(round(float(anch), 1))
-    if c_sub.get("ok"):
+    if c_sub.get("ok") and not _c9_micro:
         right_notes.append(
             {
                 "x": int(c_sub["i_c4_hi"]),
@@ -11555,7 +11636,7 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
             }
         )
         have_ys.add(round(float(yv), 1))
-    # 右標略往左：超近中排已給八浪／說明，右欄仍不准被裁掉
+    # 右標略往左：超近中排已給八浪／說明，右欄仍不准被裁掉；C9 跟遠窗 nudge
     x_micro_col = float(n) + 1.55
     try:
         x_micro_col = max(x_micro_col, float(tip.get("fut_x") or n) + 0.35)
@@ -11569,9 +11650,10 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         ymax=y_top,
         fp=_fp,
         level_dash=True,
-        # 與遠窗同比例間距；不准 520 絕對 floor 把右標擠掉
-        min_gap=(y_top - y_bot) * 0.055,
+        min_gap=(y_top - y_bot) * (0.062 if _c9_micro else 0.055),
         x_col=x_micro_col,
+        nudge=True,
+        fontsize=8.5 if _c9_micro else 9.0,
     )
     _finish_last_twii_candle(
         ax,
@@ -11674,15 +11756,15 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         fig,
         fp=_fp,
         now_key=_eight_wave_now_key(pack),
-        detail=True,
-        c_flash=True,
+        detail=False if _c9_micro else True,  # 九波跟遠窗細線；非C9仍用閃折 detail
+        c_flash=not _c9_micro,
         flash_pivots=(
             _c9_pivots_micro
             if (_c9_micro and len(_c9_pivots_micro) >= 4)
             else flash_pivots
         ),
         rect=(float(_pos.x0), float(_pos.y0), float(_pos.width), float(_pos.height)),
-        title="九波擴延・C" if _c9_micro else "八浪・C閃",
+        title="九波擴延" if _c9_micro else "八浪・C閃",
         c9_ext=_c9_micro,
     )
     fig.savefig(save_path, facecolor=_LIVE_BG, bbox_inches="tight")

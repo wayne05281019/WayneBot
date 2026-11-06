@@ -196,11 +196,14 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "_c_subwave_anchors_vs_biaoke60" in far_blk
     assert "_c_subwave_anchors_vs_biaoke60" in near_blk
     assert "_c_subwave_anchors_vs_biaoke60" in micro_blk
-    # 三張都掛八浪縮圖；近／超近 detail 框此刻
+    # 三張都掛八浪／九波縮圖；近窗跟遠窗細線九段（detail=False）；超近非C9仍可 detail
     assert "_paint_eight_wave_inset" in far_blk
     assert "_paint_eight_wave_inset" in near_blk
     assert "_paint_eight_wave_inset" in micro_blk
-    assert "detail=True" in near_blk and "detail=True" in micro_blk
+    assert "detail=False" in near_blk
+    assert "scale=0.56" in near_blk and "pin_bottom=True" in near_blk
+    assert 'title="九波擴延"' in near_blk
+    assert "detail=True" in micro_blk or "detail=False if _c9_micro" in micro_blk
     assert "_twii_macro_wave_anchors" in src
     assert (
         "日K小波①～⑤（＝縮圖）" in micro_blk
@@ -226,7 +229,7 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "市撮" in src and "盤前" in src and "收盤" in src
     assert "def _thesis_cap_for_query" in src
     # 遠窗四欄：費半→台指電子盤→加權日盤（加權較高）→量；欄間日期
-    assert "figsize=(15.6, 15.2)" in far_blk
+    assert "figsize=(15.6, 15.6)" in far_blk
     assert "height_ratios=(2.15, 2.30, 3.30, 0.95)" in far_blk
     assert "hspace=0.18" in far_blk
     assert "_shrink_png_for_telegram" in far_blk
@@ -302,7 +305,8 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "_eight_wave_inset_rect_left_of_vmax" in near_blk
     assert "_TEACH_EIGHT_WAVE_INSET_W_FRAC" in src
     assert "_near_inset" in near_blk
-    assert "c_flash=True" in micro_blk
+    # 超近：非C9 仍閃折；C9 改跟遠窗細線九波（c_flash=not _c9_micro）
+    assert "c_flash=True" in micro_blk or "c_flash=not _c9_micro" in micro_blk
     # 近窗日K八浪不開 c_flash；c9_60m 超近專用才開（夾在 live 與 super_near 之間）
     live_only = src[
         src.index("def _render_twii_live_dark") : src.index(
@@ -415,7 +419,14 @@ def test_far_yellow_band_is_max_vol_day_hl():
     assert "gap_wave" in place and "c4細" in place and "_tier" in place
     near_src = src[src.index("def _render_twii_live_dark") : src.index("def _render_twii_super_near_dark")]
     micro_src = src[src.index("def _render_twii_super_near_dark") : src.index("def _render_us_compare_dark")]
-    assert "min_gap=(ymax - ymin) * 0.055" in near_src
+    assert (
+        "0.062 if _c9_near_now else 0.055" in near_src
+        or "min_gap=(ymax - ymin) * 0.055" in near_src
+    )
+    assert "nudge=True" in near_src
+    # 近窗 C9 右欄精簡跟遠窗同一套
+    assert 'f"大B末 {_px(y_b_end)}"' in near_src or "大B末 {_px" in near_src
+    assert "side=\"left\"" in near_src or "side='left'" in near_src
     # 超近窗標題不准把 C3-3-4 裁成 C3-3（保留 now 尾碼）
     assert 'one_line")[:40]' not in micro_src and "one_line')[:40]" not in micro_src
     assert "_now" in micro_src
@@ -2228,6 +2239,43 @@ def test_near_micro_right_notes_follow_tip_anchors():
         assert '"y": 45546.0' not in blk
         assert '"y": 44210.0' not in blk
         assert "anchors=tip_anchors" in blk
+
+
+def test_near_micro_follow_far_c9_twii_presentation():
+    """近／超近加權跟遠窗同一套：C9 右欄精簡、浪號靠左、九波細線標題。"""
+    from biaoke_level_learn import (
+        _render_twii_far_dark,
+        _render_twii_live_dark,
+        _render_twii_super_near_c9_60m,
+        _render_twii_super_near_dark,
+    )
+
+    far = inspect.getsource(_render_twii_far_dark)
+    near = inspect.getsource(_render_twii_live_dark)
+    micro = inspect.getsource(_render_twii_super_near_dark)
+    micro60 = inspect.getsource(_render_twii_super_near_c9_60m)
+    # 遠窗基準：C9 右欄精簡＋九波細線
+    assert "_c9_now_step_label()" in far
+    assert 'title="九波擴延"' in far
+    assert "scale=0.56" in far and "pin_bottom=True" in far
+    assert "nudge=True" in far
+    # 近窗跟進
+    assert "_c9_now_step_label()" in near
+    assert 'title="九波擴延"' in near
+    assert "scale=0.56" in near and "pin_bottom=True" in near
+    assert "nudge=True" in near
+    assert 'side="left"' in near
+    assert "大B末 {_px" in near or 'f"大B末 {_px' in near
+    # 超近（日K備援＋60分主路）跟進
+    assert "_c9_now_step_label()" in micro
+    assert 'title="九波擴延"' in micro
+    assert 'side="left"' in micro
+    assert "nudge=True" in micro
+    assert "_c9_now_step_label()" in micro60
+    assert 'title="九波擴延"' in micro60
+    assert 'side="left"' in micro60
+    assert "nudge=True" in micro60
+    assert "大B末 {_px" in micro60 or 'f"大B末 {_px' in micro60
 
 
 def test_finish_last_twii_used_by_near_and_micro():
