@@ -3610,10 +3610,10 @@ def _c9_now_step_label() -> str:
 
 
 def _c9_oral_now_line() -> str:
-    """9波擴延人話：七走完、準備往八；後面還有 C-9。"""
+    """9波擴延人話：七走完≠整段沒了；接下來八先上、再九最後下。"""
     return (
-        "今天七走完、準備往八；後面還有最後一小段下跌 C-9；"
-        "要跌就全部跌完"
+        "今天只走完七，不是整段沒了；接下來八會先往上，"
+        "再走最後一段九往下；九跌完才算這段下殺完"
     )
 
 
@@ -3895,7 +3895,7 @@ def _paint_c9_extension_on_bars(
                 ax,
                 int(i_now),
                 float(y_now),
-                f"今＝{_c9_now_step_label()}（預估）",
+                "今＝七完・還有八上→九下（預估）",
                 "#ea80fc",
                 fp,
                 side=side,
@@ -3910,7 +3910,7 @@ def _paint_c9_extension_on_bars(
             ax,
             int(i_now),
             float(y_now),
-            f"{_c9_now_step_label()}（今・預估）",
+            "七完・還有八上→九下（今・預估）",
             "#ea80fc",
             fp,
             side=side,

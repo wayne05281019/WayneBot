@@ -1091,7 +1091,8 @@ def test_format_teach_brief_c9_extension_readable(monkeypatch):
     monkeypatch.setattr("biaoke_level_learn._build_live_pack", _fake)
     out = format_teach_brief("x.db")
     assert "9 波擴延" in out or "9波擴延" in out
-    assert "七走完" in out and "準備往八" in out and "C-9" in out
+    assert ("只走完七" in out or "七走完" in out) and "八" in out and "九" in out
+    assert "不是整段沒了" in out or "整段" in out
     assert "35500~37300" in out or "35500~37300" in out.replace(" ", "")
     assert "38000已破" in out
     assert "as_of" not in out

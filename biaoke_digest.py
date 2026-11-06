@@ -679,9 +679,9 @@ def _plain_wave_now_phrase(now: str) -> str:
     if n == "9波擴延":
         return "大C第二段下殺・9波擴延"
     if n in ("C-7轉C-8", "C-7走完→C-8", "C-8"):
-        return "9波擴延：七走完、準備往八（後面還有一小段 C-9）"
+        return "9波擴延：七走完≠整段完；接下來八先上、再九最後下"
     if n == "C-7":
-        return "9波擴延：C-7（接著準備往八，後面還有 C-9）"
+        return "9波擴延：C-7（接著八先上，後面還有九）"
     if n == "C-9":
         return "9波擴延最後一小段 C-9（跌完＝這段下殺完）"
     return n
@@ -726,8 +726,8 @@ def format_teach_brief(db_path: str = "") -> str:
     ):
         lines.append(
             html_escape(
-                "第二段下殺走 9 波擴延：今天七走完、準備往八；"
-                "後面還有最後一小段 C-9；C-9 跌完＝這段下殺完。"
+                "第二段下殺走 9 波擴延：今天只走完七，不是整段沒了；"
+                "接下來八會先往上，再走最後一段九往下；九跌完才算這段下殺完。"
             )
         )
     if now:
@@ -758,7 +758,7 @@ def format_teach_brief(db_path: str = "") -> str:
             elif re.search(r"低點區\s*35500", one_w):
                 one_w = "低點約會落在 35500~37300；C-9 跌完＝這段下殺完"
             elif re.search(r"C-7(?:轉|走完).{0,8}C-8→C-9|C-7走完→C-8→C-9", one_w):
-                one_w = "七走完、準備往八，後面還有 C-9；跌完＝這段下殺完"
+                one_w = "七走完≠整段完；八先上、再九最後下；九跌完＝這段下殺完"
             struct_bits.append(f"· 下一步：{one_w}")
     if struct_bits:
         lines.append("")

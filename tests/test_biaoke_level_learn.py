@@ -623,9 +623,10 @@ def test_wave_now_ladder_c9_extension_oral():
     assert out["now"] == "C-7走完→C-8"
     assert "9波擴延" in out["chain"]
     assert "C-7走完→C-8" in out["one_line"] and "C-9" in out["one_line"]
-    assert "七走完" in out["now_line"] and "準備往八" in out["now_line"]
-    assert "最後一小段下跌 C-9" in out["now_line"]
-    assert "要跌就全部跌完" in out["now_line"] or "全部跌完" in out["teach_box"]
+    assert "只走完七" in out["now_line"] or "七走完" in out["now_line"]
+    assert "不是整段沒了" in out["now_line"] or "≠整段" in out["now_line"]
+    assert "八會先往上" in out["now_line"] or "八先上" in out["now_line"]
+    assert "九" in out["now_line"]
     assert "as_of" not in out["now_line"]
     assert "題旨日 11/6" in out["now_line"]
 
