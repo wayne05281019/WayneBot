@@ -357,6 +357,12 @@ def test_sparse_xticks_no_adjacent_crush():
     i, l = _sparse_xticks([10, 11, 12, 20], ["10/15", "10/16", "10/17", "10/29"], min_gap=3)
     assert i == [10, 20]
     assert l == ["10/15", "10/29"]
+    # 末日必留：即使與前一刻太近，也不准稀釋掉最新交易日
+    i2, l2 = _sparse_xticks(
+        [10, 13, 16, 18], ["10/15", "10/20", "11/5", "11/6"], min_gap=3
+    )
+    assert l2[0] == "10/15" and l2[-1] == "11/6"
+    assert i2[-1] == 18
 
 
 def test_next_support_resist_nearest():
