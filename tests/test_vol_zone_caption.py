@@ -540,3 +540,62 @@ def test_day_path_label_overbreak_no_false_untested():
     assert "非買訊" not in line
     assert "測大量" not in line
 
+
+
+def test_caption_cold_load_uses_lookup_vol_ensure_days():
+    """冷載圖說柱數必須 ≥ 深窗；舊 123 在急殺會漏下一層。"""
+    import inspect
+
+    from vol_zone_chart import lookup_vol_ensure_days, vol_zone_photo_caption
+
+    src = inspect.getsource(vol_zone_photo_caption)
+    assert "lookup_vol_ensure_days()" in src
+    assert "VOL_ZONE_BARS + VOL_ZONE_LOOKBACK" not in src
+    assert int(lookup_vol_ensure_days()) >= 181
+
+
+def test_broke_caption_names_deep_next_layer_under_crash():
+    """急殺連破近窗：圖說位置句仍要點名深窗下一層壓／撐（破撐≠換主區）。"""
+    from datetime import date, timedelta
+
+    day = date(2026, 2, 1)
+    bars = []
+    for i in range(200):
+        d = (day + timedelta(days=i)).strftime("%Y%m%d")
+        if i == 30:
+            o, h, l, c, v = 1900, 2005, 1840, 1950, 9000
+        elif i == 160:
+            o, h, l, c, v = 4200, 4510, 3930, 4100, 7000
+        elif i == 175:
+            o, h, l, c, v = 5100, 5330, 4980, 5200, 12000
+        elif i == 199:
+            o, h, l, c, v = 4000, 4100, 3700, 3820, 4000
+        else:
+            o, h, l, c, v = 5200, 5250, 5150, 5220, 800
+        bars.append(
+            {
+                "date": d,
+                "open": float(o),
+                "high": float(h),
+                "low": float(l),
+                "close": float(c),
+                "volume": float(v),
+            }
+        )
+    zone = {
+        "date": bars[175]["date"],
+        "high": 5330.0,
+        "low": 4980.0,
+        "volume": 12000.0,
+    }
+    line = vol_zone_position_line(
+        zone, bars[-1], _card_heat("降溫"), bars=bars, stock_id="2383"
+    )
+    assert "撐4,980已跌破" in line
+    assert "下一層壓2,005／撐1,840" in line
+    assert "主區未換" in line
+    short = vol_zone_position_line(
+        zone, bars[-1], _card_heat("降溫"), bars=bars[-50:], stock_id="2383"
+    )
+    assert "撐4,980已跌破" in short
+    assert "下一層壓2,005／撐1,840" not in short

@@ -2002,9 +2002,14 @@ def vol_zone_position_line(
             hold = f"除息後撐{lo_s}已跌破"
             gone = "這條除息後撐不算還在"
         # 破撐原因句：點名下一層壓+撐（非買訊）；無候選明示暫無；破撐≠換主區
+        # 下一層用深窗串聯；呼叫端若只餵可視近窗，急殺連破會漏次大量
         next_bit = ""
         try:
-            from biaoke_next_support import resolve_next_support
+            from biaoke_next_support import (
+                merge_face_onto_history,
+                next_layer_history_bars,
+                resolve_next_support,
+            )
 
             sid0 = str(
                 stock_id
@@ -2013,8 +2018,12 @@ def vol_zone_position_line(
                 or (card or {}).get("code")
                 or ""
             )
-            pack = resolve_next_support(
+            hist_rows = merge_face_onto_history(
+                next_layer_history_bars(rows),
                 rows,
+            )
+            pack = resolve_next_support(
+                hist_rows,
                 sid=sid0,
                 close=cl,
                 support=lo,
@@ -2041,7 +2050,11 @@ def vol_zone_position_line(
         # 過壓對稱：標下一層（次大量區壓+撐）；主區仍依重算規則，不在此硬換
         next_bit = ""
         try:
-            from biaoke_next_support import resolve_next_support
+            from biaoke_next_support import (
+                merge_face_onto_history,
+                next_layer_history_bars,
+                resolve_next_support,
+            )
 
             sid0 = str(
                 stock_id
@@ -2050,8 +2063,12 @@ def vol_zone_position_line(
                 or (card or {}).get("code")
                 or ""
             )
-            pack = resolve_next_support(
+            hist_rows = merge_face_onto_history(
+                next_layer_history_bars(rows),
                 rows,
+            )
+            pack = resolve_next_support(
+                hist_rows,
                 sid=sid0,
                 close=cl,
                 support=lo,
@@ -2171,7 +2188,8 @@ def vol_zone_photo_caption(
         sid = str(stock_id or "").strip()
         path = str(db_path or "").strip()
         if sid and path:
-            raw = load_official_ohlc(sid, path, max(VOL_ZONE_BARS + VOL_ZONE_LOOKBACK + 5, 120))
+            # 與 prepare／paint 同尺：至少深窗＋末日，急殺連破才找得到次大量
+            raw = load_official_ohlc(sid, path, lookup_vol_ensure_days())
             work = official_work(raw)
             if work is not None and not work.empty:
                 start = _bar_ymd(work["date"].iloc[0])
