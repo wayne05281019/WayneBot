@@ -11,6 +11,9 @@
 如果／萬一／怕＋賣出、舊回憶賣光、發文通知、命令句、加權跌幾點＝一般，不急推。
 確認低點仍要主音疊輔助；單講趨勢向上、初步止訊號、右肩有守＝還不到確認。
 不是買訊。同一則／同一位不重覆推。社團不推。盤中未收不當收。
+
+監看週特例（2026-11-06～11-16）：他自己新主文／討論串他回 → 立刻彙整推兩支話筒，
+標「不是買訊」；不改黃金買點、不當買訊。盤中抓文節奏見 biaoke_ingest 08:50–13:00 每 3 分。
 """
 from __future__ import annotations
 
@@ -33,6 +36,10 @@ DROP_POINTS = 700.0
 _TG_BODY_MAX = 3800
 # 急推時效：原文時戳（台北）超過這小時數＝舊文，不准當急推（重掃／換 id 也不行）。
 URGENT_MAX_AGE_HOURS = 24
+# 監看週（台北日）：今天起含下週一整週；過期自動停，不准永久改急推規則。
+WATCH_WEEK_START_YMD = "20261106"
+WATCH_WEEK_END_YMD = "20261116"
+WATCH_WEEK_MAX_AGE_HOURS = 24
 _TAIPEI = ZoneInfo("Asia/Taipei")
 
 _DDL = """
@@ -1393,6 +1400,128 @@ def maybe_push_drop_alert(
             pid,
             judged.get("score"),
             judged.get("reasons"),
+            sent,
+        )
+    return stats
+
+
+def in_biaoke_watch_week(now: Optional[datetime] = None) -> bool:
+    """台北日是否落在監看週 2026-11-06～11-16（含）。"""
+    dt = now or datetime.now(_TAIPEI)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=_TAIPEI)
+    else:
+        dt = dt.astimezone(_TAIPEI)
+    ymd = dt.strftime("%Y%m%d")
+    return WATCH_WEEK_START_YMD <= ymd <= WATCH_WEEK_END_YMD
+
+
+def format_watch_week_alert(event: Dict[str, Any]) -> str:
+    """監看週推播：完整他原文；明示不是買訊。"""
+    body = str(event.get("text") or "").strip()
+    if len(body) > _TG_BODY_MAX:
+        body = body[: _TG_BODY_MAX - 1] + "…"
+    day = html_escape(str(event.get("date") or "").strip())
+    hm = html_escape(str(event.get("time") or "").strip())
+    when = " ".join(p for p in (day, hm) if p).strip()
+    kind = str(event.get("kind") or "post").strip().lower()
+    say = "回文說" if kind == "reply" else "發文說"
+    lead = f"{when} 飆大現在{say}：" if when else f"飆大現在{say}："
+    return "\n".join(
+        [
+            "<b>飆大更新（監看）</b>",
+            lead,
+            html_escape(body),
+            "（擷取自原文）。",
+            "不是買訊。",
+        ]
+    )
+
+
+def maybe_push_watch_week_posts(
+    db_path: str,
+    events: Sequence[Dict[str, Any]],
+    *,
+    now: Optional[datetime] = None,
+    max_age_hours: float = WATCH_WEEK_MAX_AGE_HOURS,
+) -> Dict[str, Any]:
+    """監看週：他自己新主文／討論串他回 → 立刻推兩支話筒（不是買訊）。
+
+    急推（出清／到底）仍走 maybe_push_drop_alert；本函只補一般新文／他回。
+    社團／路人／純 updated／逾時舊文不推。同一正文指紋只推一次。
+    """
+    stats = {
+        "checked": 0,
+        "pushed": 0,
+        "skipped": 0,
+        "outside": 0,
+        "stale": 0,
+        "updated_skip": 0,
+    }
+    dt = now or datetime.now(_TAIPEI)
+    if not in_biaoke_watch_week(dt):
+        stats["outside"] = 1
+        return stats
+    rows = [dict(e) for e in (events or []) if e.get("text")]
+    if not rows:
+        return stats
+    seen_fp: set[str] = set()
+    for ev in rows:
+        if ev.get("club"):
+            continue
+        if str(ev.get("kind") or "") == "bystander":
+            continue
+        if str(ev.get("voice") or "") == "bystander":
+            continue
+        pid = str(ev.get("id") or ev.get("post_id") or "").strip()
+        if not pid:
+            continue
+        body = str(ev.get("text") or "")
+        stats["checked"] += 1
+        fp = _body_fingerprint(body)
+        if fp and fp in seen_fp:
+            stats["skipped"] += 1
+            continue
+        if db_path and _already(db_path, pid, body):
+            stats["skipped"] += 1
+            if fp:
+                seen_fp.add(fp)
+            continue
+        hit = str(ev.get("_ingest") or "").strip().lower()
+        if hit == "updated":
+            stats["updated_skip"] += 1
+            if fp:
+                seen_fp.add(fp)
+            continue
+        if event_too_old_for_urgent(ev, now=dt, max_age_hours=max_age_hours):
+            stats["stale"] += 1
+            if db_path:
+                _claim_push(
+                    db_path,
+                    pid,
+                    body,
+                    0,
+                    ["超過監看推播時效，不重播舊文"],
+                )
+            if fp:
+                seen_fp.add(fp)
+            continue
+        if db_path and not _claim_push(
+            db_path, pid, body, 0, ["監看週立刻推播"]
+        ):
+            stats["skipped"] += 1
+            if fp:
+                seen_fp.add(fp)
+            continue
+        if fp:
+            seen_fp.add(fp)
+        html = format_watch_week_alert(ev)
+        dedupe = f"watch:fp:{fp}" if fp else f"watch:id:{pid}"
+        sent = _send_family(html, dedupe_key=dedupe, db_path=db_path)
+        stats["pushed"] += 1
+        logger.info(
+            "飆大監看推播 post=%s sent=%s",
+            pid,
             sent,
         )
     return stats

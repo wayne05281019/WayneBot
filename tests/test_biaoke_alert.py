@@ -1248,3 +1248,102 @@ def test_fresh_clear_still_urgent(tmp_path, monkeypatch):
     assert stats["pushed"] == 1
     assert stats["stale"] == 0
     assert sent and "全面出清一股不留" in sent[0]
+
+
+def test_watch_week_window_and_format():
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_alert import (
+        format_watch_week_alert,
+        in_biaoke_watch_week,
+    )
+
+    tz = ZoneInfo("Asia/Taipei")
+    assert in_biaoke_watch_week(datetime(2026, 11, 6, 9, 0, tzinfo=tz)) is True
+    assert in_biaoke_watch_week(datetime(2026, 11, 16, 23, 0, tzinfo=tz)) is True
+    assert in_biaoke_watch_week(datetime(2026, 11, 5, 23, 0, tzinfo=tz)) is False
+    assert in_biaoke_watch_week(datetime(2026, 11, 17, 0, 0, tzinfo=tz)) is False
+    html = format_watch_week_alert(
+        {
+            "kind": "post",
+            "date": "2026-11-06",
+            "time": "10:12",
+            "text": "三日低點不破可留意介入時機。",
+        }
+    )
+    assert "飆大更新（監看）" in html
+    assert "發文說" in html
+    assert "不是買訊" in html
+    assert "三日低點不破" in html
+    reply_html = format_watch_week_alert(
+        {
+            "kind": "reply",
+            "date": "2026-11-06",
+            "time": "10:15",
+            "text": "現在就是觀察點。",
+        }
+    )
+    assert "回文說" in reply_html
+
+
+def test_maybe_push_watch_week_posts_pushes_his_fresh(tmp_path, monkeypatch):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_alert import maybe_push_watch_week_posts
+
+    sent = []
+    monkeypatch.setattr(
+        "biaoke_alert._send_family",
+        lambda h, **kw: sent.append(h) or 2,
+    )
+    db = str(tmp_path / "w.db")
+    now = datetime(2026, 11, 6, 10, 20, tzinfo=ZoneInfo("Asia/Taipei"))
+    row = {
+        "id": "watch1",
+        "kind": "reply",
+        "date": "2026-11-06",
+        "time": "10:18",
+        "_ingest": "added",
+        "text": "目前大盤還是以上漲拉回回測止穩再介入即可。",
+    }
+    a = maybe_push_watch_week_posts(db, [row], now=now)
+    assert a["pushed"] == 1
+    assert a.get("outside", 0) == 0
+    assert sent and "監看" in sent[0] and "不是買訊" in sent[0]
+    b = maybe_push_watch_week_posts(db, [row], now=now)
+    assert b["pushed"] == 0
+    assert b["skipped"] == 1
+
+
+def test_maybe_push_watch_week_outside_skips(tmp_path, monkeypatch):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_alert import maybe_push_watch_week_posts
+
+    sent = []
+    monkeypatch.setattr(
+        "biaoke_alert._send_family",
+        lambda h, **kw: sent.append(h) or 2,
+    )
+    db = str(tmp_path / "w.db")
+    now = datetime(2026, 10, 1, 10, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    stats = maybe_push_watch_week_posts(
+        db,
+        [
+            {
+                "id": "old1",
+                "kind": "post",
+                "date": "2026-10-01",
+                "time": "09:50",
+                "_ingest": "added",
+                "text": "隨便一句觀察。",
+            }
+        ],
+        now=now,
+    )
+    assert stats["outside"] == 1
+    assert stats["pushed"] == 0
+    assert sent == []

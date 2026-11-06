@@ -51,16 +51,19 @@ _UA = {
     "Accept": "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8",
     "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
 }
-SESSION_EVERY_SEC = 3 * 60  # 交易日 09:01–13:30
+SESSION_EVERY_SEC = 3 * 60  # 交易日盤中密抓（含 08:50–13:00 使用者鎖）
 AFTER_EVERY_SEC = 1 * 60 * 60  # 開市日盤外／夜間
 CLOSED_EVERY_SEC = 3 * 60 * 60  # 真休市日（週末／國定假／北市停班）整天每 3 小時
 NIGHT_EVERY_SEC = AFTER_EVERY_SEC  # 開市日凌晨仍每小時；休市改 CLOSED_EVERY_SEC
-PREOPEN_EVERY_SEC = 10 * 60  # 交易日 08:00–09:00
+PREOPEN_EVERY_SEC = 10 * 60  # 交易日 08:00–08:50
 AFTER_CLOSE_EVERY_SEC = 10 * 60  # 交易日 13:30–15:00
 PREOPEN_FROM_MIN = 8 * 60
-PREOPEN_UNTIL_MIN = 9 * 60  # [08:00, 09:00)
-SESSION_FROM_MIN = 9 * 60 + 1  # 09:01 才進 3 分
-CLOSE_MIN = 13 * 60 + 30
+PREOPEN_UNTIL_MIN = 9 * 60  # in_preopen_window 仍 [08:00, 09:00)
+# 使用者 2026-11-06 鎖：盤中＝08:50–13:00 必每 3 分（主文＋討論串他回）
+CORE_SESSION_FROM_MIN = 8 * 60 + 50
+CORE_SESSION_UNTIL_MIN = 13 * 60  # 含 13:00
+SESSION_FROM_MIN = CORE_SESSION_FROM_MIN  # 密抓自 08:50 起；13:01–13:30 仍 3 分
+CLOSE_MIN = 13 * 60 + 30  # 至 13:30（含）
 AFTER_CLOSE_UNTIL_MIN = 15 * 60
 AFTER_UNTIL_HOUR = 3  # 舊常數：排程已改成全天有抓，不再當停止線
 REFRESH_LATEST = 2  # 視窗：最新兩則。平時只重讀最新一篇主文＋討論串
@@ -609,15 +612,28 @@ def _row_is_fresh(
     return (dt - posted) <= timedelta(hours=max(1, int(hours)))
 
 
+def in_core_session_window(now: Optional[datetime] = None) -> bool:
+    """開市日盤中 08:50–13:00（含）：使用者鎖必每 3 分抓文。"""
+    dt = now or taipei_now()
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=TAIPEI)
+    else:
+        dt = dt.astimezone(TAIPEI)
+    if not _open_calendar_day(dt):
+        return False
+    hm = int(dt.hour) * 60 + int(dt.minute)
+    return CORE_SESSION_FROM_MIN <= hm <= CORE_SESSION_UNTIL_MIN
+
+
 def poll_wait_seconds(now: Optional[datetime] = None) -> int:
-    """開市日：08:00–09:00 每 10 分；09:01–13:30 每 3 分；13:30–15:00 每 10 分；其餘每 1 小時。
-    真休市日（週末／國定假／北市停班，含監看到 2026-11-09）：整天每 3 小時。
+    """開市日：08:00–08:50 每 10 分；08:50–13:30 每 3 分；13:30–15:00 每 10 分；其餘每 1 小時。
+    盤中 08:50–13:00（使用者 2026-11-06 鎖）必每 3 分。
+    真休市日（週末／國定假／北市停班）：整天每 3 小時。
 
     休市鍵＝``_open_calendar_day``（``is_tw_open_calendar_day``／年曆＋北市停班）。
     ``closed_tw_session`` 只涵蓋 full_close、不含週末，抓文節奏不准單靠它。
 
-    08:59 不准睡 10 分睡過 09:01。09:00 整點最多等到 09:01。
-    討論串（自己回、別人回他、他回別人）跟主文同一套節奏。
+    08:49 不准睡 10 分睡過 08:50。討論串（自己回、別人回他、他回別人）跟主文同一套節奏。
     不准再用「等到開盤」把凌晨到 8 點、週末、颱風天空掉；休市只降頻到 3 小時，不准整天不抓。
     """
     dt = now or taipei_now()
@@ -631,10 +647,9 @@ def poll_wait_seconds(now: Optional[datetime] = None) -> int:
     hm = dt.hour * 60 + dt.minute
     if PREOPEN_FROM_MIN <= hm < SESSION_FROM_MIN:
         remain = max(30, (SESSION_FROM_MIN - hm) * 60)
-        if hm < PREOPEN_UNTIL_MIN:
-            return min(PREOPEN_EVERY_SEC, remain)
-        return remain
+        return min(PREOPEN_EVERY_SEC, remain)
     if SESSION_FROM_MIN <= hm <= CLOSE_MIN:
+        # 含盤中 08:50–13:00：必 3 分（主文＋討論串他回）
         return SESSION_EVERY_SEC
     if CLOSE_MIN < hm < AFTER_CLOSE_UNTIL_MIN:
         remain = max(30, (AFTER_CLOSE_UNTIL_MIN - hm) * 60)
@@ -1919,7 +1934,8 @@ def _carry_parent_names(
 def _after_ingest_analyze(db_path: str, events: Sequence[Dict[str, Any]]) -> None:
     """抓到就存官方 tape、六顆神經元、觀察、急推（出清／到底／碰已點位）、輔助匣。
 
-    一般新文／自回只進未讀匣，不另推 Telegram。彙整窗還會再跑 why／觀察。
+    一般新文／自回只進未讀匣，不另推 Telegram；監看週例外見 maybe_push_watch_week_posts。
+    彙整窗還會再跑 why／觀察。
     """
     try:
         from biaoke_desk import load_corpus_cache_clear
@@ -2012,9 +2028,14 @@ def _after_ingest_analyze(db_path: str, events: Sequence[Dict[str, Any]]) -> Non
     except Exception:
         logger.exception("飆大近四月活化串聯略過")
     try:
-        from biaoke_alert import maybe_push_drop_alert, maybe_push_marked_level_hits
+        from biaoke_alert import (
+            maybe_push_drop_alert,
+            maybe_push_marked_level_hits,
+            maybe_push_watch_week_posts,
+        )
 
         maybe_push_drop_alert(db_path, packed)
+        maybe_push_watch_week_posts(db_path, packed)
         maybe_push_marked_level_hits(db_path)
     except Exception:
         logger.exception("飆大緊急推播略過")
