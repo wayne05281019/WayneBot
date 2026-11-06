@@ -2452,7 +2452,7 @@ def _max_index_daily_date(db_path: str) -> Optional[str]:
 
 def resolve_market_as_of(db_path: str, hint: Optional[str] = None) -> str:
     """話筒各區共用官方基準日：完整收盤。不准用 index_daily 搶在日 K 齊之前。"""
-    from trading_calendar import fuse_end_trading_date, resolve_screen_as_of
+    from trading_calendar import resolve_screen_as_of
 
     hint_d = _norm_ymd(hint)
     complete = ""
@@ -2465,11 +2465,12 @@ def resolve_market_as_of(db_path: str, hint: Optional[str] = None) -> str:
             complete = _norm_ymd(latest_complete_quote_date(db_path))
         except Exception:
             complete = ""
-    cap = fuse_end_trading_date()
-    limit = complete or cap
+    # 只認完整收；無齊庫不准退回 fuse 日曆日冒充 as_of
+    if not complete:
+        return hint_d if hint_d else ""
     if hint_d:
-        return hint_d if hint_d <= limit else limit
-    return limit
+        return hint_d if hint_d <= complete else complete
+    return complete
 
 
 def _prior_quote_dates(db_path: str, as_of: str, limit: int = 12) -> List[str]:

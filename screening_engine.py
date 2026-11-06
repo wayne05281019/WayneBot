@@ -91,21 +91,30 @@ class ScreeningEngine:
             cursor = conn.cursor()
             cursor.execute(
                 """
-                SELECT date FROM daily_quotes
+                SELECT date AS d,
+                       SUM(CASE WHEN market IN ('TW','TSE') THEN 1 ELSE 0 END) AS tw,
+                       SUM(CASE WHEN market IN ('TWO','OTC','ROCO') THEN 1 ELSE 0 END) AS two
+                FROM daily_quotes
+                WHERE date IN (
+                    SELECT d FROM (
+                        SELECT DISTINCT date AS d FROM daily_quotes
+                        ORDER BY date DESC
+                        LIMIT 15
+                    )
+                )
                 GROUP BY date
-                ORDER BY date DESC
-                LIMIT 15
+                ORDER BY d DESC
                 """
             )
+            from import_health import sides_complete
             from trading_calendar import is_trading_weekday
 
-            for (raw,) in cursor.fetchall():
+            for raw, tw, two in cursor.fetchall():
                 d = str(raw or "").replace("-", "")[:8]
-                if d and is_trading_weekday(d):
+                if d and is_trading_weekday(d) and sides_complete(tw, two):
                     return d
-            cursor.execute("SELECT MAX(date) FROM daily_quotes;")
-            row = cursor.fetchone()
-            return row[0] if row and row[0] else datetime.now().strftime("%Y%m%d")
+            # 不准退回未齊 weekday／MAX(date)／牆上今天（半套日會污染海選）
+            return ""
 
     def load_market_data(self, target_date: Optional[str] = None, min_volume: int = 1000, min_turnover_k: float = 30000.0) -> Dict[str, pd.DataFrame]:
         """

@@ -190,7 +190,8 @@ def resolve_screen_as_of(db_path: str, now=None) -> Optional[str]:
     國定假日、颱風停市：官方無收盤 → 庫裡不會齊 → 自動往前找。
     """
     if not db_path:
-        return fuse_end_trading_date(now)
+        # 無庫＝無完整日；不准用 fuse 日曆日冒充齊庫 as_of
+        return None
     try:
         from import_health import latest_complete_quote_date
 
@@ -199,7 +200,8 @@ def resolve_screen_as_of(db_path: str, now=None) -> Optional[str]:
             return complete
     except Exception:
         pass
-    return fuse_end_trading_date(now)
+    # 無齊庫日＝空；不准退回 fuse 日曆日（急殺／半套會蓋錯海選基準）
+    return None
 
 
 def morning_screen_pipeline_key(db_path: str, now=None) -> str:
