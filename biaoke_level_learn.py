@@ -10603,18 +10603,22 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
             )
     except Exception:
         pass
-    # 近窗九波：鎖價欄紅框空檔＝⑤起右側、升勢K下方、價底上方（不准回量欄）
+    # 近窗九波：紅框空檔等比放大；上緣不准碰到 35,500 藍虛線
     try:
-        _iw, _ih = _teach_eight_wave_inset_wh(fig)
-        _iw = min(float(_iw) * 0.36, float(_axpos.width) * 0.22)
-        _ih = min(float(_ih) * 0.36, float(_axpos.height) * 0.155)
-        # 價欄左 16% 起、貼底：剛好落在升勢K下方那塊空（使用者紅框）
-        _near_inset = (
-            float(_axpos.x0) + float(_axpos.width) * 0.16,
-            float(_axpos.y0) + 0.014,
-            float(_iw),
-            float(_ih),
-        )
+        _iw0, _ih0 = _teach_eight_wave_inset_wh(fig)
+        _sc = 0.52
+        _iw = min(float(_iw0) * _sc, float(_axpos.width) * 0.30)
+        _ih = min(float(_ih0) * _sc, float(_axpos.height) * 0.22)
+        _left = float(_axpos.x0) + float(_axpos.width) * 0.16
+        _bot = float(_axpos.y0) + 0.014
+        # 藍虛線＝飆預測 35,500；上緣留縫
+        _, _fy_cap = _fig_xy_from_axes_data(ax, fig, float(i5s) + 28.0, 35500.0)
+        _max_top = float(_fy_cap) - 0.012
+        if _bot + _ih > _max_top:
+            _fit = max(0.40, (_max_top - _bot) / max(_ih, 1e-6))
+            _iw *= _fit
+            _ih *= _fit
+        _near_inset = (_left, _bot, float(_iw), float(_ih))
     except Exception:
         _near_inset = _eight_wave_inset_rect_left_of_vmax(
             ax,
@@ -10623,7 +10627,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
             ymin=float(ymin),
             ymax=float(ymax),
             n_bars=n,
-            scale=0.36,
+            scale=0.52,
             pin_bottom=True,
         )
     _c9_near = _c9_extension_active(pack)

@@ -207,8 +207,9 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "float(i5s) + 7.5" in near_blk  # ⑤起讓過首根K
     assert "hspace=0.26" in near_blk
     assert "labs_ax" in near_blk and "labs_axv" in near_blk
-    assert "0.36" in near_blk and "_teach_eight_wave_inset_wh" in near_blk
-    assert "width) * 0.16" in near_blk  # 九波鎖價欄紅框＝⑤起右側、升勢K下方空檔
+    assert "0.52" in near_blk and "_teach_eight_wave_inset_wh" in near_blk
+    assert "width) * 0.16" in near_blk  # 九波鎖價欄紅框
+    assert "35500.0" in near_blk  # 上緣不准碰藍虛線
     assert "float(i5e) + 7.0" in near_blk  # ⑤末尖右下讓過戳
     assert "_near_major_date_labs" in near_blk  # 結構日畫進欄間空檔
     assert "detail=True" in micro_blk or "detail=False if _c9_micro" in micro_blk
@@ -2278,8 +2279,9 @@ def test_near_micro_follow_far_c9_twii_presentation():
     assert "float(i5s) + 7.5" in near
     assert "float(i5e) + 7.0" in near
     assert "_teach_eight_wave_inset_wh" in near
-    assert "0.36" in near
+    assert "0.52" in near
     assert "width) * 0.16" in near
+    assert "35500.0" in near
     assert "_near_major_date_labs" in near
     # C7／C8 字標多餘（右欄已有 C-7轉C-8今）；圓點仍留
     path_src = inspect.getsource(
