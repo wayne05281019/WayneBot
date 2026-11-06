@@ -603,6 +603,31 @@ def _ensure_paint_live_sox(
     return None
 
 
+def _sox_axis_index_for_ymd(
+    bars: Sequence[Dict[str, Any]],
+    *,
+    n_tw: int,
+    sox_extra_dates: Sequence[str],
+    ymd: str,
+    n_axis: int,
+) -> Optional[int]:
+    """費半真實美股日 → 對齊軸索引（加權日格或加權後延長格）。"""
+    day = _ymd(ymd)
+    if len(day) != 8 or n_axis <= 0:
+        return None
+    for i, r in enumerate(bars or []):
+        if i >= int(n_tw):
+            break
+        if _ymd((r or {}).get("date")) == day:
+            return int(i)
+    for j, d in enumerate(sox_extra_dates or []):
+        if _ymd(d) == day:
+            i = int(n_tw) + int(j)
+            if 0 <= i < int(n_axis):
+                return i
+    return None
+
+
 def _apply_live_sox_to_axis(
     *,
     sox_o: List[float],
@@ -7994,6 +8019,22 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     sox_i_now = int(sox_anc["i_now"]) if sox_anc else (n_axis - 1)
     if i_live is not None:
         sox_i_now = int(i_live)
+    else:
+        # 不准把加權軸「前收填日」末格當費半今日K；tip／黃框釘真實美股末日
+        _real_sox_asof = ""
+        for _r in reversed(list(sox or [])):
+            if float((_r or {}).get("close") or 0) > 0 and _ymd((_r or {}).get("date")):
+                _real_sox_asof = _ymd(_r.get("date"))
+                break
+        _snap = _sox_axis_index_for_ymd(
+            bars,
+            n_tw=n_tw,
+            sox_extra_dates=sox_extra_dates,
+            ymd=_real_sox_asof,
+            n_axis=n_axis,
+        )
+        if _snap is not None:
+            sox_i_now = int(_snap)
     c_seg_lows = list(lows[i_c : i_now + 1]) or list(lows[i_bhi:])
     # 大量撐壓＝volume_first；無則退窗內最大量。量只認加權 n_tw。
     i_vmax = far_vol_sr.get("i_primary") if isinstance(far_vol_sr, dict) else None
@@ -8031,6 +8072,25 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         for i, c in enumerate(sox_c)
         if c == c and c and math.isfinite(float(sox_h[i])) and math.isfinite(float(sox_l[i]))
     ]
+    # 真實美股日才畫縮圖K；加權軸前收填日不准畫假K（否則 tip／黃框日對不上）
+    _sox_real_days = {
+        _ymd(r.get("date"))
+        for r in (sox or [])
+        if float((r or {}).get("close") or 0) > 0 and _ymd((r or {}).get("date"))
+    }
+    if isinstance(live_sox, dict) and float(live_sox.get("close") or 0) > 0:
+        _ld = _ymd(live_sox.get("date"))
+        if _ld:
+            _sox_real_days.add(_ld)
+
+    def _sox_axis_ymd_at(i: int) -> str:
+        if 0 <= i < int(n_tw):
+            return _ymd(bars[i].get("date"))
+        j = int(i) - int(n_tw)
+        if sox_extra_dates and 0 <= j < len(sox_extra_dates):
+            return _ymd(sox_extra_dates[j])
+        return ""
+
     sox_min_body = _candle_span_min_body(sox_h, sox_l, frac=_FAR_SOX_MIN_BODY_FRAC)
     _sox_last_repaint: Optional[Dict[str, Any]] = None
     _sox_chg_tip: Optional[Dict[str, Any]] = None
@@ -8039,7 +8099,16 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     if len(valid) >= 5:
         span_raw = max(x for x in sox_h if x == x) - min(x for x in sox_l if x == x)
         for i in valid:
-            prev_i = next((j for j in range(i - 1, -1, -1) if sox_c[j] == sox_c[j]), None)
+            if _sox_axis_ymd_at(i) not in _sox_real_days:
+                continue
+            prev_i = next(
+                (
+                    j
+                    for j in range(i - 1, -1, -1)
+                    if sox_c[j] == sox_c[j] and _sox_axis_ymd_at(j) in _sox_real_days
+                ),
+                None,
+            )
             prev_c = sox_c[prev_i] if prev_i is not None else None
             up = candle_up_taiwan(sox_c[i], prev_c, sox_o[i])
             color = _LIVE_UP if up else _LIVE_DOWN
@@ -8472,8 +8541,22 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                     zorder=6,
                 )
             )
-        # 末根：即時夜盤或庫內夜盤；白邊＋tip 圈
+        # 末根：即時夜盤或庫內夜盤；白邊＋tip 圈（索引日＝紅框日期）
         tip_i = int(i_tx_live) if i_tx_live is not None else int(tx_valid[-1])
+        _tx_live_now = live_tx or (
+            (pack or {}).get("live_tx") if isinstance(pack, dict) else None
+        )
+        if (
+            isinstance(_tx_live_now, dict)
+            and float(_tx_live_now.get("close") or 0) > 0
+            and _tx_night_session_live()
+        ):
+            _eve = _ymd(_tx_live_now.get("date"))
+            if _eve and tip_i < len(bars) and _ymd(bars[tip_i].get("date")) != _eve:
+                for _i, _r in enumerate(bars):
+                    if _ymd((_r or {}).get("date")) == _eve and _i < len(tx_c):
+                        tip_i = int(_i)
+                        break
         if 0 <= tip_i < len(tx_c) and tx_c[tip_i] == tx_c[tip_i]:
             prev_i = next(
                 (j for j in range(tip_i - 1, -1, -1) if tx_c[j] == tx_c[j]), None
@@ -8486,7 +8569,35 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 "c": float(tx_c[tip_i]),
                 "prev": float(tx_c[prev_i]) if prev_i is not None else None,
                 "min_body": float(tx_min_body),
+                "asof": _ymd(bars[tip_i].get("date")) if tip_i < len(bars) else "",
             }
+            if (
+                isinstance(_tx_live_now, dict)
+                and float(_tx_live_now.get("close") or 0) > 0
+                and _tx_night_session_live()
+            ):
+                try:
+                    _tx_last_repaint["c"] = float(_tx_live_now["close"])
+                    _tx_last_repaint["o"] = float(
+                        _tx_live_now.get("open") or _tx_last_repaint["o"]
+                    )
+                    _tx_last_repaint["h"] = max(
+                        float(_tx_last_repaint["h"]),
+                        float(_tx_live_now.get("high") or 0),
+                        float(_tx_last_repaint["c"]),
+                    )
+                    _lo_live = float(_tx_live_now.get("low") or 0)
+                    if _lo_live > 0:
+                        _tx_last_repaint["l"] = min(
+                            float(_tx_last_repaint["l"]), _lo_live, float(_tx_last_repaint["c"])
+                        )
+                    _tx_last_repaint["asof"] = (
+                        _ymd(_tx_live_now.get("date"))
+                        or _tx_last_repaint.get("asof")
+                        or ""
+                    )
+                except (TypeError, ValueError):
+                    pass
             _tx_px_rail = float(tx_c[tip_i])
             _tx_right_notes.append(
                 {
@@ -9006,16 +9117,59 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     if _sox_last_repaint:
         # 黃框＋末根K同口：只認真實美股列（Yahoo 已注入）；不准軸上前收填日殘值
         _sox_live = (pack or {}).get("live_sox") if isinstance(pack, dict) else None
-        _pair = _us_real_close_pair(sox, _sox_live)
+        if not isinstance(_sox_live, dict):
+            _sox_live = live_sox if isinstance(live_sox, dict) else None
+        _sox_is_live = (
+            isinstance(_sox_live, dict)
+            and float((_sox_live or {}).get("close") or 0) > 0
+            and int((_sox_live or {}).get("live_session") or 0) == 1
+        )
+        _pair = _us_real_close_pair(sox, _sox_live if _sox_is_live else None)
         _tip_close = _pair.get("close")
+        _tip_asof = _ymd(_pair.get("asof")) or ""
+        if _sox_is_live:
+            _tip_asof = _ymd(_sox_live.get("date")) or _tip_asof
+        # tip 索引必須＝黃框日期格（真實美股日／盤中日），不准停在加權填日末格
+        _tip_i = _sox_axis_index_for_ymd(
+            bars,
+            n_tw=n_tw,
+            sox_extra_dates=sox_extra_dates,
+            ymd=_tip_asof,
+            n_axis=n_axis,
+        )
+        if _tip_i is None and i_live is not None:
+            _tip_i = int(i_live)
+        if _tip_i is not None:
+            _sox_last_repaint["i"] = int(_tip_i)
+            _sox_last_repaint["prev"] = next(
+                (
+                    j
+                    for j in range(int(_tip_i) - 1, -1, -1)
+                    if j < len(sox_c) and sox_c[j] == sox_c[j]
+                ),
+                None,
+            )
         if _tip_close is not None and float(_tip_close or 0) > 0:
             _real = None
-            _asof_p = _ymd(_pair.get("asof"))
+            _asof_p = _tip_asof
             for _r in reversed(list(sox or [])):
                 if _ymd((_r or {}).get("date")) == _asof_p:
                     _real = _r
                     break
-            if _real:
+            if _sox_is_live:
+                try:
+                    _sox_last_repaint["o"] = float(
+                        _sox_live.get("open") or _tip_close
+                    )
+                    _sox_last_repaint["h"] = float(
+                        _sox_live.get("high") or _tip_close
+                    )
+                    _sox_last_repaint["l"] = float(
+                        _sox_live.get("low") or _tip_close
+                    )
+                except (TypeError, ValueError):
+                    pass
+            elif _real:
                 try:
                     _sox_last_repaint["o"] = float(_real.get("open") or _tip_close)
                     _sox_last_repaint["h"] = float(_real.get("high") or _tip_close)
@@ -9087,22 +9241,11 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             zorder=20,
             clip_on=False,
         )
-        _tip_asof = str(
-            _ymd((_sox_live or {}).get("date"))
-            if (
-                isinstance(_sox_live, dict)
-                and float((_sox_live or {}).get("close") or 0) > 0
-            )
-            else (_pair.get("asof") or "")
-        )
         _sox_chg_tip = {
             "close": float(_tip_close),
             "prev": _pair.get("prev_close"),
             "asof": _tip_asof,
-            "live": bool(
-                isinstance(_sox_live, dict)
-                and float((_sox_live or {}).get("close") or 0) > 0
-            ),
+            "live": bool(_sox_is_live),
         }
     if _tx_last_repaint:
         _prev_tx = _tx_last_repaint.get("prev")
@@ -9254,6 +9397,13 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             or ((live_tx or (pack or {}).get("live_tx") or {}).get("update_time"))
             or ""
         )
+        _tx_asof_stamp = str(
+            _tx_last_repaint.get("asof")
+            or _tx_chg_tip.get("asof")
+            or _ymd(((live_tx or (pack or {}).get("live_tx") or {}).get("date")))
+            or (bars[_tx_last_repaint["i"]].get("date") if bars else "")
+            or ""
+        )
         _paint_tx_after_hours_tip(
             fig,
             close=float(_tx_last_repaint["c"]),
@@ -9265,12 +9415,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             ha="right",
             va="bottom",
             clock=_tx_clock,
-            asof_ymd=str(
-                _tx_chg_tip.get("asof")
-                or _ymd(((live_tx or (pack or {}).get("live_tx") or {}).get("date")))
-                or (bars[_tx_last_repaint["i"]].get("date") if bars else "")
-                or ""
-            ),
+            asof_ymd=_tx_asof_stamp,
             # 夜盤進行中才盤中；MIS 末筆鐘／殘 live 不准白天冒充盤中
             session_live=_tx_night_live
             and bool(live_tx or (pack or {}).get("live_tx") or _tx_clock),

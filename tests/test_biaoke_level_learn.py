@@ -1293,9 +1293,43 @@ def test_far_paint_wires_sox_yahoo_inject_and_stamp_uses_pair():
 
     src = inspect.getsource(_render_twii_far_dark)
     assert "_inject_yahoo_us_last_into_rows" in src
-    assert '_us_real_close_pair(sox, _sox_live)' in src
+    assert "_us_real_close_pair(sox," in src
     assert '_sox_chg_tip = {\n            "close": float(_sox_last_repaint["c"])' not in src
     assert '"close": float(_tip_close)' in src
+    # tip／黃框釘真實美股日；盤中只認 live_session=1；填日不畫假K
+    assert "_sox_axis_index_for_ymd" in src
+    assert 'int((_sox_live or {}).get("live_session") or 0) == 1' in src
+    assert "_sox_real_days" in src
+    assert "not in _sox_real_days" in src
+
+
+def test_sox_axis_index_for_ymd_prefers_tw_then_extra():
+    """費半 tip 索引：先加權同日格，再延長格。"""
+    from biaoke_level_learn import _sox_axis_index_for_ymd
+
+    bars = [{"date": "20261105"}, {"date": "20261106"}]
+    assert (
+        _sox_axis_index_for_ymd(
+            bars, n_tw=2, sox_extra_dates=[], ymd="20261105", n_axis=2
+        )
+        == 0
+    )
+    assert (
+        _sox_axis_index_for_ymd(
+            bars,
+            n_tw=2,
+            sox_extra_dates=["20261107"],
+            ymd="20261107",
+            n_axis=3,
+        )
+        == 2
+    )
+    assert (
+        _sox_axis_index_for_ymd(
+            bars, n_tw=2, sox_extra_dates=[], ymd="20261107", n_axis=2
+        )
+        is None
+    )
 
 
 def test_soxx_volume_proxy_always_refreshes_near_window():

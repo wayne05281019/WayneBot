@@ -349,6 +349,13 @@ def fetch_live_sox_display_bar(
             last_px = _as_float(closes[-1]) if closes else None
         if last_px is None or last_px <= 0:
             return None
+        # 盤前：Yahoo meta.preMarketPrice（指數有才用；仍須 >=500）
+        pre_from_meta = False
+        if phase == "overnight":
+            pre_px = _as_float(meta.get("preMarketPrice"))
+            if pre_px is not None and pre_px >= 500:
+                last_px = float(pre_px)
+                pre_from_meta = True
         o = _as_float(opens[-1]) if opens else None
         h = _as_float(highs[-1]) if highs else None
         lo = _as_float(lows[-1]) if lows else None
@@ -394,6 +401,10 @@ def fetch_live_sox_display_bar(
         except Exception:
             logger.debug("SOXX 量代理略過", exc_info=True)
         live_flag = 1 if phase == "regular" else 0
+        if pre_from_meta:
+            live_flag = 1
+            if expected:
+                session = expected
         # 盤後／盤前：只疊 ^SOX 1 分末筆（不准用 SOXX ETF 價蓋指數）
         if phase in ("post", "overnight") or (force and phase != "regular"):
             ext = None
