@@ -724,6 +724,65 @@ def _bar_clock_tag(bars: Sequence[Dict[str, Any]]) -> str:
     return "收盤"
 
 
+def _stamp_md_phase(asof_ymd: Any, *, live: bool = False) -> str:
+    """相容舊名：幾月幾號收盤｜幾月幾號盤中。"""
+    return _stamp_when_bit(asof_ymd, live=live, query_hm="")
+
+
+def _stamp_query_hm(
+    pack: Optional[Dict[str, Any]] = None,
+    *,
+    now: Optional[datetime] = None,
+) -> str:
+    """查詢當下 HH:MM（台北）；給盤中白底戳，不准用 MIS 末筆成交鐘冒充查詢時。"""
+    dt = None
+    if isinstance(pack, dict):
+        dt = _parse_query_at(pack.get("query_at"))
+    if dt is None:
+        dt = now or datetime.now(TAIPEI)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=TAIPEI)
+    else:
+        dt = dt.astimezone(TAIPEI)
+    return dt.strftime("%H:%M")
+
+
+def _stamp_when_bit(
+    asof_ymd: Any,
+    *,
+    live: bool = False,
+    query_hm: str = "",
+) -> str:
+    """白底戳時間位：幾月幾號收盤｜幾月幾號盤中 查詢當下為HH:MM。
+
+    收盤＝官方已收；盤中＝即時未收。查詢鐘點只在盤中出現。
+    """
+    md = _md(_ymd(asof_ymd))
+    hm = str(query_hm or "").strip()
+    # 容忍 MIS 傳來的 HH:MM:SS → 只留 HH:MM
+    if len(hm) >= 5 and hm[2] == ":":
+        hm = hm[:5]
+    elif ":" not in hm:
+        hm = ""
+    if live:
+        base = f"{md}盤中" if md else "盤中"
+        if hm:
+            return f"{base} 查詢當下為{hm}"
+        return base
+    return f"{md}收盤" if md else "收盤"
+
+
+def _tx_night_session_live(now: Optional[datetime] = None) -> bool:
+    """台指電子盤（夜盤）是否進行中：台北 15:00–05:00。"""
+    dt = now or datetime.now(TAIPEI)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=TAIPEI)
+    else:
+        dt = dt.astimezone(TAIPEI)
+    hm = int(dt.hour) * 60 + int(dt.minute)
+    return hm >= 15 * 60 or hm < 5 * 60
+
+
 def _parse_query_at(raw: Any) -> Optional[datetime]:
     if isinstance(raw, datetime):
         dt = raw
@@ -902,15 +961,18 @@ def _teach_stamp_line(
     *,
     pack: Optional[Dict[str, Any]] = None,
     close: Optional[float] = None,
+    label_prefix: str = "",
 ) -> str:
-    """查詢戳一行（純文字）：日期＋時段鐘＋價＋漲幅％＋點數。"""
+    """查詢戳一行：名稱 幾月幾號收盤|盤中 查詢當下為HH:MM →價→（漲幅％）→較前日點數。"""
     as_of = _ymd(bars[-1].get("date")) if bars else ""
-    day = (
-        f"{as_of[:4]}-{as_of[4:6]}-{as_of[6:8]}"
-        if len(as_of) == 8
-        else (as_of or "—")
+    live = bool(bars) and int((bars[-1] or {}).get("live_session") or 0) == 1
+    when = _stamp_when_bit(
+        as_of,
+        live=live,
+        query_hm=_stamp_query_hm(pack) if live else "",
     )
-    clock = _teach_query_clock(bars, pack=pack)
+    prefix = str(label_prefix or "").strip()
+    meta = f"{prefix} {when}".strip() if prefix else when
     px_v = close
     if px_v is None and bars:
         try:
@@ -924,8 +986,8 @@ def _teach_stamp_line(
     chg = _day_change_vs_prev(px_v, _prev_bar_close(bars))
     chg_s = str(chg.get("text") or "").strip()
     if chg_s:
-        return f"{day}  {clock}  {px_s}  {chg_s}"
-    return f"{day}  {clock}  {px_s}"
+        return f"{meta}  {px_s}  {chg_s}"
+    return f"{meta}  {px_s}"
 
 
 def _stamp_box_alignment(ha: str, va: str = "top") -> Tuple[float, float]:
@@ -1227,10 +1289,12 @@ def _paint_teach_query_stamp(
     y: float = 0.958,
     ha: str = "right",
     va: str = "top",
+    label_prefix: str = "加權",
 ) -> None:
-    """三張教具共用：黃框白底；日期／時段黑；價→漲幅％→點數（紅漲綠跌）。
+    """黃框白底：名稱 幾月幾號收盤|盤中 查詢當下為HH:MM →價→（漲幅％）→較前日點數。
 
     預設貼右、略離上緣，不准壓標題白字；遠窗可改右下 va=bottom。
+    盤中未收疊柱才標盤中＋查詢當下；官方已收標收盤。不准把未收當收。
     """
     if fig is None or not bars:
         return
@@ -1242,12 +1306,14 @@ def _paint_teach_query_stamp(
     from matplotlib.offsetbox import TextArea
 
     as_of = _ymd(bars[-1].get("date")) if bars else ""
-    day = (
-        f"{as_of[:4]}-{as_of[4:6]}-{as_of[6:8]}"
-        if len(as_of) == 8
-        else (as_of or "—")
+    live = int((bars[-1] or {}).get("live_session") or 0) == 1
+    when = _stamp_when_bit(
+        as_of,
+        live=live,
+        query_hm=_stamp_query_hm(pack) if live else "",
     )
-    clock = _teach_query_clock(bars, pack=pack)
+    prefix = str(label_prefix or "").strip()
+    meta = f"{prefix} {when}".strip() if prefix else when
     px_v = close
     if px_v is None:
         try:
@@ -1262,10 +1328,10 @@ def _paint_teach_query_stamp(
     pct_s = str(chg.get("pct_text") or "").strip()
     pts_s = str(chg.get("pts_text") or "").strip()
     chg_col = _chg_paint_color(int(chg.get("sign") or 0))
-    fsz = _teach_stamp_fsz(day, clock, px_s, pct_s, pts_s)
+    fsz = _teach_stamp_fsz(meta, px_s, pct_s, pts_s)
     kids = [
         TextArea(
-            f"{day}  {clock}  ",
+            f"{meta}  ",
             textprops={
                 "color": _TEACH_STAMP_META,
                 "fontproperties": fp(fsz, "bold"),
@@ -1362,10 +1428,12 @@ def _paint_index_last_chg_tip(
     va: str = "top",
     asof_ymd: str = "",
     chart_asof: str = "",
+    session_live: bool = False,
+    pack: Optional[Dict[str, Any]] = None,
 ) -> None:
-    """費半漲跌黃框：與加權同字級／同框高；字少故較短；圖層座標，不准壓加權黃框。
+    """費半黃框：名稱 幾月幾號收盤|盤中 查詢當下為HH:MM →價→（漲幅％）→較前日點數。
 
-    asof_ymd＝費半真實收日；若落後加權題旨日，框上標「M/D收」，不准裝成當日平盤。
+    asof_ymd＝費半真實美股日；盤中＝Yahoo 未收疊柱；收盤＝官方已收。
     """
     if fig is None or fp is None:
         return
@@ -1378,27 +1446,26 @@ def _paint_index_last_chg_tip(
     asof = _ymd(asof_ymd)
     chart_d = _ymd(chart_asof)
     stale = bool(asof and chart_d and asof < chart_d)
-    # 缺新美股收又算出平盤＝前收填日假象；改標收日，不准 +0.00%
+    # 缺新美股收又算出平盤＝前收填日假象；拿掉假％，日期相位已在前綴
     if stale and int(chg.get("sign") or 0) == 0:
-        pct_s = f"（{_md(asof)}收）"
+        pct_s = ""
         pts_s = ""
         col = _TEACH_STAMP_META
-    elif stale and asof:
-        # 有真漲跌也標收日，避免以為是加權同日費半
-        tag = f"{_md(asof)}收"
-        if pct_s:
-            pct_s = f"（{tag} {pct_s.strip('（）')}）"
-        else:
-            pct_s = f"（{tag}）"
     try:
         px_s = _px(float(close))
     except (TypeError, ValueError):
         px_s = "—"
-    # 與加權同一套字級／框；前綴黑字，價→％→點數紅漲綠跌
-    fsz = _TEACH_STAMP_FS
+    live = bool(session_live)
+    when = _stamp_when_bit(
+        asof,
+        live=live,
+        query_hm=_stamp_query_hm(pack) if live else "",
+    )
+    meta = f"{str(label_prefix or '費半').strip()} {when}".strip()
+    fsz = _teach_stamp_fsz(meta, px_s, pct_s, pts_s)
     kids = [
         TextArea(
-            f"{label_prefix}  ",
+            f"{meta}  ",
             textprops={
                 "color": _TEACH_STAMP_META,
                 "fontproperties": fp(fsz, "bold"),
@@ -1538,8 +1605,13 @@ def _paint_tx_after_hours_tip(
     va: str = "bottom",
     clock: str = "",
     asof_ymd: str = "",
+    session_live: Optional[bool] = None,
+    pack: Optional[Dict[str, Any]] = None,
 ) -> None:
-    """遠窗專用：紅框白底；貼電子盤欄右下（避撐壓底色）。"""
+    """遠窗紅框白底：台指電子盤 幾月幾號收盤|盤中 查詢當下為HH:MM →價→（漲幅％）→較前日點數。
+
+    夜盤進行中才標盤中；MIS 末筆 CTime 不准當「查詢當下」。貼電子盤欄右下。
+    """
     if fig is None or fp is None:
         return
     from matplotlib.offsetbox import TextArea
@@ -1552,13 +1624,19 @@ def _paint_tx_after_hours_tip(
         px_s = _px(float(close))
     except (TypeError, ValueError):
         px_s = "—"
-    meta = str(label_prefix or "台指電子盤")
     asof = _ymd(asof_ymd)
-    if clock:
-        meta = f"{meta} {clock}"
-    elif asof:
-        meta = f"{meta} {_md(asof)}"
-    fsz = _TEACH_STAMP_FS
+    if session_live is None:
+        live = bool(_tx_night_session_live()) and bool(str(clock or "").strip())
+    else:
+        live = bool(session_live)
+    when = _stamp_when_bit(
+        asof,
+        live=live,
+        query_hm=_stamp_query_hm(pack) if live else "",
+    )
+    meta = f"{str(label_prefix or '台指電子盤').strip()} {when}".strip()
+    del clock  # MIS 末筆鐘不准寫進查詢當下
+    fsz = _teach_stamp_fsz(meta, px_s, pct_s, pts_s)
     kids = [
         TextArea(
             f"{meta}  ",
@@ -2438,6 +2516,13 @@ def _ensure_us_index_daily(db_path: str) -> Dict[str, int]:
             stats["SOX"] = int(_sox_daily_from_minutes(db_path) or 0)
         except Exception:
             logger.exception("SOX 分K日切略過")
+    # 已收後對質末日收＝Yahoo regularMarketPrice（修盤中殘值卡黃框）
+    for sym, yid in pairs:
+        try:
+            if _reconcile_us_index_last_close(db_path, sym=sym, yid=yid):
+                stats[f"{sym}_reconciled"] = 1
+        except Exception:
+            logger.exception("對質%s末日略過", sym)
     # ^SOX 指數幾乎無官方量 → 另抓 SOXX ETF 量當費半量代理（標清楚）
     try:
         stats["SOXX"] = int(_ensure_soxx_volume_proxy(db_path) or 0)
@@ -2448,7 +2533,12 @@ def _ensure_us_index_daily(db_path: str) -> Dict[str, int]:
 
 
 def _ensure_soxx_volume_proxy(db_path: str) -> int:
-    """補 SOXX 日K量：費半指數本身無成交量，教具量柱用 SOXX 代理。"""
+    """補 SOXX 日量：費半指數無官方量，教具大量撐壓用 SOXX 代理。
+
+    每次出圖刷新近窗（不准「已有≥40列」整段跳過卡在過期日，例如停 10/30）。
+    日期用美東，與 ^SOX 同曆。Yahoo 價若相對庫內跳太兇（拆分／錯欄）
+    只更新量、保留舊 OHLC；新日仍寫量（價不可用時 close=0）。
+    """
     if not db_path:
         return 0
     try:
@@ -2457,23 +2547,26 @@ def _ensure_soxx_volume_proxy(db_path: str) -> int:
     except Exception:
         return 0
     ensure_index_daily_table(db_path)
-    conn = sqlite3.connect(db_path, timeout=30.0)
-    try:
-        n_have = conn.execute(
-            "SELECT COUNT(*) FROM index_daily WHERE symbol='SOXX' AND date>=? AND volume>0",
-            ("20260701",),
-        ).fetchone()[0]
-        if int(n_have or 0) >= 40:
-            return int(n_have)
-    finally:
-        conn.close()
     ua = {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
             "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
         )
     }
-    url = "https://query1.finance.yahoo.com/v8/finance/chart/SOXX?interval=1d&range=6mo"
+    # 近窗必刷；缺更長歷史才拉 6mo
+    conn = sqlite3.connect(db_path, timeout=30.0)
+    try:
+        n_have = int(
+            conn.execute(
+                "SELECT COUNT(*) FROM index_daily WHERE symbol='SOXX' AND date>=? AND volume>0",
+                ("20260701",),
+            ).fetchone()[0]
+            or 0
+        )
+    finally:
+        conn.close()
+    range_ = "6mo" if n_have < 40 else "1mo"
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/SOXX?interval=1d&range={range_}"
     try:
         resp = requests.get(url, timeout=12, headers=ua)
         if resp.status_code != 200:
@@ -2485,9 +2578,17 @@ def _ensure_soxx_volume_proxy(db_path: str) -> int:
     except Exception:
         logger.exception("補 SOXX 失敗")
         return 0
+    ny = ZoneInfo("America/New_York")
     written = 0
     conn = sqlite3.connect(db_path, timeout=30.0)
     try:
+        prev_close: Optional[float] = None
+        row_prev = conn.execute(
+            "SELECT close FROM index_daily WHERE symbol='SOXX' AND close>0 "
+            "ORDER BY date DESC LIMIT 1"
+        ).fetchone()
+        if row_prev and row_prev[0]:
+            prev_close = float(row_prev[0])
         for ts, op, hi, lo, cl, vol in zip(
             stamps,
             q.get("open") or [],
@@ -2496,81 +2597,271 @@ def _ensure_soxx_volume_proxy(db_path: str) -> int:
             q.get("close") or [],
             q.get("volume") or [],
         ):
-            if cl is None or op is None:
+            v = float(vol or 0)
+            if v <= 0:
                 continue
             try:
-                dt = datetime.fromtimestamp(int(ts), tz=TAIPEI)
+                dt = datetime.fromtimestamp(int(ts), tz=ny)
             except (TypeError, ValueError, OSError):
                 continue
             d = dt.strftime("%Y%m%d")
-            o = float(op)
-            c = float(cl)
+            # 近窗刷新：已落後末日之後的日必寫；歷史列價跳兇只動量
+            c = float(cl) if cl is not None else 0.0
+            o = float(op) if op is not None else c
+            if o <= 0 and c <= 0:
+                # 無價仍可留量（對齊費半同日）
+                o = c = 0.0
             h = float(hi if hi is not None else max(o, c))
-            l = float(lo if lo is not None else min(o, c))
-            v = float(vol or 0)
-            conn.execute(
-                """
-                INSERT INTO index_daily(
-                    date, symbol, open, high, low, close, volume, pct_change, updated_at
-                ) VALUES (?,?,?,?,?,?,?,?,?)
-                ON CONFLICT(date, symbol) DO UPDATE SET
-                    open=excluded.open, high=excluded.high, low=excluded.low,
-                    close=excluded.close, volume=excluded.volume,
-                    updated_at=excluded.updated_at
-                """,
-                (d, "SOXX", o, h, l, c, v, None, _now()),
-            )
+            l = float(lo if lo is not None else (min(o, c) if o and c else 0.0))
+            existing = conn.execute(
+                "SELECT close, volume FROM index_daily WHERE date=? AND symbol='SOXX'",
+                (d,),
+            ).fetchone()
+            price_ok = True
+            ref = None
+            if existing and float(existing[0] or 0) > 0 and c > 0:
+                ref = float(existing[0])
+            elif prev_close and prev_close > 0 and c > 0:
+                ref = float(prev_close)
+            if ref and c > 0 and abs(c / ref - 1.0) > 0.35:
+                price_ok = False
+            if existing:
+                if price_ok and c > 0 and o > 0:
+                    conn.execute(
+                        """
+                        UPDATE index_daily SET open=?, high=?, low=?, close=?,
+                            volume=?, updated_at=?
+                        WHERE date=? AND symbol='SOXX'
+                        """,
+                        (o, h, l, c, v, _now(), d),
+                    )
+                else:
+                    # 價不可信：只動量，撐壓日才對得上爆量
+                    conn.execute(
+                        """
+                        UPDATE index_daily SET volume=?, updated_at=?
+                        WHERE date=? AND symbol='SOXX'
+                        """,
+                        (v, _now(), d),
+                    )
+            else:
+                if not price_ok:
+                    o = h = l = c = 0.0
+                conn.execute(
+                    """
+                    INSERT INTO index_daily(
+                        date, symbol, open, high, low, close, volume,
+                        pct_change, updated_at
+                    ) VALUES (?,?,?,?,?,?,?,?,?)
+                    """,
+                    (d, "SOXX", o, h, l, c, v, None, _now()),
+                )
             written += 1
+            if c > 0 and price_ok:
+                prev_close = c
         conn.commit()
     finally:
         conn.close()
-    return written
+    # 回傳近窗有量列數（出圖 stats／對質用）
+    conn = sqlite3.connect(db_path, timeout=15.0)
+    try:
+        n_out = int(
+            conn.execute(
+                "SELECT COUNT(*) FROM index_daily WHERE symbol='SOXX' AND date>=? AND volume>0",
+                ("20260901",),
+            ).fetchone()[0]
+            or 0
+        )
+        return n_out if n_out else written
+    finally:
+        conn.close()
 
 
 def _sox_daily_from_minutes(db_path: str) -> int:
-    """minute_bars SOX → index_daily 日切備援。"""
+    """minute_bars SOX → index_daily 日切備援。
+
+    美東交易日切（不准用台北日曆 substr 把盤中切成假收）。
+    已有 Yahoo／庫內柱不准覆寫（避免 9185 這類未收盤分K蓋掉官方 9011）。
+    """
+    ny = ZoneInfo("America/New_York")
     conn = sqlite3.connect(db_path, timeout=30.0)
     n = 0
     try:
-        days = [
-            str(r[0])
-            for r in conn.execute(
-                "SELECT DISTINCT substr(ts,1,8) FROM minute_bars "
-                "WHERE stock_id='SOX' AND ts>='202608010000' ORDER BY 1"
-            )
-        ]
-        for d in days:
-            row = conn.execute(
-                "SELECT "
-                "(SELECT o FROM minute_bars WHERE stock_id='SOX' AND substr(ts,1,8)=? "
-                "ORDER BY ts ASC LIMIT 1), "
-                "MAX(h), MIN(l), "
-                "(SELECT c FROM minute_bars WHERE stock_id='SOX' AND substr(ts,1,8)=? "
-                "ORDER BY ts DESC LIMIT 1), "
-                "SUM(v) "
-                "FROM minute_bars WHERE stock_id='SOX' AND substr(ts,1,8)=?",
-                (d, d, d),
+        rows = conn.execute(
+            "SELECT ts, o, h, l, c, v FROM minute_bars "
+            "WHERE stock_id='SOX' AND ts>='202608010000' ORDER BY ts"
+        ).fetchall()
+        by_day: Dict[str, List[Tuple[Any, ...]]] = {}
+        for ts, o, h, l, c, v in rows:
+            ts_s = str(ts or "")
+            if len(ts_s) < 12:
+                continue
+            try:
+                # minute_bars SOX ts＝台北牆鐘 YYYYMMDDHHMM
+                dt_tp = datetime.strptime(ts_s[:12], "%Y%m%d%H%M").replace(
+                    tzinfo=TAIPEI
+                )
+                d = dt_tp.astimezone(ny).strftime("%Y%m%d")
+            except (TypeError, ValueError, OSError):
+                continue
+            by_day.setdefault(d, []).append((o, h, l, c, v))
+        for d, bars in sorted(by_day.items()):
+            exist = conn.execute(
+                "SELECT close FROM index_daily WHERE date=? AND symbol='SOX'",
+                (d,),
             ).fetchone()
-            if not row or row[0] is None or row[3] is None:
+            if exist and float(exist[0] or 0) > 0:
+                continue  # 已有官方／先前柱，分K不准蓋
+            o0 = h0 = l0 = c0 = None
+            v_sum = 0.0
+            for o, h, l, c, v in bars:
+                try:
+                    oo, hh, ll, cc = float(o), float(h), float(l), float(c)
+                except (TypeError, ValueError):
+                    continue
+                if oo <= 0 or cc <= 0:
+                    continue
+                if o0 is None:
+                    o0 = oo
+                h0 = hh if h0 is None else max(h0, hh)
+                l0 = ll if l0 is None else min(l0, ll)
+                c0 = cc
+                v_sum += float(v or 0)
+            if o0 is None or c0 is None or h0 is None or l0 is None:
                 continue
             conn.execute(
                 """
                 INSERT INTO index_daily(
                     date, symbol, open, high, low, close, volume, updated_at
                 ) VALUES (?,?,?,?,?,?,?,?)
-                ON CONFLICT(date, symbol) DO UPDATE SET
-                    open=excluded.open, high=excluded.high, low=excluded.low,
-                    close=excluded.close, volume=excluded.volume,
-                    updated_at=excluded.updated_at
+                ON CONFLICT(date, symbol) DO NOTHING
                 """,
-                (d, "SOX", float(row[0]), float(row[1]), float(row[2]), float(row[3]),
-                 float(row[4] or 0), _now()),
+                (d, "SOX", float(o0), float(h0), float(l0), float(c0),
+                 float(v_sum), _now()),
             )
             n += 1
         conn.commit()
     finally:
         conn.close()
     return n
+
+
+def _reconcile_us_index_last_close(db_path: str, *, sym: str, yid: str) -> bool:
+    """美股已收後：庫內末日收若偏離 Yahoo regularMarketPrice，用 meta 全日欄覆寫。
+
+    盤中未收不准當官方收；只在非 cash regular 相位修。避免遠窗黃框卡在 9185 這類盤中殘值。
+    """
+    if not db_path or not sym or not yid:
+        return False
+    try:
+        import requests
+        from us_overnight import us_tape_phase
+    except Exception:
+        return False
+    now = datetime.now(TAIPEI)
+    try:
+        if us_tape_phase(now) == "regular":
+            return False
+    except Exception:
+        pass
+    ua = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        )
+    }
+    url = (
+        f"https://query1.finance.yahoo.com/v8/finance/chart/{yid}"
+        f"?interval=1d&range=5d"
+    )
+    try:
+        resp = requests.get(url, timeout=12, headers=ua)
+        if resp.status_code != 200:
+            return False
+        block = ((resp.json() or {}).get("chart") or {}).get("result") or [None]
+        block = block[0] or {}
+        meta = block.get("meta") or {}
+        q = ((block.get("indicators") or {}).get("quote") or [{}])[0]
+    except Exception:
+        logger.exception("對質%s末日收失敗", sym)
+        return False
+    try:
+        px = float(meta.get("regularMarketPrice") or 0)
+    except (TypeError, ValueError):
+        px = 0.0
+    if px <= 0:
+        closes = q.get("close") or []
+        try:
+            px = float(closes[-1] or 0) if closes else 0.0
+        except (TypeError, ValueError, IndexError):
+            px = 0.0
+    if px <= 0:
+        return False
+    ny = ZoneInfo("America/New_York")
+    ts = int(meta.get("regularMarketTime") or 0)
+    if not ts and (block.get("timestamp") or []):
+        try:
+            ts = int(block["timestamp"][-1])
+        except (TypeError, ValueError, IndexError):
+            ts = 0
+    if not ts:
+        return False
+    d = datetime.fromtimestamp(ts, tz=ny).strftime("%Y%m%d")
+    opens = q.get("open") or []
+    highs = q.get("high") or []
+    lows = q.get("low") or []
+    try:
+        o = float(opens[-1]) if opens else float(meta.get("regularMarketOpen") or px)
+        h = float(
+            meta.get("regularMarketDayHigh")
+            or (highs[-1] if highs else px)
+            or px
+        )
+        lo = float(
+            meta.get("regularMarketDayLow")
+            or (lows[-1] if lows else px)
+            or px
+        )
+    except (TypeError, ValueError, IndexError):
+        o = h = lo = px
+    h = max(h, o, px)
+    lo = min(x for x in (lo, o, px) if x and x > 0)
+    conn = sqlite3.connect(db_path, timeout=30.0)
+    try:
+        row = conn.execute(
+            "SELECT close FROM index_daily WHERE date=? AND symbol=?",
+            (d, sym),
+        ).fetchone()
+        old = float(row[0]) if row and row[0] is not None else 0.0
+        if old > 0 and abs(old / px - 1.0) <= 0.008:
+            return False
+        conn.execute(
+            """
+            INSERT INTO index_daily(
+                date, symbol, open, high, low, close, volume, pct_change, updated_at
+            ) VALUES (?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(date, symbol) DO UPDATE SET
+                open=excluded.open, high=excluded.high, low=excluded.low,
+                close=excluded.close, updated_at=excluded.updated_at
+            """,
+            (d, sym, o, h, lo, px, 0.0, None, _now()),
+        )
+        # 重算該日 pct vs 前一交易日
+        prev = conn.execute(
+            "SELECT close FROM index_daily WHERE symbol=? AND date<? AND close>0 "
+            "ORDER BY date DESC LIMIT 1",
+            (sym, d),
+        ).fetchone()
+        if prev and float(prev[0] or 0) > 0:
+            pct = (px / float(prev[0]) - 1.0) * 100.0
+            conn.execute(
+                "UPDATE index_daily SET pct_change=? WHERE date=? AND symbol=?",
+                (pct, d, sym),
+            )
+        conn.commit()
+        return True
+    finally:
+        conn.close()
 
 
 def _load_us_daily(
@@ -4214,6 +4505,172 @@ def _next_support_resist(
         "support": below[0] if below else None,
         "resist": above[0] if above else None,
     }
+
+
+def _nearest_bar_touching_px(
+    bars: Sequence[Dict[str, Any]],
+    highs: Sequence[float],
+    lows: Sequence[float],
+    *,
+    px: float,
+    before_i: int,
+) -> Optional[Dict[str, Any]]:
+    """往左找最近一根高低包住現價的日（水平虛線對到哪一天曾走過這個價）。"""
+    try:
+        y = float(px)
+    except (TypeError, ValueError):
+        return None
+    if y <= 0:
+        return None
+    tip = max(0, int(before_i))
+    n = min(len(bars), len(highs), len(lows))
+    for i in range(tip - 1, -1, -1):
+        if i >= n:
+            continue
+        try:
+            hi = float(highs[i])
+            lo = float(lows[i])
+        except (TypeError, ValueError):
+            continue
+        if not (hi == hi and lo == lo and hi > 0 and lo > 0):
+            continue
+        if lo <= y <= hi:
+            return {
+                "i": int(i),
+                "date": _ymd((bars[i] or {}).get("date")),
+                "high": hi,
+                "low": lo,
+            }
+    return None
+
+
+def _nearest_vol_support_row(
+    vol_sr: Optional[Dict[str, Any]],
+    *,
+    px: float,
+) -> Optional[Dict[str, Any]]:
+    """大量／下一層撐裡，低於現價且最近的一檔（含 date／low）。"""
+    try:
+        y = float(px)
+    except (TypeError, ValueError):
+        return None
+    if y <= 0 or not isinstance(vol_sr, dict):
+        return None
+    cands: List[Dict[str, Any]] = []
+    for key in ("primary", "next"):
+        row = vol_sr.get(key) or {}
+        try:
+            lo = float(row.get("low") or 0)
+        except (TypeError, ValueError):
+            lo = 0.0
+        if lo <= 0 or lo >= y - 1.0:
+            continue
+        cands.append(
+            {
+                "date": _ymd(row.get("date")),
+                "low": lo,
+                "high": float(row.get("high") or 0) or None,
+                "kind": key,
+            }
+        )
+    if not cands:
+        return None
+    cands.sort(key=lambda r: float(y) - float(r["low"]))
+    return cands[0]
+
+
+def _paint_tx_now_price_rail(
+    ax,
+    *,
+    px: float,
+    tip_i: int,
+    fp: Any,
+    live: bool = False,
+    asof_ymd: str = "",
+    hit: Optional[Dict[str, Any]] = None,
+    near_sup: Optional[Dict[str, Any]] = None,
+) -> None:
+    """電子盤現價／收盤水平虛線：對日期＋近撐月日價。
+
+    紫虛線＝當下或收盤價一路往左；碰到舊K的日子豎虛＋「曾到」；
+    下方最近大量撐另標近撐月日價，方便看最近撐在哪。
+    """
+    if ax is None or fp is None:
+        return
+    try:
+        y = float(px)
+        tip = int(tip_i)
+    except (TypeError, ValueError):
+        return
+    if y <= 0 or tip < 0:
+        return
+    # 水平虛線：左緣 → 末根（不准貫穿右欄標籤）
+    ax.plot(
+        [-0.45, float(tip) + 0.15],
+        [y, y],
+        color="#ea80fc",
+        lw=1.25,
+        ls=(0, (5, 2.4)),
+        alpha=0.92,
+        zorder=9,
+        solid_capstyle="butt",
+    )
+    phase = "盤中" if live else "收盤"
+    md = _md(asof_ymd) if _ymd(asof_ymd) else ""
+    head = f"{md}{phase}" if md else phase
+    bits = [f"{head} {_px(y)}"]
+    if hit and _ymd(hit.get("date")):
+        hi = int(hit.get("i") or -1)
+        if hi >= 0:
+            ax.axvline(
+                float(hi),
+                color="#ea80fc",
+                lw=0.85,
+                ls=(0, (2, 2.2)),
+                alpha=0.55,
+                zorder=3,
+            )
+        bits.append(f"←{_md(hit.get('date'))}曾到")
+    if near_sup and float(near_sup.get("low") or 0) > 0:
+        sm = _md(near_sup.get("date")) if _ymd(near_sup.get("date")) else ""
+        if sm:
+            bits.append(f"近撐{sm} {_px(float(near_sup['low']))}")
+        else:
+            bits.append(f"近撐 {_px(float(near_sup['low']))}")
+        # 近撐也畫一條淡青虛線，方便跟現價紫線對照
+        try:
+            sy = float(near_sup["low"])
+            ax.plot(
+                [-0.45, float(tip) + 0.15],
+                [sy, sy],
+                color="#4dd0e1",
+                lw=1.05,
+                ls=(0, (4, 2.5)),
+                alpha=0.75,
+                zorder=8,
+                solid_capstyle="butt",
+            )
+        except (TypeError, ValueError):
+            pass
+    # 貼在現價線左側中段，不准蓋末根 tip
+    x_lab = max(0.6, float(tip) * 0.42)
+    ax.text(
+        x_lab,
+        y,
+        "｜".join(bits),
+        fontproperties=fp(8, "bold"),
+        color="#f3e5f5",
+        ha="left",
+        va="bottom",
+        zorder=12,
+        bbox=dict(
+            boxstyle="round,pad=0.14",
+            fc="#0b0f14",
+            ec="#ea80fc",
+            lw=0.7,
+            alpha=0.92,
+        ),
+    )
 
 
 def _paint_max_vol_hl_zone(
@@ -6644,6 +7101,29 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 "volume": float(tx_v[i] if i < len(tx_v) else 0),
             }
         )
+    # 末根用即時／收盤同口價重算破撐（不准庫內舊收讓下一層消失或錯掛）
+    _tx_live_sr = live_tx if isinstance(live_tx, dict) else None
+    if not _tx_live_sr and isinstance(pack, dict):
+        _tx_live_sr = pack.get("live_tx") if isinstance(pack.get("live_tx"), dict) else None
+    if tx_rows_for_vol and isinstance(_tx_live_sr, dict):
+        try:
+            _lpx = float(_tx_live_sr.get("close") or 0)
+        except (TypeError, ValueError):
+            _lpx = 0.0
+        if _lpx > 0:
+            last = dict(tx_rows_for_vol[-1])
+            try:
+                _lo = float(_tx_live_sr.get("low") or last.get("low") or _lpx)
+                _hi = float(_tx_live_sr.get("high") or last.get("high") or _lpx)
+                _oo = float(_tx_live_sr.get("open") or last.get("open") or _lpx)
+            except (TypeError, ValueError):
+                _lo = _hi = _oo = _lpx
+            last["close"] = _lpx
+            last["low"] = min(x for x in (_lo, float(last.get("low") or _lpx), _lpx) if x > 0)
+            last["high"] = max(_hi, float(last.get("high") or 0), _lpx)
+            if _oo > 0:
+                last["open"] = _oo
+            tx_rows_for_vol[-1] = last
     tx_vol_sr = _resolve_teach_vol_sr(
         tx_rows_for_vol,
         lookback=min(_FAR_TEACH_VOL_LOOKBACK, max(40, len(tx_rows_for_vol) - 1)),
@@ -6670,11 +7150,16 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 "color": "#ffe082",
             }
         )
+        _pri_broke = bool(pri.get("broke_support"))
         _tx_right_notes.append(
             {
                 "x": n_tw - 1,
                 "y": float(pri["low"]),
-                "text": f"{_tx_pri_tag}電盤大量撐 {_px(pri['low'])}",
+                "text": (
+                    f"{_tx_pri_tag}電盤大量撐 {_px(pri['low'])}已破"
+                    if _pri_broke
+                    else f"{_tx_pri_tag}電盤大量撐 {_px(pri['low'])}"
+                ),
                 "color": "#ffe082",
             }
         )
@@ -6692,14 +7177,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             )
             _tx_nxt_md = _md(nxt.get("date"))
             _tx_nxt_tag = f"{_tx_nxt_md} " if _tx_nxt_md else ""
-            _tx_right_notes.append(
-                {
-                    "x": n_tw - 1,
-                    "y": float(nxt["high"]),
-                    "text": f"{_tx_nxt_tag}電盤下一層壓 {_px(nxt['high'])}",
-                    "color": "#ff8aa0",
-                }
-            )
+            # 先標撐再標壓：33799＝區高＝壓，不准被誤認成接下來的撐
             _tx_right_notes.append(
                 {
                     "x": n_tw - 1,
@@ -6708,7 +7186,23 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                     "color": "#ff8aa0",
                 }
             )
-    tx_now = float(tx_c[tx_valid[-1]]) if tx_valid else None
+            _tx_right_notes.append(
+                {
+                    "x": n_tw - 1,
+                    "y": float(nxt["high"]),
+                    "text": f"{_tx_nxt_tag}電盤下一層壓 {_px(nxt['high'])}",
+                    "color": "#ff8aa0",
+                }
+            )
+    # 現價＝即時／收盤同口（與黃紅戳一致）；不准再用庫內舊收去挑近撐
+    tx_now = None
+    if isinstance(_tx_live_sr, dict):
+        try:
+            tx_now = float(_tx_live_sr.get("close") or 0) or None
+        except (TypeError, ValueError):
+            tx_now = None
+    if not tx_now and tx_valid:
+        tx_now = float(tx_c[tx_valid[-1]])
     if tx_now and tx_now > 0:
         tx_sup = []
         tx_res = []
@@ -6809,13 +7303,39 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 "prev": float(tx_c[prev_i]) if prev_i is not None else None,
                 "min_body": float(tx_min_body),
             }
+            _tx_px_rail = float(tx_c[tip_i])
             _tx_right_notes.append(
                 {
                     "x": tip_i,
-                    "y": float(tx_c[tip_i]),
-                    "text": f"電盤即時 {_px(tx_c[tip_i])}",
+                    "y": _tx_px_rail,
+                    "text": f"電盤即時 {_px(_tx_px_rail)}",
                     "color": "#ea80fc",
                 }
+            )
+            # 現價水平虛線：往左對日期；近撐只認大量區低（3/6 撐＝32820，不准把區高33799當撐）
+            _tx_hit = _nearest_bar_touching_px(
+                bars, tx_h, tx_l, px=_tx_px_rail, before_i=int(tip_i)
+            )
+            _tx_near_sup = _nearest_vol_support_row(tx_vol_sr, px=_tx_px_rail)
+            _tx_rail_live = bool(
+                isinstance(_tx_live_sr, dict)
+                and float((_tx_live_sr or {}).get("close") or 0) > 0
+                and _tx_night_session_live()
+            )
+            _tx_rail_asof = ""
+            if isinstance(_tx_live_sr, dict):
+                _tx_rail_asof = _ymd(_tx_live_sr.get("date"))
+            if not _tx_rail_asof and tip_i < len(bars):
+                _tx_rail_asof = _ymd(bars[tip_i].get("date"))
+            _paint_tx_now_price_rail(
+                axt,
+                px=_tx_px_rail,
+                tip_i=int(tip_i),
+                fp=_fp,
+                live=_tx_rail_live,
+                asof_ymd=str(_tx_rail_asof or ""),
+                hit=_tx_hit,
+                near_sup=_tx_near_sup,
             )
         lo_v = min(float(tx_l[i]) for i in tx_valid)
         hi_v = max(float(tx_h[i]) for i in tx_valid)
@@ -7328,14 +7848,16 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         )
         # 黃框指數＝末根縮圖K同口價（出圖當下 live）；前收仍走真實美股列
         _pair = _us_real_close_pair(sox, (pack or {}).get("live_sox"))
+        _sox_live = (pack or {}).get("live_sox") if isinstance(pack, dict) else None
         _sox_chg_tip = {
             "close": float(_sox_last_repaint["c"]),
             "prev": _pair.get("prev_close"),
             "asof": str(
-                _ymd(((pack or {}).get("live_sox") or {}).get("date"))
+                _ymd((_sox_live or {}).get("date"))
                 or _pair.get("asof")
                 or ""
             ),
+            "live": bool(isinstance(_sox_live, dict) and float((_sox_live or {}).get("close") or 0) > 0),
         }
     if _tx_last_repaint:
         _prev_tx = _tx_last_repaint.get("prev")
@@ -7475,10 +7997,18 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             va="bottom",
             asof_ymd=str(_sox_chg_tip.get("asof") or ""),
             chart_asof=str(as_of or ""),
+            session_live=bool(_sox_chg_tip.get("live")),
+            pack=pack,
         )
     # 漲跌一律對官方參考價（CRefPrice）；不准用前一夜盤收當 prev
     _tx_chg_tip = _resolve_tx_after_hours_tip(db_path, pack)
+    _tx_night_live = bool(_tx_night_session_live())
     if _tx_last_repaint and _tx_chg_tip:
+        _tx_clock = str(
+            _tx_chg_tip.get("clock")
+            or ((live_tx or (pack or {}).get("live_tx") or {}).get("update_time"))
+            or ""
+        )
         _paint_tx_after_hours_tip(
             fig,
             close=float(_tx_last_repaint["c"]),
@@ -7489,19 +8019,20 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             y=_tx_stamp_y,
             ha="right",
             va="bottom",
-            clock=str(
-                _tx_chg_tip.get("clock")
-                or ((live_tx or (pack or {}).get("live_tx") or {}).get("update_time"))
-                or ""
-            ),
+            clock=_tx_clock,
             asof_ymd=str(
                 _tx_chg_tip.get("asof")
                 or _ymd(((live_tx or (pack or {}).get("live_tx") or {}).get("date")))
                 or (bars[_tx_last_repaint["i"]].get("date") if bars else "")
                 or ""
             ),
+            # 夜盤進行中才盤中；MIS 末筆鐘／殘 live 不准白天冒充盤中
+            session_live=_tx_night_live
+            and bool(live_tx or (pack or {}).get("live_tx") or _tx_clock),
+            pack=pack,
         )
     elif _tx_chg_tip:
+        _tx_clock = str(_tx_chg_tip.get("clock") or "")
         _paint_tx_after_hours_tip(
             fig,
             close=float(_tx_chg_tip["close"]),
@@ -7512,8 +8043,10 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             y=_tx_stamp_y,
             ha="right",
             va="bottom",
-            clock=str(_tx_chg_tip.get("clock") or ""),
+            clock=_tx_clock,
             asof_ymd=str(_tx_chg_tip.get("asof") or ""),
+            session_live=_tx_night_live and bool(_tx_clock),
+            pack=pack,
         )
     _paint_teach_query_stamp(
         fig,
@@ -7525,6 +8058,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         y=_tw_stamp_y,
         ha="right",
         va="bottom",
+        label_prefix="加權",
     )
     # 腳註多行：thesis＋預測點按｜分行；壓在 x 軸日期下方，不准互疊、不准裁半截
     foot_main = str(
