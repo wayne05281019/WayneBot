@@ -15,7 +15,7 @@
 
 ## 相對高點賣
 
-使用者鎖死：相對高點就賣＝蕭 20 高。封口出場腿多為 **`hi20_or_desync`**（亦有 `hi20_only`）；winrate_boost 頂鍵 `w3_start__hi20_or_desync` 勝率 76.32%／日 74。浪頂 vs 20 高的 `relhigh_sell` 專軌**尚未封口**（跑失敗、無決策 JSON）→ `gate_status=awaiting_relhigh_seal`。
+使用者鎖死：相對高點就賣＝蕭 20 高。封口出場腿多為 **`hi20_or_desync`**（亦有 `hi20_only`）；winrate_boost 頂鍵 `w3_start__hi20_or_desync` 勝率 76.32%／日 74。浪頂 vs 20 高的 `relhigh_sell` 專軌**尚未封口**（本機仍在對質；空 log＝末段才 flush，非失敗）→ `gate_status=awaiting_relhigh_seal`。
 
 ## 大盤同步（誠實）
 

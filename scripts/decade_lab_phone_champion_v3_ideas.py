@@ -17,7 +17,22 @@ from typing import Dict
 import pandas as pd
 
 
-def build_v3_extras(df: pd.DataFrame, feat: pd.DataFrame, bank: Dict[str, pd.Series]) -> Dict[str, pd.Series]:
+def _bank_bool(bank: Dict[str, pd.Series], key: str, index) -> pd.Series:
+    s = bank.get(key)
+    if s is None:
+        return pd.Series(False, index=index)
+    return s.reindex(index).fillna(False).astype(bool)
+
+
+def build_v3_extras(
+    df: pd.DataFrame,
+    feat: pd.DataFrame,
+    bank: Dict[str, pd.Series],
+    *,
+    barek: Dict[str, pd.Series] | None = None,
+) -> Dict[str, pd.Series]:
+    """從既有 OHLC／feat／bank／裸K 欄組可插拔遮罩（不上話筒）。"""
+    idx = df.index
     c = df["close"].astype(float)
     h = df["high"].astype(float)
     low = df["low"].astype(float)
@@ -40,8 +55,28 @@ def build_v3_extras(df: pd.DataFrame, feat: pd.DataFrame, bank: Dict[str, pd.Ser
     shrink_then_attack = (v.shift(1) < vol_ma5.shift(1) * 0.7) & (v >= vol_ma5 * 1.5) & (c > o)
 
     s20 = pd.to_numeric(feat.get("ma20_time_safety"), errors="coerce")
-    week = bank.get("hsiao_week", pd.Series(False, index=df.index)).fillna(False)
+    week = _bank_bool(bank, "hsiao_week", idx)
     time_align = week & (s20.fillna(-9) > 0)
+
+    clean = _bank_bool(bank, "hsiao_clean", idx)
+    not_hot = _bank_bool(bank, "hsiao_not_hot", idx)
+    macd_turn = _bank_bool(bank, "hsiao_macd_turn", idx)
+    kd_ok = _bank_bool(bank, "hsiao_kd", idx)
+    trough = _bank_bool(bank, "hsiao_troughV", idx)
+    compress = _bank_bool(bank, "hsiao_compress", idx)
+    v_ok = _bank_bool(bank, "hsiao_V", idx)
+
+    bk = barek or {}
+    barek_ok = bk.get("bk_not_avoid")
+    if barek_ok is None:
+        barek_ok = pd.Series(True, index=idx)
+    else:
+        barek_ok = barek_ok.reindex(idx).fillna(True).astype(bool)
+    barek_flip = bk.get("bk_constructive")
+    if barek_flip is None:
+        barek_flip = pd.Series(False, index=idx)
+    else:
+        barek_flip = barek_flip.reindex(idx).fillna(False).astype(bool)
 
     return {
         "V3_higher_structure": higher_structure.fillna(False),
@@ -51,6 +86,13 @@ def build_v3_extras(df: pd.DataFrame, feat: pd.DataFrame, bank: Dict[str, pd.Ser
         "V3_time_align": time_align.fillna(False),
         "V3_struct_vol": higher_structure.fillna(False) & (vol_step_up | shrink_then_attack).fillna(False),
         "V3_pull_week": pull_ma20.fillna(False) & week,
+        # 既有 bank／裸K（V2 試過單獨項；V3 疊在均衡核上再測）
+        "V3_barek_ok": barek_ok,
+        "V3_barek_constructive": barek_flip,
+        "V3_clean_not_hot": clean & not_hot,
+        "V3_macd_or_kd": macd_turn | kd_ok,
+        "V3_trough_V": trough & v_ok,
+        "V3_compress_V": compress & v_ok,
     }
 
 

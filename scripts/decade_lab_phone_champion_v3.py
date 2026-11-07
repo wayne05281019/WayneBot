@@ -146,7 +146,8 @@ def run(*, n_universe: int = 100) -> Dict[str, Any]:
                 | ev.get("LAB_SELL_W5_TOP", pd.Series(False, index=df.index))
             ).fillna(False)
 
-            v3 = build_v3_extras(df, feat, bank)
+            bk = _barek_masks(df)
+            v3 = build_v3_extras(df, feat, bank, barek=bk)
             xg = build_extra_gates(feat)
             extras = {
                 "X0": pd.Series(True, index=df.index),
@@ -158,6 +159,8 @@ def run(*, n_universe: int = 100) -> Dict[str, Any]:
                 )
                 >= 2,
                 "V3_thrust_local": v3["V3_struct_vol"].fillna(False) | v3["V3_pull_week"].fillna(False),
+                "V3_hsiao_barek": v3["V3_clean_not_hot"].fillna(False) & v3["V3_barek_ok"].fillna(False),
+                "V3_turn_barek": v3["V3_macd_or_kd"].fillna(False) & v3["V3_barek_ok"].fillna(False),
                 **{k: v.fillna(False) for k, v in xg.items()},
             }
             mkt_opts = {

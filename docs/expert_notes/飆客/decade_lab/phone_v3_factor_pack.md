@@ -132,3 +132,7 @@ V2 已掃 extras：`immortal`／`hammer`／`not_kd_death`／`macd_turn`／`compr
 ## 6. 再生義務（§13）
 
 任一 EXTRA／V3 因子 **n≥20 且贏均衡核 balanced_score** → 鎖進下一版 champion 核旁路，並立刻再開 2–4 個未試 ID（上表 A–D 未掛者）。不過閘 → 本檔改「已試」列，不准 promote lookup。
+
+## 5. 本輪已掛進 champion_v3 extras（待封口）
+
+`build_v3_extras(..., barek=)`：`V3_barek_ok`／`V3_barek_constructive`／`V3_clean_not_hot`／`V3_macd_or_kd`／`V3_trough_V`／`V3_compress_V`；合成 `V3_hsiao_barek`／`V3_turn_barek`。另 `EXTRA_GATE_KEYS`：`XG_no_lightning`／`XG_deduct_safe`／`XG_ma60_up`／`XG_no_kd_hot`。仍 `phone_sync=blocked`。
