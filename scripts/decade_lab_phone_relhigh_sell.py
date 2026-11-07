@@ -37,7 +37,11 @@ def _simulate_relhigh(df, entry_mask, *, hl, temp_label, sid, entry_tag, wave_to
         if not (np.isfinite(entry_px) and entry_px>0):
             i+=1; continue
         exit_i=None; exit_reason=None
+        peak=entry_px; trough=entry_px
         for j in range(entry_i, min(n-1, entry_i+MAX_HOLD)):
+            h=float(hi.iloc[j]); l=float(lo.iloc[j])
+            if np.isfinite(h): peak=max(peak, h)
+            if np.isfinite(l): trough=min(trough, l)
             hl_j=str(hl.iloc[j] or '')
             if j>entry_i:
                 if mode in ('hi20_or_desync','hi20_or_wave_top') and hl_j=='20高':
@@ -55,7 +59,20 @@ def _simulate_relhigh(df, entry_mask, *, hl, temp_label, sid, entry_tag, wave_to
         if not (np.isfinite(exit_px) and exit_px>0):
             i=max(i+1, exit_i); continue
         net=exit_px/entry_px-1.0-FRICTION
-        trades.append({'sid':sid,'entry_tag':entry_tag,'entry_i':entry_i,'exit_i':exit_i,'entry_date':str(df['date'].iloc[entry_i]) if 'date' in df.columns else str(entry_i),'exit_date':str(df['date'].iloc[exit_i]) if 'date' in df.columns else str(exit_i),'ret':net,'hold':exit_i-entry_i,'exit_reason':exit_reason,'win':net>0})
+        trades.append({
+            'sid': sid,
+            'entry_tag': entry_tag,
+            'entry_i': entry_i,
+            'exit_i': exit_i,
+            'entry_date': str(df['date'].iloc[entry_i]) if 'date' in df.columns else str(entry_i),
+            'exit_date': str(df['date'].iloc[exit_i]) if 'date' in df.columns else str(exit_i),
+            'net_ret': net,
+            'hold_days': int(exit_i - entry_i),
+            'exit_reason': exit_reason,
+            'win': int(net > 0),
+            'mfe': peak / entry_px - 1.0,
+            'mae': trough / entry_px - 1.0,
+        })
         i=max(i+1, exit_i)
     return trades
 
