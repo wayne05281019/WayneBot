@@ -1,0 +1,29 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "as_of_taipei": "2026-11-08T04:01:26.435091+08:00",
+  "gate_one_liner": "spirit_mix_thicken_v11 ge80=4 ge80_d50=2 earlier_d50=1 cut_pass=0; best_early_d50=ei_n5_week_n3_softbody__SELL_hi20_or_wave_top win=0.803921568627451 bars=15.857142857142858; best_cut=None cut_win=None cut_days=None; near80_early=ei_n5_week_n3_softbody__SELL_hi20_or_wave_top near_win=0.803921568627451; baseline_bars=15.27; promote_lookup=NO",
+  "parent_seal": "phone_spirit_mix_thicken_v10_decision.json",
+  "elapsed_s": 350.3,
+  "n_stocks": 112,
+  "ge80_n": 4,
+  "ge80_d50_n": 2,
+  "earlier_d50_n": 1,
+  "cut_pass_n": 0,
+  "earlier_champ": {
+    "key": "ei_n5_week_n3_softbody__SELL_hi20_or_wave_top",
+    "n_trades": 51,
+    "n_unique_entry_days": 50,
+    "win_rate": 0.803921568627451,
+    "expectancy": 0.0242859554519123,
+    "beats_random": true,
+    "balanced_score": 0.803921568627451,
+    "win_ge80": true,
+    "days_ge50": true,
+    "mean_bars_before_hi20": 15.857142857142858,
+    "earlier_than_baseline": true
+  },
+  "finding_zh": "BREAKTHROUGH earlier×ge80×50d：ei_n5 & (week_n3|body_n3) ≈80.4%@50d bars≈15.86（champ bars≈15.27）。去損掃 cut_pass=0。仍 blocked（未接 placement）。再生 v12 加固。",
+  "formula_zh": "w3u & near(turn,3) & t60 & near(intent,5) & risk & (near(week,3)|near(body,3)) → SELL hi20_or_wave_top",
+  "next": "mix_v12 harden v11 champ; phone_sync=blocked"
+}
