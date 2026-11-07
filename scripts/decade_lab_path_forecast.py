@@ -839,6 +839,8 @@ def decide_path(factors: Dict[str, Any], missing: Sequence[str], votes: Dict[str
     elif wave_ok and wave_bias == "range" and abs(score) < 0.90:
         # 波浪觀望時，弱票也不硬出方向
         bias = "range"
+    # soft_range 閘前的方向傾向（測法稽核：踢難案灌水 vs 誠實觀望）
+    bias_pre_soft = bias
     # 飆大參考：高檔爆巨量後中期偏橫整——短窗分數不夠強就改觀望（不是自動空）
     near_ath = (_f(factors.get("mtf_dist_ath_pct")) or -99) >= -5.0
     if (
@@ -968,8 +970,11 @@ def decide_path(factors: Dict[str, Any], missing: Sequence[str], votes: Dict[str
     need = {"twii_ret", "ixic_prior_ret"}
     have = set(factors.keys())
     reviewable = need.issubset(have) and len(missing) <= 4
+    soft_killed = bias_pre_soft in {"up", "down"} and bias == "range"
     return {
         "bias": bias,
+        "bias_pre_soft": bias_pre_soft,
+        "soft_killed": soft_killed,
         "score": round(score, 4),
         "why": lit,
         "reviewable": reviewable,
@@ -1213,16 +1218,34 @@ def _sample_audit(
     hit_rate: Optional[float],
     by_amp_class: Dict[str, Any],
     oos: Dict[str, Any],
+    attempted_n: int = 0,
+    soft_kill_n: int = 0,
 ) -> Dict[str, Any]:
-    """樣本／測法稽核：抓灌水（range 稀釋、前瞻已修、OOS 過薄、small amp 弱）。"""
-    call_rate = (dir_n / wrote) if wrote else 0.0
+    """樣本／測法稽核：抓灌水（range 稀釋、前瞻已修、OOS 過薄、small amp 弱）。
+
+    soft_range 本身＝風險觀望可以很多；只有在「方向命中被灌到 ≥90%」時才算
+    soft_range_dominates（踢難案扮漂亮）。call_rate 對 attempted（soft 閘前有方向）
+    與對 wrote 雙列；兩者都過稀才擋 call_rate_too_low。
+    """
+    call_rate_vs_wrote = (dir_n / wrote) if wrote else 0.0
+    attempted = int(attempted_n or 0)
+    soft_kill = int(soft_kill_n or 0)
+    if attempted <= 0:
+        # 舊摘要／離線 integrity 未帶 attempted → 用 soft_range 標籤數當下限近似
+        attempted = max(dir_n + max(0, soft_kill), dir_n + max(0, int(soft_range_n or 0)))
+    call_rate_vs_attempted = (dir_n / attempted) if attempted else 0.0
+    # 對外仍暴露 call_rate＝對 attempted（誠實「有喊才算」），wrote 另列
+    call_rate = call_rate_vs_attempted
     small = by_amp_class.get("small") or {}
     small_n = int(small.get("n") or 0)
     small_hr = small.get("hit_rate")
     reasons: List[str] = []
-    if call_rate < 0.02 and dir_n < 50:
+    hr = float(hit_rate) if hit_rate is not None else None
+    # 雙稀：日曆極稀且「有喊的也幾乎沒留下計分」才擋
+    if call_rate_vs_wrote < 0.02 and call_rate_vs_attempted < 0.08 and dir_n < 50:
         reasons.append("call_rate_too_low_range_dilution")
-    if soft_range_n >= max(10, dir_n):
+    # 灌水指紋：命中被抬到 ≥90% 且 soft 踢掉的量壓過計分日
+    if soft_range_n >= max(10, dir_n) and hr is not None and hr >= 0.90:
         reasons.append("soft_range_dominates_calls")
     if small_n < 20 or (small_hr is not None and float(small_hr) < 0.55):
         reasons.append("small_amp_gate_fail")
@@ -1238,15 +1261,22 @@ def _sample_audit(
         "range_n": range_n,
         "insuff_n": insuff_n,
         "soft_range_n": soft_range_n,
+        "soft_kill_n": soft_kill,
+        "attempted_directional_n": attempted,
         "directional_n": dir_n,
         "call_rate": round(call_rate, 6),
+        "call_rate_vs_wrote": round(call_rate_vs_wrote, 6),
+        "call_rate_vs_attempted": round(call_rate_vs_attempted, 6),
         "look_ahead_fixes": [
             "named_support_gated_by_asof",
             "wave_pivot_right_confirm",
         ],
-        "range_exclusion_zh": "range／觀望不計方向勝率（故意）；錯單改 soft_range 會把難案踢出計分＝灌水風險",
+        "range_exclusion_zh": (
+            "range／觀望不計方向勝率（故意）；soft_range 踢難案後若 dir≥90%＝灌水。"
+            "call_rate 主看 attempted（閘前有方向）；對 wrote 極稀＋對 attempted 也稀才擋。"
+        ),
         "oos_risk_zh": "封印 OOS 要 holdout≥20；縮窗／同窗調參＝假 holdout",
-        "vote_fit_zh": "edge 票權來自全樣 reusable／各模組過閘檔＝樣本內污染，下一版要 walk-forward",
+        "vote_fit_zh": "edge 票權來自全樣 reusable／各模組過閘旗＝樣本內污染，下一版要 walk-forward",
         "integrity_ok": len(method_blockers) == 0,
         "integrity_blockers": reasons,
         "method_integrity_ok": len(method_blockers) == 0,
@@ -1609,6 +1639,8 @@ def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
         range_n = 0
         insuff_n = 0
         soft_range_n = 0
+        attempted_n = 0
+        soft_kill_n = 0
         days = tw_days[:-3]  # need forward
         if max_days > 0:
             days = days[-max_days:]
@@ -1921,11 +1953,18 @@ def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
                 for x in (decision.get("why") or [])
             ):
                 soft_range_n += 1
+            pre = str(decision.get("bias_pre_soft") or decision.get("bias") or "")
+            if pre in {"up", "down"}:
+                attempted_n += 1
+            if decision.get("soft_killed"):
+                soft_kill_n += 1
             if decision["reviewable"] and ("對得上" in verd or "偏了" in verd):
                 scored.append(
                     {
                         "as_of": day,
                         "bias": decision["bias"],
+                        "bias_pre_soft": pre,
+                        "soft_killed": bool(decision.get("soft_killed")),
                         "amp_pct": amp_pct,
                         "amp_class": amp_info.get("amp_class"),
                         "actual_ret_pct": round(actual_ret, 4),
@@ -1997,6 +2036,8 @@ def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
             hit_rate=dir_hit_rate,
             by_amp_class=by_amp_class,
             oos=oos_blob,
+            attempted_n=attempted_n,
+            soft_kill_n=soft_kill_n,
         )
         next_gates = _next_gates(audit, oos_blob)
         summary = {

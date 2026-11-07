@@ -93,6 +93,10 @@ def run_integrity(
 
     oos_sealed = _oos_holdout(scored, holdout_n=20, sealed=True)
     oos_legacy = _oos_holdout(scored, holdout_n=5, sealed=False)
+    # 舊摘要可能已帶 attempted／soft_kill；否則用 soft_range_n 近似
+    sa0 = summary.get("sample_audit") or {}
+    attempted_n = int(sa0.get("attempted_directional_n") or 0)
+    soft_kill_n = int(sa0.get("soft_kill_n") or 0)
     audit = _sample_audit(
         wrote=wrote or max(dir_n, 1),
         range_n=range_n,
@@ -102,6 +106,8 @@ def run_integrity(
         hit_rate=dir_hr,
         by_amp_class=by_amp,
         oos=oos_sealed,
+        attempted_n=attempted_n,
+        soft_kill_n=soft_kill_n,
     )
     next_gates = _next_gates(audit, oos_sealed)
 

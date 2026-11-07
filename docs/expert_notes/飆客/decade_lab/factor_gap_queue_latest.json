@@ -1,14 +1,14 @@
 {
-  "id": "gap-20261105-path_forecast",
-  "written_at": "2026-11-05T00:59:20",
+  "id": "gap-20261107-path_forecast",
+  "written_at": "2026-11-07T16:36:51",
   "tz": "Asia/Taipei",
   "source": "path_forecast",
   "fruitless": true,
-  "reason_zh": "幅度 MAE 1.33pt 偏大（n=31）→ 目標幅度要重切；因素不足不計分占比 93.0%；why 空包占比 66.9% → 投票因素點不亮，覆盤無從歸因；market_margin_daily 列數偏少 n=853（二十年窗應更厚）",
+  "reason_zh": "幅度 MAE 1.33pt 偏大（n=31）→ 目標幅度要重切；因素不足不計分占比 92.9%；why 空包占比 66.9% → 投票因素點不亮，覆盤無從歸因；market_margin_daily 列數偏少 n=853（二十年窗應更厚）",
   "evidence": {
     "path": {
-      "hit_rate_directional": 0.6888888888888889,
-      "directional_n": 45,
+      "hit_rate_directional": 0.6595744680851063,
+      "directional_n": 47,
       "factor_pack": [
         "wave_bias",
         "wave_phase",
@@ -113,28 +113,28 @@
       "textbook_n": 43
     },
     "lab": {
-      "n": 5419,
-      "insufficient_n": 5037,
+      "n": 5422,
+      "insufficient_n": 5038,
       "watch_n": 337,
-      "empty_why_n": 3627
+      "empty_why_n": 3628
     },
     "coverage": {
       "ok": true,
       "symbols": {
         "TWII": {
-          "n": 5423,
+          "n": 5426,
           "from": "20061102",
-          "to": "20261103"
+          "to": "20261106"
         },
         "IXIC": {
-          "n": 5029,
+          "n": 5031,
           "from": "20061106",
-          "to": "20261103"
+          "to": "20261105"
         },
         "SOX": {
-          "n": 5029,
+          "n": 5031,
           "from": "20061106",
-          "to": "20261103"
+          "to": "20261105"
         },
         "VIX": {
           "n": 5032,
@@ -197,8 +197,8 @@
       "futures_daily": 1462
     },
     "lab_frac": {
-      "insufficient": 0.9295072891677432,
-      "empty_why": 0.6693116811219783
+      "insufficient": 0.9291774253043158,
+      "empty_why": 0.6691257838436001
     }
   },
   "ideas": [
@@ -301,64 +301,64 @@
   ],
   "schedule": [
     {
-      "at": "2026-11-05T05:30:00",
+      "at": "2026-11-09T05:30:00",
       "kind": "fetch_us_macro",
       "note_zh": "美盤後：美債／日圓／金銅／恐懼"
     },
     {
-      "at": "2026-11-05T06:30:00",
+      "at": "2026-11-09T06:30:00",
       "kind": "fetch_adr_premium",
       "note_zh": "早報前：TSM ADR 溢價"
     },
     {
-      "at": "2026-11-05T15:40:00",
+      "at": "2026-11-09T15:40:00",
       "kind": "fetch_tw_official",
       "note_zh": "盤後：漲跌家數／融資／法人流"
     },
     {
-      "at": "2026-11-05T16:40:00",
+      "at": "2026-11-09T16:40:00",
       "kind": "fetch_futures_oi",
       "note_zh": "盤後：TX／TE／OI"
     },
     {
-      "at": "2026-11-05T22:40:00",
+      "at": "2026-11-09T22:40:00",
       "kind": "retest_path",
       "note_zh": "夜窗：path_forecast 重測（有新柱才有意義）"
     },
     {
-      "at": "2026-11-06T05:30:00",
+      "at": "2026-11-10T05:30:00",
       "kind": "fetch_us_macro",
       "note_zh": "美盤後：美債／日圓／金銅／恐懼"
     },
     {
-      "at": "2026-11-06T06:30:00",
+      "at": "2026-11-10T06:30:00",
       "kind": "fetch_adr_premium",
       "note_zh": "早報前：TSM ADR 溢價"
     },
     {
-      "at": "2026-11-06T15:40:00",
+      "at": "2026-11-10T15:40:00",
       "kind": "fetch_tw_official",
       "note_zh": "盤後：漲跌家數／融資／法人流"
     },
     {
-      "at": "2026-11-06T16:40:00",
+      "at": "2026-11-10T16:40:00",
       "kind": "fetch_futures_oi",
       "note_zh": "盤後：TX／TE／OI"
     },
     {
-      "at": "2026-11-06T22:40:00",
+      "at": "2026-11-10T22:40:00",
       "kind": "retest_path",
       "note_zh": "夜窗：path_forecast 重測（有新柱才有意義）"
     },
     {
-      "at": "2026-11-07T10:00:00",
-      "kind": "backfill_long",
-      "note_zh": "週末長史補洞（margin／tape／TE）"
+      "at": "2026-11-11T05:30:00",
+      "kind": "fetch_us_macro",
+      "note_zh": "美盤後：美債／日圓／金銅／恐懼"
     },
     {
-      "at": "2026-11-07T14:00:00",
-      "kind": "retest_wave_path",
-      "note_zh": "週末：波浪＋走勢預測重測落檔"
+      "at": "2026-11-11T06:30:00",
+      "kind": "fetch_adr_premium",
+      "note_zh": "早報前：TSM ADR 溢價"
     }
   ],
   "status": "queued",
