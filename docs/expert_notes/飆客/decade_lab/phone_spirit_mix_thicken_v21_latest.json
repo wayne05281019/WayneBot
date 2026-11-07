@@ -1,0 +1,319 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "user_goal_zh": "v21：U180+ 提早賣复現並鎖同進場族",
+  "parent_seal": "phone_spirit_mix_thicken_v20_decision.json",
+  "elapsed_s": 1579.9,
+  "universe_meta": {
+    "U180": 180,
+    "U200": 200,
+    "U250": 250
+  },
+  "ranking": [
+    {
+      "key": "U180__v11_hi20",
+      "n_trades": 60,
+      "n_unique_entry_days": 59,
+      "win_rate": 0.8166666666666667,
+      "expectancy": 0.03275038350596151,
+      "beats_random": true,
+      "balanced_score": 0.8166666666666667,
+      "win_ge80": true,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 15.689655172413794,
+      "mean_hold_days": 14.9
+    },
+    {
+      "key": "U180__v11_pe3",
+      "n_trades": 61,
+      "n_unique_entry_days": 60,
+      "win_rate": 0.8032786885245902,
+      "expectancy": 0.020377442487733127,
+      "beats_random": true,
+      "balanced_score": 0.8032786885245902,
+      "win_ge80": true,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 15.689655172413794,
+      "mean_hold_days": 12.524590163934427
+    },
+    {
+      "key": "U180__nobody_pe3",
+      "n_trades": 53,
+      "n_unique_entry_days": 52,
+      "win_rate": 0.8490566037735849,
+      "expectancy": 0.025820288729098445,
+      "beats_random": true,
+      "balanced_score": 0.8490566037735849,
+      "win_ge80": true,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 15.04,
+      "mean_hold_days": 12.320754716981131
+    },
+    {
+      "key": "U200__v11_hi20",
+      "n_trades": 67,
+      "n_unique_entry_days": 66,
+      "win_rate": 0.835820895522388,
+      "expectancy": 0.03651178198389742,
+      "beats_random": true,
+      "balanced_score": 0.835820895522388,
+      "win_ge80": true,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 15.0,
+      "mean_hold_days": 14.313432835820896
+    },
+    {
+      "key": "U200__v11_pe3",
+      "n_trades": 68,
+      "n_unique_entry_days": 67,
+      "win_rate": 0.8235294117647058,
+      "expectancy": 0.02426837907476324,
+      "beats_random": true,
+      "balanced_score": 0.8235294117647058,
+      "win_ge80": true,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 15.0,
+      "mean_hold_days": 11.911764705882353
+    },
+    {
+      "key": "U200__nobody_pe3",
+      "n_trades": 59,
+      "n_unique_entry_days": 58,
+      "win_rate": 0.864406779661017,
+      "expectancy": 0.029862308528504588,
+      "beats_random": true,
+      "balanced_score": 0.864406779661017,
+      "win_ge80": true,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 14.267857142857142,
+      "mean_hold_days": 11.559322033898304
+    },
+    {
+      "key": "U250__v11_hi20",
+      "n_trades": 80,
+      "n_unique_entry_days": 77,
+      "win_rate": 0.825,
+      "expectancy": 0.03853055416922983,
+      "beats_random": true,
+      "balanced_score": 0.825,
+      "win_ge80": true,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 15.384615384615385,
+      "mean_hold_days": 14.8
+    },
+    {
+      "key": "U250__v11_pe3",
+      "n_trades": 82,
+      "n_unique_entry_days": 79,
+      "win_rate": 0.8170731707317073,
+      "expectancy": 0.023431225307533016,
+      "beats_random": true,
+      "balanced_score": 0.8170731707317073,
+      "win_ge80": true,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 15.384615384615385,
+      "mean_hold_days": 11.902439024390244
+    },
+    {
+      "key": "U250__nobody_pe3",
+      "n_trades": 69,
+      "n_unique_entry_days": 66,
+      "win_rate": 0.855072463768116,
+      "expectancy": 0.026919102100727503,
+      "beats_random": true,
+      "balanced_score": 0.855072463768116,
+      "win_ge80": true,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 14.923076923076923,
+      "mean_hold_days": 11.681159420289855
+    }
+  ],
+  "confirm": {
+    "U180__v11_pe3": {
+      "win_rate": 0.8032786885245902,
+      "days": 60,
+      "hold": 12.524590163934427,
+      "ge80_d50": true
+    },
+    "U180__nobody_pe3": {
+      "win_rate": 0.8490566037735849,
+      "days": 52,
+      "hold": 12.320754716981131,
+      "ge80_d50": true
+    },
+    "U180__v11_hi20": {
+      "win_rate": 0.8166666666666667,
+      "days": 59,
+      "hold": 14.9,
+      "ge80_d50": true
+    },
+    "U200__v11_pe3": {
+      "win_rate": 0.8235294117647058,
+      "days": 67,
+      "hold": 11.911764705882353,
+      "ge80_d50": true
+    },
+    "U200__nobody_pe3": {
+      "win_rate": 0.864406779661017,
+      "days": 58,
+      "hold": 11.559322033898304,
+      "ge80_d50": true
+    },
+    "U200__v11_hi20": {
+      "win_rate": 0.835820895522388,
+      "days": 66,
+      "hold": 14.313432835820896,
+      "ge80_d50": true
+    },
+    "U250__v11_pe3": {
+      "win_rate": 0.8170731707317073,
+      "days": 79,
+      "hold": 11.902439024390244,
+      "ge80_d50": true
+    },
+    "U250__nobody_pe3": {
+      "win_rate": 0.855072463768116,
+      "days": 66,
+      "hold": 11.681159420289855,
+      "ge80_d50": true
+    },
+    "U250__v11_hi20": {
+      "win_rate": 0.825,
+      "days": 77,
+      "hold": 14.8,
+      "ge80_d50": true
+    }
+  },
+  "pe_ge80_d50": [
+    {
+      "key": "U200__nobody_pe3",
+      "n_trades": 59,
+      "n_unique_entry_days": 58,
+      "win_rate": 0.864406779661017,
+      "expectancy": 0.029862308528504588,
+      "beats_random": true,
+      "balanced_score": 0.864406779661017,
+      "win_ge80": true,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 14.267857142857142,
+      "mean_hold_days": 11.559322033898304
+    },
+    {
+      "key": "U250__nobody_pe3",
+      "n_trades": 69,
+      "n_unique_entry_days": 66,
+      "win_rate": 0.855072463768116,
+      "expectancy": 0.026919102100727503,
+      "beats_random": true,
+      "balanced_score": 0.855072463768116,
+      "win_ge80": true,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 14.923076923076923,
+      "mean_hold_days": 11.681159420289855
+    },
+    {
+      "key": "U180__nobody_pe3",
+      "n_trades": 53,
+      "n_unique_entry_days": 52,
+      "win_rate": 0.8490566037735849,
+      "expectancy": 0.025820288729098445,
+      "beats_random": true,
+      "balanced_score": 0.8490566037735849,
+      "win_ge80": true,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 15.04,
+      "mean_hold_days": 12.320754716981131
+    },
+    {
+      "key": "U200__v11_pe3",
+      "n_trades": 68,
+      "n_unique_entry_days": 67,
+      "win_rate": 0.8235294117647058,
+      "expectancy": 0.02426837907476324,
+      "beats_random": true,
+      "balanced_score": 0.8235294117647058,
+      "win_ge80": true,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 15.0,
+      "mean_hold_days": 11.911764705882353
+    },
+    {
+      "key": "U250__v11_pe3",
+      "n_trades": 82,
+      "n_unique_entry_days": 79,
+      "win_rate": 0.8170731707317073,
+      "expectancy": 0.023431225307533016,
+      "beats_random": true,
+      "balanced_score": 0.8170731707317073,
+      "win_ge80": true,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 15.384615384615385,
+      "mean_hold_days": 11.902439024390244
+    },
+    {
+      "key": "U180__v11_pe3",
+      "n_trades": 61,
+      "n_unique_entry_days": 60,
+      "win_rate": 0.8032786885245902,
+      "expectancy": 0.020377442487733127,
+      "beats_random": true,
+      "balanced_score": 0.8032786885245902,
+      "win_ge80": true,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 15.689655172413794,
+      "mean_hold_days": 12.524590163934427
+    }
+  ],
+  "placement_candidates": {
+    "phone_sync": "blocked",
+    "LOOKUP_LAB_MARKS_ENABLED": false,
+    "promote_to_lookup_display": false,
+    "as_of_taipei": "2026-11-08T07:44:25.426609+08:00",
+    "candidates": {
+      "early_buy_u112": {
+        "key": "ei_n5_week_n3_softbody__SELL_hi20_or_wave_top",
+        "formula": "w3u & near(turn,3) & t60 & near(intent,5) & risk & (near(week,3)|near(body,3))",
+        "win_rate": 0.8039,
+        "days": 50,
+        "bars_before_hi20": 15.86,
+        "universe": "U112",
+        "glyph": "LAB_BUY_W3_START",
+        "status": "locked_lab_candidate"
+      },
+      "early_sell_same_entry_u180": {
+        "key": "U180__v11_pe3",
+        "formula": "entry=v11 softbody; exit=hi20|wave|(exhaust|hi10 & unreal>=3%)",
+        "confirm": {
+          "win_rate": 0.8032786885245902,
+          "days": 60,
+          "hold": 12.524590163934427,
+          "ge80_d50": true
+        },
+        "universe": "U180+",
+        "glyph": "REL_HIGH_SELL",
+        "status": "locked_lab_candidate_pending_u112",
+        "note_zh": "與提早買同進場族；U112 上 pe 仍未過閘"
+      },
+      "early_sell_nobody_u180": {
+        "key": "U180__nobody_pe3",
+        "confirm": {
+          "win_rate": 0.8490566037735849,
+          "days": 52,
+          "hold": 12.320754716981131,
+          "ge80_d50": true
+        },
+        "universe": "U180+",
+        "glyph": "REL_HIGH_SELL",
+        "status": "locked_lab_candidate_alt"
+      },
+      "early_sell_u112": {
+        "status": "blocked",
+        "near_miss": "soft pe≈78.9%@51d; nobody pe≈84.8%@45d"
+      }
+    },
+    "note_zh": "旗標仍關；不准改 leave_zero；不上話筒"
+  },
+  "gate_one_liner": "spirit_mix_thicken_v21 pe_ge80_d50=6; best=U200__nobody_pe3 win=0.864406779661017 days=58 hold=11.559322033898304; U180_v11_pe3={'win_rate': 0.8032786885245902, 'days': 60, 'hold': 12.524590163934427, 'ge80_d50': True}; U200_v11_pe3={'win_rate': 0.8235294117647058, 'days': 67, 'hold': 11.911764705882353, 'ge80_d50': True}; U250_v11_pe3={'win_rate': 0.8170731707317073, 'days': 79, 'hold': 11.902439024390244, 'ge80_d50': True}; promote_lookup=NO",
+  "errors_n": 0,
+  "errors_sample": []
+}

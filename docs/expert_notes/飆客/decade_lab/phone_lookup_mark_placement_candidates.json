@@ -2,7 +2,7 @@
   "phone_sync": "blocked",
   "LOOKUP_LAB_MARKS_ENABLED": false,
   "promote_to_lookup_display": false,
-  "as_of_taipei": "2026-11-08T07:00:00+08:00",
+  "as_of_taipei": "2026-11-08T07:46:04.123626+08:00",
   "candidates": {
     "early_buy_u112": {
       "key": "ei_n5_week_n3_softbody__SELL_hi20_or_wave_top",
@@ -14,37 +14,58 @@
       "glyph": "LAB_BUY_W3_START",
       "status": "locked_lab_candidate"
     },
-    "early_sell_same_entry_u180": {
-      "key": "U180__v11_pe3",
+    "early_sell_same_entry_u180plus": {
+      "key": "v11_pe3",
       "formula": "entry=v11 softbody; exit=hi20|wave|(exhaust|hi10 & unreal>=3%)",
-      "win_rate": 0.8032786885245902,
-      "days": 60,
-      "hold_days": 12.524590163934427,
-      "base_hold_hi20": 14.9,
-      "universe": "U180",
+      "confirm": {
+        "U180__v11_pe3": {
+          "win_rate": 0.8032786885245902,
+          "days": 60,
+          "hold": 12.524590163934427,
+          "ge80_d50": true
+        },
+        "U200__v11_pe3": {
+          "win_rate": 0.8235294117647058,
+          "days": 67,
+          "hold": 11.911764705882353,
+          "ge80_d50": true
+        },
+        "U250__v11_pe3": {
+          "win_rate": 0.8170731707317073,
+          "days": 79,
+          "hold": 11.902439024390244,
+          "ge80_d50": true
+        }
+      },
       "glyph": "REL_HIGH_SELL",
-      "status": "locked_lab_candidate_pending_u112",
+      "status": "locked_lab_candidate_u180plus",
       "note_zh": "與提早買同進場族；U112 上 pe 仍未過閘"
     },
-    "early_sell_nobody_u180": {
-      "key": "U180__nobody_pe3",
-      "formula": "entry=v11&~body; exit=hi20|wave|(exhaust|hi10 & unreal>=3%)",
-      "win_rate": 0.8490566037735849,
-      "days": 52,
-      "hold_days": 12.320754716981131,
-      "universe": "U180",
+    "early_sell_nobody_u180plus": {
+      "key": "nobody_pe3",
+      "confirm": {
+        "U180__nobody_pe3": {
+          "win_rate": 0.8490566037735849,
+          "days": 52,
+          "hold": 12.320754716981131,
+          "ge80_d50": true
+        },
+        "U200__nobody_pe3": {
+          "win_rate": 0.864406779661017,
+          "days": 58,
+          "hold": 11.559322033898304,
+          "ge80_d50": true
+        },
+        "U250__nobody_pe3": {
+          "win_rate": 0.855072463768116,
+          "days": 66,
+          "hold": 11.681159420289855,
+          "ge80_d50": true
+        }
+      },
       "glyph": "REL_HIGH_SELL",
-      "status": "locked_lab_candidate_alt"
-    },
-    "early_sell_u250": {
-      "key": "v11_nobody__SELL_profit_early_3",
-      "formula": "entry=v11&~body; exit=hi20|wave|(exhaust|hi10 & unreal>=3%)",
-      "win_rate": 0.8551,
-      "days": 66,
-      "hold_days": 11.68,
-      "universe": "U250",
-      "glyph": "REL_HIGH_SELL",
-      "status": "locked_lab_candidate_u250_only"
+      "status": "locked_lab_candidate_alt",
+      "best": "U200__nobody_pe3 ≈86.4%@58d hold≈11.6"
     },
     "early_sell_u112": {
       "status": "blocked_sub80_or_days_short",
