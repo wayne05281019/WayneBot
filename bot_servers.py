@@ -4248,12 +4248,12 @@ class WayneTelegramBot:
 
                 return build_and_cache_full_screening(self.db_path)
 
-            # 讀快取 await 後兩邊可能同時到這裡；認領必須原子，否則 CI 會建兩輪
+            # 讀快取 await 後兩邊可能同時到這裡；認領必須原子，否則 CI 會建兩輪。
+            # 已有鎖不准換新一把（雙按各拿一把＝雙建）；測試 __new__ 沒跑 __init__ 才補。
             claim = getattr(self, "_screening_build_claim", None)
             if not isinstance(claim, asyncio.Lock):
-                claim = asyncio.Lock()
-                self._screening_build_claim = claim
-            async with claim:
+                self._screening_build_claim = asyncio.Lock()
+            async with self._screening_build_claim:
                 inflight = getattr(self, "_screening_build_task", None)
                 if isinstance(inflight, asyncio.Task) and not inflight.done():
                     build_task = inflight
