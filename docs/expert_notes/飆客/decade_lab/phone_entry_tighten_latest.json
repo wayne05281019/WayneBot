@@ -1,0 +1,303 @@
+{
+  "phone_sync": "blocked",
+  "not_buy_signal": true,
+  "elapsed_s": 160.2,
+  "n_stocks": 100,
+  "method_zh": "強化濾網 AND 進場；出場同 phone_trade（首碰20高／減碼／回吐8%／60日）；對照＝同濾網密度隨機",
+  "leave_zero_F0": {
+    "n_trades": 6424,
+    "n_unique_entry_days": 2428,
+    "n_sids": 100,
+    "win_rate": 0.4945516811955168,
+    "wilson_ci95": [
+      0.4823322213170569,
+      0.5067776534502366
+    ],
+    "avg_net": -0.0009707607445606852,
+    "median_net": -0.001595292952267566,
+    "expectancy": -0.0009707607445606852,
+    "avg_hold": 11.864881693648817,
+    "avg_mfe": 0.059731480720944134,
+    "avg_mae": -0.0514177700201635,
+    "exit_reason_counts": {
+      "giveback_8pct": 3386,
+      "first_hi20": 3026,
+      "max_hold_60": 12
+    }
+  },
+  "ranking": [
+    {
+      "key": "leave_zero_blue_tri__F2_near_ma60",
+      "base": "leave_zero_blue_tri",
+      "filter": "F2_near_ma60",
+      "n_trades": 1736,
+      "n_unique_entry_days": 1175,
+      "win_rate": 0.5299539170506913,
+      "expectancy": -0.005031373946854435,
+      "avg_hold": 13.745967741935484,
+      "exit_reason_counts": {
+        "first_hi20": 971,
+        "giveback_8pct": 762,
+        "max_hold_60": 3
+      },
+      "random_win_rate": 0.4652173913043478,
+      "random_expectancy": -0.015205430321605054,
+      "random_days": 1649,
+      "beats_random": true,
+      "beats_leave_zero_F0": false,
+      "E_minus_random": 0.01017405637475062,
+      "win_minus_random": 0.06473652574634348
+    },
+    {
+      "key": "ma60_lower_confirmed__F0_none",
+      "base": "ma60_lower_confirmed",
+      "filter": "F0_none",
+      "n_trades": 2885,
+      "n_unique_entry_days": 1609,
+      "win_rate": 0.5376083188908145,
+      "expectancy": 0.002679976868547122,
+      "avg_hold": 12.41317157712305,
+      "exit_reason_counts": {
+        "giveback_8pct": 1290,
+        "first_hi20": 1588,
+        "max_hold_60": 7
+      },
+      "random_win_rate": 0.6031912110907665,
+      "random_expectancy": 0.0032269631613025627,
+      "random_days": 2719,
+      "beats_random": false,
+      "beats_leave_zero_F0": true,
+      "E_minus_random": -0.0005469862927554407,
+      "win_minus_random": -0.06558289219995195
+    },
+    {
+      "key": "leave_zero_blue_tri__F0_none",
+      "base": "leave_zero_blue_tri",
+      "filter": "F0_none",
+      "n_trades": 6424,
+      "n_unique_entry_days": 2428,
+      "win_rate": 0.4945516811955168,
+      "expectancy": -0.0009707607445606852,
+      "avg_hold": 11.864881693648817,
+      "exit_reason_counts": {
+        "giveback_8pct": 3386,
+        "first_hi20": 3026,
+        "max_hold_60": 12
+      },
+      "random_win_rate": 0.5896205053890046,
+      "random_expectancy": 0.003624735854068533,
+      "random_days": 4489,
+      "beats_random": false,
+      "beats_leave_zero_F0": false,
+      "E_minus_random": -0.004595496598629218,
+      "win_minus_random": -0.09506882419348778
+    },
+    {
+      "key": "leave_zero_blue_tri__F5_strict_triple",
+      "base": "leave_zero_blue_tri",
+      "filter": "F5_strict_triple",
+      "n_trades": 1000,
+      "n_unique_entry_days": 747,
+      "win_rate": 0.619,
+      "expectancy": -0.002931090261432525,
+      "avg_hold": 12.716,
+      "exit_reason_counts": {
+        "first_hi20": 681,
+        "giveback_8pct": 318,
+        "max_hold_60": 1
+      },
+      "random_win_rate": 0.6207191780821918,
+      "random_expectancy": 0.002390442502863685,
+      "random_days": 1030,
+      "beats_random": false,
+      "beats_leave_zero_F0": false,
+      "E_minus_random": -0.00532153276429621,
+      "win_minus_random": -0.0017191780821917968
+    },
+    {
+      "key": "leave_zero_blue_tri__F4_ma60_tight_vol",
+      "base": "leave_zero_blue_tri",
+      "filter": "F4_ma60_tight_vol",
+      "n_trades": 1001,
+      "n_unique_entry_days": 748,
+      "win_rate": 0.6193806193806194,
+      "expectancy": -0.002988520465581745,
+      "avg_hold": 12.708291708291709,
+      "exit_reason_counts": {
+        "first_hi20": 682,
+        "giveback_8pct": 318,
+        "max_hold_60": 1
+      },
+      "random_win_rate": 0.6129032258064516,
+      "random_expectancy": 0.0024637297522437404,
+      "random_days": 1004,
+      "beats_random": false,
+      "beats_leave_zero_F0": false,
+      "E_minus_random": -0.005452250217825486,
+      "win_minus_random": 0.006477393574167767
+    },
+    {
+      "key": "leave_zero_blue_tri__F1_vol_structure",
+      "base": "leave_zero_blue_tri",
+      "filter": "F1_vol_structure",
+      "n_trades": 1001,
+      "n_unique_entry_days": 748,
+      "win_rate": 0.6193806193806194,
+      "expectancy": -0.002988520465581745,
+      "avg_hold": 12.708291708291709,
+      "exit_reason_counts": {
+        "first_hi20": 682,
+        "giveback_8pct": 318,
+        "max_hold_60": 1
+      },
+      "random_win_rate": 0.6208651399491094,
+      "random_expectancy": 0.004350650997825845,
+      "random_days": 1021,
+      "beats_random": false,
+      "beats_leave_zero_F0": false,
+      "E_minus_random": -0.00733917146340759,
+      "win_minus_random": -0.001484520568490022
+    },
+    {
+      "key": "ma60_lower_confirmed__F1_vol_structure",
+      "base": "ma60_lower_confirmed",
+      "filter": "F1_vol_structure",
+      "n_trades": 6,
+      "n_unique_entry_days": 6,
+      "win_rate": 0.5,
+      "expectancy": 0.0023838024287243056,
+      "avg_hold": 10.5,
+      "exit_reason_counts": {
+        "giveback_8pct": 3,
+        "first_hi20": 3
+      },
+      "random_win_rate": 0.5,
+      "random_expectancy": -0.005975987397524436,
+      "random_days": 6,
+      "beats_random": false,
+      "beats_leave_zero_F0": false,
+      "E_minus_random": NaN,
+      "win_minus_random": NaN
+    },
+    {
+      "key": "ma60_lower_confirmed__F2_near_ma60",
+      "base": "ma60_lower_confirmed",
+      "filter": "F2_near_ma60",
+      "n_trades": 6,
+      "n_unique_entry_days": 6,
+      "win_rate": 0.5,
+      "expectancy": 0.0023838024287243056,
+      "avg_hold": 10.5,
+      "exit_reason_counts": {
+        "giveback_8pct": 3,
+        "first_hi20": 3
+      },
+      "random_win_rate": 0.8333333333333334,
+      "random_expectancy": 0.08146145790482161,
+      "random_days": 6,
+      "beats_random": false,
+      "beats_leave_zero_F0": false,
+      "E_minus_random": NaN,
+      "win_minus_random": NaN
+    },
+    {
+      "key": "ma60_lower_confirmed__F3_lz_ma60_confluence",
+      "base": "ma60_lower_confirmed",
+      "filter": "F3_lz_ma60_confluence",
+      "n_trades": 6,
+      "n_unique_entry_days": 6,
+      "win_rate": 0.5,
+      "expectancy": 0.0023838024287243056,
+      "avg_hold": 10.5,
+      "exit_reason_counts": {
+        "giveback_8pct": 3,
+        "first_hi20": 3
+      },
+      "random_win_rate": 0.16666666666666666,
+      "random_expectancy": -0.0595867268184749,
+      "random_days": 6,
+      "beats_random": false,
+      "beats_leave_zero_F0": false,
+      "E_minus_random": NaN,
+      "win_minus_random": NaN
+    },
+    {
+      "key": "ma60_lower_confirmed__F4_ma60_tight_vol",
+      "base": "ma60_lower_confirmed",
+      "filter": "F4_ma60_tight_vol",
+      "n_trades": 6,
+      "n_unique_entry_days": 6,
+      "win_rate": 0.5,
+      "expectancy": 0.0023838024287243056,
+      "avg_hold": 10.5,
+      "exit_reason_counts": {
+        "giveback_8pct": 3,
+        "first_hi20": 3
+      },
+      "random_win_rate": 0.3333333333333333,
+      "random_expectancy": -0.012362910625900189,
+      "random_days": 6,
+      "beats_random": false,
+      "beats_leave_zero_F0": false,
+      "E_minus_random": NaN,
+      "win_minus_random": NaN
+    },
+    {
+      "key": "ma60_lower_confirmed__F5_strict_triple",
+      "base": "ma60_lower_confirmed",
+      "filter": "F5_strict_triple",
+      "n_trades": 6,
+      "n_unique_entry_days": 6,
+      "win_rate": 0.5,
+      "expectancy": 0.0023838024287243056,
+      "avg_hold": 10.5,
+      "exit_reason_counts": {
+        "giveback_8pct": 3,
+        "first_hi20": 3
+      },
+      "random_win_rate": 0.5,
+      "random_expectancy": -0.012302734839061006,
+      "random_days": 6,
+      "beats_random": false,
+      "beats_leave_zero_F0": false,
+      "E_minus_random": NaN,
+      "win_minus_random": NaN
+    },
+    {
+      "key": "leave_zero_blue_tri__F3_lz_ma60_confluence",
+      "base": "leave_zero_blue_tri",
+      "filter": "F3_lz_ma60_confluence",
+      "n_trades": 1496,
+      "n_unique_entry_days": 1071,
+      "win_rate": 0.5394385026737968,
+      "expectancy": -0.004838045426780193,
+      "avg_hold": 13.671122994652407,
+      "exit_reason_counts": {
+        "first_hi20": 849,
+        "giveback_8pct": 645,
+        "max_hold_60": 2
+      },
+      "random_win_rate": NaN,
+      "random_expectancy": NaN,
+      "random_days": 0,
+      "beats_random": false,
+      "beats_leave_zero_F0": false,
+      "E_minus_random": NaN,
+      "win_minus_random": NaN
+    }
+  ],
+  "winners_beat_random_and_lz0": [],
+  "promote_to_lookup_display": false,
+  "gate_one_liner": "winners=0/12; best=leave_zero_blue_tri__F2_near_ma60 win=0.5299539170506913 E=-0.005031373946854435 vs_rand_E=0.01017405637475062; promote_lookup=NO",
+  "filter_defs_zh": {
+    "F0_none": "無加嚴",
+    "F1_vol_structure": "量≥0.7×20日均量＋近季線＋未貼20高＋RSV15–65",
+    "F2_near_ma60": "附近5根有確認紅箭＋非地量＋未貼20高",
+    "F3_lz_ma60_confluence": "leave_zero 與確認紅箭5根內共振＋量能＋未貼20高",
+    "F4_ma60_tight_vol": "量能＋未貼20高＋RSV中段＋近季線",
+    "F5_strict_triple": "F1＋收盤未明顯高於月線（偏拉回）"
+  },
+  "errors_n": 0,
+  "errors_sample": [],
+  "note_zh": "辨識率＝贏同密度隨機；再比 leave_zero F0。不上話筒。"
+}
