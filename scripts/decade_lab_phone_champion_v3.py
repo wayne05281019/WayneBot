@@ -33,7 +33,12 @@ from scripts.decade_lab_phone_extreme_hillclimb import (
     _near,
     _wave_hsiao_bank,
 )
-from scripts.decade_lab_phone_market_wave_sync import _align_mkt, _stock_wave_events, _twii_wave_pack
+from scripts.decade_lab_phone_market_wave_sync import (
+    _align_mkt,
+    _barek_masks,
+    _stock_wave_events,
+    _twii_wave_pack,
+)
 from scripts.decade_lab_phone_relhigh_sell import _simulate_relhigh
 from scripts.decade_lab_phone_trade_confront import _agg_trades, _build_hl_temp
 from scripts.decade_lab_phone_wave_filter import _align_wave, _wave_frame, _wave_masks
@@ -44,6 +49,49 @@ ART = Path("/opt/cursor/artifacts")
 DOC = Path(__file__).resolve().parents[1] / "docs" / "expert_notes" / "飆客" / "decade_lab"
 SELL_MODE = "hi20_or_wave_top"
 DAY_FLOOR = 50
+
+# 下一輪可插拔閘（既有 feat 欄；見 phone_v3_factor_pack.md）。預設掃進 extras，不改 CLI。
+EXTRA_GATES: Dict[str, str] = {
+    "XG_no_lightning": "~is_long_upper_shadow_vol",
+    "XG_deduct_safe": "~deduction_accelerating & ma20_time_safety>0",
+    "XG_ma60_up": "ma60_angle>0",
+    "XG_no_kd_hot": "~kd_high_passivation",
+}
+
+
+def build_extra_gates(feat: pd.DataFrame) -> Dict[str, pd.Series]:
+    """Cheap boolean masks from compute_hsiao_features columns not yet in V3 extras."""
+    idx = feat.index
+    lightning = feat.get("is_long_upper_shadow_vol")
+    if lightning is None:
+        no_lightning = pd.Series(True, index=idx)
+    else:
+        no_lightning = ~lightning.fillna(False).astype(bool)
+
+    deduct = feat.get("deduction_accelerating")
+    s20 = pd.to_numeric(feat.get("ma20_time_safety"), errors="coerce")
+    if deduct is None:
+        deduct_safe = s20.fillna(-9) > 0
+    else:
+        deduct_safe = (~deduct.fillna(False).astype(bool)) & (s20.fillna(-9) > 0)
+
+    ma60_ang = pd.to_numeric(feat.get("ma60_angle"), errors="coerce")
+    ma60_up = ma60_ang.fillna(-9) > 0
+
+    kd_hot = feat.get("kd_high_passivation")
+    if kd_hot is None:
+        no_kd_hot = pd.Series(True, index=idx)
+    else:
+        no_kd_hot = ~kd_hot.fillna(False).astype(bool)
+
+    out = {
+        "XG_no_lightning": no_lightning.fillna(False),
+        "XG_deduct_safe": deduct_safe.fillna(False),
+        "XG_ma60_up": ma60_up.fillna(False),
+        "XG_no_kd_hot": no_kd_hot.fillna(False),
+    }
+    # 只回傳 EXTRA_GATES 登記鍵，避免漂移
+    return {k: out[k] for k in EXTRA_GATES if k in out}
 
 
 def _bal(win: float, days: int) -> float:
@@ -99,6 +147,7 @@ def run(*, n_universe: int = 100) -> Dict[str, Any]:
             ).fillna(False)
 
             v3 = build_v3_extras(df, feat, bank)
+            xg = build_extra_gates(feat)
             extras = {
                 "X0": pd.Series(True, index=df.index),
                 **{k: v.fillna(False) for k, v in v3.items()},
@@ -109,6 +158,7 @@ def run(*, n_universe: int = 100) -> Dict[str, Any]:
                 )
                 >= 2,
                 "V3_thrust_local": v3["V3_struct_vol"].fillna(False) | v3["V3_pull_week"].fillna(False),
+                **{k: v.fillna(False) for k, v in xg.items()},
             }
             mkt_opts = {
                 "M0": pd.Series(True, index=df.index),
@@ -229,9 +279,18 @@ def run(*, n_universe: int = 100) -> Dict[str, Any]:
             "V3_time_align",
             "V3_struct_vol",
             "V3_pull_week",
+            "V3_barek_ok",
+            "V3_barek_constructive",
+            "V3_clean_not_hot",
+            "V3_macd_or_kd",
+            "V3_trough_V",
+            "V3_compress_V",
             "V3_pack2",
             "V3_thrust_local",
+            "V3_hsiao_barek",
+            "V3_turn_barek",
         ],
+        "extra_gates": list(EXTRA_GATES.keys()),
         "elapsed_s": round(time.time() - t0, 1),
         "n_stocks": meta_n,
         "ranking": ranking,
