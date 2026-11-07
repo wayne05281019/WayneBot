@@ -1,0 +1,12 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "as_of_taipei": "2026-11-08T06:55:52.969602+08:00",
+  "gate_one_liner": "spirit_mix_thicken_v19 U112 n=112 hybrid_ge80_d50=0; best=None win=None hold=None pe_exits=None base_hold=15.176470588235293; promote_lookup=NO",
+  "parent_seal": "phone_spirit_mix_thicken_v18_decision.json",
+  "elapsed_s": 337.8,
+  "n_stocks": 112,
+  "hybrid_ge80_d50_n": 0,
+  "finding_zh": "U112 hybrid／pe 全卡 ≈78.9%@51d。提早賣僅 U250 过闸。下一版 U180 桥接＋placement 候選對照（旗標仍關）。",
+  "next": "mix_v20 U180 bridge + placement candidates; phone_sync=blocked"
+}
