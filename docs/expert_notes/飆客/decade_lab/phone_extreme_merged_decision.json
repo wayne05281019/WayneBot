@@ -2,127 +2,98 @@
   "phone_sync": "blocked",
   "promote_to_lookup_display": false,
   "doctrine_zh": "核心＝波浪理論×蕭大師邏輯；疊加只為抬勝率",
-  "core_baseline_zh": "W3起漲／W3∪紅箭×W3＋hi20 ≈75–76%",
+  "final_champions_zh": {
+    "thin_best": "W3 × 攻擊量V／VT ≈87%（獨立日22–25）— 全域最高過閘勝率",
+    "dense_best": "W3 × 引擎分≥55 ≈81%（獨立日32）— 較密 champion",
+    "robust40": "W3∪紅箭×W3 × MACD多 ≈78%（獨立日80）— 最厚",
+    "soft_or": "V∨S55 ≈79%（日34）加厚但未超過 S55／V 單項",
+    "blocked_under_n20": "V∧S55 ≈87.5% 但日16 — 未過閘",
+    "nextlayer": "引擎事件 0 過閘"
+  },
   "best_by_winrate": [
     {
       "key": "core_w3_start__V__hi20_or_desync",
       "source": "4d",
       "win": 0.8696,
       "E": 0.0597,
-      "days": 22,
-      "delta_win": 0.1064
+      "days": 22
     },
     {
       "key": "core_w3_start__V__hi20_only",
       "source": "4d",
       "win": 0.8696,
       "E": 0.0597,
-      "days": 22,
-      "delta_win": 0.1064
+      "days": 22
     },
     {
       "key": "core_w3_start__VT__hi20_or_desync",
       "source": "4d",
       "win": 0.8696,
       "E": 0.0597,
-      "days": 22,
-      "delta_win": 0.1064
+      "days": 22
     },
     {
       "key": "core_w3_start__VT__hi20_only",
       "source": "4d",
       "win": 0.8696,
       "E": 0.0597,
-      "days": 22,
-      "delta_win": 0.1064
+      "days": 22
     },
     {
       "key": "core_w3_or_ma60w3__VT__hi20_or_desync",
       "source": "4d",
       "win": 0.8696,
       "E": 0.0597,
-      "days": 22,
-      "delta_win": 0.1174
+      "days": 22
     },
     {
       "key": "core_w3_or_ma60w3__VT__hi20_only",
       "source": "4d",
       "win": 0.8696,
       "E": 0.0597,
-      "days": 22,
-      "delta_win": 0.1174
+      "days": 22
     },
     {
       "key": "core_w3_or_ma60w3__V__hi20_or_desync",
       "source": "4d",
       "win": 0.8462,
       "E": 0.0527,
-      "days": 25,
-      "delta_win": 0.0939
+      "days": 25
     },
     {
       "key": "core_w3_or_ma60w3__V__hi20_only",
       "source": "4d",
       "win": 0.8462,
       "E": 0.0527,
-      "days": 25,
-      "delta_win": 0.0939
+      "days": 25
     },
     {
       "key": "core_w3_start__score55__hi20_or_desync",
       "source": "wave",
       "win": 0.8125,
       "E": 0.0358,
-      "days": 32,
-      "delta_win": 0.0539
+      "days": 32
     },
     {
       "key": "core_w3_or_ma60w3__score55__hi20_or_desync",
       "source": "wave",
       "win": 0.8125,
       "E": 0.0358,
-      "days": 32,
-      "delta_win": 0.0625
+      "days": 32
     },
     {
       "key": "core_w3_start__AND_score55__hi20_or_desync",
       "source": "champion_and",
       "win": 0.8125,
       "E": 0.0358,
-      "days": 32,
-      "delta_win": null
+      "days": 32
     },
     {
       "key": "core_w3_start__AND_score55_macd__hi20_or_desync",
       "source": "champion_and",
       "win": 0.8125,
       "E": 0.0358,
-      "days": 32,
-      "delta_win": null
-    },
-    {
-      "key": "core_w3_start__AND_wave_safe_score55__hi20_or_desync",
-      "source": "champion_and",
-      "win": 0.8125,
-      "E": 0.0358,
-      "days": 32,
-      "delta_win": null
-    },
-    {
-      "key": "core_w3_or_ma60w3__AND_score55__hi20_or_desync",
-      "source": "champion_and",
-      "win": 0.8125,
-      "E": 0.0358,
-      "days": 32,
-      "delta_win": null
-    },
-    {
-      "key": "core_w3_or_ma60w3__AND_score55_macd__hi20_or_desync",
-      "source": "champion_and",
-      "win": 0.8125,
-      "E": 0.0358,
-      "days": 32,
-      "delta_win": null
+      "days": 32
     }
   ],
   "best_robust_days40plus": [
@@ -132,36 +103,23 @@
       "win": 0.7805,
       "E": 0.0084,
       "days": 80
-    }
-  ],
-  "nextlayer_gate": "track=nextlayer; winners=0/18; lift_core=0; best_win=core_w3_start__D0__hi20_or_desync win=0.7586206896551724 E=-0.003529762536926254; promote_lookup=NO",
-  "champion_and_gate": "champion_AND winners=8/24; best=core_w3_start__AND_score55__hi20_or_desync win=0.8125 E=0.03584378822411485; promote_lookup=NO",
-  "read_zh": [
-    "全域最高勝率仍是 4D 的 V／VT ≈87%（日22–25）",
-    "champion AND 若有更高且過閘，以此為新 champion 候選",
-    "nextlayer 引擎事件多半過稀或未抬核",
-    "厚樣本首選仍看 MACD／score55 類"
-  ],
-  "gate_one_liner": "merged best=core_w3_start__V__hi20_or_desync win=0.8696 days=22 src=4d; robust40=core_w3_or_ma60w3__hsiao_macd__hi20_or_desync win=0.7805 days=80; promote_lookup=NO",
-  "champion_and_top_winners": [
-    {
-      "key": "core_w3_start__AND_score55__hi20_or_desync",
-      "win": 0.8125,
-      "E": 0.0358,
-      "days": 32
     },
     {
-      "key": "core_w3_start__AND_score55_macd__hi20_or_desync",
-      "win": 0.8125,
-      "E": 0.0358,
-      "days": 32
+      "key": "core_w3_or_ma60w3__SOFT_macd__hi20_or_desync",
+      "source": "champion_soft",
+      "win": 0.7805,
+      "E": 0.0084,
+      "days": 80
     },
     {
-      "key": "core_w3_start__AND_wave_safe_score55__hi20_or_desync",
-      "win": 0.8125,
-      "E": 0.0358,
-      "days": 32
+      "key": "core_w3_or_ma60w3__SOFT_S55_or_macd__hi20_or_desync",
+      "source": "champion_soft",
+      "win": 0.7805,
+      "E": 0.0084,
+      "days": 80
     }
   ],
-  "nextlayer_lift_winners": []
+  "soft_gate": "soft winners=14/28; best=core_w3_start__SOFT_S55__hi20_or_desync win=0.8125 E=0.03584378822411485; promote_lookup=NO",
+  "soft_new_champion": false,
+  "gate_one_liner": "FINAL thin_best=core_w3_start__V__hi20_or_desync win=0.8696 days=22 src=4d; dense=score55~0.8125@32; robust40=core_w3_or_ma60w3__hsiao_macd__hi20_or_desync win=0.7805@ 80; soft_no_new_high; promote_lookup=NO"
 }
