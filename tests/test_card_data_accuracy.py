@@ -290,7 +290,8 @@ class CardDataAccuracyTests(unittest.TestCase):
         dist = float(card["dist_h60"])
         self.assertGreater(close, 0)
         self.assertLess(h60, close * 2.2)
-        self.assertGreater(dist, -80.0)
+        # 擋除權錯基（會到 -200%）；真跌深可過 -80，仍不准到假基那種斷崖
+        self.assertGreater(dist, -95.0)
         self.assertLess(float(card["space_60"]), 120)
         l60 = float(card.get("l60") or 0)
         l120 = float(card.get("l120") or 0)
