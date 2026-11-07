@@ -2,7 +2,7 @@
   "phone_sync": "blocked",
   "promote_to_lookup_display": false,
   "NOT_BUY_SIGNAL": true,
-  "as_of_taipei": "2026-11-07T23:27:00.510300+08:00",
+  "as_of_taipei": "2026-11-07T23:31:16.034791+08:00",
   "run_note_zh": "A0_strict@40 feat-regime re-sync（mkt_feat_*）",
   "gate_one_liner": "winners=50/240; lift=14; best_bal=E_pull_hammer__mkt_feat_safe__F_none__hi20_or_desync win=0.7557025547445255 days=1165; best_win=E_w3_start__mkt_not_crash__F_hsiao_S55__hi20_or_desync; promote_lookup=NO",
   "n_stocks": 100,
@@ -256,5 +256,7 @@
     "feat-sync: winners=50/240; lift=14; best_bal=E_pull_hammer__mkt_feat_safe__F_none__hi20_or_desync win=0.7557025547445255 days=1165; best_win=E_w3_start__mkt_not_crash__F_hsiao_S55__hi20_or_desync; promote_lookup=NO",
     "拉回錘子×feat_safe 仍最厚但非主買；W3×S55 薄高檔需再累日",
     "promote_lookup=NO"
-  ]
+  ],
+  "sell_lock_zh": "相對高點＝賣股票（出場腿 hi20_or_desync）",
+  "timer_ack": "relhigh-and-featsync-done"
 }

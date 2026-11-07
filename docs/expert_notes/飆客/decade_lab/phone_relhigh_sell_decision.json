@@ -2,8 +2,8 @@
   "phone_sync": "blocked",
   "promote_to_lookup_display": false,
   "NOT_BUY_SIGNAL": true,
-  "as_of_taipei": "2026-11-07T23:26:58.655773+08:00",
-  "sell_lock_zh": "相對高點＝賣股票",
+  "as_of_taipei": "2026-11-07T23:31:16.034791+08:00",
+  "sell_lock_zh": "相對高點＝賣股票（使用者鎖死；出場對質＝首碰蕭20高／可選浪頂）",
   "gate_one_liner": "relhigh_sell winners=2/9; best=w3_or_ma60__SELL_hi20_or_desync win=0.75 days=94; promote_lookup=NO",
   "n_stocks": 100,
   "elapsed_s": 306.3,
@@ -229,5 +229,9 @@
   "read_zh": [
     "相對高點賣對質：relhigh_sell winners=2/9; best=w3_or_ma60__SELL_hi20_or_desync win=0.75 days=94; promote_lookup=NO",
     "過閘仍 NO；浪頂腿與 20高 併列僅實驗室"
-  ]
+  ],
+  "sell_lock_confirmed": true,
+  "user_lock_zh": "相對高點就賣",
+  "timer_ack": "relhigh-and-featsync-done",
+  "rerun_note_zh": "本機重跑仍在進行；現況封口以 elapsed=306.3 之 latest 為準，重跑完若 gate 變再覆寫"
 }
