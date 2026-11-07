@@ -2,7 +2,7 @@
   "phone_sync": "blocked",
   "promote_to_lookup_display": false,
   "NOT_BUY_SIGNAL": true,
-  "as_of_taipei": "2026-11-08T01:02:48.943547+08:00",
+  "as_of_taipei": "2026-11-08T01:12:16.612839+08:00",
   "deliverable_zh": "查股五張圖：極高勝率買進起漲＋相對高點賣出相對位置",
   "candidate_buy_rule": {
     "key": "core_w3_or_ma60w3__BAL_Vnear2_or_S55__hi20_or_desync",
@@ -76,7 +76,7 @@
       "balanced_score": 0.7586206896551724
     }
   },
-  "gate_status": "early_v2_sealed_mix_v2_relaunch",
+  "gate_status": "mix_v2_sealed_still_short_d50_invent_v3",
   "evidence": {
     "win_rate": 0.76,
     "independent_days": 50,
@@ -310,6 +310,15 @@
       "gate": "early_marks_free_v2 winners=18/108 ge80=5 ge80_d50=0; best_early=E_w3u__F_turn_n3__SELL_hi20_or_wave_top win=0.7654320987654321 bars=15.56; best_win=E_w3__F_intent__SELL_hi20_or_wave_top; promote_lookup=NO",
       "ge80_n": 5,
       "promote": false
+    },
+    "spirit_mix_thicken_v2": {
+      "source": "phone_spirit_mix_thicken_v2_decision.json",
+      "gate": "spirit_mix_thicken_v2 ge80=13 ge80_d30=8 ge80_d50=0; best_win=E_w3__U_intent__SELL_hi20_or_wave_top win=0.896551724137931 days=29; best_days=E_w3__U_turn_n3__SELL_hi20_or_wave_top; best_d50=None; promote_lookup=NO",
+      "ge80_n": 13,
+      "ge80_d30_n": 8,
+      "ge80_d50_n": 0,
+      "best_days": "E_w3__U_turn_n3__SELL_hi20_or_wave_top",
+      "promote": false
     }
   },
   "blockers": [
@@ -325,10 +334,10 @@
     "使用者 2026-11-08：材料若限制達標可自由加因子；目標＝提早知買／賣"
   ],
   "next_experiments": [
-    "early_v2／mix_v2 在 hsiao-wave-lab 重跑（遠窗分支曾弄丟腳本路徑）",
-    "衝 ge80×days≥50（破 49）"
+    "mix_v3：turn_n3∨n4∨n5 聯集、intent_n3∨turn_n4、略放 market feat 閘，衝 ge80×50d",
+    "合併 early intent／turn 提早量約束"
   ],
-  "gate_one_liner": "draft: early_v2 ge80=5 d50=0; mix_v2 relaunch; phone_sync=blocked; promote=false",
+  "gate_one_liner": "draft: mix_v2 ge80=13 d30=8 d50=0 best_days≈0.8@49d; invent mix_v3; phone_sync=blocked; promote=false",
   "user_goal_zh": "提早知道個股買點＋提早知道賣點；材料不夠可自由加因子",
   "metric_priority_zh": [
     "提早買（訊號相對後續漲段／20高）",
