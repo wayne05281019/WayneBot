@@ -133,8 +133,35 @@ def _taipei_now(now: Optional[datetime] = None) -> Optional[datetime]:
         return None
 
 
+def _schedule_window_on_open_day(dt: datetime, *, lo: int) -> bool:
+    """排程等候句只在「真的會跑那檔」的日子說。
+
+    - 一般重窗（早報／尾盤／16:30 融合／盤後彙整／晚間／勝率）：當日台股開市日
+    - 隔日 00:50–01:20 彙整：前一個日曆日是開市日（週末／國定假不准套這句）
+    不准只看時鐘就在週六講「盤後融合中」。
+    """
+    try:
+        from datetime import timedelta
+
+        from trading_calendar import is_tw_open_calendar_day
+    except Exception:
+        return False
+    try:
+        ymd = dt.strftime("%Y%m%d")
+    except Exception:
+        return False
+    # 隔日凌晨窗：對齊「前一日開市才有」
+    if int(lo) < 6 * 60:
+        prev = (dt - timedelta(days=1)).strftime("%Y%m%d")
+        return bool(is_tw_open_calendar_day(prev))
+    return bool(is_tw_open_calendar_day(ymd))
+
+
 def phone_schedule_wait_note(now: Optional[datetime] = None) -> str:
-    """開機／更新落在排程重窗時，用人話講正在忙什麼（台北時區）。"""
+    """開機／更新落在排程重窗時，用人話講正在忙什麼（台北時區）。
+
+    非開市日（週末／國定假）即使撞到 16:25–17:00 時鐘窗，也不准講盤後融合。
+    """
     dt = _taipei_now(now)
     if dt is None:
         return ""
@@ -144,6 +171,8 @@ def phone_schedule_wait_note(now: Optional[datetime] = None) -> str:
         return ""
     for lo, hi, text in _SCHEDULE_WAIT_WINDOWS:
         if lo <= mins < hi:
+            if not _schedule_window_on_open_day(dt, lo=lo):
+                return ""
             return _clean_note(text)
     return ""
 
