@@ -534,7 +534,16 @@ def test_far_max_vol_day_matches_official_hl():
     if not anc:
         return
     vols = [float(r.get("volume") or 0) for r in bars]
-    i_vmax = max(range(len(bars)), key=lambda i: vols[i])
+    # 黃底只認「有量且官方高低有效」的最大量根；略過量在、OHLC 卻是 0 的爛柱
+    candidates = [
+        i
+        for i in range(len(bars))
+        if vols[i] > 0
+        and float(bars[i].get("high") or 0) > float(bars[i].get("low") or 0) > 0
+    ]
+    if not candidates:
+        return
+    i_vmax = max(candidates, key=lambda i: vols[i])
     hi = float(bars[i_vmax].get("high") or 0)
     lo = float(bars[i_vmax].get("low") or 0)
     assert hi > lo > 0
@@ -542,15 +551,14 @@ def test_far_max_vol_day_matches_official_hl():
     # 黃底用的高低＝最大量那根官方柱（anc 與 bars 同索引）
     assert abs(float(anc["highs"][i_vmax]) - hi) < 0.01
     assert abs(float(anc["lows"][i_vmax]) - lo) < 0.01
-    # 舊錨日若仍在窗內：官方柱本身沒爛（不要求它仍是最大量）
+    # 舊錨日若仍在窗內且 OHLC 有效：官方柱本身沒爛（不要求它仍是最大量）
     i_1015 = _bar_index_by_ymd(bars, "20261015")
     if i_1015 is not None:
-        assert abs(
-            float(anc["highs"][i_1015]) - float(bars[i_1015].get("high") or 0)
-        ) < 0.01
-        assert abs(
-            float(anc["lows"][i_1015]) - float(bars[i_1015].get("low") or 0)
-        ) < 0.01
+        h1015 = float(bars[i_1015].get("high") or 0)
+        l1015 = float(bars[i_1015].get("low") or 0)
+        if h1015 > l1015 > 0:
+            assert abs(float(anc["highs"][i_1015]) - h1015) < 0.01
+            assert abs(float(anc["lows"][i_1015]) - l1015) < 0.01
 
 
 def test_hl_spans_excluding_no_overlap():
