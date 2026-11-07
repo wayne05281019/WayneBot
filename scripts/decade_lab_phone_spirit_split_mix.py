@@ -58,20 +58,54 @@ def _bal(w: float, d: int) -> float:
 
 
 def _five_proxies(df: pd.DataFrame, feat: pd.DataFrame, spirit: Dict[str, pd.Series]) -> Dict[str, pd.Series]:
-    """飆大五件柱代理（實驗室；非他原文標籤）。叠≥2／≥3 當交叉候選。"""
+    """飆大五件柱代理（實驗室；非他原文標籤）。叠≥2／≥3 當交叉候選。
+
+    對齊 biaoke_five_bt 柱判精神（假跌破／爆量後日縮站撐／關鍵K形），
+    只用已收 OHLC＋feat＋spirit／wave；碎形改因果確認（無未來棒）；
+    不准發明個股 5／9；不上話筒。
+    """
     idx = df.index
     o = df["open"].astype(float)
     h = df["high"].astype(float)
     low = df["low"].astype(float)
     c = df["close"].astype(float)
-    # 波浪：引擎起漲／區
-    five_wave = spirit["WAVE_w3_start"] | spirit["WAVE_w3_zone"]
-    # 形態：假跌破近似＝破近低後收回
+    v = df["volume"].astype(float) if "volume" in df.columns else pd.Series(np.nan, index=idx)
+
+    # 波浪：引擎起漲／區／回撤底（結構位，不數 5／9）
+    five_wave = (
+        spirit["WAVE_w3_start"]
+        | spirit["WAVE_w3_zone"]
+        | spirit.get("WAVE_pullbase", pd.Series(False, index=idx))
+    )
+
+    # 形態：假跌破≈刺穿近低後收回（當日或隔日因果收回）；對齊 _verdict_morph
     min20 = low.shift(1).rolling(20, min_periods=5).min()
-    five_morph = (low < min20) & (c > min20) & (c > o)
-    # 量價結構
-    five_vol = spirit["VP_attack"] | (spirit["VP_trough"] & (c > o))
-    # 關鍵K：長下影／錘子或蕭關鍵陽
+    same_day = (low < min20) & (c > min20) & (c > o)
+    pierced_y = (low.shift(1) < min20.shift(1)) & (c.shift(1) <= min20.shift(1))
+    next_reclaim = pierced_y & (c > min20.shift(1)) & (c > o)
+    five_morph = same_day | next_reclaim
+
+    # 量價結構：攻擊／凹洞後紅 ＋ 爆量後日縮站撐（對齊 _verdict_vol 0.65）
+    attack = spirit["VP_attack"].reindex(idx).fillna(False).astype(bool)
+    five_vol = attack | (spirit["VP_trough"].reindex(idx).fillna(False) & (c > o))
+    if v.notna().any():
+        last_spike_vol = v.where(attack).ffill()
+        last_spike_low = low.where(attack).ffill()
+        pos = pd.Series(np.arange(len(idx), dtype=float), index=idx)
+        last_atk_pos = pos.where(attack).ffill()
+        age = pos - last_atk_pos
+        post_hold = (
+            (~attack)
+            & last_spike_vol.notna()
+            & age.notna()
+            & (age >= 1)
+            & (age <= 12)
+            & (v < last_spike_vol * 0.65)
+            & (c >= last_spike_low)
+        )
+        five_vol = five_vol | post_hold.fillna(False)
+
+    # 關鍵K：蕭關鍵陽／錘子（不併裸K建設＝BK 軌；碎形語另 FIVE_fractal）
     key = feat.get("is_key_bull_candle")
     hammer = feat.get("is_hammer_shape")
     five_keyk = pd.Series(False, index=idx)
@@ -79,19 +113,30 @@ def _five_proxies(df: pd.DataFrame, feat: pd.DataFrame, spirit: Dict[str, pd.Ser
         five_keyk = five_keyk | key.reindex(idx).fillna(False).astype(bool)
     if hammer is not None:
         five_keyk = five_keyk | hammer.reindex(idx).fillna(False).astype(bool)
-    five_keyk = five_keyk | spirit["BK_constructive"]
-    # 碎形線近似：近窗高低樞紐轉折（3-bar fractal）
-    five_frac = (h >= h.shift(1)) & (h >= h.shift(-1)) & (h >= h.shift(2)) & (h >= h.shift(-2))
-    five_frac = five_frac.fillna(False)  # 賣壓樞紐；買側用低點
-    five_frac_low = (low <= low.shift(1)) & (low <= low.shift(-1)) & (low <= low.shift(2)) & (low <= low.shift(-2))
-    five_frac = (five_frac | five_frac_low.fillna(False))
+
+    # 碎形線：5-bar 高低樞紐，於中心＋2 根確認日標記（因果，無 shift 負向）
+    center_h = h.shift(2)
+    frac_hi = (
+        (center_h >= h.shift(4))
+        & (center_h >= h.shift(3))
+        & (center_h >= h.shift(1))
+        & (center_h >= h)
+    )
+    center_l = low.shift(2)
+    frac_lo = (
+        (center_l <= low.shift(4))
+        & (center_l <= low.shift(3))
+        & (center_l <= low.shift(1))
+        & (center_l <= low)
+    )
+    five_frac = (frac_hi | frac_lo).fillna(False)
 
     parts = {
         "FIVE_wave": five_wave.fillna(False),
         "FIVE_morph": five_morph.fillna(False),
         "FIVE_vol": five_vol.fillna(False),
         "FIVE_keyk": five_keyk.fillna(False),
-        "FIVE_fractal": five_frac.fillna(False),
+        "FIVE_fractal": five_frac,
     }
     stack = (
         parts["FIVE_wave"].astype(int)
