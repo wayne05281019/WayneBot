@@ -1,0 +1,42 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "as_of_taipei": "2026-11-07T23:34:57.974825+08:00",
+  "status": "queued_awaiting_v3_seal",
+  "locked_buy": "core_w3_or_ma60w3 & (Vnear|S55)",
+  "locked_sell": "hi20_or_wave_top / hi20_or_desync",
+  "baseline_to_beat_zh": "B_bal__M0__X0 on champion_v3；外加 balanced 76%/50d",
+  "next_factors": [
+    {
+      "id": "V4_prior5_break",
+      "formula": "Close>prior_high_5 & vol_attack_ratio>=1.3",
+      "why": "突破近高＋量"
+    },
+    {
+      "id": "V4_body_thrust",
+      "formula": "candle_body_ratio>=0.55 & Close>Open",
+      "why": "實體攻勢"
+    },
+    {
+      "id": "V4_t60_safe",
+      "formula": "ma60_time_safety>0 & ~deduction_accelerating",
+      "why": "月線時間安全"
+    },
+    {
+      "id": "V4_week_stack",
+      "formula": "weekly_trend_bullish & w_ma13_safety>0 & ~w_kd_high_passivation",
+      "why": "週線同向非過熱"
+    },
+    {
+      "id": "V4_gap_hold",
+      "formula": "gap_breakaway_candidate & ~gap_filled_within_3d",
+      "why": "缺口未回補"
+    },
+    {
+      "id": "V4_no_fake_break",
+      "formula": "~fake_breakout_exit",
+      "why": "擋假突破當日"
+    }
+  ],
+  "rule_zh": "v3 若未抬 B → 本包進 champion_v4 extras；仍 blocked；不准改 leave_zero"
+}
