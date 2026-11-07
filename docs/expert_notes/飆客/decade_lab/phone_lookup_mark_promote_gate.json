@@ -2,7 +2,7 @@
   "phone_sync": "blocked",
   "promote_to_lookup_display": false,
   "NOT_BUY_SIGNAL": true,
-  "as_of_taipei": "2026-11-07T23:53:42.300442+08:00",
+  "as_of_taipei": "2026-11-08T00:03:52.136568+08:00",
   "deliverable_zh": "查股五張圖：極高勝率買進起漲＋相對高點賣出相對位置",
   "candidate_buy_rule": {
     "key": "core_w3_or_ma60w3__BAL_Vnear2_or_S55__hi20_or_desync",
@@ -76,7 +76,7 @@
       "balanced_score": 0.7586206896551724
     }
   },
-  "gate_status": "collecting_extreme_thicken_after_v4_no_B_lift",
+  "gate_status": "collecting_thicken2_after_thicken1_ge80_lift",
   "evidence": {
     "win_rate": 0.76,
     "independent_days": 50,
@@ -243,6 +243,22 @@
           "days_ge50": false
         }
       ]
+    },
+    "extreme_win": {
+      "source": "phone_lookup_extreme_win_decision.json",
+      "gate": "lookup_extreme winners_ge80=0; best≈79%@29; promote_lookup=NO",
+      "promote": false
+    },
+    "extreme_thicken": {
+      "source": "phone_lookup_extreme_thicken_decision.json",
+      "gate": "extreme_thicken ge80=14 ge80_d30=3; best_win=E_bal__M_feat_ok__S_t60_or_time__SELL_hi20_or_wave_top win=0.85 days=20; best_ge80_d30=E_bal__M0__S_turn_barek__SELL_hi20_or_wave_top; promote_lookup=NO",
+      "ge80_n": 14,
+      "ge80_d30_n": 3,
+      "best_win": "E_bal__M_feat_ok__S_t60_or_time__SELL_hi20_or_wave_top",
+      "best_ge80_days": "E_w3__M0__S_turn_barek_n3__SELL_hi20_or_wave_top",
+      "best_ge80_days_win": 0.8,
+      "best_ge80_days_n": 49,
+      "promote": false
     }
   },
   "blockers": [
@@ -253,14 +269,15 @@
     "TWII Elliott 狀態機本期幾乎無 W3（n_w3_start=0）；大盤浪段閘不夠當顯示條件",
     "hsiao_promote_lookup：leave_zero／ma60_lower 長窗 h5≈五成 → 不准改現況藍▲／確認紅箭顯示",
     "不准改 leave_zero／ma60_lower 公式；不准發明話筒浪號 5／9；LAB 記號僅候選",
-    "所有 sealed 決策皆 promote_lookup=NO／promote_to_lookup_display=false"
+    "所有 sealed 決策皆 promote_lookup=NO／promote_to_lookup_display=false",
+    "thicken1 已抬 ge80=14／最厚 80%@49d（差一日到 50）；仍 blocked，進 thicken2"
   ],
   "next_experiments": [
-    "lookup_extreme_thicken：把 v4≥80% 肢近窗／軟OR加厚到日≥30",
-    "lookup_extreme_win 封口後合併極高勝率池",
-    "過閘前主戰場＝大量撐壓買賣相對位置"
+    "thicken2：近窗4/6/7/8＋E_w3u＋冠軍軟OR，衝 ge80×days≥50（thicken1 最厚 80%@49d）",
+    "spirit_split_mix 封口後把有用肢併入下一輪加厚／混測",
+    "未過閘不准輕言放棄；phone_sync 維持 blocked"
   ],
-  "gate_one_liner": "draft promote-gate: buy=bal Vnear2∨S55 @76%/50d; sell=relhigh sealed w3_or_ma60__SELL_hi20_or_desync; phone_sync=blocked; promote_to_lookup_display=false; gate_status=collecting_v3_and_feat",
+  "gate_one_liner": "draft promote-gate: thicken1 ge80=14 ge80_d30=3 best_thick=E_w3__M0__S_turn_barek_n3 @80%/49d; thicken2 collecting; phone_sync=blocked; promote_to_lookup_display=false",
   "user_goal_zh": "查某一檔時，在現有五張圖內強化買賣相對位置，且勝率極高",
   "metric_priority_zh": [
     "勝率極高",
