@@ -1,0 +1,47 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "NOT_BUY_SIGNAL": true,
+  "user_goal_zh": "查某一檔股票時，在現有五張圖內強化買進／賣出相對位置，且勝率極高",
+  "metric_priority_zh": [
+    "勝率極高（主）",
+    "獨立交易日 n≥20",
+    "贏隨機＋leave_zero／現況",
+    "標記提前期（愈早碰上相對高點賣窗愈好，但不能犧牲極高勝率）"
+  ],
+  "charts": [
+    {
+      "kind": "card",
+      "name_zh": "高低溫度卡",
+      "buy": "LAB_BUY_W3_START 文案／小標（不改溫度格公式）",
+      "sell": "REL_HIGH_SELL／如何賣協助句"
+    },
+    {
+      "kind": "glance",
+      "name_zh": "介紹圖",
+      "buy": "起漲買點短句",
+      "sell": "相對高點＝20高協助"
+    },
+    {
+      "kind": "struct",
+      "name_zh": "結構圖",
+      "buy": "起漲箭（過閘後）",
+      "sell": "相對高點／浪頂賣箭（過閘後）"
+    },
+    {
+      "kind": "vol",
+      "name_zh": "大量撐壓",
+      "buy": "主戰場買▲相對低位／起漲",
+      "sell": "主戰場賣▼相對高位"
+    },
+    {
+      "kind": "intraday",
+      "name_zh": "當天走勢",
+      "buy": "僅當日相關才標",
+      "sell": "僅當日相關才標"
+    }
+  ],
+  "primary_paint_path": "wayne_navigator._paint_nav_on_axes / overlay_nav_marks_on_zone（大量撐壓）",
+  "hooks_ready": true,
+  "display_rule_zh": "預設旗標關；過閘 JSON promote_to_lookup_display=true 且 phone_sync≠blocked 才畫"
+}

@@ -2,13 +2,13 @@
   "phone_sync": "blocked",
   "promote_to_lookup_display": false,
   "NOT_BUY_SIGNAL": true,
-  "as_of_taipei": "2026-11-07T23:31:54.308246+08:00",
+  "as_of_taipei": "2026-11-07T23:48:48.649630+08:00",
   "deliverable_zh": "查股五張圖：買標更準／更早（LAB_BUY_W3_START）＋賣標相對高點（REL_HIGH_SELL）；過閘才畫",
   "metric_priority_zh": [
-    "標記提前期（bars_before_hi20，愈早愈好但須 wins）",
-    "勝率",
-    "獨立交易日 n≥20",
-    "balanced_score=win×min(1,days/50)"
+    "勝率極高",
+    "獨立日 n≥20",
+    "贏隨機＋leave_zero／現況",
+    "提前期（次）"
   ],
   "candidate_buy_mark": {
     "glyph": "LAB_BUY_W3_START",
@@ -150,5 +150,28 @@
     "提早量×勝率聯合排序（早且 wins）再比 leave_zero",
     "賣標：hi20_or_wave_top vs hi20_or_desync 在五張圖視覺可分性（仍 blocked）"
   ],
-  "gate_one_liner": "lookup-mark candidate: buy=bal Vnear∨S55 @76%/50d; sell=relhigh relhigh_sell winners=4/9; best=w3__SELL_hi20_or_desync win=0.7586206896551724 days=57; promote_lookup=NO; phone_sync=blocked; promote=NO"
+  "gate_one_liner": "lookup-mark GOAL=五張圖買賣相對位置＋極高勝率; buy_pool≈87%@22 / 95%@20（加厚中）; bal_backup=76%@50; sell=relhigh hi20; paint stubs ready; phone_sync=blocked; promote=NO",
+  "user_goal_zh": "查某一檔時，在現有五張圖內強化買賣相對位置，且勝率極高",
+  "primary_chart_zh": "大量撐壓（日K買賣相對位置主戰場）；結構圖補箭；高低卡／介紹圖文案",
+  "placement_doc": "phone_lookup_mark_placement.json",
+  "extreme_winrate_pool": [
+    {
+      "key": "core_w3_start__V__hi20_or_desync",
+      "win_rate": 0.8696,
+      "days": 22,
+      "role": "buy_thin_extreme"
+    },
+    {
+      "key": "E_w3_start__mkt_ok_pull_or_impulse__F_hsiao_S55__hi20_or_desync",
+      "win_rate": 0.95,
+      "days": 20,
+      "role": "buy_thin_ceiling"
+    },
+    {
+      "key": "w3__SELL_hi20_or_desync",
+      "win_rate": 0.7586,
+      "days": 57,
+      "role": "sell_relhigh"
+    }
+  ]
 }

@@ -1,6 +1,6 @@
 # 查股五張圖目標（使用者鎖死方向）
 
-使用者買的是**個股**。最終要對他有幫助的是查股五張圖：
+使用者買的是**個股**。查某一檔時，在**現有五張圖內**強化買賣相對位置，且標記要**勝率極高**（過閘才畫上話筒）。
 
 1. 高低溫度卡  
 2. 介紹圖  
@@ -9,47 +9,35 @@
 5. 當天走勢  
 
 ## 要加強什麼
-- **買進標記**：波浪各波段起漲（主 W3／均衡核）；愈早、愈準愈好  
+- **買進標記**：波浪各波段起漲（主 W3／均衡核）；愈準、勝率愈高愈好（過閘後可比現況藍▲更早／更準）  
 - **賣出標記**：相對高點（首碰 20 高／浪頂；使用者：相對高點就賣）  
-- **資訊**：蕭量價、裸K建設／挡、大盤特徵位階（輔助，不是取代高低卡）  
-- **準度**：過閘（n≥20、贏隨機＋leave_zero／現況）才准改話筒顯示  
+- **準度閘**：獨立日 n≥20、贏隨機＋leave_zero／現況；**優先極高勝率**（再求加厚日數）  
+- 不准改 `leave_zero` 公式；浪號 5／9 不上話筒  
 
-## 現況標記（先保留）
+## 哪張圖畫什麼（過閘後）
+
+| # | 圖 | 買進相對位置 | 賣出相對位置 |
+| --- | --- | --- | --- |
+| 1 | 高低溫度卡 | 文案／glyph：起漲買點說明（不改溫度公式） | 如何賣／相對高點協助句 |
+| 2 | 介紹圖 | 同上（短句） | 20高／相對高點賣協助 |
+| 3 | 結構圖 | W3 起漲箭（LAB；與現況藍▲可並存或過閘替換視覺） | 相對高點／浪頂賣箭 |
+| 4 | 大量撐壓 | **主戰場**：日 K 上買▲／賣▼ 相對高低位置（nav／vol 疊層） | 同左 |
+| 5 | 當天走勢 | 僅當日有關才標（多數日 K 訊號不硬畫） | 同左 |
+
+掛鉤：`phone_lookup_mark_hook_map.md`（stub 已掛；`LOOKUP_LAB_MARKS_ENABLED=False`）。
+
+## 現況標記（先保留，未過閘不拆）
 - 買：leave_zero 藍▲；已確認 ma60 紅箭  
 - 賣：如何賣／20 高（介紹圖／高低卡）  
 
-## 實驗室 → 話筒掛鉤（未過閘不准合）
-| 候選記號 | 來源軌 | 狀態 |
+## 實驗室候選（對準極高勝率）
+
+| 候選 | 已封口量級 | 查股用途 |
 | --- | --- | --- |
-| W3 起漲買點 | wave／balanced／champion | 實驗室；厚樣本均衡約 76%@50 日 |
-| 近窗量∨S55 濾後買 | balanced | 實驗室均衡冠軍 |
-| 相對高點賣（hi20∨浪頂） | relhigh_sell | 對質中 |
-| 裸K 非避開 | market_sync | 實驗室抬勝率輔助 |
-| 大盤 feat 閘 | TWII 特徵位階 | 輔助同步 |
+| W3×V／VT | ~87%@22–25 | 極高勝率薄樣；累日中 |
+| W3×S55×大盤 | ~95%@20 | 極高但極薄；輔助 |
+| 均衡 Vnear∨S55 | ~76%@50 | 厚樣備援，非「極高」主推 |
+| relhigh 賣 hi20 | ~75–76%@57–94 | 相對高點賣位置 |
+| champion_v3 薄肢 | barek／macd 抬勝率但日&lt;40 | 加厚中（v4） |
 
-`phone_sync=blocked` 直到單項過閘；過閘後才改 `wayne_navigator`／`vol_zone_chart`／介紹圖畫記，不准改 leave_zero 公式本身。
-EOF
-cp /workspace/docs/expert_notes/飆客/decade_lab/phone_lookup_five_chart_target.md /opt/cursor/artifacts/
-python3 - <<'PY'
-import json
-from pathlib import Path
-p=Path('/opt/cursor/artifacts/phone_autonomous_loop_state.json')
-d=json.loads(p.read_text()) if p.exists() else {}
-d['user_deliverable_zh']='查股五張圖：更準／更早的買進與相對高點賣出標記'
-d['goal_zh']='起漲買＋相對高點賣 → 過閘後畫上查股五張圖；厚樣本高勝率'
-d['rule_zh']='不准輕易說沒辦法；每輪檢討加因子再測；目標對準查股標記準度'
-p.write_text(json.dumps(d,ensure_ascii=False,indent=2),encoding='utf-8')
-print('updated')
-PY
-cd /workspace && git add docs/expert_notes/飆客/decade_lab/phone_lookup_five_chart_target.md
-git commit -m "$(cat <<'EOF'
-lab: lock deliverable = lookup five-chart buy/sell marks
-
-User buys stocks; optimize for earlier/more accurate wave-start buy
-and relative-high sell glyphs on the five lookup charts after gate.
-EOF
-)"
-git push -u origin cursor/hsiao-wave-lab-d6f7
-git status -sb
-# peek PR body head - don't overwrite human edits heavily; timer will update later
-gh pr view 837 --json title --jq .title
+`phone_sync=blocked` 直到單項過閘；過閘後才開旗標畫上五張圖。

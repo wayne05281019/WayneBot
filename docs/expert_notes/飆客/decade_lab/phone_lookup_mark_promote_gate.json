@@ -2,8 +2,8 @@
   "phone_sync": "blocked",
   "promote_to_lookup_display": false,
   "NOT_BUY_SIGNAL": true,
-  "as_of_taipei": "2026-11-07T23:44:16.124307+08:00",
-  "deliverable_zh": "查股五張圖：LAB_BUY_W3_START（起漲買）＋REL_HIGH_SELL（相對高點賣）；過閘才畫",
+  "as_of_taipei": "2026-11-07T23:48:48.649630+08:00",
+  "deliverable_zh": "查股五張圖：極高勝率買進起漲＋相對高點賣出相對位置",
   "candidate_buy_rule": {
     "key": "core_w3_or_ma60w3__BAL_Vnear2_or_S55__hi20_or_desync",
     "zh": "W3起漲∪確認紅箭×W3 ×（近窗量Vnear2∨引擎分S55）；出場腿見 sell",
@@ -173,5 +173,12 @@
     "累積 W3×S55×feat 獨立日至遠超 20 再比均衡 B",
     "earliness 已封：W3 start 較早碰上 20高，顯示仍 blocked"
   ],
-  "gate_one_liner": "draft promote-gate: buy=bal Vnear2∨S55 @76%/50d; sell=relhigh sealed w3_or_ma60__SELL_hi20_or_desync; phone_sync=blocked; promote_to_lookup_display=false; gate_status=collecting_v3_and_feat"
+  "gate_one_liner": "draft promote-gate: buy=bal Vnear2∨S55 @76%/50d; sell=relhigh sealed w3_or_ma60__SELL_hi20_or_desync; phone_sync=blocked; promote_to_lookup_display=false; gate_status=collecting_v3_and_feat",
+  "user_goal_zh": "查某一檔時，在現有五張圖內強化買賣相對位置，且勝率極高",
+  "metric_priority_zh": [
+    "勝率極高",
+    "獨立日 n≥20",
+    "贏隨機＋leave_zero／現況",
+    "提前期（次）"
+  ]
 }
