@@ -1,0 +1,1347 @@
+{
+  "phone_sync": "blocked",
+  "not_buy_signal": true,
+  "doctrine_zh": "核心＝波浪理論×蕭大師邏輯；其餘只准疊加抬勝率，浪號不上話筒。",
+  "track": "hsiao",
+  "elapsed_s": 292.9,
+  "n_stocks": 100,
+  "keep_exit": "hi20_or_desync",
+  "factor_names": [
+    "D0",
+    "hsiao_V",
+    "hsiao_Vmild",
+    "hsiao_P",
+    "hsiao_T",
+    "hsiao_A",
+    "hsiao_Amid",
+    "hsiao_clean",
+    "hsiao_not_hot",
+    "hsiao_week",
+    "hsiao_kd",
+    "hsiao_macd",
+    "hsiao_macd_turn",
+    "hsiao_S55",
+    "hsiao_S70",
+    "hsiao_compress",
+    "hsiao_troughV",
+    "hsiao_gap",
+    "hsiao_VPT",
+    "hsiao_VPA",
+    "hsiao_4dpack"
+  ],
+  "leave_zero_baseline": {
+    "n_trades": 4115,
+    "n_unique_entry_days": 1965,
+    "n_sids": 100,
+    "win_rate": 0.650546780072904,
+    "wilson_ci95": [
+      0.6358443170930672,
+      0.6649684162735181
+    ],
+    "avg_net": 0.007754576262837266,
+    "median_net": 0.025668000674052286,
+    "expectancy": 0.007754576262837266,
+    "avg_hold": 24.688942891859053,
+    "avg_mfe": 0.06276525624068072,
+    "avg_mae": -0.09858200630105224,
+    "exit_reason_counts": {
+      "first_hi20": 3774,
+      "max_hold_60": 341
+    }
+  },
+  "core_baselines_D0": [
+    {
+      "key": "core_w3_start__D0__hi20_or_desync",
+      "n_trades": 58,
+      "n_unique_entry_days": 57,
+      "win_rate": 0.7586206896551724,
+      "expectancy": -0.003529762536926254,
+      "avg_hold": 19.67241379310345,
+      "exit_reason_counts": {
+        "first_hi20": 53,
+        "max_hold_60": 5
+      },
+      "random_win_rate": 0.6545454545454545,
+      "random_expectancy": -0.011948486812895813,
+      "beats_random": true,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7586206896551724,
+      "win_minus_core": 0.0
+    },
+    {
+      "key": "core_w3_or_ma60w3__D0__hi20_or_desync",
+      "n_trades": 96,
+      "n_unique_entry_days": 94,
+      "win_rate": 0.75,
+      "expectancy": 0.004148640187770915,
+      "avg_hold": 19.96875,
+      "exit_reason_counts": {
+        "first_hi20": 87,
+        "max_hold_60": 9
+      },
+      "random_win_rate": 0.7049180327868853,
+      "random_expectancy": 0.008432334615285262,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.75,
+      "win_minus_core": 0.0
+    }
+  ],
+  "ranking": [
+    {
+      "key": "core_w3_or_ma60w3__hsiao_V__hi20_or_desync",
+      "n_trades": 21,
+      "n_unique_entry_days": 21,
+      "win_rate": 0.8095238095238095,
+      "expectancy": 0.053520654648962024,
+      "avg_hold": 15.380952380952381,
+      "exit_reason_counts": {
+        "first_hi20": 21
+      },
+      "random_win_rate": 0.6666666666666666,
+      "random_expectancy": 0.04450608863951726,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.75,
+      "win_minus_core": 0.059523809523809534
+    },
+    {
+      "key": "core_w3_or_ma60w3__hsiao_macd__hi20_or_desync",
+      "n_trades": 82,
+      "n_unique_entry_days": 80,
+      "win_rate": 0.7804878048780488,
+      "expectancy": 0.008412718181411578,
+      "avg_hold": 18.902439024390244,
+      "exit_reason_counts": {
+        "first_hi20": 76,
+        "max_hold_60": 6
+      },
+      "random_win_rate": 0.7017543859649122,
+      "random_expectancy": 0.007588620488189445,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.75,
+      "win_minus_core": 0.030487804878048808
+    },
+    {
+      "key": "core_w3_or_ma60w3__hsiao_Vmild__hi20_or_desync",
+      "n_trades": 31,
+      "n_unique_entry_days": 30,
+      "win_rate": 0.7741935483870968,
+      "expectancy": 0.02407387699478314,
+      "avg_hold": 19.64516129032258,
+      "exit_reason_counts": {
+        "first_hi20": 29,
+        "max_hold_60": 2
+      },
+      "random_win_rate": 0.7368421052631579,
+      "random_expectancy": 0.0005080453472346341,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.75,
+      "win_minus_core": 0.024193548387096753
+    },
+    {
+      "key": "core_w3_start__hsiao_P__hi20_or_desync",
+      "n_trades": 53,
+      "n_unique_entry_days": 52,
+      "win_rate": 0.7735849056603774,
+      "expectancy": -0.007524242753272616,
+      "avg_hold": 20.169811320754718,
+      "exit_reason_counts": {
+        "first_hi20": 48,
+        "max_hold_60": 5
+      },
+      "random_win_rate": 0.5454545454545454,
+      "random_expectancy": -0.012190590246510959,
+      "beats_random": true,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.7586206896551724,
+      "win_minus_core": 0.014964216005205033
+    },
+    {
+      "key": "core_w3_or_ma60w3__hsiao_P__hi20_or_desync",
+      "n_trades": 56,
+      "n_unique_entry_days": 55,
+      "win_rate": 0.7678571428571429,
+      "expectancy": -0.00924833211890643,
+      "avg_hold": 20.642857142857142,
+      "exit_reason_counts": {
+        "first_hi20": 51,
+        "max_hold_60": 5
+      },
+      "random_win_rate": 0.6744186046511628,
+      "random_expectancy": -0.010135627211420192,
+      "beats_random": true,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.75,
+      "win_minus_core": 0.017857142857142905
+    },
+    {
+      "key": "core_w3_start__D0__hi20_or_desync",
+      "n_trades": 58,
+      "n_unique_entry_days": 57,
+      "win_rate": 0.7586206896551724,
+      "expectancy": -0.003529762536926254,
+      "avg_hold": 19.67241379310345,
+      "exit_reason_counts": {
+        "first_hi20": 53,
+        "max_hold_60": 5
+      },
+      "random_win_rate": 0.6545454545454545,
+      "random_expectancy": -0.011948486812895813,
+      "beats_random": true,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7586206896551724,
+      "win_minus_core": 0.0
+    },
+    {
+      "key": "core_w3_or_ma60w3__hsiao_clean__hi20_or_desync",
+      "n_trades": 94,
+      "n_unique_entry_days": 92,
+      "win_rate": 0.7446808510638298,
+      "expectancy": 0.0027285933424964146,
+      "avg_hold": 20.22340425531915,
+      "exit_reason_counts": {
+        "first_hi20": 85,
+        "max_hold_60": 9
+      },
+      "random_win_rate": 0.7213114754098361,
+      "random_expectancy": -0.00015885078273739404,
+      "beats_random": true,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.75,
+      "win_minus_core": -0.005319148936170248
+    },
+    {
+      "key": "core_w3_start__hsiao_week__hi20_or_desync",
+      "n_trades": 57,
+      "n_unique_entry_days": 56,
+      "win_rate": 0.7719298245614035,
+      "expectancy": 0.0028989772241340334,
+      "avg_hold": 19.07017543859649,
+      "exit_reason_counts": {
+        "first_hi20": 52,
+        "max_hold_60": 5
+      },
+      "random_win_rate": 0.7454545454545455,
+      "random_expectancy": 0.010070029342333758,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.7586206896551724,
+      "win_minus_core": 0.01330913490623109
+    },
+    {
+      "key": "core_w3_or_ma60w3__hsiao_week__hi20_or_desync",
+      "n_trades": 84,
+      "n_unique_entry_days": 82,
+      "win_rate": 0.7619047619047619,
+      "expectancy": 0.005541172889599985,
+      "avg_hold": 19.738095238095237,
+      "exit_reason_counts": {
+        "first_hi20": 75,
+        "max_hold_60": 9
+      },
+      "random_win_rate": 0.7636363636363637,
+      "random_expectancy": 0.030836110636994322,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.75,
+      "win_minus_core": 0.011904761904761862
+    },
+    {
+      "key": "core_w3_or_ma60w3__hsiao_T__hi20_or_desync",
+      "n_trades": 58,
+      "n_unique_entry_days": 57,
+      "win_rate": 0.7586206896551724,
+      "expectancy": -0.003529762536926254,
+      "avg_hold": 19.67241379310345,
+      "exit_reason_counts": {
+        "first_hi20": 53,
+        "max_hold_60": 5
+      },
+      "random_win_rate": 0.7333333333333333,
+      "random_expectancy": 0.025696786387774426,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.75,
+      "win_minus_core": 0.008620689655172376
+    },
+    {
+      "key": "core_w3_start__hsiao_S70__hi20_or_desync",
+      "n_trades": 3,
+      "n_unique_entry_days": 3,
+      "win_rate": 1.0,
+      "expectancy": 0.0634322784488321,
+      "avg_hold": 9.333333333333334,
+      "exit_reason_counts": {
+        "first_hi20": 3
+      },
+      "random_win_rate": 0.5,
+      "random_expectancy": -0.06808621961500533,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7586206896551724,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_start__hsiao_gap__hi20_or_desync",
+      "n_trades": 0,
+      "n_unique_entry_days": 0,
+      "win_rate": NaN,
+      "expectancy": NaN,
+      "avg_hold": NaN,
+      "exit_reason_counts": {},
+      "random_win_rate": NaN,
+      "random_expectancy": NaN,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7586206896551724,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_start__hsiao_VPA__hi20_or_desync",
+      "n_trades": 3,
+      "n_unique_entry_days": 3,
+      "win_rate": 1.0,
+      "expectancy": 0.0634322784488321,
+      "avg_hold": 9.333333333333334,
+      "exit_reason_counts": {
+        "first_hi20": 3
+      },
+      "random_win_rate": 0.5,
+      "random_expectancy": 0.009023785527111472,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7586206896551724,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_or_ma60w3__hsiao_S70__hi20_or_desync",
+      "n_trades": 3,
+      "n_unique_entry_days": 3,
+      "win_rate": 1.0,
+      "expectancy": 0.0634322784488321,
+      "avg_hold": 9.333333333333334,
+      "exit_reason_counts": {
+        "first_hi20": 3
+      },
+      "random_win_rate": 0.5,
+      "random_expectancy": 0.024346527880860724,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.75,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_start__hsiao_VPT__hi20_or_desync",
+      "n_trades": 13,
+      "n_unique_entry_days": 13,
+      "win_rate": 0.9230769230769231,
+      "expectancy": 0.07170157649300289,
+      "avg_hold": 13.0,
+      "exit_reason_counts": {
+        "first_hi20": 13
+      },
+      "random_win_rate": 0.5454545454545454,
+      "random_expectancy": -0.003243509170572791,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7586206896551724,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_start__hsiao_V__hi20_or_desync",
+      "n_trades": 18,
+      "n_unique_entry_days": 18,
+      "win_rate": 0.8333333333333334,
+      "expectancy": 0.06256550739948685,
+      "avg_hold": 13.38888888888889,
+      "exit_reason_counts": {
+        "first_hi20": 18
+      },
+      "random_win_rate": 0.8666666666666667,
+      "random_expectancy": 0.061048100814210526,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7586206896551724,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_or_ma60w3__hsiao_gap__hi20_or_desync",
+      "n_trades": 0,
+      "n_unique_entry_days": 0,
+      "win_rate": NaN,
+      "expectancy": NaN,
+      "avg_hold": NaN,
+      "exit_reason_counts": {},
+      "random_win_rate": NaN,
+      "random_expectancy": NaN,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.75,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_or_ma60w3__hsiao_VPA__hi20_or_desync",
+      "n_trades": 3,
+      "n_unique_entry_days": 3,
+      "win_rate": 1.0,
+      "expectancy": 0.0634322784488321,
+      "avg_hold": 9.333333333333334,
+      "exit_reason_counts": {
+        "first_hi20": 3
+      },
+      "random_win_rate": 1.0,
+      "random_expectancy": 0.06459049773755654,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.75,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_or_ma60w3__hsiao_VPT__hi20_or_desync",
+      "n_trades": 13,
+      "n_unique_entry_days": 13,
+      "win_rate": 0.9230769230769231,
+      "expectancy": 0.07170157649300289,
+      "avg_hold": 13.0,
+      "exit_reason_counts": {
+        "first_hi20": 13
+      },
+      "random_win_rate": 0.9090909090909091,
+      "random_expectancy": 0.05063608922889899,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.75,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_start__hsiao_troughV__hi20_or_desync",
+      "n_trades": 12,
+      "n_unique_entry_days": 12,
+      "win_rate": 0.8333333333333334,
+      "expectancy": 0.04895832829045479,
+      "avg_hold": 11.25,
+      "exit_reason_counts": {
+        "first_hi20": 12
+      },
+      "random_win_rate": 0.6,
+      "random_expectancy": 0.015030372162648709,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7586206896551724,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_start__hsiao_A__hi20_or_desync",
+      "n_trades": 6,
+      "n_unique_entry_days": 6,
+      "win_rate": 0.8333333333333334,
+      "expectancy": 0.030118304045693378,
+      "avg_hold": 14.666666666666666,
+      "exit_reason_counts": {
+        "first_hi20": 6
+      },
+      "random_win_rate": 0.75,
+      "random_expectancy": 0.042335038118579055,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7586206896551724,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_or_ma60w3__hsiao_A__hi20_or_desync",
+      "n_trades": 6,
+      "n_unique_entry_days": 6,
+      "win_rate": 0.8333333333333334,
+      "expectancy": 0.030118304045693378,
+      "avg_hold": 14.666666666666666,
+      "exit_reason_counts": {
+        "first_hi20": 6
+      },
+      "random_win_rate": 0.75,
+      "random_expectancy": 0.04374383950152416,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.75,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_start__hsiao_compress__hi20_or_desync",
+      "n_trades": 6,
+      "n_unique_entry_days": 6,
+      "win_rate": 0.8333333333333334,
+      "expectancy": 0.027793032205257178,
+      "avg_hold": 17.666666666666668,
+      "exit_reason_counts": {
+        "first_hi20": 6
+      },
+      "random_win_rate": 1.0,
+      "random_expectancy": 0.016579349841464922,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7586206896551724,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_or_ma60w3__hsiao_compress__hi20_or_desync",
+      "n_trades": 6,
+      "n_unique_entry_days": 6,
+      "win_rate": 0.8333333333333334,
+      "expectancy": 0.027793032205257178,
+      "avg_hold": 17.666666666666668,
+      "exit_reason_counts": {
+        "first_hi20": 6
+      },
+      "random_win_rate": 1.0,
+      "random_expectancy": 0.09549819076590282,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.75,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_start__hsiao_Vmild__hi20_or_desync",
+      "n_trades": 17,
+      "n_unique_entry_days": 17,
+      "win_rate": 0.8235294117647058,
+      "expectancy": 0.06067377664990639,
+      "avg_hold": 13.941176470588236,
+      "exit_reason_counts": {
+        "first_hi20": 17
+      },
+      "random_win_rate": 0.875,
+      "random_expectancy": 0.032113219646599966,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7586206896551724,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_start__hsiao_S55__hi20_or_desync",
+      "n_trades": 10,
+      "n_unique_entry_days": 10,
+      "win_rate": 0.8,
+      "expectancy": 0.06247456161133742,
+      "avg_hold": 15.2,
+      "exit_reason_counts": {
+        "first_hi20": 10
+      },
+      "random_win_rate": 0.6,
+      "random_expectancy": -0.008370174524998775,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7586206896551724,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_or_ma60w3__hsiao_S55__hi20_or_desync",
+      "n_trades": 10,
+      "n_unique_entry_days": 10,
+      "win_rate": 0.8,
+      "expectancy": 0.06247456161133742,
+      "avg_hold": 15.2,
+      "exit_reason_counts": {
+        "first_hi20": 10
+      },
+      "random_win_rate": 0.4,
+      "random_expectancy": -0.06700224940961368,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.75,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_or_ma60w3__hsiao_troughV__hi20_or_desync",
+      "n_trades": 15,
+      "n_unique_entry_days": 15,
+      "win_rate": 0.8,
+      "expectancy": 0.039016970261526424,
+      "avg_hold": 14.466666666666667,
+      "exit_reason_counts": {
+        "first_hi20": 15
+      },
+      "random_win_rate": 0.8,
+      "random_expectancy": 0.05301274668595242,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.75,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_start__hsiao_T__hi20_or_desync",
+      "n_trades": 58,
+      "n_unique_entry_days": 57,
+      "win_rate": 0.7586206896551724,
+      "expectancy": -0.003529762536926254,
+      "avg_hold": 19.67241379310345,
+      "exit_reason_counts": {
+        "first_hi20": 53,
+        "max_hold_60": 5
+      },
+      "random_win_rate": 0.7045454545454546,
+      "random_expectancy": 0.01631542778353381,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7586206896551724,
+      "win_minus_core": 0.0
+    },
+    {
+      "key": "core_w3_start__hsiao_not_hot__hi20_or_desync",
+      "n_trades": 58,
+      "n_unique_entry_days": 57,
+      "win_rate": 0.7586206896551724,
+      "expectancy": -0.003529762536926254,
+      "avg_hold": 19.67241379310345,
+      "exit_reason_counts": {
+        "first_hi20": 53,
+        "max_hold_60": 5
+      },
+      "random_win_rate": 0.7678571428571429,
+      "random_expectancy": 0.016854473826768825,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7586206896551724,
+      "win_minus_core": 0.0
+    },
+    {
+      "key": "core_w3_start__hsiao_macd__hi20_or_desync",
+      "n_trades": 58,
+      "n_unique_entry_days": 57,
+      "win_rate": 0.7586206896551724,
+      "expectancy": -0.003529762536926254,
+      "avg_hold": 19.67241379310345,
+      "exit_reason_counts": {
+        "first_hi20": 53,
+        "max_hold_60": 5
+      },
+      "random_win_rate": 0.8181818181818182,
+      "random_expectancy": 0.014281755322867427,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7586206896551724,
+      "win_minus_core": 0.0
+    },
+    {
+      "key": "core_w3_start__hsiao_4dpack__hi20_or_desync",
+      "n_trades": 8,
+      "n_unique_entry_days": 8,
+      "win_rate": 0.75,
+      "expectancy": 0.06037049153525367,
+      "avg_hold": 17.0,
+      "exit_reason_counts": {
+        "first_hi20": 8
+      },
+      "random_win_rate": 1.0,
+      "random_expectancy": 0.07421613544157168,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7586206896551724,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_or_ma60w3__hsiao_4dpack__hi20_or_desync",
+      "n_trades": 8,
+      "n_unique_entry_days": 8,
+      "win_rate": 0.75,
+      "expectancy": 0.06037049153525367,
+      "avg_hold": 17.0,
+      "exit_reason_counts": {
+        "first_hi20": 8
+      },
+      "random_win_rate": 0.5,
+      "random_expectancy": 0.014578962784665446,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.75,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_or_ma60w3__D0__hi20_or_desync",
+      "n_trades": 96,
+      "n_unique_entry_days": 94,
+      "win_rate": 0.75,
+      "expectancy": 0.004148640187770915,
+      "avg_hold": 19.96875,
+      "exit_reason_counts": {
+        "first_hi20": 87,
+        "max_hold_60": 9
+      },
+      "random_win_rate": 0.7049180327868853,
+      "random_expectancy": 0.008432334615285262,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.75,
+      "win_minus_core": 0.0
+    },
+    {
+      "key": "core_w3_or_ma60w3__hsiao_not_hot__hi20_or_desync",
+      "n_trades": 96,
+      "n_unique_entry_days": 94,
+      "win_rate": 0.75,
+      "expectancy": 0.004148640187770915,
+      "avg_hold": 19.96875,
+      "exit_reason_counts": {
+        "first_hi20": 87,
+        "max_hold_60": 9
+      },
+      "random_win_rate": 0.7096774193548387,
+      "random_expectancy": 0.010581034347046723,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.75,
+      "win_minus_core": 0.0
+    },
+    {
+      "key": "core_w3_start__hsiao_kd__hi20_or_desync",
+      "n_trades": 44,
+      "n_unique_entry_days": 43,
+      "win_rate": 0.75,
+      "expectancy": 0.00287177574738629,
+      "avg_hold": 20.0,
+      "exit_reason_counts": {
+        "first_hi20": 41,
+        "max_hold_60": 3
+      },
+      "random_win_rate": 0.7105263157894737,
+      "random_expectancy": 0.010969892383708374,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7586206896551724,
+      "win_minus_core": -0.008620689655172376
+    },
+    {
+      "key": "core_w3_start__hsiao_clean__hi20_or_desync",
+      "n_trades": 56,
+      "n_unique_entry_days": 55,
+      "win_rate": 0.75,
+      "expectancy": -0.006187641267376206,
+      "avg_hold": 20.089285714285715,
+      "exit_reason_counts": {
+        "first_hi20": 51,
+        "max_hold_60": 5
+      },
+      "random_win_rate": 0.6481481481481481,
+      "random_expectancy": 0.017376245844565066,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7586206896551724,
+      "win_minus_core": -0.008620689655172376
+    },
+    {
+      "key": "core_w3_or_ma60w3__hsiao_macd_turn__hi20_or_desync",
+      "n_trades": 23,
+      "n_unique_entry_days": 23,
+      "win_rate": 0.7391304347826086,
+      "expectancy": 0.0019009083756390303,
+      "avg_hold": 17.869565217391305,
+      "exit_reason_counts": {
+        "first_hi20": 21,
+        "max_hold_60": 2
+      },
+      "random_win_rate": 0.7,
+      "random_expectancy": 0.032451990896184016,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.75,
+      "win_minus_core": -0.010869565217391353
+    },
+    {
+      "key": "core_w3_or_ma60w3__hsiao_kd__hi20_or_desync",
+      "n_trades": 53,
+      "n_unique_entry_days": 52,
+      "win_rate": 0.7358490566037735,
+      "expectancy": 0.002406855788316361,
+      "avg_hold": 20.245283018867923,
+      "exit_reason_counts": {
+        "first_hi20": 50,
+        "max_hold_60": 3
+      },
+      "random_win_rate": 0.7567567567567568,
+      "random_expectancy": 0.014277388133487917,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.75,
+      "win_minus_core": -0.014150943396226467
+    },
+    {
+      "key": "core_w3_start__hsiao_Amid__hi20_or_desync",
+      "n_trades": 11,
+      "n_unique_entry_days": 11,
+      "win_rate": 0.7272727272727273,
+      "expectancy": 0.025578809440484185,
+      "avg_hold": 14.454545454545455,
+      "exit_reason_counts": {
+        "first_hi20": 11
+      },
+      "random_win_rate": 0.75,
+      "random_expectancy": -0.0057907344627323165,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7586206896551724,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_or_ma60w3__hsiao_Amid__hi20_or_desync",
+      "n_trades": 11,
+      "n_unique_entry_days": 11,
+      "win_rate": 0.7272727272727273,
+      "expectancy": 0.025578809440484185,
+      "avg_hold": 14.454545454545455,
+      "exit_reason_counts": {
+        "first_hi20": 11
+      },
+      "random_win_rate": 0.875,
+      "random_expectancy": 0.027652184698041662,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.75,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_start__hsiao_macd_turn__hi20_or_desync",
+      "n_trades": 18,
+      "n_unique_entry_days": 18,
+      "win_rate": 0.7222222222222222,
+      "expectancy": 0.0070950490604944315,
+      "avg_hold": 15.777777777777779,
+      "exit_reason_counts": {
+        "first_hi20": 17,
+        "max_hold_60": 1
+      },
+      "random_win_rate": 0.8,
+      "random_expectancy": 0.015272984998889428,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7586206896551724,
+      "win_minus_core": NaN
+    }
+  ],
+  "by_winrate_n20": [
+    {
+      "key": "core_w3_or_ma60w3__hsiao_V__hi20_or_desync",
+      "n_trades": 21,
+      "n_unique_entry_days": 21,
+      "win_rate": 0.8095238095238095,
+      "expectancy": 0.053520654648962024,
+      "avg_hold": 15.380952380952381,
+      "exit_reason_counts": {
+        "first_hi20": 21
+      },
+      "random_win_rate": 0.6666666666666666,
+      "random_expectancy": 0.04450608863951726,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.75,
+      "win_minus_core": 0.059523809523809534
+    },
+    {
+      "key": "core_w3_or_ma60w3__hsiao_macd__hi20_or_desync",
+      "n_trades": 82,
+      "n_unique_entry_days": 80,
+      "win_rate": 0.7804878048780488,
+      "expectancy": 0.008412718181411578,
+      "avg_hold": 18.902439024390244,
+      "exit_reason_counts": {
+        "first_hi20": 76,
+        "max_hold_60": 6
+      },
+      "random_win_rate": 0.7017543859649122,
+      "random_expectancy": 0.007588620488189445,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.75,
+      "win_minus_core": 0.030487804878048808
+    },
+    {
+      "key": "core_w3_or_ma60w3__hsiao_Vmild__hi20_or_desync",
+      "n_trades": 31,
+      "n_unique_entry_days": 30,
+      "win_rate": 0.7741935483870968,
+      "expectancy": 0.02407387699478314,
+      "avg_hold": 19.64516129032258,
+      "exit_reason_counts": {
+        "first_hi20": 29,
+        "max_hold_60": 2
+      },
+      "random_win_rate": 0.7368421052631579,
+      "random_expectancy": 0.0005080453472346341,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.75,
+      "win_minus_core": 0.024193548387096753
+    },
+    {
+      "key": "core_w3_start__hsiao_P__hi20_or_desync",
+      "n_trades": 53,
+      "n_unique_entry_days": 52,
+      "win_rate": 0.7735849056603774,
+      "expectancy": -0.007524242753272616,
+      "avg_hold": 20.169811320754718,
+      "exit_reason_counts": {
+        "first_hi20": 48,
+        "max_hold_60": 5
+      },
+      "random_win_rate": 0.5454545454545454,
+      "random_expectancy": -0.012190590246510959,
+      "beats_random": true,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.7586206896551724,
+      "win_minus_core": 0.014964216005205033
+    },
+    {
+      "key": "core_w3_start__hsiao_week__hi20_or_desync",
+      "n_trades": 57,
+      "n_unique_entry_days": 56,
+      "win_rate": 0.7719298245614035,
+      "expectancy": 0.0028989772241340334,
+      "avg_hold": 19.07017543859649,
+      "exit_reason_counts": {
+        "first_hi20": 52,
+        "max_hold_60": 5
+      },
+      "random_win_rate": 0.7454545454545455,
+      "random_expectancy": 0.010070029342333758,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.7586206896551724,
+      "win_minus_core": 0.01330913490623109
+    },
+    {
+      "key": "core_w3_or_ma60w3__hsiao_P__hi20_or_desync",
+      "n_trades": 56,
+      "n_unique_entry_days": 55,
+      "win_rate": 0.7678571428571429,
+      "expectancy": -0.00924833211890643,
+      "avg_hold": 20.642857142857142,
+      "exit_reason_counts": {
+        "first_hi20": 51,
+        "max_hold_60": 5
+      },
+      "random_win_rate": 0.6744186046511628,
+      "random_expectancy": -0.010135627211420192,
+      "beats_random": true,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.75,
+      "win_minus_core": 0.017857142857142905
+    },
+    {
+      "key": "core_w3_or_ma60w3__hsiao_week__hi20_or_desync",
+      "n_trades": 84,
+      "n_unique_entry_days": 82,
+      "win_rate": 0.7619047619047619,
+      "expectancy": 0.005541172889599985,
+      "avg_hold": 19.738095238095237,
+      "exit_reason_counts": {
+        "first_hi20": 75,
+        "max_hold_60": 9
+      },
+      "random_win_rate": 0.7636363636363637,
+      "random_expectancy": 0.030836110636994322,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.75,
+      "win_minus_core": 0.011904761904761862
+    },
+    {
+      "key": "core_w3_start__D0__hi20_or_desync",
+      "n_trades": 58,
+      "n_unique_entry_days": 57,
+      "win_rate": 0.7586206896551724,
+      "expectancy": -0.003529762536926254,
+      "avg_hold": 19.67241379310345,
+      "exit_reason_counts": {
+        "first_hi20": 53,
+        "max_hold_60": 5
+      },
+      "random_win_rate": 0.6545454545454545,
+      "random_expectancy": -0.011948486812895813,
+      "beats_random": true,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7586206896551724,
+      "win_minus_core": 0.0
+    },
+    {
+      "key": "core_w3_or_ma60w3__hsiao_T__hi20_or_desync",
+      "n_trades": 58,
+      "n_unique_entry_days": 57,
+      "win_rate": 0.7586206896551724,
+      "expectancy": -0.003529762536926254,
+      "avg_hold": 19.67241379310345,
+      "exit_reason_counts": {
+        "first_hi20": 53,
+        "max_hold_60": 5
+      },
+      "random_win_rate": 0.7333333333333333,
+      "random_expectancy": 0.025696786387774426,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.75,
+      "win_minus_core": 0.008620689655172376
+    },
+    {
+      "key": "core_w3_start__hsiao_T__hi20_or_desync",
+      "n_trades": 58,
+      "n_unique_entry_days": 57,
+      "win_rate": 0.7586206896551724,
+      "expectancy": -0.003529762536926254,
+      "avg_hold": 19.67241379310345,
+      "exit_reason_counts": {
+        "first_hi20": 53,
+        "max_hold_60": 5
+      },
+      "random_win_rate": 0.7045454545454546,
+      "random_expectancy": 0.01631542778353381,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7586206896551724,
+      "win_minus_core": 0.0
+    },
+    {
+      "key": "core_w3_start__hsiao_not_hot__hi20_or_desync",
+      "n_trades": 58,
+      "n_unique_entry_days": 57,
+      "win_rate": 0.7586206896551724,
+      "expectancy": -0.003529762536926254,
+      "avg_hold": 19.67241379310345,
+      "exit_reason_counts": {
+        "first_hi20": 53,
+        "max_hold_60": 5
+      },
+      "random_win_rate": 0.7678571428571429,
+      "random_expectancy": 0.016854473826768825,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7586206896551724,
+      "win_minus_core": 0.0
+    },
+    {
+      "key": "core_w3_start__hsiao_macd__hi20_or_desync",
+      "n_trades": 58,
+      "n_unique_entry_days": 57,
+      "win_rate": 0.7586206896551724,
+      "expectancy": -0.003529762536926254,
+      "avg_hold": 19.67241379310345,
+      "exit_reason_counts": {
+        "first_hi20": 53,
+        "max_hold_60": 5
+      },
+      "random_win_rate": 0.8181818181818182,
+      "random_expectancy": 0.014281755322867427,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7586206896551724,
+      "win_minus_core": 0.0
+    },
+    {
+      "key": "core_w3_or_ma60w3__D0__hi20_or_desync",
+      "n_trades": 96,
+      "n_unique_entry_days": 94,
+      "win_rate": 0.75,
+      "expectancy": 0.004148640187770915,
+      "avg_hold": 19.96875,
+      "exit_reason_counts": {
+        "first_hi20": 87,
+        "max_hold_60": 9
+      },
+      "random_win_rate": 0.7049180327868853,
+      "random_expectancy": 0.008432334615285262,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.75,
+      "win_minus_core": 0.0
+    },
+    {
+      "key": "core_w3_or_ma60w3__hsiao_not_hot__hi20_or_desync",
+      "n_trades": 96,
+      "n_unique_entry_days": 94,
+      "win_rate": 0.75,
+      "expectancy": 0.004148640187770915,
+      "avg_hold": 19.96875,
+      "exit_reason_counts": {
+        "first_hi20": 87,
+        "max_hold_60": 9
+      },
+      "random_win_rate": 0.7096774193548387,
+      "random_expectancy": 0.010581034347046723,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.75,
+      "win_minus_core": 0.0
+    },
+    {
+      "key": "core_w3_start__hsiao_kd__hi20_or_desync",
+      "n_trades": 44,
+      "n_unique_entry_days": 43,
+      "win_rate": 0.75,
+      "expectancy": 0.00287177574738629,
+      "avg_hold": 20.0,
+      "exit_reason_counts": {
+        "first_hi20": 41,
+        "max_hold_60": 3
+      },
+      "random_win_rate": 0.7105263157894737,
+      "random_expectancy": 0.010969892383708374,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7586206896551724,
+      "win_minus_core": -0.008620689655172376
+    },
+    {
+      "key": "core_w3_start__hsiao_clean__hi20_or_desync",
+      "n_trades": 56,
+      "n_unique_entry_days": 55,
+      "win_rate": 0.75,
+      "expectancy": -0.006187641267376206,
+      "avg_hold": 20.089285714285715,
+      "exit_reason_counts": {
+        "first_hi20": 51,
+        "max_hold_60": 5
+      },
+      "random_win_rate": 0.6481481481481481,
+      "random_expectancy": 0.017376245844565066,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7586206896551724,
+      "win_minus_core": -0.008620689655172376
+    },
+    {
+      "key": "core_w3_or_ma60w3__hsiao_clean__hi20_or_desync",
+      "n_trades": 94,
+      "n_unique_entry_days": 92,
+      "win_rate": 0.7446808510638298,
+      "expectancy": 0.0027285933424964146,
+      "avg_hold": 20.22340425531915,
+      "exit_reason_counts": {
+        "first_hi20": 85,
+        "max_hold_60": 9
+      },
+      "random_win_rate": 0.7213114754098361,
+      "random_expectancy": -0.00015885078273739404,
+      "beats_random": true,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.75,
+      "win_minus_core": -0.005319148936170248
+    },
+    {
+      "key": "core_w3_or_ma60w3__hsiao_macd_turn__hi20_or_desync",
+      "n_trades": 23,
+      "n_unique_entry_days": 23,
+      "win_rate": 0.7391304347826086,
+      "expectancy": 0.0019009083756390303,
+      "avg_hold": 17.869565217391305,
+      "exit_reason_counts": {
+        "first_hi20": 21,
+        "max_hold_60": 2
+      },
+      "random_win_rate": 0.7,
+      "random_expectancy": 0.032451990896184016,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.75,
+      "win_minus_core": -0.010869565217391353
+    },
+    {
+      "key": "core_w3_or_ma60w3__hsiao_kd__hi20_or_desync",
+      "n_trades": 53,
+      "n_unique_entry_days": 52,
+      "win_rate": 0.7358490566037735,
+      "expectancy": 0.002406855788316361,
+      "avg_hold": 20.245283018867923,
+      "exit_reason_counts": {
+        "first_hi20": 50,
+        "max_hold_60": 3
+      },
+      "random_win_rate": 0.7567567567567568,
+      "random_expectancy": 0.014277388133487917,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.75,
+      "win_minus_core": -0.014150943396226467
+    }
+  ],
+  "winners_beat_random_and_lz": [
+    {
+      "key": "core_w3_or_ma60w3__hsiao_V__hi20_or_desync",
+      "n_trades": 21,
+      "n_unique_entry_days": 21,
+      "win_rate": 0.8095238095238095,
+      "expectancy": 0.053520654648962024,
+      "avg_hold": 15.380952380952381,
+      "exit_reason_counts": {
+        "first_hi20": 21
+      },
+      "random_win_rate": 0.6666666666666666,
+      "random_expectancy": 0.04450608863951726,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.75,
+      "win_minus_core": 0.059523809523809534
+    },
+    {
+      "key": "core_w3_or_ma60w3__hsiao_macd__hi20_or_desync",
+      "n_trades": 82,
+      "n_unique_entry_days": 80,
+      "win_rate": 0.7804878048780488,
+      "expectancy": 0.008412718181411578,
+      "avg_hold": 18.902439024390244,
+      "exit_reason_counts": {
+        "first_hi20": 76,
+        "max_hold_60": 6
+      },
+      "random_win_rate": 0.7017543859649122,
+      "random_expectancy": 0.007588620488189445,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.75,
+      "win_minus_core": 0.030487804878048808
+    },
+    {
+      "key": "core_w3_or_ma60w3__hsiao_Vmild__hi20_or_desync",
+      "n_trades": 31,
+      "n_unique_entry_days": 30,
+      "win_rate": 0.7741935483870968,
+      "expectancy": 0.02407387699478314,
+      "avg_hold": 19.64516129032258,
+      "exit_reason_counts": {
+        "first_hi20": 29,
+        "max_hold_60": 2
+      },
+      "random_win_rate": 0.7368421052631579,
+      "random_expectancy": 0.0005080453472346341,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.75,
+      "win_minus_core": 0.024193548387096753
+    }
+  ],
+  "winners_also_lift_core_winrate": [
+    {
+      "key": "core_w3_or_ma60w3__hsiao_V__hi20_or_desync",
+      "n_trades": 21,
+      "n_unique_entry_days": 21,
+      "win_rate": 0.8095238095238095,
+      "expectancy": 0.053520654648962024,
+      "avg_hold": 15.380952380952381,
+      "exit_reason_counts": {
+        "first_hi20": 21
+      },
+      "random_win_rate": 0.6666666666666666,
+      "random_expectancy": 0.04450608863951726,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.75,
+      "win_minus_core": 0.059523809523809534
+    },
+    {
+      "key": "core_w3_or_ma60w3__hsiao_macd__hi20_or_desync",
+      "n_trades": 82,
+      "n_unique_entry_days": 80,
+      "win_rate": 0.7804878048780488,
+      "expectancy": 0.008412718181411578,
+      "avg_hold": 18.902439024390244,
+      "exit_reason_counts": {
+        "first_hi20": 76,
+        "max_hold_60": 6
+      },
+      "random_win_rate": 0.7017543859649122,
+      "random_expectancy": 0.007588620488189445,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.75,
+      "win_minus_core": 0.030487804878048808
+    },
+    {
+      "key": "core_w3_or_ma60w3__hsiao_Vmild__hi20_or_desync",
+      "n_trades": 31,
+      "n_unique_entry_days": 30,
+      "win_rate": 0.7741935483870968,
+      "expectancy": 0.02407387699478314,
+      "avg_hold": 19.64516129032258,
+      "exit_reason_counts": {
+        "first_hi20": 29,
+        "max_hold_60": 2
+      },
+      "random_win_rate": 0.7368421052631579,
+      "random_expectancy": 0.0005080453472346341,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.75,
+      "win_minus_core": 0.024193548387096753
+    }
+  ],
+  "promote_to_lookup_display": false,
+  "gate_one_liner": "track=hsiao; winners=3/42; lift_core=3; best_win=core_w3_or_ma60w3__hsiao_V__hi20_or_desync win=0.8095238095238095 E=0.053520654648962024; promote_lookup=NO",
+  "errors_n": 0,
+  "errors_sample": []
+}

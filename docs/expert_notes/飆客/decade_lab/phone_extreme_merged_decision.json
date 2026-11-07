@@ -1,0 +1,117 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "doctrine_zh": "核心＝波浪理論×蕭大師邏輯；疊加只為抬勝率",
+  "core_baseline_zh": "W3起漲／W3∪紅箭×W3＋hi20 ≈75–76%",
+  "best_by_winrate": [
+    {
+      "key": "core_w3_start__V__hi20_or_desync",
+      "source": "4d",
+      "win": 0.8696,
+      "E": 0.0597,
+      "days": 22,
+      "delta_win": 0.1064
+    },
+    {
+      "key": "core_w3_start__V__hi20_only",
+      "source": "4d",
+      "win": 0.8696,
+      "E": 0.0597,
+      "days": 22,
+      "delta_win": 0.1064
+    },
+    {
+      "key": "core_w3_start__VT__hi20_or_desync",
+      "source": "4d",
+      "win": 0.8696,
+      "E": 0.0597,
+      "days": 22,
+      "delta_win": 0.1064
+    },
+    {
+      "key": "core_w3_start__VT__hi20_only",
+      "source": "4d",
+      "win": 0.8696,
+      "E": 0.0597,
+      "days": 22,
+      "delta_win": 0.1064
+    },
+    {
+      "key": "core_w3_or_ma60w3__VT__hi20_or_desync",
+      "source": "4d",
+      "win": 0.8696,
+      "E": 0.0597,
+      "days": 22,
+      "delta_win": 0.1174
+    },
+    {
+      "key": "core_w3_or_ma60w3__VT__hi20_only",
+      "source": "4d",
+      "win": 0.8696,
+      "E": 0.0597,
+      "days": 22,
+      "delta_win": 0.1174
+    },
+    {
+      "key": "core_w3_or_ma60w3__V__hi20_or_desync",
+      "source": "4d",
+      "win": 0.8462,
+      "E": 0.0527,
+      "days": 25,
+      "delta_win": 0.0939
+    },
+    {
+      "key": "core_w3_or_ma60w3__V__hi20_only",
+      "source": "4d",
+      "win": 0.8462,
+      "E": 0.0527,
+      "days": 25,
+      "delta_win": 0.0939
+    },
+    {
+      "key": "core_w3_start__score55__hi20_or_desync",
+      "source": "wave",
+      "win": 0.8125,
+      "E": 0.0358,
+      "days": 32,
+      "delta_win": 0.0539
+    },
+    {
+      "key": "core_w3_or_ma60w3__score55__hi20_or_desync",
+      "source": "wave",
+      "win": 0.8125,
+      "E": 0.0358,
+      "days": 32,
+      "delta_win": 0.0625
+    },
+    {
+      "key": "core_w3_or_ma60w3__hsiao_V__hi20_or_desync",
+      "source": "hsiao",
+      "win": 0.8095,
+      "E": 0.0535,
+      "days": 21,
+      "delta_win": 0.0595
+    },
+    {
+      "key": "core_w3_or_ma60w3__fuse_week_V__hi20_or_desync",
+      "source": "fusion",
+      "win": 0.8,
+      "E": 0.0548,
+      "days": 20,
+      "delta_win": 0.05
+    }
+  ],
+  "robust_note_zh": [
+    "最高勝率仍屬 4D 的 V／VT≈87%（日22–25，偏薄）",
+    "wave score55≈81.3%（日32）密度較好",
+    "hsiao macd≈78.0%（日80）最厚樣本",
+    "fusion week×V≈80%（日20，剛過閘）"
+  ],
+  "champion_candidates_zh": [
+    "下一核候選：W3∪紅箭×W3 × 攻擊量V（與4D一致）",
+    "下一核候選：W3 × 引擎分≥55",
+    "厚樣本候選：W3∪紅箭×W3 × MACD多（78%/80日）"
+  ],
+  "nextlayer_status": "running",
+  "gate_one_liner": "merged lifts keep phone_sync=blocked; best_win≈0.87 V/VT days22; robust score55≈0.81 days32; promote_lookup=NO"
+}
