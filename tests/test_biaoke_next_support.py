@@ -637,3 +637,31 @@ def test_face_path_sr_levels_switches_to_next_after_break():
     assert ok["role"] == ""
     assert float(ok["hold"]) == 100.0
 
+
+
+def test_next_layer_ylim_smart_skips_far_band():
+    """急殺下一層很遠：不吃 ylim／不上圖；價近才上圖。圖說仍可有 layer。"""
+    from biaoke_next_support import (
+        chart_next_pack_for_ylim,
+        next_layer_fits_face_ylim,
+    )
+
+    # 近窗臉約 3800–5400；下一層 1840–2005 → 拉太長
+    assert next_layer_fits_face_ylim(3800, 5400, 1840, 2005) is False
+    # 下一層貼近臉幅
+    assert next_layer_fits_face_ylim(3800, 5400, 3600, 3900) is True
+    pack = {
+        "broke": True,
+        "layer": {"low": 1840.0, "high": 2005.0, "date": "20260206"},
+        "written": [],
+    }
+    chart = chart_next_pack_for_ylim(pack, 3800.0, 5400.0)
+    assert chart.get("layer_on_chart") is False
+    assert not (chart.get("layer") or {}).get("low")
+    assert float((chart.get("layer_offchart") or {}).get("low") or 0) == 1840.0
+    # 價回、下一層落入近窗相對幅
+    near = chart_next_pack_for_ylim(
+        {"layer": {"low": 3600.0, "high": 3900.0}}, 3800.0, 5400.0
+    )
+    assert near.get("layer_on_chart") is True
+    assert float((near.get("layer") or {}).get("low") or 0) == 3600.0

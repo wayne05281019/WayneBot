@@ -6200,13 +6200,22 @@ def _paint_volume_zone(
             )
         if not next_pack.get("written"):
             next_pack["written"] = written_targets_for(str(sid or ""))
+        # 下一層太遠不硬拉 Y（縮圖 K 要清楚）；價回近再畫灰帶
+        from biaoke_next_support import (
+            chart_next_pack_for_ylim,
+            next_layer_fits_face_ylim,
+        )
+
+        _face_y0, _face_y1 = float(ymin), float(ymax)
+        next_pack = chart_next_pack_for_ylim(next_pack, _face_y0, _face_y1)
         y_span = max(float(ymax) - float(ymin), 1.0)
         for row in list(next_pack.get("written") or []):
             try:
                 yf = float(row.get("price") or 0)
             except (TypeError, ValueError):
                 yf = 0.0
-            if yf > 0:
+            # 原文目標同樣：太遠不拉 Y
+            if yf > 0 and next_layer_fits_face_ylim(_face_y0, _face_y1, yf, yf):
                 ymax = max(ymax, yf + y_span * 0.04)
                 ymin = min(ymin, yf - y_span * 0.04)
         layer = next_pack.get("layer") or {}

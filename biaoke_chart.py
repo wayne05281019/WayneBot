@@ -4713,9 +4713,18 @@ def render_biaoke_structure_png(
         if yf:
             ymin = min(ymin, float(yf) - span * 0.04)
             ymax = max(ymax, float(yf) + span * 0.04)
-    # 原文目標／下一層壓撐價也吃進 ylim，線才不會被裁
+    # 原文目標／下一層：近才吃 ylim；太遠不硬拉（縮圖 K 清楚），圖說仍可寫
     try:
-        ns = dict(info.get("next_support") or {})
+        from biaoke_next_support import (
+            chart_next_pack_for_ylim,
+            next_layer_fits_face_ylim,
+        )
+
+        _face_y0, _face_y1 = float(ymin), float(ymax)
+        ns = chart_next_pack_for_ylim(
+            dict(info.get("next_support") or {}), _face_y0, _face_y1
+        )
+        info["next_support"] = ns
         layer = dict(ns.get("layer") or {})
         for key in ("low", "high"):
             try:
@@ -4730,7 +4739,7 @@ def render_biaoke_structure_png(
                 yv = float(row.get("price") or 0)
             except (TypeError, ValueError):
                 yv = 0.0
-            if yv > 0:
+            if yv > 0 and next_layer_fits_face_ylim(_face_y0, _face_y1, yv, yv):
                 ymin = min(ymin, yv - span * 0.05)
                 ymax = max(ymax, yv + span * 0.05)
         prim = ns.get("primary") or {}
