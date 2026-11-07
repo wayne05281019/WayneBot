@@ -3,7 +3,7 @@
   "promote_to_lookup_display": false,
   "user_goal_zh": "查股五張圖買賣相對位置＋極高勝率",
   "spirit_zh": "蕭邏輯＋裸K量價主力意圖＋八浪＋黃金切割＋飆大五件；分測後有用再混；含已測高勝率法則",
-  "elapsed_s": 493.8,
+  "elapsed_s": 482.9,
   "n_stocks": 100,
   "tracks": {
     "TRACK_HSIAO": {
@@ -23,13 +23,13 @@
         "win_ge85": false
       },
       "best_bal": {
-        "key": "E_w3__H_week__SELL_hi20_or_wave_top",
-        "n_trades": 57,
-        "n_unique_entry_days": 56,
-        "win_rate": 0.7543859649122807,
-        "expectancy": 0.00186429270306307,
+        "key": "E_w3u__H_V_or_S55__SELL_hi20_or_wave_top",
+        "n_trades": 50,
+        "n_unique_entry_days": 50,
+        "win_rate": 0.74,
+        "expectancy": 0.0160548432883322,
         "beats_random": true,
-        "balanced_score": 0.7543859649122807,
+        "balanced_score": 0.74,
         "win_ge80": false,
         "win_ge85": false
       },
@@ -47,28 +47,6 @@
         },
         {
           "key": "E_w3__H_S55__SELL_hi20_or_wave_top",
-          "n_trades": 32,
-          "n_unique_entry_days": 32,
-          "win_rate": 0.78125,
-          "expectancy": 0.030759473706176984,
-          "beats_random": true,
-          "balanced_score": 0.5,
-          "win_ge80": false,
-          "win_ge85": false
-        },
-        {
-          "key": "E_w3u__H_S55__SELL_hi20_or_wave_top",
-          "n_trades": 32,
-          "n_unique_entry_days": 32,
-          "win_rate": 0.78125,
-          "expectancy": 0.030759473706176984,
-          "beats_random": true,
-          "balanced_score": 0.5,
-          "win_ge80": false,
-          "win_ge85": false
-        },
-        {
-          "key": "E_bal__H_S55__SELL_hi20_or_wave_top",
           "n_trades": 32,
           "n_unique_entry_days": 32,
           "win_rate": 0.78125,
@@ -101,59 +79,103 @@
           "win_ge85": false
         },
         {
-          "key": "E_w3__H_week__SELL_hi20_or_wave_top",
-          "n_trades": 57,
-          "n_unique_entry_days": 56,
-          "win_rate": 0.7543859649122807,
-          "expectancy": 0.00186429270306307,
+          "key": "E_w3__H_V_or_S55__SELL_hi20_or_wave_top",
+          "n_trades": 37,
+          "n_unique_entry_days": 37,
+          "win_rate": 0.7567567567567568,
+          "expectancy": 0.023580273275415772,
           "beats_random": true,
-          "balanced_score": 0.7543859649122807,
+          "balanced_score": 0.56,
           "win_ge80": false,
           "win_ge85": false
         },
         {
-          "key": "E_w3__H_macd_kd__SELL_hi20_or_wave_top",
-          "n_trades": 46,
-          "n_unique_entry_days": 45,
-          "win_rate": 0.7391304347826086,
-          "expectancy": 0.0050188643650395685,
+          "key": "E_w3u__H_V_or_S55__SELL_hi20_or_wave_top",
+          "n_trades": 50,
+          "n_unique_entry_days": 50,
+          "win_rate": 0.74,
+          "expectancy": 0.0160548432883322,
           "beats_random": true,
-          "balanced_score": 0.6652173913043478,
+          "balanced_score": 0.74,
+          "win_ge80": false,
+          "win_ge85": false
+        },
+        {
+          "key": "E_bal__H_V_or_S55__SELL_hi20_or_wave_top",
+          "n_trades": 50,
+          "n_unique_entry_days": 50,
+          "win_rate": 0.74,
+          "expectancy": 0.0160548432883322,
+          "beats_random": true,
+          "balanced_score": 0.74,
+          "win_ge80": false,
+          "win_ge85": false
+        },
+        {
+          "key": "E_w3__H_T60__SELL_hi20_or_wave_top",
+          "n_trades": 53,
+          "n_unique_entry_days": 52,
+          "win_rate": 0.7358490566037735,
+          "expectancy": -0.000420258950663741,
+          "beats_random": true,
+          "balanced_score": 0.7358490566037735,
           "win_ge80": false,
           "win_ge85": false
         }
       ],
       "top_bal": [
         {
-          "key": "E_w3__H_week__SELL_hi20_or_wave_top",
-          "n_trades": 57,
-          "n_unique_entry_days": 56,
-          "win_rate": 0.7543859649122807,
-          "expectancy": 0.00186429270306307,
+          "key": "E_w3u__H_V_or_S55__SELL_hi20_or_wave_top",
+          "n_trades": 50,
+          "n_unique_entry_days": 50,
+          "win_rate": 0.74,
+          "expectancy": 0.0160548432883322,
           "beats_random": true,
-          "balanced_score": 0.7543859649122807,
+          "balanced_score": 0.74,
           "win_ge80": false,
           "win_ge85": false
         },
         {
-          "key": "E_bal__H_clean_not_hot__SELL_hi20_or_wave_top",
-          "n_trades": 48,
-          "n_unique_entry_days": 48,
-          "win_rate": 0.7291666666666666,
-          "expectancy": 0.013770010012193025,
+          "key": "E_bal__H_V_or_S55__SELL_hi20_or_wave_top",
+          "n_trades": 50,
+          "n_unique_entry_days": 50,
+          "win_rate": 0.74,
+          "expectancy": 0.0160548432883322,
           "beats_random": true,
-          "balanced_score": 0.7,
+          "balanced_score": 0.74,
           "win_ge80": false,
           "win_ge85": false
         },
         {
-          "key": "E_w3__H_macd_kd__SELL_hi20_or_wave_top",
-          "n_trades": 46,
+          "key": "E_w3__H_T60__SELL_hi20_or_wave_top",
+          "n_trades": 53,
+          "n_unique_entry_days": 52,
+          "win_rate": 0.7358490566037735,
+          "expectancy": -0.000420258950663741,
+          "beats_random": true,
+          "balanced_score": 0.7358490566037735,
+          "win_ge80": false,
+          "win_ge85": false
+        },
+        {
+          "key": "E_bal__H_week__SELL_hi20_or_wave_top",
+          "n_trades": 45,
           "n_unique_entry_days": 45,
-          "win_rate": 0.7391304347826086,
-          "expectancy": 0.0050188643650395685,
+          "win_rate": 0.7333333333333333,
+          "expectancy": 0.013552797041209543,
           "beats_random": true,
-          "balanced_score": 0.6652173913043478,
+          "balanced_score": 0.6599999999999999,
+          "win_ge80": false,
+          "win_ge85": false
+        },
+        {
+          "key": "E_w3__H_V_or_S55__SELL_hi20_or_wave_top",
+          "n_trades": 37,
+          "n_unique_entry_days": 37,
+          "win_rate": 0.7567567567567568,
+          "expectancy": 0.023580273275415772,
+          "beats_random": true,
+          "balanced_score": 0.56,
           "win_ge80": false,
           "win_ge85": false
         },
@@ -170,28 +192,6 @@
         },
         {
           "key": "E_w3__H_S55__SELL_hi20_or_wave_top",
-          "n_trades": 32,
-          "n_unique_entry_days": 32,
-          "win_rate": 0.78125,
-          "expectancy": 0.030759473706176984,
-          "beats_random": true,
-          "balanced_score": 0.5,
-          "win_ge80": false,
-          "win_ge85": false
-        },
-        {
-          "key": "E_w3u__H_S55__SELL_hi20_or_wave_top",
-          "n_trades": 32,
-          "n_unique_entry_days": 32,
-          "win_rate": 0.78125,
-          "expectancy": 0.030759473706176984,
-          "beats_random": true,
-          "balanced_score": 0.5,
-          "win_ge80": false,
-          "win_ge85": false
-        },
-        {
-          "key": "E_bal__H_S55__SELL_hi20_or_wave_top",
           "n_trades": 32,
           "n_unique_entry_days": 32,
           "win_rate": 0.78125,
@@ -219,7 +219,7 @@
     "TRACK_BAREK_VP": {
       "track": "TRACK_BAREK_VP",
       "n_keys": 18,
-      "winners_n": 5,
+      "winners_n": 6,
       "ge80_n": 2,
       "best_win": {
         "key": "E_w3__B_intent_soft__SELL_hi20_or_wave_top",
@@ -233,13 +233,13 @@
         "win_ge85": true
       },
       "best_bal": {
-        "key": "E_w3__B_not_avoid__SELL_hi20_or_wave_top",
-        "n_trades": 45,
-        "n_unique_entry_days": 44,
-        "win_rate": 0.7777777777777778,
-        "expectancy": 0.010885827683751756,
+        "key": "E_w3u__B_not_avoid__SELL_hi20_or_wave_top",
+        "n_trades": 62,
+        "n_unique_entry_days": 60,
+        "win_rate": 0.7258064516129032,
+        "expectancy": 0.002861089746754036,
         "beats_random": true,
-        "balanced_score": 0.6844444444444444,
+        "balanced_score": 0.7258064516129032,
         "win_ge80": false,
         "win_ge85": false
       },
@@ -298,9 +298,31 @@
           "balanced_score": 0.6000000000000001,
           "win_ge80": false,
           "win_ge85": false
+        },
+        {
+          "key": "E_w3u__B_not_avoid__SELL_hi20_or_wave_top",
+          "n_trades": 62,
+          "n_unique_entry_days": 60,
+          "win_rate": 0.7258064516129032,
+          "expectancy": 0.002861089746754036,
+          "beats_random": true,
+          "balanced_score": 0.7258064516129032,
+          "win_ge80": false,
+          "win_ge85": false
         }
       ],
       "top_bal": [
+        {
+          "key": "E_w3u__B_not_avoid__SELL_hi20_or_wave_top",
+          "n_trades": 62,
+          "n_unique_entry_days": 60,
+          "win_rate": 0.7258064516129032,
+          "expectancy": 0.002861089746754036,
+          "beats_random": true,
+          "balanced_score": 0.7258064516129032,
+          "win_ge80": false,
+          "win_ge85": false
+        },
         {
           "key": "E_w3__B_not_avoid__SELL_hi20_or_wave_top",
           "n_trades": 45,
@@ -381,7 +403,7 @@
           "win_ge85": true
         }
       ],
-      "gate_one_liner": "TRACK_BAREK_VP winners=5/18; ge80=2; best_win=E_w3__B_intent_soft__SELL_hi20_or_wave_top win=0.896551724137931 days=29; promote_lookup=NO"
+      "gate_one_liner": "TRACK_BAREK_VP winners=6/18; ge80=2; best_win=E_w3__B_intent_soft__SELL_hi20_or_wave_top win=0.896551724137931 days=29; promote_lookup=NO"
     },
     "TRACK_WAVE_FIB": {
       "track": "TRACK_WAVE_FIB",
@@ -530,240 +552,185 @@
     "TRACK_FIVE": {
       "track": "TRACK_FIVE",
       "n_keys": 21,
-      "winners_n": 9,
-      "ge80_n": 2,
+      "winners_n": 6,
+      "ge80_n": 1,
       "best_win": {
-        "key": "E_w3u__FIVE_vol__SELL_hi20_or_wave_top",
-        "n_trades": 22,
-        "n_unique_entry_days": 22,
-        "win_rate": 0.8181818181818182,
-        "expectancy": 0.05166374123956794,
+        "key": "E_w3u__FIVE_cross3__SELL_hi20_or_wave_top",
+        "n_trades": 21,
+        "n_unique_entry_days": 21,
+        "win_rate": 0.8095238095238095,
+        "expectancy": 0.027423378358251475,
         "beats_random": true,
-        "balanced_score": 0.36000000000000004,
+        "balanced_score": 0.33999999999999997,
         "win_ge80": true,
         "win_ge85": false
       },
       "best_bal": {
-        "key": "E_w3u__FIVE_cross2__SELL_hi20_or_wave_top",
-        "n_trades": 53,
-        "n_unique_entry_days": 53,
-        "win_rate": 0.7924528301886793,
-        "expectancy": 0.025568026874703147,
+        "key": "E_w3__FIVE_cross2__SELL_hi20_or_wave_top",
+        "n_trades": 43,
+        "n_unique_entry_days": 43,
+        "win_rate": 0.7441860465116279,
+        "expectancy": 0.0028964406364305312,
         "beats_random": true,
-        "balanced_score": 0.7924528301886793,
+        "balanced_score": 0.64,
         "win_ge80": false,
         "win_ge85": false
       },
       "top_win": [
         {
-          "key": "E_w3u__FIVE_vol__SELL_hi20_or_wave_top",
-          "n_trades": 22,
-          "n_unique_entry_days": 22,
-          "win_rate": 0.8181818181818182,
-          "expectancy": 0.05166374123956794,
+          "key": "E_w3u__FIVE_cross3__SELL_hi20_or_wave_top",
+          "n_trades": 21,
+          "n_unique_entry_days": 21,
+          "win_rate": 0.8095238095238095,
+          "expectancy": 0.027423378358251475,
           "beats_random": true,
-          "balanced_score": 0.36000000000000004,
+          "balanced_score": 0.33999999999999997,
           "win_ge80": true,
           "win_ge85": false
         },
         {
-          "key": "E_w3__FIVE_cross2__SELL_hi20_or_wave_top",
-          "n_trades": 32,
-          "n_unique_entry_days": 32,
-          "win_rate": 0.8125,
-          "expectancy": 0.033390562724656465,
+          "key": "E_w3__FIVE_vol__SELL_hi20_or_wave_top",
+          "n_trades": 35,
+          "n_unique_entry_days": 35,
+          "win_rate": 0.7714285714285715,
+          "expectancy": 0.012025767041054422,
           "beats_random": true,
-          "balanced_score": 0.52,
-          "win_ge80": true,
-          "win_ge85": false
-        },
-        {
-          "key": "E_w3u__FIVE_cross2__SELL_hi20_or_wave_top",
-          "n_trades": 53,
-          "n_unique_entry_days": 53,
-          "win_rate": 0.7924528301886793,
-          "expectancy": 0.025568026874703147,
-          "beats_random": true,
-          "balanced_score": 0.7924528301886793,
-          "win_ge80": false,
-          "win_ge85": false
-        },
-        {
-          "key": "E_bal__FIVE_cross2__SELL_hi20_or_wave_top",
-          "n_trades": 27,
-          "n_unique_entry_days": 27,
-          "win_rate": 0.7777777777777778,
-          "expectancy": 0.03311898452671675,
-          "beats_random": true,
-          "balanced_score": 0.42000000000000004,
+          "balanced_score": 0.54,
           "win_ge80": false,
           "win_ge85": false
         },
         {
           "key": "E_w3u__FIVE_fractal__SELL_hi20_or_wave_top",
-          "n_trades": 39,
-          "n_unique_entry_days": 39,
-          "win_rate": 0.7692307692307693,
-          "expectancy": 0.021641714513508305,
+          "n_trades": 37,
+          "n_unique_entry_days": 37,
+          "win_rate": 0.7567567567567568,
+          "expectancy": 0.0090923970461914,
           "beats_random": true,
-          "balanced_score": 0.6000000000000001,
+          "balanced_score": 0.56,
+          "win_ge80": false,
+          "win_ge85": false
+        },
+        {
+          "key": "E_bal__FIVE_cross2__SELL_hi20_or_wave_top",
+          "n_trades": 36,
+          "n_unique_entry_days": 36,
+          "win_rate": 0.75,
+          "expectancy": 0.026460574277974297,
+          "beats_random": true,
+          "balanced_score": 0.54,
+          "win_ge80": false,
+          "win_ge85": false
+        },
+        {
+          "key": "E_w3__FIVE_cross2__SELL_hi20_or_wave_top",
+          "n_trades": 43,
+          "n_unique_entry_days": 43,
+          "win_rate": 0.7441860465116279,
+          "expectancy": 0.0028964406364305312,
+          "beats_random": true,
+          "balanced_score": 0.64,
           "win_ge80": false,
           "win_ge85": false
         },
         {
           "key": "E_w3__FIVE_fractal__SELL_hi20_or_wave_top",
-          "n_trades": 20,
-          "n_unique_entry_days": 20,
-          "win_rate": 0.75,
-          "expectancy": 0.02905892731412702,
+          "n_trades": 23,
+          "n_unique_entry_days": 23,
+          "win_rate": 0.7391304347826086,
+          "expectancy": 0.008143487589687685,
           "beats_random": true,
-          "balanced_score": 0.30000000000000004,
-          "win_ge80": false,
-          "win_ge85": false
-        },
-        {
-          "key": "E_w3__FIVE_wave__SELL_hi20_or_wave_top",
-          "n_trades": 58,
-          "n_unique_entry_days": 57,
-          "win_rate": 0.7413793103448276,
-          "expectancy": -0.0009146288987634542,
-          "beats_random": true,
-          "balanced_score": 0.7413793103448276,
-          "win_ge80": false,
-          "win_ge85": false
-        },
-        {
-          "key": "E_bal__FIVE_wave__SELL_hi20_or_wave_top",
-          "n_trades": 50,
-          "n_unique_entry_days": 50,
-          "win_rate": 0.74,
-          "expectancy": 0.0160548432883322,
-          "beats_random": true,
-          "balanced_score": 0.74,
+          "balanced_score": 0.33999999999999997,
           "win_ge80": false,
           "win_ge85": false
         }
       ],
       "top_bal": [
         {
-          "key": "E_w3u__FIVE_cross2__SELL_hi20_or_wave_top",
-          "n_trades": 53,
-          "n_unique_entry_days": 53,
-          "win_rate": 0.7924528301886793,
-          "expectancy": 0.025568026874703147,
+          "key": "E_w3__FIVE_cross2__SELL_hi20_or_wave_top",
+          "n_trades": 43,
+          "n_unique_entry_days": 43,
+          "win_rate": 0.7441860465116279,
+          "expectancy": 0.0028964406364305312,
           "beats_random": true,
-          "balanced_score": 0.7924528301886793,
-          "win_ge80": false,
-          "win_ge85": false
-        },
-        {
-          "key": "E_w3__FIVE_wave__SELL_hi20_or_wave_top",
-          "n_trades": 58,
-          "n_unique_entry_days": 57,
-          "win_rate": 0.7413793103448276,
-          "expectancy": -0.0009146288987634542,
-          "beats_random": true,
-          "balanced_score": 0.7413793103448276,
-          "win_ge80": false,
-          "win_ge85": false
-        },
-        {
-          "key": "E_bal__FIVE_wave__SELL_hi20_or_wave_top",
-          "n_trades": 50,
-          "n_unique_entry_days": 50,
-          "win_rate": 0.74,
-          "expectancy": 0.0160548432883322,
-          "beats_random": true,
-          "balanced_score": 0.74,
-          "win_ge80": false,
-          "win_ge85": false
-        },
-        {
-          "key": "E_w3u__FIVE_wave__SELL_hi20_or_wave_top",
-          "n_trades": 96,
-          "n_unique_entry_days": 94,
-          "win_rate": 0.7395833333333334,
-          "expectancy": 0.005728616760827607,
-          "beats_random": true,
-          "balanced_score": 0.7395833333333334,
+          "balanced_score": 0.64,
           "win_ge80": false,
           "win_ge85": false
         },
         {
           "key": "E_w3u__FIVE_fractal__SELL_hi20_or_wave_top",
-          "n_trades": 39,
-          "n_unique_entry_days": 39,
-          "win_rate": 0.7692307692307693,
-          "expectancy": 0.021641714513508305,
+          "n_trades": 37,
+          "n_unique_entry_days": 37,
+          "win_rate": 0.7567567567567568,
+          "expectancy": 0.0090923970461914,
           "beats_random": true,
-          "balanced_score": 0.6000000000000001,
+          "balanced_score": 0.56,
           "win_ge80": false,
           "win_ge85": false
         },
         {
-          "key": "E_w3__FIVE_cross2__SELL_hi20_or_wave_top",
-          "n_trades": 32,
-          "n_unique_entry_days": 32,
-          "win_rate": 0.8125,
-          "expectancy": 0.033390562724656465,
+          "key": "E_w3__FIVE_vol__SELL_hi20_or_wave_top",
+          "n_trades": 35,
+          "n_unique_entry_days": 35,
+          "win_rate": 0.7714285714285715,
+          "expectancy": 0.012025767041054422,
           "beats_random": true,
-          "balanced_score": 0.52,
-          "win_ge80": true,
+          "balanced_score": 0.54,
+          "win_ge80": false,
           "win_ge85": false
         },
         {
           "key": "E_bal__FIVE_cross2__SELL_hi20_or_wave_top",
-          "n_trades": 27,
-          "n_unique_entry_days": 27,
-          "win_rate": 0.7777777777777778,
-          "expectancy": 0.03311898452671675,
+          "n_trades": 36,
+          "n_unique_entry_days": 36,
+          "win_rate": 0.75,
+          "expectancy": 0.026460574277974297,
           "beats_random": true,
-          "balanced_score": 0.42000000000000004,
+          "balanced_score": 0.54,
           "win_ge80": false,
           "win_ge85": false
         },
         {
-          "key": "E_w3u__FIVE_vol__SELL_hi20_or_wave_top",
-          "n_trades": 22,
-          "n_unique_entry_days": 22,
-          "win_rate": 0.8181818181818182,
-          "expectancy": 0.05166374123956794,
+          "key": "E_w3u__FIVE_cross3__SELL_hi20_or_wave_top",
+          "n_trades": 21,
+          "n_unique_entry_days": 21,
+          "win_rate": 0.8095238095238095,
+          "expectancy": 0.027423378358251475,
           "beats_random": true,
-          "balanced_score": 0.36000000000000004,
+          "balanced_score": 0.33999999999999997,
           "win_ge80": true,
+          "win_ge85": false
+        },
+        {
+          "key": "E_w3__FIVE_fractal__SELL_hi20_or_wave_top",
+          "n_trades": 23,
+          "n_unique_entry_days": 23,
+          "win_rate": 0.7391304347826086,
+          "expectancy": 0.008143487589687685,
+          "beats_random": true,
+          "balanced_score": 0.33999999999999997,
+          "win_ge80": false,
           "win_ge85": false
         }
       ],
       "ge80": [
         {
-          "key": "E_w3u__FIVE_vol__SELL_hi20_or_wave_top",
-          "n_trades": 22,
-          "n_unique_entry_days": 22,
-          "win_rate": 0.8181818181818182,
-          "expectancy": 0.05166374123956794,
+          "key": "E_w3u__FIVE_cross3__SELL_hi20_or_wave_top",
+          "n_trades": 21,
+          "n_unique_entry_days": 21,
+          "win_rate": 0.8095238095238095,
+          "expectancy": 0.027423378358251475,
           "beats_random": true,
-          "balanced_score": 0.36000000000000004,
-          "win_ge80": true,
-          "win_ge85": false
-        },
-        {
-          "key": "E_w3__FIVE_cross2__SELL_hi20_or_wave_top",
-          "n_trades": 32,
-          "n_unique_entry_days": 32,
-          "win_rate": 0.8125,
-          "expectancy": 0.033390562724656465,
-          "beats_random": true,
-          "balanced_score": 0.52,
+          "balanced_score": 0.33999999999999997,
           "win_ge80": true,
           "win_ge85": false
         }
       ],
-      "gate_one_liner": "TRACK_FIVE winners=9/21; ge80=2; best_win=E_w3u__FIVE_vol__SELL_hi20_or_wave_top win=0.8181818181818182 days=22; promote_lookup=NO"
+      "gate_one_liner": "TRACK_FIVE winners=6/21; ge80=1; best_win=E_w3u__FIVE_cross3__SELL_hi20_or_wave_top win=0.8095238095238095 days=21; promote_lookup=NO"
     },
     "TRACK_CHAMP": {
       "track": "TRACK_CHAMP",
       "n_keys": 27,
-      "winners_n": 19,
+      "winners_n": 17,
       "ge80_n": 2,
       "best_win": {
         "key": "E_bal__CH_feat_t60__SELL_hi20_or_wave_top",
@@ -844,17 +811,6 @@
           "win_ge85": false
         },
         {
-          "key": "E_w3__CH_turn_barek__SELL_hi20_or_wave_top",
-          "n_trades": 38,
-          "n_unique_entry_days": 37,
-          "win_rate": 0.7894736842105263,
-          "expectancy": 0.02045315833189238,
-          "beats_random": true,
-          "balanced_score": 0.5842105263157895,
-          "win_ge80": false,
-          "win_ge85": false
-        },
-        {
           "key": "E_w3__CH_S55__SELL_hi20_or_wave_top",
           "n_trades": 32,
           "n_unique_entry_days": 32,
@@ -867,6 +823,17 @@
         },
         {
           "key": "E_w3u__CH_S55__SELL_hi20_or_wave_top",
+          "n_trades": 32,
+          "n_unique_entry_days": 32,
+          "win_rate": 0.78125,
+          "expectancy": 0.030759473706176984,
+          "beats_random": true,
+          "balanced_score": 0.5,
+          "win_ge80": false,
+          "win_ge85": false
+        },
+        {
+          "key": "E_bal__CH_S55__SELL_hi20_or_wave_top",
           "n_trades": 32,
           "n_unique_entry_days": 32,
           "win_rate": 0.78125,
@@ -934,17 +901,6 @@
           "win_ge85": false
         },
         {
-          "key": "E_w3__CH_turn_barek__SELL_hi20_or_wave_top",
-          "n_trades": 38,
-          "n_unique_entry_days": 37,
-          "win_rate": 0.7894736842105263,
-          "expectancy": 0.02045315833189238,
-          "beats_random": true,
-          "balanced_score": 0.5842105263157895,
-          "win_ge80": false,
-          "win_ge85": false
-        },
-        {
           "key": "E_w3__CH_V_or_S55__SELL_hi20_or_wave_top",
           "n_trades": 37,
           "n_unique_entry_days": 37,
@@ -963,6 +919,17 @@
           "expectancy": 0.023580273275415772,
           "beats_random": true,
           "balanced_score": 0.56,
+          "win_ge80": false,
+          "win_ge85": false
+        },
+        {
+          "key": "E_w3__CH_S55__SELL_hi20_or_wave_top",
+          "n_trades": 32,
+          "n_unique_entry_days": 32,
+          "win_rate": 0.78125,
+          "expectancy": 0.030759473706176984,
+          "beats_random": true,
+          "balanced_score": 0.5,
           "win_ge80": false,
           "win_ge85": false
         }
@@ -991,13 +958,13 @@
           "win_ge85": false
         }
       ],
-      "gate_one_liner": "TRACK_CHAMP winners=19/27; ge80=2; best_win=E_bal__CH_feat_t60__SELL_hi20_or_wave_top win=0.8260869565217391 days=23; promote_lookup=NO"
+      "gate_one_liner": "TRACK_CHAMP winners=17/27; ge80=2; best_win=E_bal__CH_feat_t60__SELL_hi20_or_wave_top win=0.8260869565217391 days=23; promote_lookup=NO"
     },
     "TRACK_MIX": {
       "track": "TRACK_MIX",
       "n_keys": 30,
-      "winners_n": 13,
-      "ge80_n": 7,
+      "winners_n": 12,
+      "ge80_n": 3,
       "best_win": {
         "key": "E_w3__MIX_spirit_core__SELL_hi20_or_wave_top",
         "n_trades": 29,
@@ -1044,50 +1011,6 @@
           "win_ge85": true
         },
         {
-          "key": "E_w3u__MIX_feat_t60_five2__SELL_hi20_or_wave_top",
-          "n_trades": 30,
-          "n_unique_entry_days": 30,
-          "win_rate": 0.8333333333333334,
-          "expectancy": 0.0361861332288357,
-          "beats_random": true,
-          "balanced_score": 0.5,
-          "win_ge80": true,
-          "win_ge85": false
-        },
-        {
-          "key": "E_w3__MIX_S55_five2_week__SELL_hi20_or_wave_top",
-          "n_trades": 21,
-          "n_unique_entry_days": 21,
-          "win_rate": 0.8095238095238095,
-          "expectancy": 0.038807582749031365,
-          "beats_random": true,
-          "balanced_score": 0.33999999999999997,
-          "win_ge80": true,
-          "win_ge85": false
-        },
-        {
-          "key": "E_w3u__MIX_S55_five2_week__SELL_hi20_or_wave_top",
-          "n_trades": 21,
-          "n_unique_entry_days": 21,
-          "win_rate": 0.8095238095238095,
-          "expectancy": 0.038807582749031365,
-          "beats_random": true,
-          "balanced_score": 0.33999999999999997,
-          "win_ge80": true,
-          "win_ge85": false
-        },
-        {
-          "key": "E_bal__MIX_S55_five2_week__SELL_hi20_or_wave_top",
-          "n_trades": 21,
-          "n_unique_entry_days": 21,
-          "win_rate": 0.8095238095238095,
-          "expectancy": 0.038807582749031365,
-          "beats_random": true,
-          "balanced_score": 0.33999999999999997,
-          "win_ge80": true,
-          "win_ge85": false
-        },
-        {
           "key": "E_bal__MIX_turn_fib__SELL_hi20_or_wave_top",
           "n_trades": 31,
           "n_unique_entry_days": 31,
@@ -1106,6 +1029,50 @@
           "expectancy": 0.03637021419612668,
           "beats_random": true,
           "balanced_score": 0.45999999999999996,
+          "win_ge80": false,
+          "win_ge85": false
+        },
+        {
+          "key": "E_w3u__MIX_champS55_barek__SELL_hi20_or_wave_top",
+          "n_trades": 29,
+          "n_unique_entry_days": 29,
+          "win_rate": 0.7931034482758621,
+          "expectancy": 0.03637021419612668,
+          "beats_random": true,
+          "balanced_score": 0.45999999999999996,
+          "win_ge80": false,
+          "win_ge85": false
+        },
+        {
+          "key": "E_bal__MIX_champS55_barek__SELL_hi20_or_wave_top",
+          "n_trades": 29,
+          "n_unique_entry_days": 29,
+          "win_rate": 0.7931034482758621,
+          "expectancy": 0.03637021419612668,
+          "beats_random": true,
+          "balanced_score": 0.45999999999999996,
+          "win_ge80": false,
+          "win_ge85": false
+        },
+        {
+          "key": "E_w3u__MIX_spirit_core__SELL_hi20_or_wave_top",
+          "n_trades": 43,
+          "n_unique_entry_days": 42,
+          "win_rate": 0.7906976744186046,
+          "expectancy": 0.02692964248156075,
+          "beats_random": true,
+          "balanced_score": 0.6641860465116278,
+          "win_ge80": false,
+          "win_ge85": false
+        },
+        {
+          "key": "E_w3__MIX_turn_fib__SELL_hi20_or_wave_top",
+          "n_trades": 38,
+          "n_unique_entry_days": 37,
+          "win_rate": 0.7894736842105263,
+          "expectancy": 0.02045315833189238,
+          "beats_random": true,
+          "balanced_score": 0.5842105263157895,
           "win_ge80": false,
           "win_ge85": false
         }
@@ -1156,17 +1123,6 @@
           "win_ge85": true
         },
         {
-          "key": "E_w3u__MIX_feat_t60_five2__SELL_hi20_or_wave_top",
-          "n_trades": 30,
-          "n_unique_entry_days": 30,
-          "win_rate": 0.8333333333333334,
-          "expectancy": 0.0361861332288357,
-          "beats_random": true,
-          "balanced_score": 0.5,
-          "win_ge80": true,
-          "win_ge85": false
-        },
-        {
           "key": "E_bal__MIX_turn_fib__SELL_hi20_or_wave_top",
           "n_trades": 31,
           "n_unique_entry_days": 31,
@@ -1190,6 +1146,17 @@
         },
         {
           "key": "E_w3__MIX_champS55_barek__SELL_hi20_or_wave_top",
+          "n_trades": 29,
+          "n_unique_entry_days": 29,
+          "win_rate": 0.7931034482758621,
+          "expectancy": 0.03637021419612668,
+          "beats_random": true,
+          "balanced_score": 0.45999999999999996,
+          "win_ge80": false,
+          "win_ge85": false
+        },
+        {
+          "key": "E_w3u__MIX_champS55_barek__SELL_hi20_or_wave_top",
           "n_trades": 29,
           "n_unique_entry_days": 29,
           "win_rate": 0.7931034482758621,
@@ -1224,50 +1191,6 @@
           "win_ge85": true
         },
         {
-          "key": "E_w3u__MIX_feat_t60_five2__SELL_hi20_or_wave_top",
-          "n_trades": 30,
-          "n_unique_entry_days": 30,
-          "win_rate": 0.8333333333333334,
-          "expectancy": 0.0361861332288357,
-          "beats_random": true,
-          "balanced_score": 0.5,
-          "win_ge80": true,
-          "win_ge85": false
-        },
-        {
-          "key": "E_w3__MIX_S55_five2_week__SELL_hi20_or_wave_top",
-          "n_trades": 21,
-          "n_unique_entry_days": 21,
-          "win_rate": 0.8095238095238095,
-          "expectancy": 0.038807582749031365,
-          "beats_random": true,
-          "balanced_score": 0.33999999999999997,
-          "win_ge80": true,
-          "win_ge85": false
-        },
-        {
-          "key": "E_w3u__MIX_S55_five2_week__SELL_hi20_or_wave_top",
-          "n_trades": 21,
-          "n_unique_entry_days": 21,
-          "win_rate": 0.8095238095238095,
-          "expectancy": 0.038807582749031365,
-          "beats_random": true,
-          "balanced_score": 0.33999999999999997,
-          "win_ge80": true,
-          "win_ge85": false
-        },
-        {
-          "key": "E_bal__MIX_S55_five2_week__SELL_hi20_or_wave_top",
-          "n_trades": 21,
-          "n_unique_entry_days": 21,
-          "win_rate": 0.8095238095238095,
-          "expectancy": 0.038807582749031365,
-          "beats_random": true,
-          "balanced_score": 0.33999999999999997,
-          "win_ge80": true,
-          "win_ge85": false
-        },
-        {
           "key": "E_bal__MIX_turn_fib__SELL_hi20_or_wave_top",
           "n_trades": 31,
           "n_unique_entry_days": 31,
@@ -1279,7 +1202,7 @@
           "win_ge85": false
         }
       ],
-      "gate_one_liner": "TRACK_MIX winners=13/30; ge80=7; best_win=E_w3__MIX_spirit_core__SELL_hi20_or_wave_top win=0.896551724137931 days=29; promote_lookup=NO"
+      "gate_one_liner": "TRACK_MIX winners=12/30; ge80=3; best_win=E_w3__MIX_spirit_core__SELL_hi20_or_wave_top win=0.896551724137931 days=29; promote_lookup=NO"
     }
   },
   "useful_cross_list": [
@@ -1335,25 +1258,13 @@
     },
     {
       "track": "TRACK_FIVE",
-      "key": "E_w3u__FIVE_vol__SELL_hi20_or_wave_top",
-      "n_trades": 22,
-      "n_unique_entry_days": 22,
-      "win_rate": 0.8181818181818182,
-      "expectancy": 0.05166374123956794,
+      "key": "E_w3u__FIVE_cross3__SELL_hi20_or_wave_top",
+      "n_trades": 21,
+      "n_unique_entry_days": 21,
+      "win_rate": 0.8095238095238095,
+      "expectancy": 0.027423378358251475,
       "beats_random": true,
-      "balanced_score": 0.36000000000000004,
-      "win_ge80": true,
-      "win_ge85": false
-    },
-    {
-      "track": "TRACK_FIVE",
-      "key": "E_w3__FIVE_cross2__SELL_hi20_or_wave_top",
-      "n_trades": 32,
-      "n_unique_entry_days": 32,
-      "win_rate": 0.8125,
-      "expectancy": 0.033390562724656465,
-      "beats_random": true,
-      "balanced_score": 0.52,
+      "balanced_score": 0.33999999999999997,
       "win_ge80": true,
       "win_ge85": false
     },
@@ -1407,54 +1318,6 @@
     },
     {
       "track": "TRACK_MIX",
-      "key": "E_w3u__MIX_feat_t60_five2__SELL_hi20_or_wave_top",
-      "n_trades": 30,
-      "n_unique_entry_days": 30,
-      "win_rate": 0.8333333333333334,
-      "expectancy": 0.0361861332288357,
-      "beats_random": true,
-      "balanced_score": 0.5,
-      "win_ge80": true,
-      "win_ge85": false
-    },
-    {
-      "track": "TRACK_MIX",
-      "key": "E_w3__MIX_S55_five2_week__SELL_hi20_or_wave_top",
-      "n_trades": 21,
-      "n_unique_entry_days": 21,
-      "win_rate": 0.8095238095238095,
-      "expectancy": 0.038807582749031365,
-      "beats_random": true,
-      "balanced_score": 0.33999999999999997,
-      "win_ge80": true,
-      "win_ge85": false
-    },
-    {
-      "track": "TRACK_MIX",
-      "key": "E_w3u__MIX_S55_five2_week__SELL_hi20_or_wave_top",
-      "n_trades": 21,
-      "n_unique_entry_days": 21,
-      "win_rate": 0.8095238095238095,
-      "expectancy": 0.038807582749031365,
-      "beats_random": true,
-      "balanced_score": 0.33999999999999997,
-      "win_ge80": true,
-      "win_ge85": false
-    },
-    {
-      "track": "TRACK_MIX",
-      "key": "E_bal__MIX_S55_five2_week__SELL_hi20_or_wave_top",
-      "n_trades": 21,
-      "n_unique_entry_days": 21,
-      "win_rate": 0.8095238095238095,
-      "expectancy": 0.038807582749031365,
-      "beats_random": true,
-      "balanced_score": 0.33999999999999997,
-      "win_ge80": true,
-      "win_ge85": false
-    },
-    {
-      "track": "TRACK_MIX",
       "key": "E_bal__MIX_turn_fib__SELL_hi20_or_wave_top",
       "n_trades": 31,
       "n_unique_entry_days": 31,
@@ -1466,7 +1329,7 @@
       "win_ge85": false
     }
   ],
-  "gate_one_liner": "spirit_split_mix TRACK_HSIAO:9w/0ge80 | TRACK_BAREK_VP:5w/2ge80 | TRACK_WAVE_FIB:5w/0ge80 | TRACK_FIVE:9w/2ge80 | TRACK_CHAMP:19w/2ge80 | TRACK_MIX:13w/7ge80; promote_lookup=NO",
+  "gate_one_liner": "spirit_split_mix TRACK_HSIAO:9w/0ge80 | TRACK_BAREK_VP:6w/2ge80 | TRACK_WAVE_FIB:5w/0ge80 | TRACK_FIVE:6w/1ge80 | TRACK_CHAMP:17w/2ge80 | TRACK_MIX:12w/3ge80; promote_lookup=NO",
   "errors_n": 0,
   "errors_sample": []
 }

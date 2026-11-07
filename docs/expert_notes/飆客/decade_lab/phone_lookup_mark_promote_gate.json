@@ -2,7 +2,7 @@
   "phone_sync": "blocked",
   "promote_to_lookup_display": false,
   "NOT_BUY_SIGNAL": true,
-  "as_of_taipei": "2026-11-08T00:22:24.167520+08:00",
+  "as_of_taipei": "2026-11-08T00:32:18.054539+08:00",
   "deliverable_zh": "查股五張圖：極高勝率買進起漲＋相對高點賣出相對位置",
   "candidate_buy_rule": {
     "key": "core_w3_or_ma60w3__BAL_Vnear2_or_S55__hi20_or_desync",
@@ -76,7 +76,7 @@
       "balanced_score": 0.7586206896551724
     }
   },
-  "gate_status": "thicken2_ge80_0_continue_mix_early_thicken3",
+  "gate_status": "spirit_v2_and_early_sealed_mix_thicken_running",
   "evidence": {
     "win_rate": 0.76,
     "independent_days": 50,
@@ -272,6 +272,20 @@
       "gate": "extreme_thicken2 ge80=0 ge80_d30=0 ge80_d50=0; best_win=None win=None days=None; best_ge80_d50=None; best_ge80_days=None; promote_lookup=NO",
       "ge80_n": 0,
       "promote": false
+    },
+    "spirit_split_mix_v2": {
+      "source": "phone_spirit_split_mix_v2_decision.json",
+      "gate": "spirit_split_mix TRACK_HSIAO:9w/0ge80 | TRACK_BAREK_VP:6w/2ge80 | TRACK_WAVE_FIB:5w/0ge80 | TRACK_FIVE:6w/1ge80 | TRACK_CHAMP:17w/2ge80 | TRACK_MIX:12w/3ge80; promote_lookup=NO",
+      "five_proxies_version": "post_strengthen_f6cdf4a",
+      "useful_ge80_n": 8,
+      "promote": false
+    },
+    "early_marks_free": {
+      "source": "phone_early_marks_free_decision.json",
+      "gate": "early_marks_free winners=21/90 ge80=1; best_early=E_w3u__F_turn_n3__SELL_hi20_or_wave_top win=0.7441860465116279 bars=15.5 hold=15.279069767441861; best_win=E_w3u__F_intent_n3__SELL_hi20_or_wave_top; promote_lookup=NO",
+      "best_early": "E_w3u__F_turn_n3__SELL_hi20_or_wave_top",
+      "ge80": "E_w3u__F_intent_n3__SELL_hi20_or_wave_top",
+      "promote": false
     }
   },
   "blockers": [
@@ -287,13 +301,12 @@
     "使用者 2026-11-08：材料若限制達標可自由加因子；目標＝提早知買／賣"
   ],
   "next_experiments": [
-    "spirit_mix_thicken 對 spirit ge80 有用肢近窗加厚",
-    "early_marks_free 勝率×提早買／賣",
-    "thicken3：回到 thicken1 冠軍（turn_barek_n3／t60）緊加厚，避免過寬軟OR稀釋",
-    "不准輕言放棄；材料非籠子"
+    "spirit_mix_thicken 進行中",
+    "thicken2 修簽章後重跑",
+    "early_free_v2：intent_n3／turn_n3 加厚＋自由因子，衝 ge80×days≥50 且維持提早 bars"
   ],
-  "gate_one_liner": "draft: thicken2 ge80=0; thicken1 still best thick 80%@49d; spirit useful ge80=13; continue mix_thicken+early+thicken3; phone_sync=blocked; promote=false",
-  "user_goal_zh": "提早知道個股買點＋提早知道賣點（查股五張圖極高勝率相對位置）；材料不夠可自由加因子",
+  "gate_one_liner": "draft: spirit_v2 useful_ge80=8; early ge80=intent_n3≈83%@35d bars≈16; thicken1 still 80%@49d; mix_thicken running; phone_sync=blocked; promote=false",
+  "user_goal_zh": "提早知道個股買點＋提早知道賣點；材料不夠可自由加因子",
   "metric_priority_zh": [
     "提早買（訊號相對後續漲段／20高）",
     "提早賣（相對高點／浪頂）",
