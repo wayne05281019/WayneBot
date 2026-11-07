@@ -8,7 +8,7 @@
 4. 飆大裸K：破線翻／爆量換手當「同向確認」；無量續跌／套牢鏈當「挡」
 5. 大盤同步：TWII 蕭氏狀態機位階 —— 非 C/B/A 崩壞才准進；可要求大盤在拉回底／推動窗
 
-「相對高點」在本軌＝出場側，不是追高買。
+「相對高點」＝賣點（使用者鎖死：相對高點就會賣股票）。
 """
 from __future__ import annotations
 
@@ -50,12 +50,16 @@ IMPULSE = {"WAVE_1_UP", "WAVE_3_MAIN", "WAVE_5_FINAL"}
 PULLBASE = {"BASE_BOTTOM", "WAVE_2_PULLBACK"}
 
 
-def _twii_wave_pack() -> Tuple[pd.DataFrame, Dict[str, pd.Series]]:
+def _twii_wave_pack(
+    *,
+    entry_preset: str = "A1_score",
+    score_threshold: float = 50.0,
+) -> Tuple[pd.DataFrame, Dict[str, pd.Series]]:
     """大盤 TWII：狀態＋蕭特徵＋事件近窗。"""
     raw = load_twii()
     prep = prepare_ohlcv(raw)
     feat = compute_hsiao_features(prep)
-    eng = ElliottHsiaoEngine(entry_preset="A1_score", score_threshold=50.0)
+    eng = ElliottHsiaoEngine(entry_preset=entry_preset, score_threshold=score_threshold)
     lab = eng.run(feat, already_featured=True)
     ymd = pd.to_datetime(lab.index).strftime("%Y%m%d")
     st = pd.Series(lab["state_name"].astype(str).values, index=ymd)
@@ -109,6 +113,14 @@ def _twii_wave_pack() -> Tuple[pd.DataFrame, Dict[str, pd.Series]]:
             top = top | _near(ev_masks[code].reindex(ymd).fillna(False), 3)
     weaken = top | _near(st.isin(CRASHY), 3)
     mkt["mkt_rel_high_risk"] = weaken
+    # 特徵位階（浪段引擎若黏住 BASE/W2，仍可用蕭大盤條件當同步）
+    align = _bool(feat_ymd.get("bull_alignment"), feat_ymd.index)
+    s20 = _num(feat_ymd.get("ma20_time_safety"), feat_ymd.index).fillna(-9) > 0
+    a5 = _num(feat_ymd.get("angle_5"), feat_ymd.index).fillna(-9) >= 15.0
+    mkt["mkt_feat_bull"] = week & align & not_hot
+    mkt["mkt_feat_safe"] = week & s20 & not_hot
+    mkt["mkt_feat_thrust"] = week & (v_ok | a5) & not_hot & (~weaken)
+    mkt["mkt_feat_ok"] = week & not_hot & (~weaken) & (align | s20 | pull)
 
     pack = pd.DataFrame({"state": st, "signal": sig, "score": score})
     pack.index = ymd
@@ -224,12 +236,14 @@ def _stock_entries(
     }
 
 
-def run_sync(*, n_universe: int = 100) -> Dict[str, Any]:
+def run_sync(
+    *, n_universe: int = 100, twii_preset: str = "A1_score", twii_thr: float = 50.0,
+) -> Dict[str, Any]:
     t0 = time.time()
     ART.mkdir(parents=True, exist_ok=True)
     DOC.mkdir(parents=True, exist_ok=True)
 
-    _, mkt_raw = _twii_wave_pack()
+    _, mkt_raw = _twii_wave_pack(entry_preset=twii_preset, score_threshold=twii_thr)
     uni = select_g_universe(n=n_universe, include_twse_top100=True)
     symbols = uni["stock_id"].astype(str).tolist()
     for sid in MUST_INCLUDE:
@@ -244,6 +258,10 @@ def run_sync(*, n_universe: int = 100) -> Dict[str, Any]:
         "mkt_ok_pull_or_impulse",
         "mkt_ok_strong",
         "mkt_risk_on",
+        "mkt_feat_bull",
+        "mkt_feat_safe",
+        "mkt_feat_thrust",
+        "mkt_feat_ok",
     )
     stock_filters = (
         "F_none",
@@ -481,8 +499,10 @@ def run_sync(*, n_universe: int = 100) -> Dict[str, Any]:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--n", type=int, default=100)
+    ap.add_argument("--twii-preset", default="A1_score")
+    ap.add_argument("--twii-thr", type=float, default=50.0)
     args = ap.parse_args()
-    run_sync(n_universe=args.n)
+    run_sync(n_universe=args.n, twii_preset=args.twii_preset, twii_thr=args.twii_thr)
 
 
 if __name__ == "__main__":
