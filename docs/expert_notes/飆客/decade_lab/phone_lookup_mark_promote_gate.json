@@ -2,7 +2,7 @@
   "phone_sync": "blocked",
   "promote_to_lookup_display": false,
   "NOT_BUY_SIGNAL": true,
-  "as_of_taipei": "2026-11-08T01:41:18.427310+08:00",
+  "as_of_taipei": "2026-11-08T02:08:08.305329+08:00",
   "deliverable_zh": "查股五張圖：極高勝率買進起漲＋相對高點賣出相對位置",
   "candidate_buy_rule": {
     "key": "core_w3_or_ma60w3__BAL_Vnear2_or_S55__hi20_or_desync",
@@ -76,7 +76,7 @@
       "balanced_score": 0.7586206896551724
     }
   },
-  "gate_status": "mix_v4_sealed_still_794_at_67d_invent_v5",
+  "gate_status": "mix_v5_ge80_d50_hit_still_blocked_collect_early_v6",
   "evidence": {
     "win_rate": 0.76,
     "independent_days": 50,
@@ -335,6 +335,16 @@
       "ge80_d50_n": 0,
       "near80": "E_w3u__turn_n3__t60_no_fake__SELL_hi20_or_wave_top",
       "promote": false
+    },
+    "spirit_mix_thicken_v5": {
+      "source": "phone_spirit_mix_thicken_v5_decision.json",
+      "gate": "spirit_mix_thicken_v5 ge80=18 ge80_d30=15 ge80_d50=5; best_win=U100__E_w3__turn_n3_t60__intent__SELL_hi20_or_wave_top win=0.88 days=25; best_d50=U150__E_w3u__turn_n3_t60__intent_n3__SELL_hi20_or_wave_top; near80_d50=U150__E_w3u__turn_n3_t60__intent_n3__SELL_hi20_or_wave_top; promote_lookup=NO",
+      "ge80_d50_n": 5,
+      "best_ge80_d50": "U150__E_w3u__turn_n3_t60__intent_n3__SELL_hi20_or_wave_top",
+      "best_win": 0.84,
+      "best_days": 50,
+      "promote": false,
+      "note_zh": "過 ge80×50d 數字閘但仍 blocked：尚未接五張圖 placement／提早賣對質完"
     }
   },
   "blockers": [
@@ -350,9 +360,10 @@
     "使用者 2026-11-08：材料若限制達標可自由加因子；目標＝提早知買／賣"
   ],
   "next_experiments": [
-    "mix_v4：near80@67d（≈79.4%）微閘抬過 80% 且 days≥50"
+    "mix_v6：在 ge80_d50 冠軍上加提早賣／bars_before_hi20 約束",
+    "五張圖標記 placement stub 對接候選鍵（仍 flag off）"
   ],
-  "gate_one_liner": "draft: mix_v4 ge80=11 d50=0 near80≈79.4%@67d; invent v5 loser-cut; phone_sync=blocked; promote=false",
+  "gate_one_liner": "draft: mix_v5 BREAKTHROUGH ge80_d50=5 best≈0.84@50d (U150__E_w3u__turn_n3_t60__intent_n3__SELL_hi20_or_wave_top); phone_sync=blocked; promote=false",
   "user_goal_zh": "提早知道個股買點＋提早知道賣點；材料不夠可自由加因子",
   "metric_priority_zh": [
     "提早買（訊號相對後續漲段／20高）",
