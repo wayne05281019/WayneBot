@@ -614,6 +614,8 @@
   "next_lab": [
     "spirit_split_mix_v2_new_five",
     "extreme_thicken2",
-    "early_marks_free"
-  ]
+    "early_marks_free",
+    "spirit_mix_thicken"
+  ],
+  "useful_mix_thicken_queued": true
 }

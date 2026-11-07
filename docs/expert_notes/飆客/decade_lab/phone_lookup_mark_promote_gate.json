@@ -281,6 +281,7 @@
     "使用者 2026-11-08：材料若限制達標可自由加因子；目標＝提早知買／賣"
   ],
   "next_experiments": [
+    "spirit_mix_thicken：對 B_intent_soft／MIX_spirit_core／FIVE_cross2 等 ge80 肢近窗加厚",
     "spirit_split_mix 用新 FIVE 重跑",
     "thicken2 衝 ge80×days≥50",
     "early_marks_free：以提早買賣為主指標，自由加真史因子（不限既定材料清單）",
