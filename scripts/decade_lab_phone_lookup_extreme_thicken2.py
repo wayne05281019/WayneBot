@@ -89,8 +89,8 @@ def run(*, n_universe: int = 100) -> Dict[str, Any]:
             hl, temp = _build_hl_temp(df)
             seed = abs(hash(sid)) % 10_000
 
-            V = bank["hsiao_V_attack"].fillna(False)
-            S55 = bank["hsiao_S_ge55"].fillna(False)
+            V = bank["hsiao_V"].fillna(False)
+            S55 = bank["score55"].fillna(False)
             Vnear = _near(V, 3)
             w3 = cores["core_w3_start"].fillna(False)
             w3u = cores["core_w3_or_ma60w3"].fillna(False)
