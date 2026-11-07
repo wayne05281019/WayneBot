@@ -1,24 +1,96 @@
 {
   "phone_sync": "blocked",
   "promote_to_lookup_display": false,
-  "as_of_taipei": "2026-11-08T00:22:24.167520+08:00",
-  "gate_one_liner": "extreme_thicken2 ge80=0 ge80_d30=0 ge80_d50=0; best_win=None win=None days=None; best_ge80_d50=None; best_ge80_days=None; promote_lookup=NO",
+  "as_of_taipei": "2026-11-08T00:53:28.017448+08:00",
+  "run": "rerun_after_api_fix",
+  "gate_one_liner": "extreme_thicken2 ge80=15 ge80_d30=3 ge80_d50=0; best_win=E_bal__M_feat_ok__S_t60_or_time__SELL_hi20_or_wave_top win=0.85 days=20; best_ge80_d50=None; best_ge80_days=E_w3__M0__S_turn_barek_n3__SELL_hi20_or_wave_top; promote_lookup=NO",
   "n_stocks": 100,
-  "elapsed_s": 276.4,
-  "ge80_n": 0,
+  "elapsed_s": 715.6,
+  "errors_n": 0,
+  "ge80_n": 15,
+  "ge80_d30_n": 3,
   "ge80_d50_n": 0,
-  "best_near": null,
-  "top_near75": [],
+  "best_win": {
+    "key": "E_bal__M_feat_ok__S_t60_or_time__SELL_hi20_or_wave_top",
+    "n_trades": 20,
+    "n_unique_entry_days": 20,
+    "win_rate": 0.85,
+    "expectancy": 0.04104367484791359,
+    "beats_random": true,
+    "balanced_score": 0.34,
+    "win_ge80": true,
+    "win_ge85": true,
+    "days_ge30": false,
+    "days_ge40": false,
+    "days_ge50": false
+  },
+  "best_ge80_days": {
+    "key": "E_w3__M0__S_turn_barek_n3__SELL_hi20_or_wave_top",
+    "n_trades": 50,
+    "n_unique_entry_days": 49,
+    "win_rate": 0.8,
+    "expectancy": 0.01928118266677266,
+    "beats_random": true,
+    "balanced_score": 0.784,
+    "win_ge80": true,
+    "win_ge85": false,
+    "days_ge30": true,
+    "days_ge40": true,
+    "days_ge50": false
+  },
+  "top_ge80_d30": [
+    {
+      "key": "E_w3__M0__S_turn_barek_n3__SELL_hi20_or_wave_top",
+      "n_trades": 50,
+      "n_unique_entry_days": 49,
+      "win_rate": 0.8,
+      "expectancy": 0.01928118266677266,
+      "beats_random": true,
+      "balanced_score": 0.784,
+      "win_ge80": true,
+      "win_ge85": false,
+      "days_ge30": true,
+      "days_ge40": true,
+      "days_ge50": false
+    },
+    {
+      "key": "E_bal__M0__S_V_or_turn__SELL_hi20_or_wave_top",
+      "n_trades": 35,
+      "n_unique_entry_days": 35,
+      "win_rate": 0.8,
+      "expectancy": 0.040692033259524724,
+      "beats_random": true,
+      "balanced_score": 0.5599999999999999,
+      "win_ge80": true,
+      "win_ge85": false,
+      "days_ge30": true,
+      "days_ge40": false,
+      "days_ge50": false
+    },
+    {
+      "key": "E_bal__M0__S_turn_barek__SELL_hi20_or_wave_top",
+      "n_trades": 31,
+      "n_unique_entry_days": 31,
+      "win_rate": 0.8064516129032258,
+      "expectancy": 0.04476773536570325,
+      "beats_random": true,
+      "balanced_score": 0.49999999999999994,
+      "win_ge80": true,
+      "win_ge85": false,
+      "days_ge30": true,
+      "days_ge40": false,
+      "days_ge50": false
+    }
+  ],
+  "prior_broken_run_zh": "首跑 TypeError 作廢；本輪 errors=0",
   "read_zh": [
-    "thicken2 首跑 ge80=0 因 API 簽章錯（非策略失敗）",
-    "已修 thicken2／early_free／mix_thicken；鏈後重跑 thicken2",
+    "thicken2 重跑封口：ge80=15 d30=3 d50=0",
+    "最厚仍≈0.8@49d（未破 50）",
+    "early_v2／mix_v2 曾因遠窗分支切走找不到腳本失敗→本輪在 lab 分支重跑",
     "phone_sync=blocked；不准輕言放棄"
   ],
   "next_lab": [
-    "spirit_mix_thicken",
-    "early_marks_free",
-    "thicken3_tight_champ"
-  ],
-  "never_quit": true,
-  "root_cause_zh": "build_v3_extras／build_v4_extras 呼叫簽章錯誤 → 100檔全錯 → ranking 空；已修並排隊重跑"
+    "early_marks_free_v2",
+    "spirit_mix_thicken_v2"
+  ]
 }
