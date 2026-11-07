@@ -1879,14 +1879,15 @@ def _reply_level_delta(blob: str) -> bool:
     # 明確大盤／費半數字或改口
     if re.search(
         r"45546|46292|44210|44042|39384|42000|41000|40000|35000|38000|"
-        r"35500|37300|9865|10445|8498|47500",
+        r"35500|37300|37000|37500|9865|10445|8498|47500",
         s,
     ):
         return True
-    # 改口／假跌破／9波擴延 C-7→C-9：要有大盤戰場
+    # 改口／假跌破／9波擴延 C-7→C-9／第二隻腳：要有大盤戰場
     if re.search(
         r"假跌破|劇本一|有效穿刺|1\s*[-–]?\s*4\s*重疊|9\s*波\s*擴延|"
-        r"C\s*[-–]\s*[789]",
+        r"C\s*[-–]\s*[789]|第二隻腳|第二支腳|"
+        r"1\s*[-–]?\s*2\s*轉\s*1\s*[-–]?\s*3\s*[-–]?\s*1",
         s,
     ) and _INDEXISH.search(s):
         return True
@@ -2026,8 +2027,11 @@ def _latest_biaoke_index_snip(
                     r"|[^。｜]{0,40}8498[^。｜]{0,40}"
                     r"|[^。｜]{0,40}35000\s*[-~～到至]\s*38000[^。｜]{0,40}"
                     r"|[^。｜]{0,40}35500\s*[-~～到至]\s*37300[^。｜]{0,40}"
+                    r"|[^。｜]{0,40}37000\s*[-~～到至\-]\s*37500[^。｜]{0,40}"
+                    r"|[^。｜]{0,40}看不到\s*37000\s*以下[^。｜]{0,40}"
                     r"|[^。｜]{0,60}9\s*波\s*擴延[^。｜]{0,80}"
                     r"|[^。｜]{0,40}C\s*[-–]\s*7[^。｜]{0,48}C\s*[-–]\s*8[^。｜]{0,40}"
+                    r"|[^。｜]{0,48}1\s*[-–]?\s*2\s*轉\s*1\s*[-–]?\s*3\s*[-–]?\s*1[^。｜]{0,40}"
                     r"|[^。｜]{0,40}2\s*/\s*25\s*高點?\s*8498[^。｜]{0,40}",
                     flat,
                 ):
@@ -2226,6 +2230,30 @@ def _latest_level_thesis(
                 snip = f"{c9_snip} {snip}"
     except Exception:
         logger.debug("C9 題旨覆寫略過", exc_info=True)
+    # 後文改口：37000~37500／看不到37000以下／第二隻腳；壓 C9 低點區 35500~37300
+    try:
+        if cap >= _FOOT2_ORAL_AS_OF:
+            _ensure_foot2_oral_thesis_snap(db_path, as_of=cap)
+        foot2_real = _find_foot2_snip(db_path, cap, include_oral=False)
+        if foot2_real and _text_has_foot2_revision(foot2_real):
+            if not _text_has_foot2_revision(snip):
+                snip = foot2_real
+                post_id = post_id or _FOOT2_ORAL_POST_ID
+            elif cap >= _FOOT2_ORAL_AS_OF:
+                snip = f"{foot2_real} {snip}"
+        elif (
+            cap >= _FOOT2_ORAL_AS_OF
+            and not _text_has_foot2_revision(snip)
+            and (
+                not str(snip or "").strip()
+                or _text_has_c9_extension(snip)
+                or post_id == "oral-c9-band"
+            )
+        ):
+            snip = _FOOT2_ORAL_SNIP
+            post_id = _FOOT2_ORAL_POST_ID
+    except Exception:
+        logger.debug("第二隻腳題旨覆寫略過", exc_info=True)
     morph_blob = snip + " " + " ".join(str(r["snippet"] or "") for r in (extra or []))
     if post_snip:
         morph_blob = f"{morph_blob} {post_snip}"
@@ -2262,6 +2290,11 @@ def _latest_level_thesis(
     c35_done = bool(
         re.search(r"C3-5\s*完成|第二組下跌脈動.*(?:完成|落底)", snip)
     )
+    # 後文改口：37000~37500／第二隻腳（壓 C9 低點區 35500~37300）
+    has_foot2 = _text_has_foot2_revision(snip)
+    has_foot2_band = bool(
+        re.search(r"37000\s*[-~～到至\-]\s*37500|37000.{0,8}37500", snip)
+    )
     # 9波擴延 C-7轉C-8→C-9＋低點區 35500~37300（後文改口壓舊 C3-5）
     has_c9_band = bool(
         re.search(r"35500\s*[-~～到至]\s*37300|35500.{0,8}37300", snip)
@@ -2277,7 +2310,14 @@ def _latest_level_thesis(
     )
     has_c9 = bool(re.search(r"C\s*[-–]\s*9", snip))
     # 夜盤第二組落底（C3-5完成）優先於舊 C3-3 題旨；後文改口壓前文
-    if has_9ext or (has_c78 and (has_c9 or has_c9_band)) or (
+    if has_foot2 or has_foot2_band:
+        # 口述改口：夜盤跌完居多；低點 37000~37500；等第二隻腳（非買訊）
+        thesis = "大A→大B→大C｜夜盤跌完居多・等第二隻腳（預估）"
+        wait = (
+            "低點區37000~37500；看不到37000以下；"
+            "反彈後拉回1-2轉1-3-1＝第二隻腳；非買訊"
+        )
+    elif has_9ext or (has_c78 and (has_c9 or has_c9_band)) or (
         has_c9_band and (has_c78 or has_c9)
     ):
         # 口述改口：目前最有可能 C-7轉C-8，最後 C-9；低點區 35500~37300
@@ -3715,8 +3755,41 @@ def _claim_anchors(db_path: str) -> Dict[str, Any]:
     return out
 
 
+def _tw_has_foot2_low_zone(pack: Optional[Dict[str, Any]] = None) -> bool:
+    """題旨是否已收改口低點區 37000~37500（後文壓 C9 35500~37300）。"""
+    roles = {
+        str(r.get("role") or "")
+        for r in ((pack or {}).get("pred_levels") or {}).get("tw") or []
+    }
+    if "改口低上沿" in roles or "改口低下沿" in roles:
+        return True
+    for row in ((pack or {}).get("pred_levels") or {}).get("tw") or []:
+        try:
+            lv = float(row.get("level"))
+        except (TypeError, ValueError):
+            continue
+        if abs(lv - 37500.0) < 1.0 or abs(lv - 37000.0) < 1.0:
+            role = str(row.get("role") or "")
+            if role.startswith("改口") or role.startswith("夜盤低"):
+                return True
+    blob = " ".join(
+        str(x or "")
+        for x in (
+            (pack or {}).get("thesis"),
+            (pack or {}).get("snippet"),
+            (pack or {}).get("wait_struct"),
+        )
+    )
+    return _text_has_foot2_revision(blob)
+
+
 def _tw_has_c9_low_zone(pack: Optional[Dict[str, Any]] = None) -> bool:
-    """題旨是否已收 C-9 低點區 35500~37300（他改口後舊 38000 上沿改標已破）。"""
+    """題旨是否已收 C-9 低點區 35500~37300（他改口後舊 38000 上沿改標已破）。
+
+    改口低點區 37000~37500 也視為已收修訂低點（同樣讓舊 38000 標已破）。
+    """
+    if _tw_has_foot2_low_zone(pack):
+        return True
     roles = {
         str(r.get("role") or "")
         for r in ((pack or {}).get("pred_levels") or {}).get("tw") or []
@@ -3789,6 +3862,31 @@ def _c9_oral_now_line() -> str:
     )
 
 
+def _foot2_oral_now_line() -> str:
+    """改口人話：夜盤跌完居多；看不到37000以下；低點37000~37500；等第二隻腳。"""
+    return (
+        "夜盤來看跌完居多；目前應該看不到37000以下；"
+        "低點最多37000~37500；等反彈後拉回1-2轉1-3-1第二隻腳"
+    )
+
+
+def _active_oral_now_line(pack: Optional[Dict[str, Any]] = None) -> str:
+    """話筒／三窗腳註：有改口低點區用第二隻腳句，否則回 C9 句。"""
+    if _tw_has_foot2_low_zone(pack):
+        return _foot2_oral_now_line()
+    blob = " ".join(
+        str(x or "")
+        for x in (
+            (pack or {}).get("thesis"),
+            (pack or {}).get("snippet"),
+            (pack or {}).get("wait_struct"),
+        )
+    )
+    if _text_has_foot2_revision(blob):
+        return _foot2_oral_now_line()
+    return _c9_oral_now_line()
+
+
 # 飆大口頭題旨（已確認）：第二段下殺＝9波擴延・C-7轉C-8→C-9・低點區35500~37300
 # 併留舊劇本一 35000~38000：有 C9 後 38000 改口「已破」、35000 右標拿掉
 # 口頭 as_of＝確認日；更早題旨 cap 不准回填這段蓋掉當日真文／snap
@@ -3798,6 +3896,36 @@ _C9_ORAL_SNIP = (
     "還有最後一小段下跌C-9要跌就全部跌完，低點約會落在35500~37300之間。"
     "第一套劇本大盤會跌到35000~38000之間。"
 )
+
+# 飆大口頭改口（已確認）：夜盤跌完居多・看不到37000以下・低點37000~37500・第二隻腳
+# 後文壓前文：蓋掉 C9 低點區 35500~37300（更早 as_of 仍留 C9）
+# 他講「最安全是買…」＝他口語路徑；話筒標非買訊，不准進海選／黃金買點
+_FOOT2_ORAL_AS_OF = "20261107"
+_FOOT2_ORAL_POST_ID = "oral-foot2-37000"
+_FOOT2_ORAL_SNIP = (
+    "目前應該看不到37000以下，我夜盤來看應該跌完了居多。"
+    "低點應該最多37000-37500可能性非常高。"
+    "最安全是買反彈之後拉回1-2轉1-3-1，也就是第二隻腳。"
+)
+
+
+def _text_has_foot2_revision(blob: str) -> bool:
+    """是否為 37000~37500／看不到37000以下／第二隻腳（1-2轉1-3-1）改口。"""
+    s = str(blob or "")
+    if not s.strip():
+        return False
+    has_band = bool(
+        re.search(r"37000\s*[-~～到至\-]\s*37500|37000.{0,8}37500", s)
+    )
+    has_floor = bool(re.search(r"看不到\s*37000\s*以下", s))
+    has_leg = bool(
+        re.search(
+            r"第二隻腳|第二支腳|"
+            r"1\s*[-–]?\s*2\s*轉\s*1\s*[-–]?\s*3\s*[-–]?\s*1",
+            s,
+        )
+    )
+    return bool(has_band or (has_floor and has_leg) or (has_floor and has_band))
 
 
 def _text_has_c9_extension(blob: str) -> bool:
@@ -3898,6 +4026,86 @@ def _ensure_c9_oral_thesis_snap(db_path: str, *, as_of: str = "") -> None:
         )
     except Exception:
         logger.debug("補 C9 口頭題旨 snap 略過", exc_info=True)
+
+
+def _find_foot2_snip(
+    db_path: str, cap_ymd: str, *, include_oral: bool = True
+) -> str:
+    """庫內近窗掃 37000~37500／第二隻腳改口（後文可壓 C9 低點區）。
+
+    include_oral=False：略過 oral-foot2-37000（真文優先時用）。
+    """
+    cap = _ymd(cap_ymd)
+    if not db_path or not cap:
+        return ""
+    ensure_tables(db_path)
+    try:
+        conn = sqlite3.connect(db_path, timeout=15.0)
+        try:
+            rows = conn.execute(
+                "SELECT post_id, snippet FROM biaoke_level_snaps "
+                "WHERE as_of<=? ORDER BY as_of DESC, created_at DESC LIMIT 12",
+                (cap,),
+            ).fetchall()
+        finally:
+            conn.close()
+        for post_id, snip in rows or ():
+            if (not include_oral) and str(post_id or "") == _FOOT2_ORAL_POST_ID:
+                continue
+            if _text_has_foot2_revision(str(snip or "")):
+                return str(snip or "").strip()
+    except Exception:
+        logger.debug("掃第二隻腳 snap 略過", exc_info=True)
+    try:
+        cap_dash = f"{cap[:4]}-{cap[4:6]}-{cap[6:8]}"
+        since = (
+            datetime.strptime(cap, "%Y%m%d") - timedelta(days=21)
+        ).strftime("%Y-%m-%d")
+        conn = sqlite3.connect(db_path, timeout=15.0)
+        try:
+            rows = conn.execute(
+                "SELECT text FROM biaoke_posts WHERE date>=? AND date<=? "
+                "AND (text LIKE '%37000%' OR text LIKE '%37500%' "
+                "OR text LIKE '%第二隻腳%' OR text LIKE '%第二支腳%' "
+                "OR text LIKE '%1-2轉1-3-1%') "
+                "ORDER BY date DESC, time DESC LIMIT 20",
+                (since, cap_dash),
+            ).fetchall()
+        finally:
+            conn.close()
+        for (text,) in rows or ():
+            if _text_has_foot2_revision(str(text or "")):
+                return str(text or "").strip()
+    except Exception:
+        logger.debug("掃第二隻腳貼文略過", exc_info=True)
+    return ""
+
+
+def _ensure_foot2_oral_thesis_snap(db_path: str, *, as_of: str = "") -> None:
+    """題旨庫若還沒有 37000~37500／第二隻腳：寫入已確認口頭改口（只補缺）。
+
+    只在 as_of≥確認日才補；口頭 snap 固定 as_of＝確認日。
+    """
+    if not db_path:
+        return
+    day = _ymd(as_of) or datetime.now(TAIPEI).strftime("%Y%m%d")
+    if not day or day < _FOOT2_ORAL_AS_OF:
+        return
+    if _find_foot2_snip(db_path, day):
+        return
+    oral_day = _FOOT2_ORAL_AS_OF
+    try:
+        _upsert_snap(
+            db_path,
+            post_id=_FOOT2_ORAL_POST_ID,
+            as_of=oral_day,
+            post_date=f"{oral_day[:4]}-{oral_day[4:6]}-{oral_day[6:8]}",
+            post_time="13:30",
+            snippet=_FOOT2_ORAL_SNIP,
+            chart_path="",
+        )
+    except Exception:
+        logger.debug("補第二隻腳口頭題旨 snap 略過", exc_info=True)
 
 
 # 主圖／右下九波縮圖共用色（C1…C9）；虛線 C9 用紫
@@ -4300,43 +4508,81 @@ def _paint_c9_extension_on_bars(
     return True
 
 
-def _paint_c9_low_zone_band(
-    ax: Any,
-    pack: Optional[Dict[str, Any]],
-    *,
-    fp: Any,
-) -> Optional[Tuple[float, float]]:
-    """三窗共用：C-9 低點區 35500~37300 紫底帶＋標（他原文；非買訊）。"""
+def _tw_active_low_zone(
+    pack: Optional[Dict[str, Any]] = None,
+) -> Optional[Tuple[float, float, str]]:
+    """現行低點區：(lo, hi, kind)；kind＝foot2｜c9。改口優先於 C9。"""
     preds = ((pack or {}).get("pred_levels") or {}).get("tw") or []
-    y_hi = y_lo = None
+    f_hi = f_lo = c_hi = c_lo = None
     for row in preds:
         role = str(row.get("role") or "")
         try:
             lv = float(row.get("level"))
         except (TypeError, ValueError):
             continue
-        if role == "C9低上沿" or abs(lv - 37300.0) < 1.0:
-            y_hi = lv
+        if role == "改口低上沿" or (
+            role.startswith("改口") and abs(lv - 37500.0) < 1.0
+        ):
+            f_hi = lv
+        elif role == "改口低下沿" or (
+            role.startswith("改口") and abs(lv - 37000.0) < 1.0
+        ):
+            f_lo = lv
+        elif role == "C9低上沿" or abs(lv - 37300.0) < 1.0:
+            c_hi = lv
         elif role == "C9低下沿" or abs(lv - 35500.0) < 1.0:
-            y_lo = lv
-    if y_hi is None or y_lo is None or float(y_hi) <= float(y_lo):
+            c_lo = lv
+    # 無 role 時：改口兩端純數字備援（僅當題旨已是改口）
+    if (f_hi is None or f_lo is None) and _tw_has_foot2_low_zone(pack):
+        for row in preds:
+            try:
+                lv = float(row.get("level"))
+            except (TypeError, ValueError):
+                continue
+            if abs(lv - 37500.0) < 1.0:
+                f_hi = lv
+            elif abs(lv - 37000.0) < 1.0:
+                f_lo = lv
+    if f_hi is not None and f_lo is not None and float(f_hi) > float(f_lo):
+        return (float(f_lo), float(f_hi), "foot2")
+    if c_hi is not None and c_lo is not None and float(c_hi) > float(c_lo):
+        return (float(c_lo), float(c_hi), "c9")
+    return None
+
+
+def _paint_c9_low_zone_band(
+    ax: Any,
+    pack: Optional[Dict[str, Any]],
+    *,
+    fp: Any,
+) -> Optional[Tuple[float, float]]:
+    """三窗共用：現行低點區底帶＋標（改口 37000~37500 優先；否則 C-9 35500~37300）。
+
+    他原文兩端；非買訊。
+    """
+    zone = _tw_active_low_zone(pack)
+    if not zone:
         return None
-    lo, hi = float(y_lo), float(y_hi)
-    ax.axhspan(lo, hi, facecolor="#ce93d8", alpha=0.16, zorder=0.35)
+    lo, hi, kind = zone
+    if kind == "foot2":
+        face, ink, tag = "#80deea", "#80deea", "改口低點區"
+    else:
+        face, ink, tag = "#ce93d8", "#ce93d8", "C-9低點區"
+    ax.axhspan(lo, hi, facecolor=face, alpha=0.16, zorder=0.35)
     mid = (lo + hi) * 0.5
-    # 標在紫底帶水平置中（略偏右避開左下九波縮圖）；貼最左會被忽略
+    # 標在底帶水平置中（略偏右避開左下九波縮圖）；貼最左會被忽略
     ax.text(
         0.58,
         mid,
-        f"飆預測{_px(lo)}~{_px(hi)}（C-9低點區）",
+        f"飆預測{_px(lo)}~{_px(hi)}（{tag}）",
         transform=ax.get_yaxis_transform(),
         fontproperties=fp(7.5, "normal"),
-        color="#ce93d8",
+        color=ink,
         ha="center",
         va="center",
         zorder=11,
         bbox=dict(
-            boxstyle="round,pad=0.10", fc="#0b0f14", ec="#ce93d8", lw=0.45, alpha=0.90
+            boxstyle="round,pad=0.10", fc="#0b0f14", ec=ink, lw=0.45, alpha=0.90
         ),
     )
     return (lo, hi)
@@ -4578,11 +4824,41 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
             tag=tag,
             label=lab,
         )
+    # 改口低點區：37000~37500（後文壓 C9；他原文兩端；不准發明中間價）
+    has_foot2_zone = bool(
+        re.search(r"37000\s*[-~～到至\-]\s*37500|37000.{0,8}37500", s)
+    ) or _text_has_foot2_revision(s)
     # C-9 低點區：35500~37300（他原文兩端；不准發明中間價）
     has_c9_zone = bool(
         re.search(r"35500\s*[-~～到至]\s*37300|35500.{0,8}37300", s)
     )
-    if has_c9_zone:
+    if has_foot2_zone:
+        _add(
+            "tw",
+            level=37500.0,
+            ref_ymd="",
+            role="改口低上沿",
+            tag="未到",
+            label=f"飆預測{_px(37500)}改口低上沿",
+        )
+        _add(
+            "tw",
+            level=37000.0,
+            ref_ymd="",
+            role="改口低下沿",
+            tag="未到",
+            label=f"飆預測{_px(37000)}改口低下沿",
+        )
+        # 改口後舊 38000 劇本一上沿仍標已破；35000／C9 35500 不准再標
+        _add(
+            "tw",
+            level=38000.0,
+            ref_ymd="",
+            role="劇本一上沿",
+            tag="已破",
+            label=f"飆預測{_px(38000)}已破",
+        )
+    elif has_c9_zone:
         _add(
             "tw",
             level=37300.0,
@@ -4608,7 +4884,7 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
             tag="已破",
             label=f"飆預測{_px(38000)}已破",
         )
-    # 劇本一／凌晨改口：大盤 35000~38000（無 C9 區才兩端都標）
+    # 劇本一／凌晨改口：大盤 35000~38000（無 C9／改口區才兩端都標）
     elif re.search(r"35000\s*[-~～到至]\s*38000|35000.{0,8}38000", s):
         _add(
             "tw",
@@ -6476,8 +6752,11 @@ def _his_micro_degree(blob: str) -> Dict[str, str]:
         degree = "C3"
     elif re.search(r"(現在在C|下降ABC.*C|主跌段)", s):
         degree = "C"
+    # 改口第二隻腳（後文壓 9波／C9 低點區）
+    if _text_has_foot2_revision(s):
+        degree = "第二隻腳"
     # 9波擴延 C-7／C-8／C-9（必帶連字號，不准誤吃 C3-7）
-    if re.search(
+    elif re.search(
         r"9\s*波\s*擴延|C\s*[-–]\s*7.{0,24}C\s*[-–]\s*8|C\s*[-–]\s*9|"
         r"35500\s*[-~～到至]\s*37300|七走完|準備往\s*八|往八走",
         s,
@@ -6507,6 +6786,8 @@ def _his_micro_degree(blob: str) -> Dict[str, str]:
         chain = f"五波→ABC→C→C3-3→{degree}"
     if degree in ("C-7", "C-8", "C-9"):
         chain = "五波→ABC→C→9波擴延→C-7→C-8→C-9"
+    if degree == "第二隻腳":
+        chain = "五波→ABC→C→等第二隻腳"
     return {"degree": degree, "chain": chain, "raw": s[:160]}
 
 
@@ -7033,6 +7314,13 @@ def _wave_now_ladder(pack: Optional[Dict[str, Any]] = None, *, blob: str = "") -
     # 大結構跟他鎖的：A底→B反彈→C；不准寫成「五波升完再ABC」讓人把7/29→四萬九當上升⑤
     steps: List[str] = ["大A底7/29", "大B反彈", "大C進行中"]
     if (
+        deg == "第二隻腳"
+        or "第二隻腳" in thesis
+        or "等第二隻腳" in thesis
+        or _text_has_foot2_revision(text)
+    ):
+        steps.append("等第二隻腳")
+    elif (
         deg in ("C-7", "C-8", "C-9")
         or "9波擴延" in thesis
         or "C-7轉C-8" in thesis
@@ -7075,8 +7363,23 @@ def _wave_now_ladder(pack: Optional[Dict[str, Any]] = None, *, blob: str = "") -
     else:
         day_zh = ""
         day_bit = ""
-    # 9波擴延：話筒／超近說明用人話，不准只丟 C-7 代號
-    if "9波擴延" in steps or deg in ("C-7", "C-8", "C-9"):
+    # 改口第二隻腳／9波擴延：話筒／超近說明用人話，不准只丟代號
+    if "等第二隻腳" in steps or deg == "第二隻腳":
+        oral_now = _foot2_oral_now_line()
+        one_line = "現在：夜盤跌完居多・等第二隻腳（預估）"
+        now_line = (
+            oral_now
+            + (f"・{day_bit}" if day_bit else "")
+            + "・預估會改・非買訊"
+        )
+        teach_box = (
+            "現在走到（大→小）\n"
+            f"{chain}\n"
+            f"{oral_now}"
+            + (f"・{day_bit}" if day_bit else "")
+            + "\n預估會改・非買訊"
+        )
+    elif "9波擴延" in steps or deg in ("C-7", "C-8", "C-9"):
         oral_now = _c9_oral_now_line()
         one_line = f"現在：9波擴延・{_c9_now_step_label()}→C-9（預估）"
         now_line = (
@@ -8173,8 +8476,15 @@ def _tw_pred_right_notes(
             st = "已穿" if (now_px is not None and now_px >= lv - 0.5) else "未穿"
             suffix = "穿刺" if role == "反彈穿刺" else "轉震盪"
             text = _biaoke_pred_label(lv, st + suffix)
-        elif role in {"劇本一上沿", "劇本一下沿", "C9低上沿", "C9低下沿"}:
-            # 劇本一 38000：有 C9 區＝已破；C9 兩沿跟官方柱
+        elif role in {
+            "劇本一上沿",
+            "劇本一下沿",
+            "C9低上沿",
+            "C9低下沿",
+            "改口低上沿",
+            "改口低下沿",
+        }:
+            # 劇本一 38000：有修訂低點區＝已破；C9／改口兩沿跟官方柱
             text = _biaoke_pred_label(
                 lv, _tw_pred_break_tag(lv, lows, pack=pack, role=role)
             )
@@ -8190,9 +8500,15 @@ def _tw_pred_right_notes(
                 "x": x_note,
                 "y": lv,
                 "text": text[:28],
-                "color": "#ce93d8"
-                if role in {"C9低上沿", "C9低下沿"}
-                else ("#82b1ff" if lv < 45000 else "#4dd0e1"),
+                "color": (
+                    "#80deea"
+                    if role in {"改口低上沿", "改口低下沿"}
+                    else (
+                        "#ce93d8"
+                        if role in {"C9低上沿", "C9低下沿"}
+                        else ("#82b1ff" if lv < 45000 else "#4dd0e1")
+                    )
+                ),
             }
         )
         skip.add(round(lv, 1))
@@ -10940,12 +11256,18 @@ def _render_twii_super_near_c9_60m(
         highs, lows, closes, i_bhi=i_b, i_now=i_now, tf="60"
     )
     tip_anchors = _tw_tip_anchors(pack)
+    _zone_lo_hi = _tw_active_low_zone(pack)
+    _tip_fallback = (
+        (float(_zone_lo_hi[1]), float(_zone_lo_hi[0]))
+        if _zone_lo_hi
+        else (37300.0, 35500.0)
+    )
     tip = _c_forecast_tip(
         i_now=i_now,
         y_now=y_now,
         y_ref=y_b,
         lows=lows[i_b : i_now + 1] or lows,
-        anchors=tip_anchors or (37300.0, 35500.0),
+        anchors=tip_anchors or _tip_fallback,
     )
 
     # 上＝60分K｜中＝量｜日期長條｜下＝左日K滿格＋右九波
@@ -10980,7 +11302,8 @@ def _render_twii_super_near_c9_60m(
     ax_wave_host.tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
 
     tw_supports = _tw_support_ladder(pack)
-    ymin = min([min(lows)] + list(tw_supports) + [35500.0]) - 420
+    _floor_y = float(_zone_lo_hi[0]) if _zone_lo_hi else 35500.0
+    ymin = min([min(lows)] + list(tw_supports) + [_floor_y]) - 420
     ymax = max(highs) + 720
     _paint_window_dual_zones(
         ax,
@@ -11197,13 +11520,14 @@ def _render_twii_super_near_c9_60m(
         candle_up=candle_up_taiwan,
         note="",
     )
-    foot_m = _c9_oral_now_line().replace(" ", "")
+    _oral_m = _active_oral_now_line(pack)
+    foot_m = _oral_m.replace(" ", "")
     fig.text(
         0.03,
         0.028,
-        f"{_c9_oral_now_line()}｜浪序：{labs_line}"[:140],
+        f"{_oral_m}｜浪序：{labs_line}"[:140],
         fontproperties=_fp(8, "bold"),
-        color="#ce93d8",
+        color="#80deea" if _tw_has_foot2_low_zone(pack) else "#ce93d8",
         ha="left",
         va="bottom",
     )
@@ -11629,8 +11953,12 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     now_vis = str(ladder.get("now") or deg_his or "").strip()
     if now_vis and now_vis not in hierarchy:
         hierarchy = f"{hierarchy}\n此刻＝{now_vis}"
-    # 9波擴延題旨：中排主句跟人話對齊，不准被舊 C3 柱讀蓋掉
-    if deg_his in ("C-7", "C-8", "C-9") or "9波擴延" in hierarchy:
+    # 改口第二隻腳／9波擴延：中排主句跟人話對齊，不准被舊 C3 柱讀蓋掉
+    if deg_his == "第二隻腳" or "第二隻腳" in hierarchy or "37000~37500" in hierarchy:
+        if "看不到37000" not in hierarchy and "夜盤" not in hierarchy:
+            hierarchy = f"{hierarchy}\n{_foot2_oral_now_line()}"
+        geom_line = "日K小波①～⑤＝柱上細讀（輔）；口述主＝等第二隻腳・低點37000~37500"
+    elif deg_his in ("C-7", "C-8", "C-9") or "9波擴延" in hierarchy:
         if "七走完" not in hierarchy and "目前最有可能" not in hierarchy:
             hierarchy = f"{hierarchy}\n{_c9_oral_now_line()}"
         geom_line = f"日K小波①～⑤＝柱上細讀（輔）；口述主＝{_c9_now_step_label()}→C-9"
@@ -11886,7 +12214,10 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     # 不准 [:40] 把「C3-3-4」裁成「C3-3」；尾碼必須完整
     _ol = str(ladder.get("one_line") or "他說現在：C進行中")
     _now = str(ladder.get("now") or "").strip()
-    if "9波擴延" in _ol or "C-7轉C-8" in _ol or "C-7走完" in _ol:
+    _foot2_micro = _tw_has_foot2_low_zone(pack) or "第二隻腳" in _ol or "第二隻腳" in _now
+    if _foot2_micro:
+        _ol = f"現在：{_foot2_oral_now_line()}"
+    elif "9波擴延" in _ol or "C-7轉C-8" in _ol or "C-7走完" in _ol:
         _ol = f"現在：9波擴延・{_c9_oral_now_line()}"
     elif len(_ol) > 52 and _now and _ol.endswith(_now):
         _ol = f"他說現在：…→{_now}"
@@ -11896,12 +12227,16 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         0.03,
         0.945,
         (
-            f"{_ol}｜{_macro_wave_calendar_line()}｜超近＝9波・C7→C8虛線C9｜C走完≠新五波升"
-            if _c9_micro
-            else f"{_ol}｜{_macro_wave_calendar_line()}｜超近＝C內震盪①～⑤｜C走完≠新五波升"
+            f"{_ol}｜{_macro_wave_calendar_line()}｜超近＝改口低點區37000~37500｜非買訊"
+            if _foot2_micro
+            else (
+                f"{_ol}｜{_macro_wave_calendar_line()}｜超近＝9波・C7→C8虛線C9｜C走完≠新五波升"
+                if _c9_micro
+                else f"{_ol}｜{_macro_wave_calendar_line()}｜超近＝C內震盪①～⑤｜C走完≠新五波升"
+            )
         ),
         fontproperties=_fp(9, "bold"),
-        color="#ce93d8",
+        color="#80deea" if _foot2_micro else "#ce93d8",
         ha="left",
         va="top",
     )
@@ -11911,7 +12246,9 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         fig, bars, pack=pack, close=closes[-1], fp=_fp, x=0.995, y=0.855
     )
     foot_m = str(ladder.get("now_line") or (pack.get("thesis") or ""))
-    if "C-7" in foot_m or "9波擴延" in foot_m:
+    if _foot2_micro or "第二隻腳" in foot_m or "37000" in foot_m:
+        foot_m = _foot2_oral_now_line().replace(" ", "")
+    elif "C-7" in foot_m or "9波擴延" in foot_m:
         foot_m = _c9_oral_now_line().replace(" ", "")
     else:
         foot_m = foot_m[:64]

@@ -792,6 +792,88 @@ def test_thesis_pred_c9_band_and_38000_broke():
     assert "_paint_c9_low_zone_band" in src
 
 
+def test_wave_now_ladder_foot2_oral():
+    """改口：夜盤跌完居多・37000~37500・第二隻腳；壓 C9 低點區說法。"""
+    from biaoke_level_learn import _wave_now_ladder
+
+    pack = {
+        "thesis": "大A→大B→大C｜夜盤跌完居多・等第二隻腳（預估）",
+        "snippet": (
+            "目前應該看不到37000以下，我夜盤來看應該跌完了居多。"
+            "低點應該最多37000-37500可能性非常高。"
+            "最安全是買反彈之後拉回1-2轉1-3-1，也就是第二隻腳。"
+        ),
+        "wait_struct": (
+            "低點區37000~37500；看不到37000以下；"
+            "反彈後拉回1-2轉1-3-1＝第二隻腳；非買訊"
+        ),
+        "thesis_as_of": "20261107",
+    }
+    out = _wave_now_ladder(pack)
+    assert out["now"] == "等第二隻腳"
+    assert "第二隻腳" in out["chain"]
+    assert "37000~37500" in out["now_line"] or "37000-37500" in out["now_line"]
+    assert "第二隻腳" in out["now_line"]
+    assert "35500~37300" not in out["now_line"]
+    assert "as_of" not in out["now_line"]
+    assert "題旨日 11/7" in out["now_line"]
+    assert "非買訊" in out["now_line"]
+
+
+def test_thesis_pred_foot2_band_supersedes_c9():
+    """37000~37500 進 pred；壓 C9 35500/37300；38000 仍標已破。"""
+    from biaoke_level_learn import (
+        _biaoke_pred_label,
+        _paint_c9_low_zone_band,
+        _text_has_foot2_revision,
+        _thesis_pred_levels,
+        _tw_active_low_zone,
+        _tw_pred_break_tag,
+        _tw_pred_right_notes,
+        _tw_tip_anchors,
+        _px,
+    )
+
+    snip = (
+        "目前應該看不到37000以下，我夜盤來看應該跌完了居多。"
+        "低點應該最多37000-37500可能性非常高。"
+        "最安全是買反彈之後拉回1-2轉1-3-1，也就是第二隻腳。"
+    )
+    assert _text_has_foot2_revision(snip)
+    pred = _thesis_pred_levels(snip, "")
+    roles = {str(r.get("role")): r for r in (pred.get("tw") or [])}
+    assert "改口低上沿" in roles and abs(float(roles["改口低上沿"]["level"]) - 37500) < 1
+    assert "改口低下沿" in roles and abs(float(roles["改口低下沿"]["level"]) - 37000) < 1
+    assert "C9低上沿" not in roles and "C9低下沿" not in roles
+    assert "劇本一上沿" in roles
+    pack = {"pred_levels": pred, "snippet": snip, "thesis": "等第二隻腳"}
+    zone = _tw_active_low_zone(pack)
+    assert zone is not None and zone[2] == "foot2"
+    assert abs(zone[0] - 37000) < 1 and abs(zone[1] - 37500) < 1
+    tips = _tw_tip_anchors(pack)
+    assert any(abs(t - 37500) < 1 for t in tips)
+    assert any(abs(t - 37000) < 1 for t in tips)
+    assert all(abs(t - 35500) > 1 and abs(t - 37300) > 1 for t in tips)
+    br = _tw_pred_break_tag(38000.0, [45000.0], pack=pack, role="劇本一上沿")
+    assert br == "已破"
+    assert _biaoke_pred_label(38000.0, br) == f"飆預測{_px(38000)}已破"
+    notes = _tw_pred_right_notes(
+        pack, n=10, lows=[45000.0], tip_skip=set(), bars=None
+    )
+    texts = " ".join(str(n.get("text") or "") for n in notes)
+    assert f"{_px(38000)}已破" in texts
+    assert _px(37500) in texts and _px(37000) in texts
+    assert _px(35500) not in texts
+    import biaoke_level_learn as bll
+
+    src = open(bll.__file__, encoding="utf-8").read()
+    assert "_tw_active_low_zone" in src
+    assert "_FOOT2_ORAL_SNIP" in src
+    assert "_paint_c9_low_zone_band" in open(
+        bll.__file__, encoding="utf-8"
+    ).read() or callable(_paint_c9_low_zone_band)
+
+
 def test_sox_abc_anchors_not_copy_twii_ab():
     """費半 A/B 用合成柱自算；不准落在加權 A/B 同索引（10/13–10/14 那兩格）。"""
     from biaoke_level_learn import _sox_abc_anchors_on_axis
