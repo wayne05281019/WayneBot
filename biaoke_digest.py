@@ -684,6 +684,8 @@ def _plain_wave_now_phrase(now: str) -> str:
         return "9波擴延：C-7（接著八先上，後面還有九）"
     if n == "C-9":
         return "9波擴延最後一小段 C-9（跌完＝這段下殺完）"
+    if n in ("第二隻腳", "等第二隻腳"):
+        return "夜盤跌完居多；低點最多 37000~37500；等反彈後拉回 1-2轉1-3-1 第二隻腳"
     return n
 
 
@@ -718,7 +720,21 @@ def format_teach_brief(db_path: str = "") -> str:
     lines.append("<b>現在</b>")
     # 一條路＋目前落在哪；不准再叠「大A→大B→…→落在」兩段重複
     lines.append(html_escape("大盤：大A底（7/29）→ 大B反彈 → 大C下跌中。"))
-    if (
+    _foot2_brief = (
+        "第二隻腳" in thesis
+        or "等第二隻腳" in thesis
+        or "37000~37500" in wait
+        or "37000-37500" in wait
+        or "看不到37000" in wait
+    )
+    if _foot2_brief:
+        lines.append(
+            html_escape(
+                "夜盤來看跌完居多；目前應該看不到 37000 以下；"
+                "低點最多 37000~37500；等反彈後拉回 1-2轉1-3-1 第二隻腳（他口語路徑・非買訊）。"
+            )
+        )
+    elif (
         "9波擴延" in thesis
         or "C-7轉C-8" in thesis
         or "C-7走完" in thesis
@@ -755,6 +771,8 @@ def format_teach_brief(db_path: str = "") -> str:
             # 「中繼後原方向」補一句人話
             if one_w in ("中繼後原方向", "中繼後走原方向"):
                 one_w = "中繼結束後，多半續走原來的下跌方向"
+            elif re.search(r"低點區\s*37000", one_w):
+                one_w = "低點最多 37000~37500；看不到 37000 以下；等第二隻腳"
             elif re.search(r"低點區\s*35500", one_w):
                 one_w = "低點約會落在 35500~37300；C-9 跌完＝這段下殺完"
             elif re.search(r"C-7(?:轉|走完).{0,8}C-8→C-9|C-7走完→C-8→C-9", one_w):
@@ -776,22 +794,36 @@ def format_teach_brief(db_path: str = "") -> str:
             if len(bits) >= 6:
                 break
         pred_note = "｜".join(bits)
-    # C9 低點區優先寫成看得懂的區間句（兩端都是他原文）
-    c9_hi = c9_lo = None
+    # 改口／C9 低點區優先寫成看得懂的區間句（兩端都是他原文；改口壓 C9）
+    foot_hi = foot_lo = c9_hi = c9_lo = None
     for row in pred.get("tw") or []:
         role = str((row or {}).get("role") or "")
         try:
             lv = float((row or {}).get("level"))
         except (TypeError, ValueError):
             continue
-        if role == "C9低上沿" or abs(lv - 37300.0) < 1.0:
+        if role == "改口低上沿" or abs(lv - 37500.0) < 1.0:
+            foot_hi = lv
+        elif role == "改口低下沿" or abs(lv - 37000.0) < 1.0:
+            foot_lo = lv
+        elif role == "C9低上沿" or abs(lv - 37300.0) < 1.0:
             c9_hi = lv
         elif role == "C9低下沿" or abs(lv - 35500.0) < 1.0:
             c9_lo = lv
-    if pred_note or (c9_lo is not None and c9_hi is not None):
+    if foot_lo is not None and foot_hi is not None:
+        c9_lo = c9_hi = None  # 改口壓 C9 區間句
+    zone_lo, zone_hi = (
+        (foot_lo, foot_hi)
+        if foot_lo is not None and foot_hi is not None
+        else (c9_lo, c9_hi)
+    )
+    if pred_note or (zone_lo is not None and zone_hi is not None):
         bits = []
-        if c9_lo is not None and c9_hi is not None:
-            bits.append(f"C-9低點區 {int(c9_lo)}~{int(c9_hi)}")
+        if zone_lo is not None and zone_hi is not None:
+            if foot_lo is not None:
+                bits.append(f"改口低點區 {int(zone_lo)}~{int(zone_hi)}")
+            else:
+                bits.append(f"C-9低點區 {int(zone_lo)}~{int(zone_hi)}")
         for raw in re.split(r"[｜|]", pred_note):
             bit = raw.strip()
             if not bit:
@@ -801,10 +833,14 @@ def format_teach_brief(db_path: str = "") -> str:
                 bit = re.sub(r"(明日|明天)", "", bit).strip(" ・")
             # 「飆預測45,546」保留數字，拿掉重複前綴堆叠可讀性
             bit = re.sub(r"^飆預測\s*", "", bit).strip() or bit
-            # 舊劇本一 38000 上沿：有 C9 區時改寫成已破
-            if c9_lo is not None and re.search(r"38000.*劇本一上沿|38000$", bit):
+            # 舊劇本一 38000 上沿：有修訂低點區時改寫成已破
+            if zone_lo is not None and re.search(r"38000.*劇本一上沿|38000$", bit):
                 bit = "38000已破"
-            if re.search(r"C9低|35500|37300", bit) and c9_lo is not None:
+            if re.search(r"改口低|37000|37500", bit) and foot_lo is not None:
+                continue
+            if re.search(r"C9低|35500|37300", bit) and (
+                foot_lo is not None or c9_lo is not None
+            ):
                 continue
             if bit and bit not in bits:
                 bits.append(bit)

@@ -1100,6 +1100,62 @@ def test_format_teach_brief_c9_extension_readable(monkeypatch):
     assert "波浪位階" in one
 
 
+def test_format_teach_brief_foot2_revision_readable(monkeypatch):
+    """波浪位階鈕：改口 37000~37500／第二隻腳；壓 C9 35500~37300。"""
+    from biaoke_digest import format_teach_brief, format_wave_level_one_liner
+
+    def _fake(_db):
+        return {
+            "thesis": "大A→大B→大C｜夜盤跌完居多・等第二隻腳（預估）",
+            "snippet": (
+                "目前應該看不到37000以下，我夜盤來看應該跌完了居多。"
+                "低點應該最多37000-37500可能性非常高。"
+                "最安全是買反彈之後拉回1-2轉1-3-1，也就是第二隻腳。"
+            ),
+            "wait_struct": (
+                "低點區37000~37500；看不到37000以下；"
+                "反彈後拉回1-2轉1-3-1＝第二隻腳；非買訊"
+            ),
+            "chart_as_of": "20261107",
+            "thesis_as_of": "20261107",
+            "pred_levels": {
+                "tw": [
+                    {
+                        "level": 38000.0,
+                        "role": "劇本一上沿",
+                        "tag": "已破",
+                        "label": "飆預測38000已破",
+                    },
+                    {
+                        "level": 37500.0,
+                        "role": "改口低上沿",
+                        "tag": "未到",
+                        "label": "飆預測37500改口低上沿",
+                    },
+                    {
+                        "level": 37000.0,
+                        "role": "改口低下沿",
+                        "tag": "未到",
+                        "label": "飆預測37000改口低下沿",
+                    },
+                ],
+                "sox": [],
+            },
+        }
+
+    monkeypatch.setattr("biaoke_level_learn._build_live_pack", _fake)
+    out = format_teach_brief("x.db")
+    assert "37000~37500" in out or "37000~37500" in out.replace(" ", "")
+    assert "第二隻腳" in out
+    assert "非買訊" in out
+    assert "35500~37300" not in out.replace(" ", "")
+    assert "38000已破" in out
+    assert "as_of" not in out
+    one = format_wave_level_one_liner("x.db")
+    assert "第二隻腳" in one
+    assert "波浪位階" in one
+
+
 def test_focus_oral_blank_uses_one_liner_not_full_wave_brief(monkeypatch):
     """飆大空白鍵：口語為主；不准整段波浪位階敘述塞進來。"""
     from biaoke_digest import format_focus_oral
