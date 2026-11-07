@@ -1,0 +1,601 @@
+{
+  "phone_sync": "blocked",
+  "not_buy_signal": true,
+  "elapsed_s": 6.4,
+  "data": {
+    "TWII": {
+      "n": 5426,
+      "start": "2006-11-02",
+      "end": "2026-11-06",
+      "years": 20.01
+    },
+    "2330": {
+      "n": 2429,
+      "start": "2016-11-03",
+      "end": "2026-11-03",
+      "years": 10.0
+    }
+  },
+  "summary": {
+    "n": 32,
+    "PASS": 30,
+    "FAIL": 1,
+    "SKIP": 1,
+    "all_required_pass": false
+  },
+  "gates": [
+    {
+      "version": "DATA",
+      "item": "TWII_span",
+      "status": "PASS",
+      "detail": "n=5426 2006-11-02→2026-11-06 years=20.01"
+    },
+    {
+      "version": "DATA",
+      "item": "2330_span",
+      "status": "PASS",
+      "detail": "n=2429 2016-11-03→2026-11-03 years=10.00（非20年個股全市場）"
+    },
+    {
+      "version": "DATA",
+      "item": "full_market_20y_stocks",
+      "status": "SKIP",
+      "detail": "wayne_market.daily_quotes 個股僅 2023-12 起；本機無全市場20年個股母體，不謊稱已測"
+    },
+    {
+      "version": "V1",
+      "item": "lab_isolation",
+      "status": "PASS",
+      "detail": "phone_sync=blocked not_buy_signal=True"
+    },
+    {
+      "version": "V1",
+      "item": "engine_runs_2330",
+      "status": "PASS",
+      "detail": "bars=2429 events=13"
+    },
+    {
+      "version": "V2",
+      "item": "ratio_adj_or_continuous",
+      "status": "PASS",
+      "detail": "preprocessor=hsiao_v7 ratio_adjusted=True"
+    },
+    {
+      "version": "V2",
+      "item": "feature_columns",
+      "status": "PASS",
+      "detail": "missing=[]"
+    },
+    {
+      "version": "V2",
+      "item": "weekly_aligned",
+      "status": "PASS",
+      "detail": "weekly_trend_bullish non-null=2429"
+    },
+    {
+      "version": "V3",
+      "item": "limit_regime_2015",
+      "status": "PASS",
+      "detail": "pre_n=2111 post_n=3315"
+    },
+    {
+      "version": "V3",
+      "item": "gap_and_limit_cols",
+      "status": "PASS",
+      "detail": "missing=[] bull_gap_days=142"
+    },
+    {
+      "version": "V3",
+      "item": "priority_rank_score",
+      "status": "PASS",
+      "detail": "scores=[0.617, 0.933, 0.45]"
+    },
+    {
+      "version": "V4",
+      "item": "log_fib_and_retrace",
+      "status": "PASS",
+      "detail": "t1618=147.7433 retrace=0.5779"
+    },
+    {
+      "version": "V4",
+      "item": "kd_and_lock_helpers",
+      "status": "PASS",
+      "detail": "K_finite=2429"
+    },
+    {
+      "version": "V4",
+      "item": "walk_forward_TWII",
+      "status": "PASS",
+      "detail": "folds=17 oos_acc_mean=0.48566658480125574",
+      "folds": [
+        {
+          "year": 2010,
+          "train_end": "2009-10-07",
+          "n_train": 641,
+          "n_test": 250,
+          "oos_accuracy": 0.508695652173913,
+          "weights": {
+            "angle_5": 0.13693416536681874,
+            "ma20_time_safety": 0.2731204820109436,
+            "ma60_time_safety": 0.19141735541385785,
+            "vol_attack_ratio": 0.08171649970024512,
+            "hsiao_4d_score": 0.31681149750813475,
+            "rs_20d": 0.0
+          }
+        },
+        {
+          "year": 2011,
+          "train_end": "2010-10-07",
+          "n_train": 891,
+          "n_test": 247,
+          "oos_accuracy": 0.5726872246696035,
+          "weights": {
+            "angle_5": 0.14174911886548436,
+            "ma20_time_safety": 0.27950557602645604,
+            "ma60_time_safety": 0.19539457534079993,
+            "vol_attack_ratio": 0.09215013969473018,
+            "hsiao_4d_score": 0.2912005900725295,
+            "rs_20d": 0.0
+          }
+        },
+        {
+          "year": 2012,
+          "train_end": "2011-10-05",
+          "n_train": 1138,
+          "n_test": 246,
+          "oos_accuracy": 0.5442477876106194,
+          "weights": {
+            "angle_5": 0.1424668266689551,
+            "ma20_time_safety": 0.28967106766740547,
+            "ma60_time_safety": 0.18701389998417567,
+            "vol_attack_ratio": 0.09570464967446807,
+            "hsiao_4d_score": 0.28514355600499575,
+            "rs_20d": 0.0
+          }
+        },
+        {
+          "year": 2013,
+          "train_end": "2012-10-03",
+          "n_train": 1384,
+          "n_test": 244,
+          "oos_accuracy": 0.4955357142857143,
+          "weights": {
+            "angle_5": 0.13822294516055594,
+            "ma20_time_safety": 0.280416899179104,
+            "ma60_time_safety": 0.2044555865876449,
+            "vol_attack_ratio": 0.08658100313290647,
+            "hsiao_4d_score": 0.2903235659397888,
+            "rs_20d": 0.0
+          }
+        },
+        {
+          "year": 2014,
+          "train_end": "2013-10-06",
+          "n_train": 1628,
+          "n_test": 248,
+          "oos_accuracy": 0.4692982456140351,
+          "weights": {
+            "angle_5": 0.13904685737154518,
+            "ma20_time_safety": 0.2831833955501671,
+            "ma60_time_safety": 0.20201806592079027,
+            "vol_attack_ratio": 0.08647287891089986,
+            "hsiao_4d_score": 0.2892788022465977,
+            "rs_20d": 0.0
+          }
+        },
+        {
+          "year": 2015,
+          "train_end": "2014-10-06",
+          "n_train": 1876,
+          "n_test": 244,
+          "oos_accuracy": 0.48214285714285715,
+          "weights": {
+            "angle_5": 0.14265982137366826,
+            "ma20_time_safety": 0.28948588556901295,
+            "ma60_time_safety": 0.19023708591795288,
+            "vol_attack_ratio": 0.09614052862740961,
+            "hsiao_4d_score": 0.28147667851195624,
+            "rs_20d": 0.0
+          }
+        },
+        {
+          "year": 2016,
+          "train_end": "2015-10-06",
+          "n_train": 2120,
+          "n_test": 251,
+          "oos_accuracy": 0.46320346320346323,
+          "weights": {
+            "angle_5": 0.1439666081410215,
+            "ma20_time_safety": 0.2938270721624546,
+            "ma60_time_safety": 0.19855507978326864,
+            "vol_attack_ratio": 0.08961243183672385,
+            "hsiao_4d_score": 0.2740388080765314,
+            "rs_20d": 0.0
+          }
+        },
+        {
+          "year": 2017,
+          "train_end": "2016-10-19",
+          "n_train": 2371,
+          "n_test": 296,
+          "oos_accuracy": 0.39492753623188404,
+          "weights": {
+            "angle_5": 0.14312574045317325,
+            "ma20_time_safety": 0.2915698159341205,
+            "ma60_time_safety": 0.20134315716790827,
+            "vol_attack_ratio": 0.09102966083171488,
+            "hsiao_4d_score": 0.27293162561308315,
+            "rs_20d": 0.0
+          }
+        },
+        {
+          "year": 2018,
+          "train_end": "2017-10-20",
+          "n_train": 2667,
+          "n_test": 300,
+          "oos_accuracy": 0.5428571428571428,
+          "weights": {
+            "angle_5": 0.14560939242140938,
+            "ma20_time_safety": 0.2994003359800123,
+            "ma60_time_safety": 0.1923698127871574,
+            "vol_attack_ratio": 0.0943009757181777,
+            "hsiao_4d_score": 0.2683194830932432,
+            "rs_20d": 0.0
+          }
+        },
+        {
+          "year": 2019,
+          "train_end": "2018-10-19",
+          "n_train": 2967,
+          "n_test": 294,
+          "oos_accuracy": 0.45985401459854014,
+          "weights": {
+            "angle_5": 0.1424070621141116,
+            "ma20_time_safety": 0.2952240600204792,
+            "ma60_time_safety": 0.19942727736061533,
+            "vol_attack_ratio": 0.09320571516747204,
+            "hsiao_4d_score": 0.26973588533732185,
+            "rs_20d": 0.0
+          }
+        },
+        {
+          "year": 2020,
+          "train_end": "2019-10-22",
+          "n_train": 3261,
+          "n_test": 298,
+          "oos_accuracy": 0.4784172661870504,
+          "weights": {
+            "angle_5": 0.1435141579836839,
+            "ma20_time_safety": 0.29331006556408323,
+            "ma60_time_safety": 0.20185000417644286,
+            "vol_attack_ratio": 0.09234295014146833,
+            "hsiao_4d_score": 0.2689828221343216,
+            "rs_20d": 0.0
+          }
+        },
+        {
+          "year": 2021,
+          "train_end": "2020-10-22",
+          "n_train": 3559,
+          "n_test": 294,
+          "oos_accuracy": 0.4927007299270073,
+          "weights": {
+            "angle_5": 0.1651998307636878,
+            "ma20_time_safety": 0.3096208608743429,
+            "ma60_time_safety": 0.16258772901022958,
+            "vol_attack_ratio": 0.0,
+            "hsiao_4d_score": 0.36259157935173963,
+            "rs_20d": 0.0
+          }
+        },
+        {
+          "year": 2022,
+          "train_end": "2021-10-21",
+          "n_train": 3853,
+          "n_test": 297,
+          "oos_accuracy": 0.6028880866425993,
+          "weights": {
+            "angle_5": 0.16807464702715655,
+            "ma20_time_safety": 0.31333144919476874,
+            "ma60_time_safety": 0.14029333024320836,
+            "vol_attack_ratio": 0.0,
+            "hsiao_4d_score": 0.3783005735348664,
+            "rs_20d": 0.0
+          }
+        },
+        {
+          "year": 2023,
+          "train_end": "2022-10-21",
+          "n_train": 4150,
+          "n_test": 291,
+          "oos_accuracy": 0.5166051660516605,
+          "weights": {
+            "angle_5": 0.16405021176489798,
+            "ma20_time_safety": 0.3048326568173159,
+            "ma60_time_safety": 0.16687787019728373,
+            "vol_attack_ratio": 0.0,
+            "hsiao_4d_score": 0.3642392612205024,
+            "rs_20d": 0.0
+          }
+        },
+        {
+          "year": 2024,
+          "train_end": "2023-10-20",
+          "n_train": 4441,
+          "n_test": 302,
+          "oos_accuracy": 0.4326241134751773,
+          "weights": {
+            "angle_5": 0.16427255788852457,
+            "ma20_time_safety": 0.30145621947513157,
+            "ma60_time_safety": 0.15733920503031246,
+            "vol_attack_ratio": 0.0,
+            "hsiao_4d_score": 0.3769320176060315,
+            "rs_20d": 0.0
+          }
+        },
+        {
+          "year": 2025,
+          "train_end": "2024-10-22",
+          "n_train": 4743,
+          "n_test": 297,
+          "oos_accuracy": 0.4296028880866426,
+          "weights": {
+            "angle_5": 0.1667988168587698,
+            "ma20_time_safety": 0.30663403811917705,
+            "ma60_time_safety": 0.13483765644920387,
+            "vol_attack_ratio": 0.0,
+            "hsiao_4d_score": 0.39172948857284934,
+            "rs_20d": 0.0
+          }
+        },
+        {
+          "year": 2026,
+          "train_end": "2025-10-21",
+          "n_train": 5040,
+          "n_test": 247,
+          "oos_accuracy": 0.3700440528634361,
+          "weights": {
+            "angle_5": 0.05526948968278154,
+            "ma20_time_safety": 0.23064336882470332,
+            "ma60_time_safety": 0.0,
+            "vol_attack_ratio": 0.15048592565797636,
+            "hsiao_4d_score": 0.5636012158345387,
+            "rs_20d": 0.0
+          }
+        }
+      ],
+      "summary": {
+        "n_folds": 17,
+        "oos_accuracy_mean": 0.48566658480125574,
+        "oos_accuracy_std": 0.05876821934086622,
+        "years": [
+          2010,
+          2011,
+          2012,
+          2013,
+          2014,
+          2015,
+          2016,
+          2017,
+          2018,
+          2019,
+          2020,
+          2021,
+          2022,
+          2023,
+          2024,
+          2025,
+          2026
+        ],
+        "not_buy_signal": true,
+        "phone_sync": "blocked",
+        "walk_forward_version": "hsiao_v7"
+      }
+    },
+    {
+      "version": "V4",
+      "item": "sector_momentum_api",
+      "status": "PASS",
+      "detail": "API 可用；全市場產業母體本機不足，實盤族群排序未對全市場跑"
+    },
+    {
+      "version": "V5",
+      "item": "true_trough_vol",
+      "status": "PASS",
+      "detail": "trough_days=153 illiquid=0"
+    },
+    {
+      "version": "V5",
+      "item": "ending_diagonal_state",
+      "status": "PASS",
+      "detail": "value=9"
+    },
+    {
+      "version": "V5",
+      "item": "risk_parity_sizing",
+      "status": "PASS",
+      "detail": "weight_10pct_stop=0.1200"
+    },
+    {
+      "version": "V5",
+      "item": "continuous_ohlc",
+      "status": "PASS",
+      "detail": "cont_last=1590.8627 close_last=1590.8627"
+    },
+    {
+      "version": "V6",
+      "item": "shadow_macd_cols",
+      "status": "PASS",
+      "detail": "hammer_days=253"
+    },
+    {
+      "version": "V6",
+      "item": "wave_x_rebound_state",
+      "status": "PASS",
+      "detail": "value=10"
+    },
+    {
+      "version": "V6",
+      "item": "tw_tick_size",
+      "status": "PASS",
+      "detail": "ticks=[0.01, 0.05, 0.1, 0.5, 1.0, 5.0]"
+    },
+    {
+      "version": "V6",
+      "item": "slippage_post_202003",
+      "status": "PASS",
+      "detail": "buy_slip=100.5"
+    },
+    {
+      "version": "V7",
+      "item": "corporate_action_sanitizer",
+      "status": "PASS",
+      "detail": "events=1 joined_prev=20.0000"
+    },
+    {
+      "version": "V7",
+      "item": "chip_and_lock_cols",
+      "status": "PASS",
+      "detail": "missing=[]"
+    },
+    {
+      "version": "V7",
+      "item": "backtest_TWII_long_only",
+      "status": "PASS",
+      "detail": "ret=0.0000 mdd=0.0000 trades=0 bars=5426｜真柱跑完但 0 筆成交（規則未觸發 W3）"
+    },
+    {
+      "version": "V7",
+      "item": "backtest_TWII_long_short",
+      "status": "PASS",
+      "detail": "ret=0.0000 mdd=0.0000 trades=0 delta_ret=0.0000｜真柱跑完但 0 筆成交"
+    },
+    {
+      "version": "V7",
+      "item": "backtest_TWII_has_entries",
+      "status": "FAIL",
+      "detail": "W2→W3／放空皆未觸發，績效曲線無意義"
+    },
+    {
+      "version": "V7",
+      "item": "backtest_2330_long_only",
+      "status": "PASS",
+      "detail": "ret=0.0041 mdd=-0.0028 trades=2 bars=2429"
+    },
+    {
+      "version": "V7",
+      "item": "backtest_2330_long_short",
+      "status": "PASS",
+      "detail": "ret=0.0041 mdd=-0.0028 trades=2 delta_ret=0.0000"
+    },
+    {
+      "version": "V7",
+      "item": "backtest_2330_has_entries",
+      "status": "PASS",
+      "detail": "至少一方有成交"
+    },
+    {
+      "version": "V7",
+      "item": "wave_states_seen_TWII",
+      "status": "PASS",
+      "detail": "states=['BASE_BOTTOM', 'WAVE_1_UP', 'WAVE_2_PULLBACK'] top_events=[('LAB_BREAKAWAY_GAP', 1), ('LAB_W1_START', 1), ('LAB_W1_TOP', 1), ('LAB_W2_HAMMER', 1)]"
+    }
+  ],
+  "backtests": {
+    "TWII": {
+      "long_only": {
+        "symbol": "TWII",
+        "allow_short": false,
+        "n_trades": 0,
+        "final_equity": 1000000.0,
+        "total_return": 0.0,
+        "max_drawdown": 0.0,
+        "n_bars": 5426,
+        "not_buy_signal": true,
+        "phone_sync": "blocked",
+        "backtest_version": "hsiao_v7"
+      },
+      "long_short": {
+        "symbol": "TWII",
+        "allow_short": true,
+        "n_trades": 0,
+        "final_equity": 1000000.0,
+        "total_return": 0.0,
+        "max_drawdown": 0.0,
+        "n_bars": 5426,
+        "not_buy_signal": true,
+        "phone_sync": "blocked",
+        "backtest_version": "hsiao_v7"
+      },
+      "delta_total_return": 0.0,
+      "delta_max_drawdown": 0.0,
+      "not_buy_signal": true,
+      "phone_sync": "blocked",
+      "note": "實驗室假錢對照；不上話筒、不改買訊"
+    },
+    "2330": {
+      "long_only": {
+        "symbol": "2330",
+        "allow_short": false,
+        "n_trades": 2,
+        "final_equity": 1004126.0228067234,
+        "total_return": 0.004126022806723473,
+        "max_drawdown": -0.0027632257993064346,
+        "n_bars": 2429,
+        "not_buy_signal": true,
+        "phone_sync": "blocked",
+        "backtest_version": "hsiao_v7"
+      },
+      "long_short": {
+        "symbol": "2330",
+        "allow_short": true,
+        "n_trades": 2,
+        "final_equity": 1004126.0228067234,
+        "total_return": 0.004126022806723473,
+        "max_drawdown": -0.0027632257993064346,
+        "n_bars": 2429,
+        "not_buy_signal": true,
+        "phone_sync": "blocked",
+        "backtest_version": "hsiao_v7"
+      },
+      "delta_total_return": 0.0,
+      "delta_max_drawdown": 0.0,
+      "not_buy_signal": true,
+      "phone_sync": "blocked",
+      "note": "實驗室假錢對照；不上話筒、不改買訊"
+    }
+  },
+  "walk_forward": {
+    "n_folds": 17,
+    "oos_accuracy_mean": 0.48566658480125574,
+    "oos_accuracy_std": 0.05876821934086622,
+    "years": [
+      2010,
+      2011,
+      2012,
+      2013,
+      2014,
+      2015,
+      2016,
+      2017,
+      2018,
+      2019,
+      2020,
+      2021,
+      2022,
+      2023,
+      2024,
+      2025,
+      2026
+    ],
+    "not_buy_signal": true,
+    "phone_sync": "blocked",
+    "walk_forward_version": "hsiao_v7"
+  },
+  "honesty": {
+    "full_20y_stock_universe": false,
+    "twii_approx_20y_ran": true,
+    "stock_2330_approx_10y_ran": true,
+    "note_zh": "七大版本按關驗證；20年真柱僅 TWII。全市場個股20年本機無資料＝SKIP 不謊稱完成。"
+  }
+}

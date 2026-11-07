@@ -109,6 +109,9 @@ def corporate_action_sanitizer(
 def ratio_adjust_ohlc(df: pd.DataFrame, *, adj_close_col: Optional[str] = None) -> pd.DataFrame:
     if df is None or len(df) == 0:
         return pd.DataFrame()
+    # 重複交易日：留最後一筆，避免權益曲線被 dict 壓半
+    if getattr(df.index, "has_duplicates", False) and bool(df.index.duplicated().any()):
+        df = df[~df.index.duplicated(keep="last")].sort_index()
     cm = _colmap(df)
     need = ("open", "high", "low", "close", "volume")
     missing = [k for k in need if k not in cm]

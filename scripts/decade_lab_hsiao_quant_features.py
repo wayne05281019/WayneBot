@@ -63,21 +63,29 @@ def _rolling_linreg_angle(close: pd.Series, atr: pd.Series, window: int) -> pd.S
 
 def _align_weekly_to_daily(daily_index: pd.DatetimeIndex, weekly: pd.DataFrame) -> pd.DataFrame:
     """週五收盤值 shift(1) 後 ffill 到日 K：下週一才生效，防未來函數。"""
+    empty_cols = [
+        "W_Close",
+        "W_MA13",
+        "W_MA26",
+        "W_ATR_14",
+        "w_ma13_safety",
+        "weekly_trend_bullish",
+        "W_K",
+        "W_D",
+        "w_kd_high_passivation",
+    ]
     if weekly is None or len(weekly) == 0:
         empty = pd.DataFrame(index=daily_index)
-        for col in (
-            "W_Close",
-            "W_MA13",
-            "W_MA26",
-            "W_ATR_14",
-            "w_ma13_safety",
-            "weekly_trend_bullish",
-        ):
-            empty[col] = np.nan if col != "weekly_trend_bullish" else False
+        for col in empty_cols:
+            empty[col] = False if col in ("weekly_trend_bullish", "w_kd_high_passivation") else np.nan
         return empty
     shifted = weekly.shift(1)
-    # 用日期對齊：把週列放到對應日再 ffill
-    aligned = shifted.reindex(daily_index.union(shifted.index)).sort_index()
+    # 去重後用 asof 對齊，避免 union 造成 duplicate labels
+    shifted = shifted[~shifted.index.duplicated(keep="last")].sort_index()
+    daily = pd.DatetimeIndex(daily_index).sort_values()
+    daily = daily[~daily.duplicated(keep="last")]
+    aligned = shifted.reindex(shifted.index.union(daily)).sort_index()
+    aligned = aligned[~aligned.index.duplicated(keep="last")]
     aligned = aligned.ffill()
     return aligned.reindex(daily_index)
 
