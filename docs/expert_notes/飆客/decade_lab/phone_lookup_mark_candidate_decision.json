@@ -1,0 +1,105 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "NOT_BUY_SIGNAL": true,
+  "as_of_taipei": "2026-11-07T23:30:03.846602+08:00",
+  "deliverable_zh": "查股五張圖：買標更準／更早（LAB_BUY_W3_START）＋賣標相對高點（REL_HIGH_SELL）；過閘才畫",
+  "metric_priority_zh": [
+    "標記提前期（bars_before_hi20，愈早愈好但須 wins）",
+    "勝率",
+    "獨立交易日 n≥20",
+    "balanced_score=win×min(1,days/50)"
+  ],
+  "candidate_buy_mark": {
+    "glyph": "LAB_BUY_W3_START",
+    "rule_key": "core_w3_or_ma60w3__BAL_Vnear2_or_S55__hi20_or_desync",
+    "win_rate": 0.76,
+    "independent_days": 50,
+    "balanced_score": 0.76,
+    "earliness_best_bal": {
+      "key": "core_w3_start",
+      "n_trades": 58,
+      "n_unique_entry_days": 57,
+      "win_rate": 0.7586206896551724,
+      "expectancy": -0.003529762536926254,
+      "avg_hold": 19.67241379310345,
+      "exit_reason_counts": {
+        "first_hi20": 53,
+        "max_hold_60": 5
+      },
+      "mean_bars_before_hi20": 16.88679245283019,
+      "median_bars_before_hi20": 12.0,
+      "hit_hi20_rate": 0.9137931034482759,
+      "mean_fwd_ret_5d": -0.0029360435939220853,
+      "mean_fwd_ret_10d": -0.0014419939981803913,
+      "n_signals": 58,
+      "random_win_rate": 0.6379310344827587,
+      "random_expectancy": -0.005055409203427303,
+      "random_mean_bars_before_hi20": 20.76923076923077,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "balanced_score": 0.7586206896551724,
+      "days_ge20": true
+    },
+    "earliness_earliest_n20": null,
+    "note_zh": "顯示候選＝均衡核；提早量顯示 core_w3_start 勝率較好、ma60_lower 更早但勝率較低——未過閘不改現況藍▲"
+  },
+  "candidate_sell_mark": {
+    "glyph": "REL_HIGH_SELL",
+    "rule_keys": [
+      "hi20_or_desync",
+      "hi20_or_wave_top"
+    ],
+    "relhigh_winners": [
+      {
+        "key": "w3_or_ma60__SELL_hi20_or_desync",
+        "n_trades": 96,
+        "n_unique_entry_days": 94,
+        "win_rate": 0.75,
+        "expectancy": 0.004148640187770915,
+        "avg_hold": 19.96875,
+        "exit_reason_counts": {
+          "first_hi20": 87,
+          "max_hold_60": 9
+        },
+        "random_win_rate": 0.6612903225806451,
+        "random_expectancy": -0.003436108125417449,
+        "beats_random": true,
+        "balanced_score": 0.75
+      },
+      {
+        "key": "bal_Vnear_or_S55__SELL_hi20_or_wave_top",
+        "n_trades": 50,
+        "n_unique_entry_days": 50,
+        "win_rate": 0.74,
+        "expectancy": 0.0160548432883322,
+        "avg_hold": 17.04,
+        "exit_reason_counts": {
+          "first_hi20": 44,
+          "max_hold_60": 4,
+          "wave_rel_high": 2
+        },
+        "random_win_rate": 0.7021276595744681,
+        "random_expectancy": 0.00540721446973481,
+        "beats_random": true,
+        "balanced_score": 0.74
+      }
+    ],
+    "note_zh": "相對高點＝蕭20高為主；浪頂併列實驗室"
+  },
+  "market_sync_note_zh": "feat-sync: winners=50/240; lift=14; best_bal=E_pull_hammer__mkt_feat_safe__F_none__hi20_or_desync win=0.7557025547445255 days=1165; best_win=E_w3_start__mkt_not_crash__F_hsiao_S55__hi20_or_desync; promote_lookup=NO",
+  "five_chart_hooks_ready": true,
+  "hooks_doc": "phone_lookup_mark_hook_map.md",
+  "gate_status": "collecting_v3_and_feat",
+  "blockers": [
+    "phone_sync=blocked；LOOKUP_LAB_MARKS_ENABLED=False",
+    "champion_v3 尚未封口（本機對質中）",
+    "不准改 leave_zero／ma60_lower；浪號不上話筒"
+  ],
+  "next_experiments": [
+    "封口 champion_v3：若抬 B 且 n≥20 → 寫入候選買標規則並再生 v4",
+    "提早量×勝率聯合排序（早且 wins）再比 leave_zero",
+    "賣標：hi20_or_wave_top vs hi20_or_desync 在五張圖視覺可分性（仍 blocked）"
+  ],
+  "gate_one_liner": "lookup-mark candidate: buy=core_w3_or_ma60w3__BAL_Vnear2_or_S55__hi20_or_desync win=0.76 days=50; sell=relhigh sealed; earliness best_bal=core_w3_start; phone_sync=blocked; promote=NO"
+}

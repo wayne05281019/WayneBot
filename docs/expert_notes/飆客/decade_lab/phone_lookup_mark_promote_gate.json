@@ -2,7 +2,7 @@
   "phone_sync": "blocked",
   "promote_to_lookup_display": false,
   "NOT_BUY_SIGNAL": true,
-  "as_of_taipei": "2026-11-07T23:27:02.383348+08:00",
+  "as_of_taipei": "2026-11-07T23:30:03.846602+08:00",
   "deliverable_zh": "查股五張圖：LAB_BUY_W3_START（起漲買）＋REL_HIGH_SELL（相對高點賣）；過閘才畫",
   "candidate_buy_rule": {
     "key": "core_w3_or_ma60w3__BAL_Vnear2_or_S55__hi20_or_desync",
@@ -142,6 +142,10 @@
     "market_feat_resync": {
       "source": "phone_market_wave_sync_feat_decision.json",
       "gate": "winners=50/240; lift=14; best_bal=E_pull_hammer__mkt_feat_safe__F_none__hi20_or_desync win=0.7557025547445255 days=1165; best_win=E_w3_start__mkt_not_crash__F_hsiao_S55__hi20_or_desync; promote_lookup=NO"
+    },
+    "lookup_mark_candidate": {
+      "source": "phone_lookup_mark_candidate_decision.json",
+      "gate_one_liner": "lookup-mark candidate: buy=core_w3_or_ma60w3__BAL_Vnear2_or_S55__hi20_or_desync win=0.76 days=50; sell=relhigh sealed; earliness best_bal=core_w3_start; phone_sync=blocked; promote=NO"
     }
   },
   "blockers": [
