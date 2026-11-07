@@ -19,5 +19,10 @@
 4. 每輪封口 → 未過閘就加因子再測；不准假資料、不准輕言放棄  
 5. `phone_sync=blocked` 直到過閘；五張圖主戰場＝大量撐壓日 K  
 
+## 已測高勝率法則（一併進 TRACK_CHAMP／混測）
+V／Vnear、S55、bal（Vnear∨S55）、turn_barek、feat×t60、S55×barek 等已封口肢 — **分測保留，有用再與精神肢混測**。
+
+腳本：`scripts/decade_lab_phone_spirit_split_mix.py`（分軌＋混軌）。
+
 ## 賣點
 鎖死＝相對高點（蕭 20 高／浪頂對質）。
