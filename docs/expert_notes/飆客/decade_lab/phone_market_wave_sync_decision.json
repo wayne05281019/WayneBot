@@ -60,5 +60,7 @@
     "大盤同步：W3×S55 在有效大盤閘下可見極高勝率但日僅20（薄）；先當候選繼續累積",
     "拉回錘子日數很厚≈75%@2700但未證明抬核，且定義過寬，不當主買訊"
   ],
-  "gate_one_liner": "mkt_sync W3 meaningful best=E_w3_start__mkt_ok_pull_or_impulse__F_hsiao_S55__hi20_or_desync win=0.9500 days=20; balanced_enlarge still ge50 Vnear2∨S55@76%/50d; thin W3×S55 can hit ~95%@20d; promote_lookup=NO"
+  "gate_one_liner": "mkt_sync W3 meaningful best=E_w3_start__mkt_ok_pull_or_impulse__F_hsiao_S55__hi20_or_desync win=0.9500 days=20; balanced_enlarge still ge50 Vnear2∨S55@76%/50d; thin W3×S55 can hit ~95%@20d; promote_lookup=NO",
+  "feat_resync_gate": "winners=50/240; lift=14; best_bal=E_pull_hammer__mkt_feat_safe__F_none__hi20_or_desync win=0.7557025547445255 days=1165; best_win=E_w3_start__mkt_not_crash__F_hsiao_S55__hi20_or_desync; promote_lookup=NO",
+  "feat_resync_as_of_taipei": "2026-11-07T23:27:01.098522+08:00"
 }

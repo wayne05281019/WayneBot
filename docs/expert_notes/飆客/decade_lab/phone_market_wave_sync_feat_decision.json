@@ -1,0 +1,260 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "NOT_BUY_SIGNAL": true,
+  "as_of_taipei": "2026-11-07T23:27:00.510300+08:00",
+  "run_note_zh": "A0_strict@40 feat-regime re-sync（mkt_feat_*）",
+  "gate_one_liner": "winners=50/240; lift=14; best_bal=E_pull_hammer__mkt_feat_safe__F_none__hi20_or_desync win=0.7557025547445255 days=1165; best_win=E_w3_start__mkt_not_crash__F_hsiao_S55__hi20_or_desync; promote_lookup=NO",
+  "n_stocks": 100,
+  "elapsed_s": 695.7,
+  "best_balanced": [
+    {
+      "key": "E_pull_hammer__mkt_feat_safe__F_none__hi20_or_desync",
+      "entry": "E_pull_hammer",
+      "n_trades": 4384,
+      "n_unique_entry_days": 1165,
+      "win_rate": 0.7557025547445255,
+      "expectancy": 0.020023332518236608,
+      "avg_hold": 16.403284671532848,
+      "exit_reason_counts": {
+        "first_hi20": 4167,
+        "max_hold_60": 217
+      },
+      "random_win_rate": 0.7171446580523164,
+      "random_expectancy": 0.010888711917499379,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_entry_baseline": false,
+      "entry_base_win": null,
+      "balanced_score": 0.7557025547445255
+    },
+    {
+      "key": "E_pull_hammer__mkt_feat_bull__F_none__hi20_or_desync",
+      "entry": "E_pull_hammer",
+      "n_trades": 4461,
+      "n_unique_entry_days": 1212,
+      "win_rate": 0.7498318762609281,
+      "expectancy": 0.018974114771833687,
+      "avg_hold": 16.657700067249497,
+      "exit_reason_counts": {
+        "first_hi20": 4228,
+        "max_hold_60": 233
+      },
+      "random_win_rate": 0.7247271001423825,
+      "random_expectancy": 0.012172141225497136,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_entry_baseline": false,
+      "entry_base_win": null,
+      "balanced_score": 0.7498318762609281
+    },
+    {
+      "key": "E_pull_hammer__mkt_not_crash__F_none__hi20_or_desync",
+      "entry": "E_pull_hammer",
+      "n_trades": 7184,
+      "n_unique_entry_days": 2730,
+      "win_rate": 0.749304008908686,
+      "expectancy": 0.016575221780593292,
+      "avg_hold": 16.311247216035635,
+      "exit_reason_counts": {
+        "first_hi20": 6849,
+        "max_hold_60": 335
+      },
+      "random_win_rate": 0.7205919877519775,
+      "random_expectancy": 0.010086383660612853,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_entry_baseline": false,
+      "entry_base_win": null,
+      "balanced_score": 0.749304008908686
+    },
+    {
+      "key": "E_pull_hammer__mkt_ok_pull_or_impulse__F_none__hi20_or_desync",
+      "entry": "E_pull_hammer",
+      "n_trades": 7184,
+      "n_unique_entry_days": 2730,
+      "win_rate": 0.749304008908686,
+      "expectancy": 0.016575221780593292,
+      "avg_hold": 16.311247216035635,
+      "exit_reason_counts": {
+        "first_hi20": 6849,
+        "max_hold_60": 335
+      },
+      "random_win_rate": 0.718490245971162,
+      "random_expectancy": 0.010127450109212328,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_entry_baseline": false,
+      "entry_base_win": null,
+      "balanced_score": 0.749304008908686
+    },
+    {
+      "key": "E_pull_hammer__mkt_risk_on__F_none__hi20_or_desync",
+      "entry": "E_pull_hammer",
+      "n_trades": 7184,
+      "n_unique_entry_days": 2730,
+      "win_rate": 0.749304008908686,
+      "expectancy": 0.016575221780593292,
+      "avg_hold": 16.311247216035635,
+      "exit_reason_counts": {
+        "first_hi20": 6849,
+        "max_hold_60": 335
+      },
+      "random_win_rate": 0.7213559322033898,
+      "random_expectancy": 0.010314762468930568,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_entry_baseline": false,
+      "entry_base_win": null,
+      "balanced_score": 0.749304008908686
+    },
+    {
+      "key": "E_pull_hammer__mkt_ok_basic__F_none__hi20_or_desync",
+      "entry": "E_pull_hammer",
+      "n_trades": 5267,
+      "n_unique_entry_days": 1652,
+      "win_rate": 0.7450161382191001,
+      "expectancy": 0.018383868311162267,
+      "avg_hold": 16.73913043478261,
+      "exit_reason_counts": {
+        "first_hi20": 4997,
+        "max_hold_60": 270
+      },
+      "random_win_rate": 0.7210432114548708,
+      "random_expectancy": 0.011751337808599141,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_entry_baseline": false,
+      "entry_base_win": null,
+      "balanced_score": 0.7450161382191001
+    }
+  ],
+  "best_feat_balanced": [
+    {
+      "key": "E_pull_hammer__mkt_feat_safe__F_none__hi20_or_desync",
+      "entry": "E_pull_hammer",
+      "n_trades": 4384,
+      "n_unique_entry_days": 1165,
+      "win_rate": 0.7557025547445255,
+      "expectancy": 0.020023332518236608,
+      "avg_hold": 16.403284671532848,
+      "exit_reason_counts": {
+        "first_hi20": 4167,
+        "max_hold_60": 217
+      },
+      "random_win_rate": 0.7171446580523164,
+      "random_expectancy": 0.010888711917499379,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_entry_baseline": false,
+      "entry_base_win": null,
+      "balanced_score": 0.7557025547445255
+    },
+    {
+      "key": "E_pull_hammer__mkt_feat_bull__F_none__hi20_or_desync",
+      "entry": "E_pull_hammer",
+      "n_trades": 4461,
+      "n_unique_entry_days": 1212,
+      "win_rate": 0.7498318762609281,
+      "expectancy": 0.018974114771833687,
+      "avg_hold": 16.657700067249497,
+      "exit_reason_counts": {
+        "first_hi20": 4228,
+        "max_hold_60": 233
+      },
+      "random_win_rate": 0.7247271001423825,
+      "random_expectancy": 0.012172141225497136,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_entry_baseline": false,
+      "entry_base_win": null,
+      "balanced_score": 0.7498318762609281
+    },
+    {
+      "key": "E_pull_hammer__mkt_feat_ok__F_none__hi20_or_desync",
+      "entry": "E_pull_hammer",
+      "n_trades": 5267,
+      "n_unique_entry_days": 1652,
+      "win_rate": 0.7450161382191001,
+      "expectancy": 0.018383868311162267,
+      "avg_hold": 16.73913043478261,
+      "exit_reason_counts": {
+        "first_hi20": 4997,
+        "max_hold_60": 270
+      },
+      "random_win_rate": 0.7211415408241617,
+      "random_expectancy": 0.011438264376612934,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_entry_baseline": false,
+      "entry_base_win": null,
+      "balanced_score": 0.7450161382191001
+    },
+    {
+      "key": "E_pull_hammer__mkt_feat_thrust__F_none__hi20_or_desync",
+      "entry": "E_pull_hammer",
+      "n_trades": 3435,
+      "n_unique_entry_days": 562,
+      "win_rate": 0.7438136826783115,
+      "expectancy": 0.019168931247666467,
+      "avg_hold": 17.926346433770014,
+      "exit_reason_counts": {
+        "first_hi20": 3223,
+        "max_hold_60": 212
+      },
+      "random_win_rate": 0.7332571428571428,
+      "random_expectancy": 0.013071519897125348,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_entry_baseline": false,
+      "entry_base_win": null,
+      "balanced_score": 0.7438136826783115
+    },
+    {
+      "key": "E_pull_hammer__mkt_feat_safe__F_hsiao_S55__hi20_or_desync",
+      "entry": "E_pull_hammer",
+      "n_trades": 1422,
+      "n_unique_entry_days": 830,
+      "win_rate": 0.7334739803094233,
+      "expectancy": 0.016419665108491906,
+      "avg_hold": 16.344585091420534,
+      "exit_reason_counts": {
+        "first_hi20": 1355,
+        "max_hold_60": 67
+      },
+      "random_win_rate": 0.6963538553496712,
+      "random_expectancy": 0.008415035281916864,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_entry_baseline": false,
+      "entry_base_win": null,
+      "balanced_score": 0.7334739803094233
+    },
+    {
+      "key": "E_pull_hammer__mkt_feat_bull__F_hsiao_S55__hi20_or_desync",
+      "entry": "E_pull_hammer",
+      "n_trades": 1432,
+      "n_unique_entry_days": 836,
+      "win_rate": 0.7311452513966481,
+      "expectancy": 0.015308496147285184,
+      "avg_hold": 16.731843575418996,
+      "exit_reason_counts": {
+        "first_hi20": 1356,
+        "max_hold_60": 76
+      },
+      "random_win_rate": 0.7026203534430225,
+      "random_expectancy": 0.009050827723856257,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_entry_baseline": false,
+      "entry_base_win": null,
+      "balanced_score": 0.7311452513966481
+    }
+  ],
+  "w3_feat_n20": [],
+  "read_zh": [
+    "feat-sync: winners=50/240; lift=14; best_bal=E_pull_hammer__mkt_feat_safe__F_none__hi20_or_desync win=0.7557025547445255 days=1165; best_win=E_w3_start__mkt_not_crash__F_hsiao_S55__hi20_or_desync; promote_lookup=NO",
+    "拉回錘子×feat_safe 仍最厚但非主買；W3×S55 薄高檔需再累日",
+    "promote_lookup=NO"
+  ]
+}

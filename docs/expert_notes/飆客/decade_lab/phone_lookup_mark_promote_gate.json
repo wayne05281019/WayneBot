@@ -2,7 +2,7 @@
   "phone_sync": "blocked",
   "promote_to_lookup_display": false,
   "NOT_BUY_SIGNAL": true,
-  "as_of_taipei": "2026-11-07T23:23:01+08:00",
+  "as_of_taipei": "2026-11-07T23:27:02.383348+08:00",
   "deliverable_zh": "查股五張圖：LAB_BUY_W3_START（起漲買）＋REL_HIGH_SELL（相對高點賣）；過閘才畫",
   "candidate_buy_rule": {
     "key": "core_w3_or_ma60w3__BAL_Vnear2_or_S55__hi20_or_desync",
@@ -51,16 +51,16 @@
       "hi20_only"
     ],
     "user_lock_zh": "相對高點就賣；課程 sell＝相對高點＝蕭20高",
-    "wave_top_status": "unsealed",
+    "wave_top_status": "confronted_see_relhigh_decision",
     "source_seal": [
       "phone_curriculum_merged_decision.json curriculum_zh.sell",
       "phone_winrate_boost_decision.json what_lifted_winrate_zh／top_winners exit keys",
       "phone_balanced_enlarge_decision.json champion key 尾段 __hi20_or_desync",
       "phone_extreme_merged_decision.json 出場腿同 hi20_or_desync／hi20_only"
     ],
-    "relhigh_confront": "awaiting_seal（scripts/decade_lab_phone_relhigh_sell.py 仍在跑；日誌末段才 flush，空 log≠失敗）"
+    "relhigh_confront": "sealed: relhigh_sell winners=2/9; best=w3_or_ma60__SELL_hi20_or_desync win=0.75 days=94; promote_lookup=NO"
   },
-  "gate_status": "awaiting_relhigh_seal",
+  "gate_status": "collecting_v3_and_feat",
   "evidence": {
     "win_rate": 0.76,
     "independent_days": 50,
@@ -118,11 +118,36 @@
       "source": "phone_mark_earliness_decision.json",
       "best_bal_key": "core_w3_start",
       "note_zh": "起漲核相對 leave_zero 更早碰上20高窗口且贏隨機；仍非查股顯示"
+    },
+    "relhigh_sell": {
+      "source": "phone_relhigh_sell_decision.json",
+      "gate": "relhigh_sell winners=2/9; best=w3_or_ma60__SELL_hi20_or_desync win=0.75 days=94; promote_lookup=NO",
+      "best": {
+        "key": "w3_or_ma60__SELL_hi20_or_desync",
+        "n_trades": 96,
+        "n_unique_entry_days": 94,
+        "win_rate": 0.75,
+        "expectancy": 0.004148640187770915,
+        "avg_hold": 19.96875,
+        "exit_reason_counts": {
+          "first_hi20": 87,
+          "max_hold_60": 9
+        },
+        "random_win_rate": 0.6612903225806451,
+        "random_expectancy": -0.003436108125417449,
+        "beats_random": true,
+        "balanced_score": 0.75
+      }
+    },
+    "market_feat_resync": {
+      "source": "phone_market_wave_sync_feat_decision.json",
+      "gate": "winners=50/240; lift=14; best_bal=E_pull_hammer__mkt_feat_safe__F_none__hi20_or_desync win=0.7557025547445255 days=1165; best_win=E_w3_start__mkt_not_crash__F_hsiao_S55__hi20_or_desync; promote_lookup=NO"
     }
   },
   "blockers": [
+    "relhigh_sell 已封口但仍 phone_sync=blocked；浪頂腿未單獨贏過 hi20 到可上查股",
+    "market_feat_resync 已跑；W3 薄高檔／錘子厚樣本仍不當主顯示",
     "phone_sync 鎖 blocked；LOOKUP_LAB_MARKS_ENABLED 預設 False；promote_to_lookup_display 必須維持 false",
-    "相對高點賣專軌 relhigh_sell（20高 vs 浪頂）尚未封口決策檔 → gate_status=awaiting_relhigh_seal",
     "薄樣本天花板（extreme V/VT≈87%@22；mkt×S55≈95%@20）日數剛過／剛好 n≥20，不當主推顯示",
     "TWII Elliott 狀態機本期幾乎無 W3（n_w3_start=0）；大盤浪段閘不夠當顯示條件",
     "hsiao_promote_lookup：leave_zero／ma60_lower 長窗 h5≈五成 → 不准改現況藍▲／確認紅箭顯示",
@@ -130,11 +155,13 @@
     "所有 sealed 決策皆 promote_lookup=NO／promote_to_lookup_display=false"
   ],
   "next_experiments": [
+    "跑 champion_v3（bal核×relhigh賣×mkt_feat×barek/XG）",
+    "累積 W3×S55×feat 獨立日至遠超 20 再比均衡 B",
+    "earliness 已封：W3 start 較早碰上 20高，顯示仍 blocked",
     "mark_earliness sealed: core_w3_start beats random ~76%@57d mean_bars_before_hi20≈17；ma60_lower earliest bars≈21 but lower win — still blocked",
-    "重跑並封口 relhigh_sell：hi20_only vs hi20_or_desync vs 浪頂／相對高點定義對質",
     "balanced 冠軍核在 n≥100 母體上續累獨立日，盯 ge50 是否仍贏核心＋隨機",
     "market_feat_sync（週線／非過熱／拉回推動）加厚 W3×S55 薄樣至遠超 n=20 再比均衡分",
     "查股五張圖 paint stub 就緒後，僅在 gate 過關才開 LOOKUP_LAB_MARKS_ENABLED"
   ],
-  "gate_one_liner": "draft promote-gate: buy=core_w3_or_ma60w3__BAL_Vnear2_or_S55__hi20_or_desync win=0.76 days=50 B=0.76 n=100; sell=hi20_or_desync (relhigh_wave_top unsealed); phone_sync=blocked; promote_to_lookup_display=false; gate_status=awaiting_relhigh_seal"
+  "gate_one_liner": "draft promote-gate: buy=bal Vnear2∨S55 @76%/50d; sell=relhigh sealed w3_or_ma60__SELL_hi20_or_desync; phone_sync=blocked; promote_to_lookup_display=false; gate_status=collecting_v3_and_feat"
 }
