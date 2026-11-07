@@ -518,7 +518,10 @@ def test_candle_span_min_body_keeps_far_sox_visible():
 
 
 def test_far_max_vol_day_matches_official_hl():
-    """黃底高低必須＝窗內最大量那根官方日K高低（同一交易日）。"""
+    """黃底高低必須＝窗內最大量那根官方日K高低（同一交易日）。
+
+    不准鎖死歷史最大量日（例如舊錨 20261015）；庫滾到更新量大日仍要對齊該根官方高低。
+    """
     from biaoke_level_learn import _bar_index_by_ymd, _twii_abc_anchors, _ymd
     from biaoke_wave import _load_twii_bars
 
@@ -532,9 +535,22 @@ def test_far_max_vol_day_matches_official_hl():
         return
     vols = [float(r.get("volume") or 0) for r in bars]
     i_vmax = max(range(len(bars)), key=lambda i: vols[i])
-    assert _ymd(bars[i_vmax].get("date")) == "20261015"
-    assert abs(float(anc["highs"][i_vmax]) - 48382.75) < 0.5
-    assert abs(float(anc["lows"][i_vmax]) - 46795.37890625) < 0.5
+    hi = float(bars[i_vmax].get("high") or 0)
+    lo = float(bars[i_vmax].get("low") or 0)
+    assert hi > lo > 0
+    assert _ymd(bars[i_vmax].get("date"))
+    # 黃底用的高低＝最大量那根官方柱（anc 與 bars 同索引）
+    assert abs(float(anc["highs"][i_vmax]) - hi) < 0.01
+    assert abs(float(anc["lows"][i_vmax]) - lo) < 0.01
+    # 舊錨日若仍在窗內：官方柱本身沒爛（不要求它仍是最大量）
+    i_1015 = _bar_index_by_ymd(bars, "20261015")
+    if i_1015 is not None:
+        assert abs(
+            float(anc["highs"][i_1015]) - float(bars[i_1015].get("high") or 0)
+        ) < 0.01
+        assert abs(
+            float(anc["lows"][i_1015]) - float(bars[i_1015].get("low") or 0)
+        ) < 0.01
 
 
 def test_hl_spans_excluding_no_overlap():
