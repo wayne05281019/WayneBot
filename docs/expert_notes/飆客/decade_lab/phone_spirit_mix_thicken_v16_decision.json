@@ -1,0 +1,48 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "as_of_taipei": "2026-11-08T06:06:02.734343+08:00",
+  "gate_one_liner": "spirit_mix_thicken_v16 ge80=18 ge80_d50=13 profit_sell_ge80_d50=8; best_profit_sell=U250__v11_nobody__SELL_profit_early_2 win=0.855072463768116 hold=11.579710144927537 hold_lift=3.2202898550724637; confirm_pe3={U150_soft_pe3:None,U150_nobody_pe3:None,U250_soft_pe3:0.8171,U250_nobody_pe3:0.8551}; promote_lookup=NO",
+  "parent_seal": "phone_spirit_mix_thicken_v15_decision.json",
+  "elapsed_s": 1887.0,
+  "universe_meta": {
+    "default_turn": 112,
+    "expand250": 250
+  },
+  "profit_sell_ge80_d50_n": 8,
+  "confirm_profit_early_3": {
+    "U150_soft_pe3": null,
+    "U150_nobody_pe3": null,
+    "U250_soft_pe3": {
+      "key": "U250__v11_softbody__SELL_profit_early_3",
+      "n_trades": 82,
+      "n_unique_entry_days": 79,
+      "win_rate": 0.8170731707317073,
+      "expectancy": 0.023431225307533016,
+      "beats_random": true,
+      "balanced_score": 0.8170731707317073,
+      "win_ge80": true,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 15.384615384615385,
+      "mean_hold_days": 11.902439024390244,
+      "earlier_than_baseline": true
+    },
+    "U250_nobody_pe3": {
+      "key": "U250__v11_nobody__SELL_profit_early_3",
+      "n_trades": 69,
+      "n_unique_entry_days": 66,
+      "win_rate": 0.855072463768116,
+      "expectancy": 0.026919102100727503,
+      "beats_random": true,
+      "balanced_score": 0.855072463768116,
+      "win_ge80": true,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 14.923076923076923,
+      "mean_hold_days": 11.681159420289855,
+      "earlier_than_baseline": false
+    }
+  },
+  "finding_zh": "U250 pe2/3 稳过闸；U112 soft pe≈78.9%@51d、nobody pe≈84.8%@45d（日不够）。提早卖未在锁定 U112 复现。下一版专攻 U112 加厚。",
+  "u250_locked_candidate": "v11_nobody|softbody × profit_early_2/3",
+  "next": "mix_v17 U112 thicken profit_early; phone_sync=blocked"
+}

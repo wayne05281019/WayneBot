@@ -2,7 +2,7 @@
   "phone_sync": "blocked",
   "promote_to_lookup_display": false,
   "NOT_BUY_SIGNAL": true,
-  "as_of_taipei": "2026-11-08T05:18:22.310841+08:00",
+  "as_of_taipei": "2026-11-08T06:06:03.050075+08:00",
   "deliverable_zh": "查股五張圖：極高勝率買進起漲＋相對高點賣出相對位置",
   "candidate_buy_rule": {
     "key": "core_w3_or_ma60w3__BAL_Vnear2_or_S55__hi20_or_desync",
@@ -76,7 +76,7 @@
       "balanced_score": 0.7586206896551724
     }
   },
-  "gate_status": "mix_v15_profit_early_sell_HIT_still_blocked_confirm_v16",
+  "gate_status": "mix_v16_u250_ok_u112_short_invent_v17",
   "evidence": {
     "win_rate": 0.76,
     "independent_days": 50,
@@ -435,6 +435,14 @@
       "v11_hold_ref": 14.8,
       "promote": false,
       "note_zh": "提早賣數字閘過了（hold↓ 且 ge80×50d）；仍 blocked＝未接 placement／未改 leave_zero"
+    },
+    "spirit_mix_thicken_v16": {
+      "source": "phone_spirit_mix_thicken_v16_decision.json",
+      "gate": "spirit_mix_thicken_v16 ge80=18 ge80_d50=13 profit_sell_ge80_d50=8; best_profit_sell=U250__v11_nobody__SELL_profit_early_2 win=0.855072463768116 hold=11.579710144927537 hold_lift=3.2202898550724637; confirm_pe3={U150_soft_pe3:None,U150_nobody_pe3:None,U250_soft_pe3:0.8171,U250_nobody_pe3:0.8551}; promote_lookup=NO",
+      "u250_pe3_ok": true,
+      "u112_pe3_ok": false,
+      "promote": false,
+      "note_zh": "U250 提早卖过闸；U112 未过（soft sub80／nobody 日不够）"
     }
   },
   "blockers": [
@@ -450,10 +458,10 @@
     "使用者 2026-11-08：材料若限制達標可自由加因子；目標＝提早知買／賣"
   ],
   "next_experiments": [
-    "mix_v16：U112＋U250 复現 profit_early_3／試 pe2",
-    "五張圖 placement stub（仍 flag off）"
+    "mix_v17：U112 nobody 软化／soft pe 去损抢 ge80×50d",
+    "五张图 placement stub（仍 flag off）"
   ],
-  "gate_one_liner": "draft: mix_v15 profit-early-sell HIT (nobody pe3 ≈85.5%@66d hold≈11.7 vs 14.8); phone_sync=blocked; invent v16 confirm; promote=false",
+  "gate_one_liner": "draft: mix_v16 U250 profit-early OK; U112 not confirmed; invent v17 U112 thicken; phone_sync=blocked",
   "user_goal_zh": "提早知道個股買點＋提早知道賣點；材料不夠可自由加因子",
   "metric_priority_zh": [
     "提早買（訊號相對後續漲段／20高）",
