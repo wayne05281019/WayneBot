@@ -1,0 +1,1176 @@
+{
+  "phone_sync": "blocked",
+  "not_buy_signal": true,
+  "elapsed_s": 1114.4,
+  "n_symbols": 104,
+  "target_start_attempt": "20060101",
+  "lab_years_min": 2.0123203285420943,
+  "lab_years_median": 20.843258042436688,
+  "lab_years_max": 20.843258042436688,
+  "n_overlap_ok": 100,
+  "n_suspicious": 4,
+  "suspicious_ids": [
+    "1519",
+    "3081",
+    "6446",
+    "6669"
+  ],
+  "must_named": {
+    "6442": {
+      "stock_id": "6442",
+      "name": "光聖",
+      "market": "TW",
+      "yahoo_symbol": "6442.TW",
+      "official_before": {
+        "d0": "20231201",
+        "d1": "20261103",
+        "n": 504,
+        "null_ohlc": 0,
+        "years": 2.924024640657084
+      },
+      "official_after": {
+        "d0": "20231201",
+        "d1": "20261103",
+        "n": 504,
+        "null_ohlc": 0,
+        "years": 2.924024640657084
+      },
+      "otc_official_backfill": null,
+      "yahoo_n": 3083,
+      "yahoo_d0": "20140317",
+      "yahoo_d1": "20261106",
+      "lab_yahoo_adj_n": 3083,
+      "lab_yahoo_adj_d0": "20140317",
+      "lab_yahoo_adj_d1": "20261106",
+      "lab_years": 12.640657084188911,
+      "overlap": {
+        "ok": true,
+        "n_overlap": 503,
+        "median_abs_pct": 0.0,
+        "p90_abs_pct": 0.0,
+        "suspicious": false
+      },
+      "lab_rows_written": 6166,
+      "phone_sync": "blocked",
+      "not_buy_signal": true
+    },
+    "2383": {
+      "stock_id": "2383",
+      "name": "台光電",
+      "market": "TW",
+      "yahoo_symbol": "2383.TW",
+      "official_before": {
+        "d0": "20231201",
+        "d1": "20261103",
+        "n": 505,
+        "null_ohlc": 0,
+        "years": 2.924024640657084
+      },
+      "official_after": {
+        "d0": "20231201",
+        "d1": "20261103",
+        "n": 505,
+        "null_ohlc": 0,
+        "years": 2.924024640657084
+      },
+      "otc_official_backfill": null,
+      "yahoo_n": 5109,
+      "yahoo_d0": "20060102",
+      "yahoo_d1": "20261106",
+      "lab_yahoo_adj_n": 5109,
+      "lab_yahoo_adj_d0": "20060102",
+      "lab_yahoo_adj_d1": "20261106",
+      "lab_years": 20.843258042436688,
+      "overlap": {
+        "ok": true,
+        "n_overlap": 504,
+        "median_abs_pct": 0.0,
+        "p90_abs_pct": 0.0,
+        "suspicious": false
+      },
+      "lab_rows_written": 10218,
+      "phone_sync": "blocked",
+      "not_buy_signal": true
+    },
+    "6274": {
+      "stock_id": "6274",
+      "name": "台燿",
+      "market": "TWO",
+      "yahoo_symbol": "6274.TWO",
+      "official_before": {
+        "d0": "20231201",
+        "d1": "20261103",
+        "n": 504,
+        "null_ohlc": 0,
+        "years": 2.924024640657084
+      },
+      "official_after": {
+        "d0": "20060102",
+        "d1": "20261106",
+        "n": 4935,
+        "null_ohlc": 0,
+        "years": 20.843258042436688
+      },
+      "otc_official_backfill": {
+        "sid": "6274",
+        "months_ok": 243,
+        "months_none": 8,
+        "rows_upserted": 4433,
+        "stopped_empty_ym": null,
+        "first": "20060102",
+        "last": "20261106",
+        "source": "tpex_tradingStock_official"
+      },
+      "yahoo_n": 4617,
+      "yahoo_d0": "20071231",
+      "yahoo_d1": "20261106",
+      "lab_yahoo_adj_n": 4617,
+      "lab_yahoo_adj_d0": "20071231",
+      "lab_yahoo_adj_d1": "20261106",
+      "lab_years": 18.850102669404517,
+      "overlap": {
+        "ok": true,
+        "n_overlap": 4419,
+        "median_abs_pct": 1.3821366939836821e-08,
+        "p90_abs_pct": 4.3480598233003334e-08,
+        "suspicious": false
+      },
+      "lab_rows_written": 9234,
+      "phone_sync": "blocked",
+      "not_buy_signal": true
+    },
+    "3081": {
+      "stock_id": "3081",
+      "name": "聯亞",
+      "market": "TWO",
+      "yahoo_symbol": "3081.TWO",
+      "official_before": {
+        "d0": "20231201",
+        "d1": "20261103",
+        "n": 503,
+        "null_ohlc": 0,
+        "years": 2.924024640657084
+      },
+      "official_after": {
+        "d0": "20150723",
+        "d1": "20261106",
+        "n": 2627,
+        "null_ohlc": 0,
+        "years": 11.290896646132786
+      },
+      "otc_official_backfill": {
+        "sid": "3081",
+        "months_ok": 132,
+        "months_none": 13,
+        "rows_upserted": 2126,
+        "stopped_empty_ym": "201411",
+        "first": "20150723",
+        "last": "20261106",
+        "source": "tpex_tradingStock_official"
+      },
+      "yahoo_n": 2999,
+      "yahoo_d0": "20140715",
+      "yahoo_d1": "20261106",
+      "lab_yahoo_adj_n": 2999,
+      "lab_yahoo_adj_d0": "20140715",
+      "lab_yahoo_adj_d1": "20261106",
+      "lab_years": 12.31211498973306,
+      "overlap": {
+        "ok": false,
+        "n_overlap": 2617,
+        "median_abs_pct": 0.09090909090909094,
+        "p90_abs_pct": 0.09090913319760827,
+        "suspicious": true
+      },
+      "lab_rows_written": 5998,
+      "phone_sync": "blocked",
+      "not_buy_signal": true
+    },
+    "8299": {
+      "stock_id": "8299",
+      "name": "群聯",
+      "market": "TWO",
+      "yahoo_symbol": "8299.TWO",
+      "official_before": {
+        "d0": "20231201",
+        "d1": "20261103",
+        "n": 501,
+        "null_ohlc": 0,
+        "years": 2.924024640657084
+      },
+      "official_after": {
+        "d0": "20060102",
+        "d1": "20261106",
+        "n": 4803,
+        "null_ohlc": 0,
+        "years": 20.843258042436688
+      },
+      "otc_official_backfill": {
+        "sid": "8299",
+        "months_ok": 237,
+        "months_none": 14,
+        "rows_upserted": 4304,
+        "stopped_empty_ym": null,
+        "first": "20060102",
+        "last": "20261106",
+        "source": "tpex_tradingStock_official"
+      },
+      "yahoo_n": 4617,
+      "yahoo_d0": "20071231",
+      "yahoo_d1": "20261106",
+      "lab_yahoo_adj_n": 4617,
+      "lab_yahoo_adj_d0": "20071231",
+      "lab_yahoo_adj_d1": "20261106",
+      "lab_years": 18.850102669404517,
+      "overlap": {
+        "ok": true,
+        "n_overlap": 4310,
+        "median_abs_pct": 0.0,
+        "p90_abs_pct": 0.03757453733133183,
+        "suspicious": false
+      },
+      "lab_rows_written": 9234,
+      "phone_sync": "blocked",
+      "not_buy_signal": true
+    }
+  },
+  "note_zh": "不足20年用該檔真實最長窗；Yahoo 長史非官方柱，已與官方短窗對齊；不上話筒",
+  "roster": [
+    {
+      "stock_id": "1101",
+      "name": "台泥",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 505,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "1102",
+      "name": "亞泥",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 506,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "1216",
+      "name": "統一",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 506,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "1301",
+      "name": "台塑",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 506,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "1303",
+      "name": "南亞",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 504,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "1326",
+      "name": "台化",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 506,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "1402",
+      "name": "遠東新",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 506,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "1504",
+      "name": "東元",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 505,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "1519",
+      "name": "華城",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": false,
+      "official_n": 504,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "1590",
+      "name": "亞德客-KY",
+      "lab_years": 15.898699520876113,
+      "lab_n": 3882,
+      "overlap_ok": true,
+      "official_n": 506,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "1605",
+      "name": "華新",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 506,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "1802",
+      "name": "台玻",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 505,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2002",
+      "name": "中鋼",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 505,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2027",
+      "name": "大成鋼",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 506,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2059",
+      "name": "川湖",
+      "lab_years": 18.365503080082135,
+      "lab_n": 4501,
+      "overlap_ok": true,
+      "official_n": 503,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2207",
+      "name": "和泰車",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 505,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2301",
+      "name": "光寶科",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 503,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2303",
+      "name": "聯電",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 504,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2308",
+      "name": "台達電",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 505,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2313",
+      "name": "華通",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 505,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2317",
+      "name": "鴻海",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 504,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2324",
+      "name": "仁寶",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 506,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2327",
+      "name": "國巨*",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 496,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2330",
+      "name": "台積電",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 506,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2337",
+      "name": "旺宏",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 499,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2344",
+      "name": "華邦電",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 504,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2345",
+      "name": "智邦",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 504,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2347",
+      "name": "聯強",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 505,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2356",
+      "name": "英業達",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 504,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2357",
+      "name": "華碩",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 503,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2360",
+      "name": "致茂",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 504,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2368",
+      "name": "金像電",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 504,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2376",
+      "name": "技嘉",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 505,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2377",
+      "name": "微星",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 504,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2379",
+      "name": "瑞昱",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 505,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2382",
+      "name": "廣達",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 505,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2383",
+      "name": "台光電",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 505,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2395",
+      "name": "研華",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 506,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2404",
+      "name": "漢唐",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 506,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2408",
+      "name": "南亞科",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 501,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2409",
+      "name": "友達",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 504,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2412",
+      "name": "中華電",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 506,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2449",
+      "name": "京元電子",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 504,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2454",
+      "name": "聯發科",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 501,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2492",
+      "name": "華新科",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 503,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2603",
+      "name": "長榮",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 505,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2609",
+      "name": "陽明",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 505,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2610",
+      "name": "華航",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 505,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2615",
+      "name": "萬海",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 505,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2618",
+      "name": "長榮航",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 505,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2633",
+      "name": "台灣高鐵",
+      "lab_years": 18.850102669404517,
+      "lab_n": 4618,
+      "overlap_ok": true,
+      "official_n": 506,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2801",
+      "name": "彰銀",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 506,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2834",
+      "name": "臺企銀",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 506,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2880",
+      "name": "華南金",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 506,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2881",
+      "name": "富邦金",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 505,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2882",
+      "name": "國泰金",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 506,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2883",
+      "name": "凱基金",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 505,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2884",
+      "name": "玉山金",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 505,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2885",
+      "name": "元大金",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 505,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2886",
+      "name": "兆豐金",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 506,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2887",
+      "name": "台新新光金",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 506,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2890",
+      "name": "永豐金",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 506,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2891",
+      "name": "中信金",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 505,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2892",
+      "name": "第一金",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 506,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "2912",
+      "name": "統一超",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 506,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "3008",
+      "name": "大立光",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 504,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "3017",
+      "name": "奇鋐",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 504,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "3034",
+      "name": "聯詠",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 505,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "3036",
+      "name": "文曄",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 504,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "3037",
+      "name": "欣興",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 505,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "3044",
+      "name": "健鼎",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 505,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "3045",
+      "name": "台灣大",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 506,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "3081",
+      "name": "聯亞",
+      "lab_years": 12.31211498973306,
+      "lab_n": 2999,
+      "overlap_ok": false,
+      "official_n": 2627,
+      "official_years": 11.290896646132786
+    },
+    {
+      "stock_id": "3189",
+      "name": "景碩",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 504,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "3231",
+      "name": "緯創",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 505,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "3443",
+      "name": "創意",
+      "lab_years": 20.008213552361397,
+      "lab_n": 4902,
+      "overlap_ok": true,
+      "official_n": 504,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "3481",
+      "name": "群創",
+      "lab_years": 20.035592060232716,
+      "lab_n": 4910,
+      "overlap_ok": true,
+      "official_n": 504,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "3533",
+      "name": "嘉澤",
+      "lab_years": 18.90759753593429,
+      "lab_n": 4633,
+      "overlap_ok": true,
+      "official_n": 503,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "3653",
+      "name": "健策",
+      "lab_years": 16.966461327857633,
+      "lab_n": 4149,
+      "overlap_ok": true,
+      "official_n": 502,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "3661",
+      "name": "世芯-KY",
+      "lab_years": 14.08624229979466,
+      "lab_n": 3432,
+      "overlap_ok": true,
+      "official_n": 504,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "3665",
+      "name": "貿聯-KY",
+      "lab_years": 15.545516769336071,
+      "lab_n": 3798,
+      "overlap_ok": true,
+      "official_n": 501,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "3702",
+      "name": "大聯大",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 505,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "3711",
+      "name": "日月光投控",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 504,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "4904",
+      "name": "遠傳",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 506,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "4938",
+      "name": "和碩",
+      "lab_years": 17.815195071868583,
+      "lab_n": 4360,
+      "overlap_ok": true,
+      "official_n": 505,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "4958",
+      "name": "臻鼎-KY",
+      "lab_years": 14.863791923340179,
+      "lab_n": 3625,
+      "overlap_ok": true,
+      "official_n": 505,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "5871",
+      "name": "中租-KY",
+      "lab_years": 14.899383983572895,
+      "lab_n": 3634,
+      "overlap_ok": true,
+      "official_n": 506,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "5876",
+      "name": "上海商銀",
+      "lab_years": 12.114989733059549,
+      "lab_n": 2948,
+      "overlap_ok": true,
+      "official_n": 506,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "5880",
+      "name": "合庫金",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 506,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "6139",
+      "name": "亞翔",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 504,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "6213",
+      "name": "聯茂",
+      "lab_years": 18.792607802874745,
+      "lab_n": 4604,
+      "overlap_ok": true,
+      "official_n": 505,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "6239",
+      "name": "力成",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 503,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "6274",
+      "name": "台燿",
+      "lab_years": 18.850102669404517,
+      "lab_n": 4617,
+      "overlap_ok": true,
+      "official_n": 4935,
+      "official_years": 20.843258042436688
+    },
+    {
+      "stock_id": "6442",
+      "name": "光聖",
+      "lab_years": 12.640657084188911,
+      "lab_n": 3083,
+      "overlap_ok": true,
+      "official_n": 504,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "6446",
+      "name": "藥華藥",
+      "lab_years": 12.657084188911705,
+      "lab_n": 3087,
+      "overlap_ok": false,
+      "official_n": 505,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "6505",
+      "name": "台塑化",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 506,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "6515",
+      "name": "穎崴",
+      "lab_years": 6.965092402464066,
+      "lab_n": 1692,
+      "overlap_ok": true,
+      "official_n": 503,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "6669",
+      "name": "緯穎",
+      "lab_years": 8.980150581793293,
+      "lab_n": 2182,
+      "overlap_ok": false,
+      "official_n": 505,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "6770",
+      "name": "力積電",
+      "lab_years": 5.908281998631074,
+      "lab_n": 1433,
+      "overlap_ok": true,
+      "official_n": 503,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "6805",
+      "name": "富世達",
+      "lab_years": 5.960301163586585,
+      "lab_n": 1446,
+      "overlap_ok": true,
+      "official_n": 505,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "7769",
+      "name": "鴻勁",
+      "lab_years": 2.0123203285420943,
+      "lab_n": 489,
+      "overlap_ok": true,
+      "official_n": 223,
+      "official_years": 0.9336071184120466
+    },
+    {
+      "stock_id": "8046",
+      "name": "南電",
+      "lab_years": 20.843258042436688,
+      "lab_n": 5109,
+      "overlap_ok": true,
+      "official_n": 504,
+      "official_years": 2.924024640657084
+    },
+    {
+      "stock_id": "8299",
+      "name": "群聯",
+      "lab_years": 18.850102669404517,
+      "lab_n": 4617,
+      "overlap_ok": true,
+      "official_n": 4803,
+      "official_years": 20.843258042436688
+    },
+    {
+      "stock_id": "8996",
+      "name": "高力",
+      "lab_years": 18.850102669404517,
+      "lab_n": 4617,
+      "overlap_ok": true,
+      "official_n": 501,
+      "official_years": 2.924024640657084
+    }
+  ]
+}

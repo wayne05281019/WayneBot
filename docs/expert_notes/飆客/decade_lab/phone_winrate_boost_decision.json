@@ -1,0 +1,42 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "winners_n": 7,
+  "leave_zero_baseline": {
+    "n_unique_entry_days": 2423,
+    "win_rate": 0.49562909772088665,
+    "expectancy": -0.0007289322544459187
+  },
+  "top_winners": [
+    {
+      "key": "w3_start__hi20_or_desync",
+      "days": 74,
+      "trades": 76,
+      "win": 0.7632,
+      "E": 0.0015,
+      "vs_rand_E": 0.0053
+    },
+    {
+      "key": "w3_start_or_ma60_w3__hi20_or_desync",
+      "days": 110,
+      "trades": 113,
+      "win": 0.7522,
+      "E": 0.0063,
+      "vs_rand_E": 0.0087
+    },
+    {
+      "key": "w3_start_or_ma60_w3__hi20_then_giveback",
+      "days": 113,
+      "trades": 116,
+      "win": 0.6293,
+      "E": 0.0113,
+      "vs_rand_E": 0.0062
+    }
+  ],
+  "what_lifted_winrate_zh": [
+    "進場：W3起漲（可併確認紅箭×W3區）",
+    "出場：首碰20高為主（hi20_only／hi20_or_desync）；拿掉過早回吐可抬勝率",
+    "量能加分：W3起漲＋量能在部分出場下 E 更好"
+  ],
+  "read_zh": "加強後 winners=7/24。最高勝率約 76%（W3起漲＋出場首碰20高，獨立日74）；較穩組合 W3起漲或紅箭×W3＋同出場，勝率約75%、獨立日110、E約+0.63%。相對 leave_zero 勝率約+25pt。樣本仍偏薄、浪號不上查股；候選鎖定這幾條再生下一版。"
+}
