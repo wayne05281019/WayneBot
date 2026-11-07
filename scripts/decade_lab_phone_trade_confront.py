@@ -226,7 +226,18 @@ def _agg_trades(trades: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
             "avg_mae": float("nan"),
             "exit_reason_counts": {},
         }
-    nets = np.asarray([float(t["net_ret"]) for t in trades], dtype=float)
+    def _net(t: Dict[str, Any]) -> float:
+        # 相容舊鍵 ret（部分 lab 草稿用 ret／hold）
+        if "net_ret" in t:
+            return float(t["net_ret"])
+        return float(t["ret"])
+
+    def _hold(t: Dict[str, Any]) -> float:
+        if "hold_days" in t:
+            return float(t["hold_days"])
+        return float(t.get("hold") or 0)
+
+    nets = np.asarray([_net(t) for t in trades], dtype=float)
     wins = int(sum(int(t["win"]) for t in trades))
     n = len(trades)
     days = {t["entry_date"] for t in trades}
@@ -235,6 +246,9 @@ def _agg_trades(trades: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     for t in trades:
         reasons[str(t["exit_reason"])] += 1
     wlo, whi = _wilson_ci(wins, n)
+    holds = np.asarray([_hold(t) for t in trades], dtype=float)
+    mfes = np.asarray([float(t["mfe"]) if "mfe" in t else float("nan") for t in trades], dtype=float)
+    maes = np.asarray([float(t["mae"]) if "mae" in t else float("nan") for t in trades], dtype=float)
     return {
         "n_trades": n,
         "n_unique_entry_days": len(days),
@@ -244,9 +258,9 @@ def _agg_trades(trades: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
         "avg_net": float(np.mean(nets)),
         "median_net": float(np.median(nets)),
         "expectancy": float(np.mean(nets)),
-        "avg_hold": float(np.mean([t["hold_days"] for t in trades])),
-        "avg_mfe": float(np.mean([t["mfe"] for t in trades])),
-        "avg_mae": float(np.mean([t["mae"] for t in trades])),
+        "avg_hold": float(np.nanmean(holds)),
+        "avg_mfe": float(np.nanmean(mfes)),
+        "avg_mae": float(np.nanmean(maes)),
         "exit_reason_counts": dict(reasons),
     }
 
