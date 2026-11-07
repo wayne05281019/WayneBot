@@ -2,7 +2,7 @@
   "phone_sync": "blocked",
   "promote_to_lookup_display": false,
   "NOT_BUY_SIGNAL": true,
-  "as_of_taipei": "2026-11-08T04:51:44.826345+08:00",
+  "as_of_taipei": "2026-11-08T05:18:22.310841+08:00",
   "deliverable_zh": "查股五張圖：極高勝率買進起漲＋相對高點賣出相對位置",
   "candidate_buy_rule": {
     "key": "core_w3_or_ma60w3__BAL_Vnear2_or_S55__hi20_or_desync",
@@ -76,7 +76,7 @@
       "balanced_score": 0.7586206896551724
     }
   },
-  "gate_status": "mix_v14_cut0_profit_near_invent_v15_expand",
+  "gate_status": "mix_v15_profit_early_sell_HIT_still_blocked_confirm_v16",
   "evidence": {
     "win_rate": 0.76,
     "independent_days": 50,
@@ -423,6 +423,18 @@
       "cut_pass_n": 0,
       "promote": false,
       "near_miss": "profit_early≈78.9% hold≈13; body==false 82%@44d; universe_cap=112"
+    },
+    "spirit_mix_thicken_v15": {
+      "source": "phone_spirit_mix_thicken_v15_decision.json",
+      "gate": "spirit_mix_thicken_v15 ge80=12 ge80_d50=12 earlier_d50=7 beat_v11_bars=0 n_stocks=250; best_early_d50=body_n5_nobody_or_week__SELL_hi20_or_wave_top win=0.8024691358024691 bars=15.645569620253164; best_profit_sell=v11_nobody__SELL_profit_early_3 hold=11.681159420289855 v11_hold=14.8; promote_lookup=NO",
+      "n_stocks": 250,
+      "best_profit_sell": "v11_nobody__SELL_profit_early_3",
+      "best_profit_win": 0.855072463768116,
+      "best_profit_days": 66,
+      "best_profit_hold": 11.681159420289855,
+      "v11_hold_ref": 14.8,
+      "promote": false,
+      "note_zh": "提早賣數字閘過了（hold↓ 且 ge80×50d）；仍 blocked＝未接 placement／未改 leave_zero"
     }
   },
   "blockers": [
@@ -438,10 +450,10 @@
     "使用者 2026-11-08：材料若限制達標可自由加因子；目標＝提早知買／賣"
   ],
   "next_experiments": [
-    "mix_v15：放寬 turnover 母體＋nobody／有利潤賣",
+    "mix_v16：U112＋U250 复現 profit_early_3／試 pe2",
     "五張圖 placement stub（仍 flag off）"
   ],
-  "gate_one_liner": "draft: mix_v14 cut_pass=0; profit_early near80 hold↓; invent v15 expand universe; phone_sync=blocked; v11 buy locked",
+  "gate_one_liner": "draft: mix_v15 profit-early-sell HIT (nobody pe3 ≈85.5%@66d hold≈11.7 vs 14.8); phone_sync=blocked; invent v16 confirm; promote=false",
   "user_goal_zh": "提早知道個股買點＋提早知道賣點；材料不夠可自由加因子",
   "metric_priority_zh": [
     "提早買（訊號相對後續漲段／20高）",
@@ -456,6 +468,15 @@
     "independent_days": 50,
     "mean_bars_before_hi20": 15.857142857142858,
     "source": "phone_spirit_mix_thicken_v11_decision.json",
+    "phone_sync": "blocked"
+  },
+  "candidate_early_sell_rule": {
+    "key": "v11_nobody__SELL_profit_early_3",
+    "alt_key": "v11_softbody__SELL_profit_early_3",
+    "win_rate": 0.855072463768116,
+    "independent_days": 66,
+    "mean_hold_days": 11.681159420289855,
+    "source": "phone_spirit_mix_thicken_v15_decision.json",
     "phone_sync": "blocked"
   }
 }
