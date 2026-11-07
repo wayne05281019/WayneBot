@@ -60,20 +60,52 @@ def test_next_gates_forbid_dir100():
         wrote=5419,
         range_n=5395,
         insuff_n=0,
-        soft_range_n=1,
+        soft_range_n=400,
         dir_n=24,
         hit_rate=1.0,
         by_amp_class=by_amp,
         oos=oos,
+        attempted_n=30,
+        soft_kill_n=400,
     )
     gates = _next_gates(audit, oos)
     assert gates["forbid_dir100_claim"] is True
     assert gates["integrity_ok"] is False
     assert gates["phone_sync"] == "blocked"
+    assert "soft_range_dominates_calls" in audit["integrity_blockers"]
     ids = {x["id"]: x["ok"] for x in gates["require"]}
     assert ids["small_amp_n20"] is False
     assert ids["oos_sealed_n20"] is False
     assert ids["wave_neurons_match"] is False
+
+
+def test_soft_range_not_dominate_when_hit_rate_honest():
+    """誠實命中率（<90%）時，soft_range 多不算灌水指紋。"""
+    by_amp = {
+        "micro": {"n": 0, "hit": 0, "miss": 0, "hit_rate": None},
+        "small": {"n": 6, "hit": 3, "miss": 3, "hit_rate": 0.5},
+        "mid": {"n": 10, "hit": 7, "miss": 3, "hit_rate": 0.7},
+        "large": {"n": 15, "hit": 11, "miss": 4, "hit_rate": 0.733},
+    }
+    oos = _oos_holdout(_mk(45), holdout_n=20, sealed=True)
+    audit = _sample_audit(
+        wrote=5419,
+        range_n=4932,
+        insuff_n=0,
+        soft_range_n=459,
+        dir_n=45,
+        hit_rate=31 / 45,
+        by_amp_class=by_amp,
+        oos=oos,
+        attempted_n=500,
+        soft_kill_n=455,
+    )
+    assert "soft_range_dominates_calls" not in audit["integrity_blockers"]
+    assert oos["sealed_ok"] is True
+    assert "oos_holdout_too_thin" not in audit["integrity_blockers"]
+    # attempted 夠密 → 不因對 wrote 極稀單擋
+    assert "call_rate_too_low_range_dilution" not in audit["integrity_blockers"]
+    assert audit["call_rate_vs_attempted"] == audit["call_rate"]
 
 
 def test_run_integrity_writes_latest():
@@ -100,7 +132,10 @@ def test_run_integrity_writes_latest():
     assert summary2["path_score_integrity"]["track"] == "path_score_integrity_v1"
     # 不應把舊 dir 滿寫成可上話筒
     assert summary2["phone_sync"] == "blocked"
-    # 母檔方向命中率＝封印後誠實數（31/45），不准再鎖死假 1.0
-    hr = float(summary.get("hit_rate_directional") or 0)
-    assert abs(hr - (31 / 45)) < 1e-9
-    assert 0.0 < hr < 1.0
+    # 母檔方向命中率＝誠實全窗（非假 1.0）；與 integrity 重算一致
+    hr = float(summary2.get("hit_rate_directional") or 0)
+    assert abs(hr - float(out["hit_rate_directional"])) < 1e-9
+    assert 0.0 < hr < 0.95
+    assert int(out["directional_n"]) >= 40
+    assert out["oos_holdout"]["sealed_ok"] is True
+    assert "soft_range_dominates_calls" not in out["sample_audit"]["integrity_blockers"]
