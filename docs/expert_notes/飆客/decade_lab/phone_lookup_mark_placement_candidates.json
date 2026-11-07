@@ -1,0 +1,55 @@
+{
+  "phone_sync": "blocked",
+  "LOOKUP_LAB_MARKS_ENABLED": false,
+  "promote_to_lookup_display": false,
+  "as_of_taipei": "2026-11-08T07:00:00+08:00",
+  "candidates": {
+    "early_buy_u112": {
+      "key": "ei_n5_week_n3_softbody__SELL_hi20_or_wave_top",
+      "formula": "w3u & near(turn,3) & t60 & near(intent,5) & risk & (near(week,3)|near(body,3))",
+      "win_rate": 0.8039,
+      "days": 50,
+      "bars_before_hi20": 15.86,
+      "universe": "U112",
+      "glyph": "LAB_BUY_W3_START",
+      "status": "locked_lab_candidate"
+    },
+    "early_sell_same_entry_u180": {
+      "key": "U180__v11_pe3",
+      "formula": "entry=v11 softbody; exit=hi20|wave|(exhaust|hi10 & unreal>=3%)",
+      "win_rate": 0.8032786885245902,
+      "days": 60,
+      "hold_days": 12.524590163934427,
+      "base_hold_hi20": 14.9,
+      "universe": "U180",
+      "glyph": "REL_HIGH_SELL",
+      "status": "locked_lab_candidate_pending_u112",
+      "note_zh": "與提早買同進場族；U112 上 pe 仍未過閘"
+    },
+    "early_sell_nobody_u180": {
+      "key": "U180__nobody_pe3",
+      "formula": "entry=v11&~body; exit=hi20|wave|(exhaust|hi10 & unreal>=3%)",
+      "win_rate": 0.8490566037735849,
+      "days": 52,
+      "hold_days": 12.320754716981131,
+      "universe": "U180",
+      "glyph": "REL_HIGH_SELL",
+      "status": "locked_lab_candidate_alt"
+    },
+    "early_sell_u250": {
+      "key": "v11_nobody__SELL_profit_early_3",
+      "formula": "entry=v11&~body; exit=hi20|wave|(exhaust|hi10 & unreal>=3%)",
+      "win_rate": 0.8551,
+      "days": 66,
+      "hold_days": 11.68,
+      "universe": "U250",
+      "glyph": "REL_HIGH_SELL",
+      "status": "locked_lab_candidate_u250_only"
+    },
+    "early_sell_u112": {
+      "status": "blocked_sub80_or_days_short",
+      "near_miss": "soft pe≈78.9%@51d; nobody pe≈84.8%@45d"
+    }
+  },
+  "note_zh": "僅候選對照；LOOKUP_LAB_MARKS_ENABLED 仍 False；不准改 leave_zero；不上話筒"
+}

@@ -1,0 +1,195 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "user_goal_zh": "v20：U180 桥接提早賣＋placement 候選對照",
+  "parent_seal": "phone_spirit_mix_thicken_v19_decision.json",
+  "elapsed_s": 477.0,
+  "n_stocks": 180,
+  "universe_request": {
+    "n": 180,
+    "min_turnover_k": 800000.0
+  },
+  "ranking": [
+    {
+      "key": "U180__v11_hi20",
+      "n_trades": 60,
+      "n_unique_entry_days": 59,
+      "win_rate": 0.8166666666666667,
+      "expectancy": 0.03275038350596151,
+      "beats_random": true,
+      "balanced_score": 0.8166666666666667,
+      "win_ge80": true,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 15.689655172413794,
+      "mean_hold_days": 14.9
+    },
+    {
+      "key": "U180__v11_pe2",
+      "n_trades": 61,
+      "n_unique_entry_days": 60,
+      "win_rate": 0.8032786885245902,
+      "expectancy": 0.0192221235268473,
+      "beats_random": true,
+      "balanced_score": 0.8032786885245902,
+      "win_ge80": true,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 15.689655172413794,
+      "mean_hold_days": 12.40983606557377
+    },
+    {
+      "key": "U180__v11_pe3",
+      "n_trades": 61,
+      "n_unique_entry_days": 60,
+      "win_rate": 0.8032786885245902,
+      "expectancy": 0.020377442487733127,
+      "beats_random": true,
+      "balanced_score": 0.8032786885245902,
+      "win_ge80": true,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 15.689655172413794,
+      "mean_hold_days": 12.524590163934427
+    },
+    {
+      "key": "U180__v11_hybrid_pe3",
+      "n_trades": 61,
+      "n_unique_entry_days": 60,
+      "win_rate": 0.8032786885245902,
+      "expectancy": 0.021373096278077968,
+      "beats_random": true,
+      "balanced_score": 0.8032786885245902,
+      "win_ge80": true,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 15.689655172413794,
+      "mean_hold_days": 12.737704918032787
+    },
+    {
+      "key": "U180__nobody_hi20",
+      "n_trades": 52,
+      "n_unique_entry_days": 51,
+      "win_rate": 0.8846153846153846,
+      "expectancy": 0.039326128981215486,
+      "beats_random": true,
+      "balanced_score": 0.8846153846153846,
+      "win_ge80": true,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 15.04,
+      "mean_hold_days": 14.346153846153847
+    },
+    {
+      "key": "U180__nobody_pe2",
+      "n_trades": 53,
+      "n_unique_entry_days": 52,
+      "win_rate": 0.8490566037735849,
+      "expectancy": 0.02449058200053174,
+      "beats_random": false,
+      "balanced_score": 0.8490566037735849,
+      "win_ge80": true,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 15.04,
+      "mean_hold_days": 12.18867924528302
+    },
+    {
+      "key": "U180__nobody_pe3",
+      "n_trades": 53,
+      "n_unique_entry_days": 52,
+      "win_rate": 0.8490566037735849,
+      "expectancy": 0.025820288729098445,
+      "beats_random": true,
+      "balanced_score": 0.8490566037735849,
+      "win_ge80": true,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 15.04,
+      "mean_hold_days": 12.320754716981131
+    }
+  ],
+  "pe_ge80_d50": [
+    {
+      "key": "U180__nobody_pe3",
+      "n_trades": 53,
+      "n_unique_entry_days": 52,
+      "win_rate": 0.8490566037735849,
+      "expectancy": 0.025820288729098445,
+      "beats_random": true,
+      "balanced_score": 0.8490566037735849,
+      "win_ge80": true,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 15.04,
+      "mean_hold_days": 12.320754716981131
+    },
+    {
+      "key": "U180__v11_pe2",
+      "n_trades": 61,
+      "n_unique_entry_days": 60,
+      "win_rate": 0.8032786885245902,
+      "expectancy": 0.0192221235268473,
+      "beats_random": true,
+      "balanced_score": 0.8032786885245902,
+      "win_ge80": true,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 15.689655172413794,
+      "mean_hold_days": 12.40983606557377
+    },
+    {
+      "key": "U180__v11_pe3",
+      "n_trades": 61,
+      "n_unique_entry_days": 60,
+      "win_rate": 0.8032786885245902,
+      "expectancy": 0.020377442487733127,
+      "beats_random": true,
+      "balanced_score": 0.8032786885245902,
+      "win_ge80": true,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 15.689655172413794,
+      "mean_hold_days": 12.524590163934427
+    },
+    {
+      "key": "U180__v11_hybrid_pe3",
+      "n_trades": 61,
+      "n_unique_entry_days": 60,
+      "win_rate": 0.8032786885245902,
+      "expectancy": 0.021373096278077968,
+      "beats_random": true,
+      "balanced_score": 0.8032786885245902,
+      "win_ge80": true,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 15.689655172413794,
+      "mean_hold_days": 12.737704918032787
+    }
+  ],
+  "placement_candidates": {
+    "phone_sync": "blocked",
+    "LOOKUP_LAB_MARKS_ENABLED": false,
+    "promote_to_lookup_display": false,
+    "as_of_taipei": null,
+    "candidates": {
+      "early_buy_u112": {
+        "key": "ei_n5_week_n3_softbody__SELL_hi20_or_wave_top",
+        "formula": "w3u & near(turn,3) & t60 & near(intent,5) & risk & (near(week,3)|near(body,3))",
+        "win_rate": 0.8039,
+        "days": 50,
+        "bars_before_hi20": 15.86,
+        "universe": "U112",
+        "glyph": "LAB_BUY_W3_START",
+        "status": "locked_lab_candidate"
+      },
+      "early_sell_u250": {
+        "key": "v11_nobody__SELL_profit_early_3",
+        "formula": "entry=v11&~body; exit=hi20|wave|(exhaust|hi10 & unreal>=3%)",
+        "win_rate": 0.8551,
+        "days": 66,
+        "hold_days": 11.68,
+        "universe": "U250",
+        "glyph": "REL_HIGH_SELL",
+        "status": "locked_lab_candidate_u250_only"
+      },
+      "early_sell_u112": {
+        "status": "blocked_sub80_or_days_short",
+        "near_miss": "soft pe≈78.9%@51d; nobody pe≈84.8%@45d"
+      }
+    },
+    "note_zh": "僅候選對照；LOOKUP_LAB_MARKS_ENABLED 仍 False；不准改 leave_zero"
+  },
+  "gate_one_liner": "spirit_mix_thicken_v20 U180 n=180 pe_ge80_d50=4; best=U180__nobody_pe3 win=0.8490566037735849 days=52 hold=12.320754716981131 base_hold=14.9; promote_lookup=NO",
+  "errors_n": 0,
+  "errors_sample": []
+}
