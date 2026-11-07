@@ -2,7 +2,7 @@
   "phone_sync": "blocked",
   "promote_to_lookup_display": false,
   "NOT_BUY_SIGNAL": true,
-  "as_of_taipei": "2026-11-07T23:31:54.308246+08:00",
+  "as_of_taipei": "2026-11-07T23:44:16.124307+08:00",
   "deliverable_zh": "查股五張圖：LAB_BUY_W3_START（起漲買）＋REL_HIGH_SELL（相對高點賣）；過閘才畫",
   "candidate_buy_rule": {
     "key": "core_w3_or_ma60w3__BAL_Vnear2_or_S55__hi20_or_desync",
@@ -76,7 +76,7 @@
       "balanced_score": 0.7586206896551724
     }
   },
-  "gate_status": "collecting_v3_and_feat",
+  "gate_status": "collecting_v4_after_v3_no_ge50_lift",
   "evidence": {
     "win_rate": 0.76,
     "independent_days": 50,
@@ -147,6 +147,13 @@
     "lookup_mark_candidate": {
       "source": "phone_lookup_mark_candidate_decision.json",
       "gate_one_liner": "lookup-mark candidate: buy=core_w3_or_ma60w3__BAL_Vnear2_or_S55__hi20_or_desync win=0.76 days=50; sell=relhigh sealed; earliness best_bal=core_w3_start; phone_sync=blocked; promote=NO"
+    },
+    "champion_v3": {
+      "source": "phone_champion_v3_decision.json",
+      "gate": "v3 winners=10/110; lift=8; best_bal=B_bal__M0__X0__SELL_hi20_or_wave_top win=0.74 days=50; ge50=B_bal__M0__X0__SELL_hi20_or_wave_top; promote_lookup=NO",
+      "ge50_best": "B_bal__M0__X0 @74%/50d (baseline)",
+      "thin_lifts": true,
+      "promote": false
     }
   },
   "blockers": [
@@ -160,13 +167,11 @@
     "所有 sealed 決策皆 promote_lookup=NO／promote_to_lookup_display=false"
   ],
   "next_experiments": [
+    "champion_v4：V4 新欄＋v3 薄高肢軟 OR 加厚",
+    "目標：日≥50 且 B>0.74（或贏均衡 76%/50d）才考慮查股候選",
     "跑 champion_v3（bal核×relhigh賣×mkt_feat×barek/XG）",
     "累積 W3×S55×feat 獨立日至遠超 20 再比均衡 B",
-    "earliness 已封：W3 start 較早碰上 20高，顯示仍 blocked",
-    "mark_earliness sealed: core_w3_start beats random ~76%@57d mean_bars_before_hi20≈17；ma60_lower earliest bars≈21 but lower win — still blocked",
-    "balanced 冠軍核在 n≥100 母體上續累獨立日，盯 ge50 是否仍贏核心＋隨機",
-    "market_feat_sync（週線／非過熱／拉回推動）加厚 W3×S55 薄樣至遠超 n=20 再比均衡分",
-    "查股五張圖 paint stub 就緒後，僅在 gate 過關才開 LOOKUP_LAB_MARKS_ENABLED"
+    "earliness 已封：W3 start 較早碰上 20高，顯示仍 blocked"
   ],
   "gate_one_liner": "draft promote-gate: buy=bal Vnear2∨S55 @76%/50d; sell=relhigh sealed w3_or_ma60__SELL_hi20_or_desync; phone_sync=blocked; promote_to_lookup_display=false; gate_status=collecting_v3_and_feat"
 }
