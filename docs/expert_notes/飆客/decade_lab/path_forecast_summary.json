@@ -1,5 +1,5 @@
 {
-  "written_at": "2026-11-05T00:59:20",
+  "written_at": "2026-11-07T16:36:51",
   "tz": "Asia/Taipei",
   "goal_zh": "預判大盤漲勢（方向）及幅度",
   "investor_output": [
@@ -106,12 +106,12 @@
     "wave_fib_expect_down"
   ],
   "my_responsibility_zh": "最終答案＝漲勢方向＋預估幅度％＋目標／失效＋依據。法人／投信一定納入判斷；要納入哪些因素、怎麼切＝程式責任。",
-  "wrote": 5419,
-  "scored_n": 45,
-  "directional_n": 45,
+  "wrote": 5422,
+  "scored_n": 47,
+  "directional_n": 47,
   "hit": 31,
-  "miss": 14,
-  "hit_rate_directional": 0.6888888888888889,
+  "miss": 16,
+  "hit_rate_directional": 0.6595744680851063,
   "amp_n": 31,
   "amp_hit": 23,
   "amp_miss": 8,
@@ -119,10 +119,10 @@
   "amp_mae_pct": 1.3305,
   "by_bias": {
     "up": {
-      "n": 34,
+      "n": 36,
       "hit": 24,
-      "miss": 10,
-      "hit_rate": 0.7058823529411765
+      "miss": 12,
+      "hit_rate": 0.6666666666666666
     },
     "down": {
       "n": 11,
@@ -165,10 +165,10 @@
       "hit_rate": 0.875
     },
     "bear": {
-      "n": 20,
+      "n": 22,
       "hit": 13,
-      "miss": 7,
-      "hit_rate": 0.65
+      "miss": 9,
+      "hit_rate": 0.5909090909090909
     },
     "chop": {
       "n": 9,
@@ -177,13 +177,13 @@
       "hit_rate": 0.4444444444444444
     }
   },
-  "inst_lit_days": 105,
+  "inst_lit_days": 107,
   "inst_votes": [
     "inst_trust_z_ge_p1"
   ],
   "fib_lit_days": 0,
   "fib_votes": [],
-  "chips_lit_days": 172,
+  "chips_lit_days": 174,
   "chips_votes": [
     "chips_limit_up_ge_20",
     "chips_margin_kill_2d",
@@ -202,28 +202,26 @@
     "target_holdout_n": 20,
     "note_zh": "封印 OOS：最末窗只驗不調；主閘仍用全窗 gate_n20；規則曾依近窗錯單改寫則不算真 holdout",
     "in_sample": {
-      "n": 25,
-      "hit": 15,
-      "miss": 10,
-      "hit_rate_directional": 0.6,
-      "amp_n": 15,
-      "amp_hit": 7,
+      "n": 27,
+      "hit": 16,
+      "miss": 11,
+      "hit_rate_directional": 0.5925925925925926,
+      "amp_n": 16,
+      "amp_hit": 8,
       "amp_miss": 8,
-      "hit_rate_amplitude": 0.4666666666666667
+      "hit_rate_amplitude": 0.5
     },
     "holdout": {
       "n": 20,
-      "hit": 16,
-      "miss": 4,
-      "hit_rate_directional": 0.8,
-      "amp_n": 16,
-      "amp_hit": 16,
+      "hit": 15,
+      "miss": 5,
+      "hit_rate_directional": 0.75,
+      "amp_n": 15,
+      "amp_hit": 15,
       "amp_miss": 0,
       "hit_rate_amplitude": 1.0
     },
     "holdout_as_of": [
-      "20250903",
-      "20250912",
       "20251014",
       "20251121",
       "20260108",
@@ -241,8 +239,65 @@
       "20260720",
       "20260728",
       "20260729",
-      "20260911"
+      "20260911",
+      "20261102",
+      "20261103"
     ]
+  },
+  "oos_seal": {
+    "seal_ok": true,
+    "holdout_n": 20,
+    "scored_n": 47,
+    "need_scored_n": 40,
+    "want_holdout_n": 20,
+    "min_holdout": 20,
+    "frac": 0.2,
+    "reason_zh": "封印窗只驗不調；主閘仍分軌 n≥20 且贏現況才換",
+    "in_sample": {
+      "n": 27,
+      "hit": 16,
+      "miss": 11,
+      "hit_rate_directional": 0.5925925925925926,
+      "amp_n": 16,
+      "amp_hit": 8,
+      "amp_miss": 8,
+      "hit_rate_amplitude": 0.5
+    },
+    "holdout": {
+      "n": 20,
+      "hit": 15,
+      "miss": 5,
+      "hit_rate_directional": 0.75,
+      "amp_n": 15,
+      "amp_hit": 15,
+      "amp_miss": 0,
+      "hit_rate_amplitude": 1.0
+    },
+    "holdout_as_of": [
+      "20251014",
+      "20251121",
+      "20260108",
+      "20260206",
+      "20260303",
+      "20260310",
+      "20260331",
+      "20260402",
+      "20260417",
+      "20260423",
+      "20260513",
+      "20260626",
+      "20260709",
+      "20260717",
+      "20260720",
+      "20260728",
+      "20260729",
+      "20260911",
+      "20261102",
+      "20261103"
+    ],
+    "forbid_dir_100_boast_zh": "即使 holdout 方向滿，仍須看 call_rate／small amp／WAVE_NEURONS；不准單報 100%",
+    "not_buy_signal": true,
+    "phone_sync": "blocked"
   },
   "oos_holdout_legacy_unsealed": {
     "ok": true,
@@ -250,34 +305,35 @@
     "sealed_ok": false,
     "holdout_n": 5,
     "target_holdout_n": 5,
-    "note_zh": "非封印縮窗對照；規則曾依近窗錯單改寫則不算真 holdout",
+    "note_zh": "最末窗只驗不調；主閘仍用全窗 gate_n20；薄窗（<20）不算封印——見 oos_seal／path_oos_seal_vnext；規則曾依近窗錯單改寫則不算真 holdout",
     "in_sample": {
-      "n": 40,
-      "hit": 26,
+      "n": 42,
+      "hit": 28,
       "miss": 14,
-      "hit_rate_directional": 0.65,
-      "amp_n": 26,
-      "amp_hit": 18,
+      "hit_rate_directional": 0.6666666666666666,
+      "amp_n": 28,
+      "amp_hit": 20,
       "amp_miss": 8,
-      "hit_rate_amplitude": 0.6923076923076923
+      "hit_rate_amplitude": 0.7142857142857143
     },
     "holdout": {
       "n": 5,
-      "hit": 5,
-      "miss": 0,
-      "hit_rate_directional": 1.0,
-      "amp_n": 5,
-      "amp_hit": 5,
+      "hit": 3,
+      "miss": 2,
+      "hit_rate_directional": 0.6,
+      "amp_n": 3,
+      "amp_hit": 3,
       "amp_miss": 0,
       "hit_rate_amplitude": 1.0
     },
     "holdout_as_of": [
-      "20260717",
-      "20260720",
       "20260728",
       "20260729",
-      "20260911"
-    ]
+      "20260911",
+      "20261102",
+      "20261103"
+    ],
+    "seal_grade": "thin_not_seal"
   },
   "amp_class_def": {
     "micro": "|amp|<0.6",
@@ -287,23 +343,26 @@
     "note_zh": "分類看預測 |amp_pct|，不是實際報酬"
   },
   "sample_audit": {
-    "wrote": 5419,
-    "range_n": 4932,
-    "insuff_n": 5037,
+    "wrote": 5422,
+    "range_n": 4933,
+    "insuff_n": 5038,
     "soft_range_n": 459,
-    "directional_n": 45,
-    "call_rate": 0.008304,
+    "soft_kill_n": 459,
+    "attempted_directional_n": 948,
+    "directional_n": 47,
+    "call_rate": 0.049578,
+    "call_rate_vs_wrote": 0.008668,
+    "call_rate_vs_attempted": 0.049578,
     "look_ahead_fixes": [
       "named_support_gated_by_asof",
       "wave_pivot_right_confirm"
     ],
-    "range_exclusion_zh": "range／觀望不計方向勝率（故意）；錯單改 soft_range 會把難案踢出計分＝灌水風險",
+    "range_exclusion_zh": "range／觀望不計方向勝率（故意）；soft_range 踢難案後若 dir≥90%＝灌水。call_rate 主看 attempted（閘前有方向）；對 wrote 極稀＋對 attempted 也稀才擋。",
     "oos_risk_zh": "封印 OOS 要 holdout≥20；縮窗／同窗調參＝假 holdout",
-    "vote_fit_zh": "edge 票權來自全樣 reusable／各模組過閘檔＝樣本內污染，下一版要 walk-forward",
+    "vote_fit_zh": "edge 票權來自全樣 reusable／各模組過閘旗＝樣本內污染，下一版要 walk-forward",
     "integrity_ok": false,
     "integrity_blockers": [
       "call_rate_too_low_range_dilution",
-      "soft_range_dominates_calls",
       "small_amp_gate_fail",
       "WAVE_NEURONS_MATCH_false"
     ],
@@ -340,10 +399,17 @@
   },
   "next_gates_zh": "下一版必測：① small amp n≥20 且勝率不輸 mid／全窗；② 封印 OOS≥20 計分日（或末 20% 曆日）只驗不調；③ call_rate 不被 range 稀釋；④ WAVE_NEURONS_MATCH＝true 才談話筒。dir 滿＋gate_n20 仍不准上話筒；gate_integrity 未過＝測法未收斂。",
   "purpose_zh": "預判大盤方向＋幅度；波浪主結構；錯單閘（震盪修正浪／融資殺方向／支撐衝突中性／假彈連錯／幅度分市況／台積量價確認）；飆大五件／細微波另學；法人外資必進；急跌反彈幅度切片＋樣本外切窗加測；不是買訊不上話筒",
-  "reverse_think_zh": "波浪主判→法人／籌碼／切割／宏觀確認或否決；錯單閘先擋假多再投票。幅度偏了回查波動／市況／波浪相位／急跌反彈切片。range＝觀望不計分。因素不足→factor_gap_queue。封印樣本外只驗不調。",
-  "path_gates_zh": "chop+abc軟觀望；margin_kill要同向確認；支撐破×融資殺中性化；false_up_streak≥2改range；amp分bull/bear/chop；tsmc量價確認票；crash_bounce／wick_chop 只調 amp；封印 oos holdout≥20",
+  "reverse_think_zh": "波浪主判→法人／籌碼／切割／宏觀確認或否決；錯單閘先擋假多再投票。幅度偏了回查波動／市況／波浪相位／急跌反彈切片。range＝觀望不計分。因素不足→factor_gap_queue。封印樣本外只驗不調。禁止把方向100%當過關（稀釋／soft_range）；真OOS看oos_seal。",
+  "path_gates_zh": "chop+abc軟觀望；margin_kill要同向確認；支撐破×融資殺中性化；false_up_streak≥2改range；amp分bull/bear/chop；tsmc量價確認票；crash_bounce／wick_chop 只調 amp；oos薄窗≠封印；封印≥20計分日或末20%",
   "not_buy_signal": true,
   "phone_sync": "blocked",
   "WAVE_NEURONS_MATCH": false,
-  "storage": "decade_lab.path_forecast + json/gz；不准 PNG"
+  "storage": "decade_lab.path_forecast + json/gz；不准 PNG",
+  "forbid_dir_100_boast": true,
+  "path_score_integrity": {
+    "track": "path_score_integrity_v1",
+    "path": "path_score_integrity_latest.json",
+    "gate_integrity": false,
+    "written_at": "2026-11-07T16:37:18+0800"
+  }
 }

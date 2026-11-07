@@ -409,69 +409,18 @@ def test_sample_audit_flags_dilution_and_thin_oos():
         hit_rate=1.0,
         by_amp_class=by_amp,
         oos=oos,
+        attempted_n=400,
+        soft_kill_n=200,
     )
     assert audit["integrity_ok"] is False
     assert "call_rate_too_low_range_dilution" in audit["integrity_blockers"]
+    assert "soft_range_dominates_calls" in audit["integrity_blockers"]
     assert "small_amp_gate_fail" in audit["integrity_blockers"]
     assert "oos_holdout_too_thin" in audit["integrity_blockers"]
     assert "WAVE_NEURONS_MATCH_false" in audit["integrity_blockers"]
     assert "named_support_gated_by_asof" in audit["look_ahead_fixes"]
-    assert audit["call_rate"] < 0.02
-
-
-def test_amp_class_thresholds():
-    assert _amp_class(0.59) == "micro"
-    assert _amp_class(0.6) == "small"
-    assert _amp_class(1.49) == "small"
-    assert _amp_class(1.5) == "mid"
-    assert _amp_class(2.99) == "mid"
-    assert _amp_class(3.0) == "large"
-
-
-def test_named_support_no_lookahead():
-    bars = [
-        {"date": "20260728", "low": 40000.0},
-        {"date": "20260729", "low": 39384.85},
-        {"date": "20260730", "low": 39500.0},
-    ]
-    assert named_support_asof(bars, "20260728") is None
-    assert named_support_asof(bars, "20260729") == 39384.85
-    assert named_support_asof(bars, "20260911") == 39384.85
-
-
-def test_confirmed_pivots_right_window():
-    # look=3：點 i=10 要等到 as_of≥13 才確認
-    piv = [{"i": 10, "kind": "L", "px": 100.0}, {"i": 20, "kind": "H", "px": 120.0}]
-    assert confirmed_pivots_asof(piv, 12, look=3) == []
-    assert [p["i"] for p in confirmed_pivots_asof(piv, 13, look=3)] == [10]
-    assert [p["i"] for p in confirmed_pivots_asof(piv, 23, look=3)] == [10, 20]
-
-
-def test_sample_audit_flags_dilution_and_thin_oos():
-    by_amp = {
-        "micro": {"n": 0, "hit": 0, "miss": 0, "hit_rate": None},
-        "small": {"n": 5, "hit": 2, "miss": 3, "hit_rate": 0.4},
-        "mid": {"n": 7, "hit": 7, "miss": 0, "hit_rate": 1.0},
-        "large": {"n": 12, "hit": 11, "miss": 1, "hit_rate": 0.92},
-    }
-    oos = {"holdout_n": 5, "ok": True}
-    audit = _sample_audit(
-        wrote=5000,
-        range_n=4800,
-        insuff_n=100,
-        soft_range_n=200,
-        dir_n=24,
-        hit_rate=1.0,
-        by_amp_class=by_amp,
-        oos=oos,
-    )
-    assert audit["integrity_ok"] is False
-    assert "call_rate_too_low_range_dilution" in audit["integrity_blockers"]
-    assert "small_amp_gate_fail" in audit["integrity_blockers"]
-    assert "oos_holdout_too_thin" in audit["integrity_blockers"]
-    assert "WAVE_NEURONS_MATCH_false" in audit["integrity_blockers"]
-    assert "named_support_gated_by_asof" in audit["look_ahead_fixes"]
-    assert audit["call_rate"] < 0.02
+    assert audit["call_rate_vs_wrote"] < 0.02
+    assert audit["call_rate"] < 0.08
 
 
 def test_support_beats_margin_kill():
