@@ -876,14 +876,82 @@ def _stamp_when_bit(
 
 
 def _tx_night_session_live(now: Optional[datetime] = None) -> bool:
-    """台指電子盤（夜盤）是否進行中：台北 15:00–05:00。"""
+    """台指電子盤（夜盤）是否進行中：台北 15:00–翌日 05:00，且起日為台股開市日。
+
+    週末／國定假起日不准標盤中（例：週六 16:22 不准因鐘點落在 15:00 後就寫盤中）。
+    週五夜→週六清晨：起日＝週五開市日 → 05:00 前仍算進行中。
+    """
     dt = now or datetime.now(TAIPEI)
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=TAIPEI)
     else:
         dt = dt.astimezone(TAIPEI)
     hm = int(dt.hour) * 60 + int(dt.minute)
-    return hm >= 15 * 60 or hm < 5 * 60
+    if hm >= 15 * 60:
+        start_ymd = dt.strftime("%Y%m%d")
+    elif hm < 5 * 60:
+        start_ymd = (dt - timedelta(days=1)).strftime("%Y%m%d")
+    else:
+        return False
+    try:
+        from trading_calendar import is_tw_open_calendar_day
+
+        return bool(is_tw_open_calendar_day(start_ymd))
+    except Exception:
+        try:
+            return datetime.strptime(start_ymd, "%Y%m%d").weekday() < 5
+        except ValueError:
+            return False
+
+
+def _sox_cash_session_live(now: Optional[datetime] = None) -> bool:
+    """費半＝美股 SOX 現金盤中（NYSE regular）才准標盤中；盤前／盤後／休市＝否。"""
+    dt = now or datetime.now(TAIPEI)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=TAIPEI)
+    else:
+        dt = dt.astimezone(TAIPEI)
+    try:
+        from us_overnight import us_tape_phase
+
+        return us_tape_phase(dt) == "regular"
+    except Exception:
+        return False
+
+
+def _twii_cash_session_live(now: Optional[datetime] = None) -> bool:
+    """加權現貨盤中：台股開市日 09:00–未滿 13:30。"""
+    dt = now or datetime.now(TAIPEI)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=TAIPEI)
+    else:
+        dt = dt.astimezone(TAIPEI)
+    try:
+        from trading_calendar import is_tw_open_calendar_day
+
+        if not is_tw_open_calendar_day(dt.strftime("%Y%m%d")):
+            return False
+    except Exception:
+        if dt.weekday() >= 5:
+            return False
+    hm = int(dt.hour) * 60 + int(dt.minute)
+    return 9 * 60 <= hm < 13 * 60 + 30
+
+
+def _query_now_from_pack(
+    pack: Optional[Dict[str, Any]] = None,
+    *,
+    now: Optional[datetime] = None,
+) -> datetime:
+    """查詢牆鐘：pack['query_at'] 優先，否則 now／此刻（台北）。"""
+    dt = None
+    if isinstance(pack, dict):
+        dt = _parse_query_at(pack.get("query_at"))
+    if dt is None:
+        dt = now or datetime.now(TAIPEI)
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=TAIPEI)
+    return dt.astimezone(TAIPEI)
 
 
 def _parse_query_at(raw: Any) -> Optional[datetime]:
@@ -1070,6 +1138,9 @@ def _teach_stamp_line(
     """查詢戳一行：名稱 幾月幾號收盤|盤中 查詢當下為HH:MM →價→（漲幅％）→較前日點數。"""
     as_of = _ymd(bars[-1].get("date")) if bars else ""
     live = bool(bars) and int((bars[-1] or {}).get("live_session") or 0) == 1
+    # 加權現貨：週末／休市／非 09:00–13:30 不准硬寫盤中
+    if live and not _twii_cash_session_live(_query_now_from_pack(pack)):
+        live = False
     when = _stamp_when_bit(
         as_of,
         live=live,
@@ -1451,6 +1522,8 @@ def _paint_teach_query_stamp(
 
     as_of = _ymd(bars[-1].get("date")) if bars else ""
     live = int((bars[-1] or {}).get("live_session") or 0) == 1
+    if live and not _twii_cash_session_live(_query_now_from_pack(pack)):
+        live = False
     when = _stamp_when_bit(
         as_of,
         live=live,
@@ -1601,6 +1674,9 @@ def _paint_index_last_chg_tip(
     except (TypeError, ValueError):
         px_s = "—"
     live = bool(session_live)
+    # 費半只認美股現金盤中；盤前／盤後／週末即使 live_session 殘旗也不准寫盤中
+    if live and not _sox_cash_session_live(_query_now_from_pack(pack)):
+        live = False
     when = _stamp_when_bit(
         asof,
         live=live,
@@ -1771,10 +1847,14 @@ def _paint_tx_after_hours_tip(
     except (TypeError, ValueError):
         px_s = "—"
     asof = _ymd(asof_ymd)
+    wall = _query_now_from_pack(pack)
     if session_live is None:
-        live = bool(_tx_night_session_live()) and bool(str(clock or "").strip())
+        live = bool(_tx_night_session_live(wall)) and bool(str(clock or "").strip())
     else:
         live = bool(session_live)
+    # 週末／休市／非夜盤窗：呼叫端殘旗也不准硬寫盤中
+    if live and not _tx_night_session_live(wall):
+        live = False
     when = _stamp_when_bit(
         asof,
         live=live,
@@ -3438,6 +3518,41 @@ def _load_tx_futures_daily(
             }
         )
     return out
+
+
+def _ensure_tx_night_for_teach(
+    db_path: str, tw_bars: Sequence[Dict[str, Any]]
+) -> int:
+    """遠窗電子盤：加權軸上缺的 TX 夜盤日向期交所補齊（例 20260803–06 缺柱→假重複K）。
+
+    只補缺日，失敗不擋出圖；回傳嘗試補的日數。
+    """
+    if not db_path or not tw_bars:
+        return 0
+    since = _ymd(tw_bars[0].get("date")) if tw_bars else ""
+    have = {
+        _ymd(r.get("date"))
+        for r in _load_tx_futures_daily(
+            db_path, session="night", since=since or "20260301"
+        )
+        if _ymd(r.get("date"))
+    }
+    missing = [
+        _ymd(r.get("date"))
+        for r in tw_bars
+        if _ymd(r.get("date")) and _ymd(r.get("date")) not in have
+    ]
+    missing = list(dict.fromkeys(missing))
+    if not missing:
+        return 0
+    try:
+        from taiwan_market import sync_futures_daily
+
+        sync_futures_daily(db_path, dates=missing)
+    except Exception:
+        logger.exception("教具補台指夜盤缺日略過 n=%s", len(missing))
+        return 0
+    return len(missing)
 
 
 def _ensure_paint_live_tx(
@@ -8609,10 +8724,23 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         live=live_sox or (pack or {}).get("live_sox"),
         n_tw=n_tw,
     )
-    # 台指電子盤（夜盤日K）對齊加權日軸；出圖當下再疊夜盤即時
+    # 台指電子盤（夜盤日K）對齊加權日軸；缺日先補官方夜盤再對齊（防前收填成重複K）
     tx_since = _ymd(bars[0].get("date")) if bars else "20260301"
+    try:
+        _ensure_tx_night_for_teach(db_path, bars)
+    except Exception:
+        logger.exception("遠窗電子盤缺日補齊略過")
     tx_rows = _load_tx_futures_daily(db_path, session="night", since=tx_since or "20260301")
+    _tx_real_days = {
+        _ymd(r.get("date"))
+        for r in (tx_rows or [])
+        if float((r or {}).get("close") or 0) > 0 and _ymd((r or {}).get("date"))
+    }
     live_tx = _ensure_paint_live_tx(pack)
+    if isinstance(live_tx, dict) and float(live_tx.get("close") or 0) > 0:
+        _ld = _ymd(live_tx.get("date"))
+        if _ld:
+            _tx_real_days.add(_ld)
     tx_a = _align_us_to_twii_dates(tx_rows, bars)
     tx_o = list(tx_a["open"])
     tx_h = list(tx_a["high"])
@@ -8974,23 +9102,31 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     _tx_last_repaint: Optional[Dict[str, Any]] = None
     _tx_right_notes: List[Dict[str, Any]] = []
     _tx_ylabel_span: Optional[Tuple[float, float]] = None
+    # 只認官方夜盤真日（＋即時日）；加權軸前收填日不准畫假重複K
     tx_valid = [
         i
         for i, c in enumerate(tx_c)
-        if c == c and c and math.isfinite(float(tx_h[i])) and math.isfinite(float(tx_l[i]))
+        if c == c
+        and c
+        and math.isfinite(float(tx_h[i]))
+        and math.isfinite(float(tx_l[i]))
+        and (
+            i >= n_tw
+            or _ymd(bars[i].get("date") if i < len(bars) else "") in _tx_real_days
+        )
     ]
     tx_min_body = _candle_span_min_body(tx_h, tx_l, frac=_FAR_SOX_MIN_BODY_FRAC)
     tx_rows_for_vol: List[Dict[str, Any]] = []
     for i in range(n_tw):
-        if i not in tx_valid and not (
+        d = _ymd(bars[i].get("date")) if i < len(bars) else ""
+        if not d or d not in _tx_real_days:
+            continue
+        if not (
             i < len(tx_c)
             and tx_c[i] == tx_c[i]
             and math.isfinite(float(tx_h[i]))
             and math.isfinite(float(tx_l[i]))
         ):
-            continue
-        d = _ymd(bars[i].get("date")) if i < len(bars) else ""
-        if not d:
             continue
         tx_rows_for_vol.append(
             {
@@ -9179,9 +9315,14 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                     "color": "#4dd0e1",
                 }
             )
+    _tx_valid_set = set(tx_valid)
     if len(tx_valid) >= 2:
         for i in tx_valid:
-            prev_i = next((j for j in range(i - 1, -1, -1) if tx_c[j] == tx_c[j]), None)
+            # 前一根只認真實夜盤日，不准吃前收填日（否則缺口後漲跌色會錯）
+            prev_i = next(
+                (j for j in range(i - 1, -1, -1) if j in _tx_valid_set),
+                None,
+            )
             prev_c = tx_c[prev_i] if prev_i is not None else None
             up = candle_up_taiwan(tx_c[i], prev_c, tx_o[i])
             color = _LIVE_UP if up else _LIVE_DOWN
@@ -9207,7 +9348,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         if (
             isinstance(_tx_live_now, dict)
             and float(_tx_live_now.get("close") or 0) > 0
-            and _tx_night_session_live()
+            and _tx_night_session_live(_query_now_from_pack(pack))
         ):
             _eve = _ymd(_tx_live_now.get("date"))
             if _eve and tip_i < len(bars) and _ymd(bars[tip_i].get("date")) != _eve:
@@ -9217,8 +9358,10 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                         break
         if 0 <= tip_i < len(tx_c) and tx_c[tip_i] == tx_c[tip_i]:
             prev_i = next(
-                (j for j in range(tip_i - 1, -1, -1) if tx_c[j] == tx_c[j]), None
+                (j for j in range(tip_i - 1, -1, -1) if j in _tx_valid_set),
+                None,
             )
+            _tx_wall = _query_now_from_pack(pack)
             _tx_last_repaint = {
                 "i": tip_i,
                 "o": float(tx_o[tip_i]),
@@ -9232,7 +9375,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             if (
                 isinstance(_tx_live_now, dict)
                 and float(_tx_live_now.get("close") or 0) > 0
-                and _tx_night_session_live()
+                and _tx_night_session_live(_tx_wall)
             ):
                 try:
                     _tx_last_repaint["c"] = float(_tx_live_now["close"])
@@ -9273,7 +9416,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             _tx_rail_live = bool(
                 isinstance(_tx_live_sr, dict)
                 and float((_tx_live_sr or {}).get("close") or 0) > 0
-                and _tx_night_session_live()
+                and _tx_night_session_live(_tx_wall)
             )
             _tx_rail_asof = ""
             if isinstance(_tx_live_sr, dict):
@@ -9798,10 +9941,18 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         _sox_live = (pack or {}).get("live_sox") if isinstance(pack, dict) else None
         if not isinstance(_sox_live, dict):
             _sox_live = live_sox if isinstance(live_sox, dict) else None
+        _sox_phase = str((_sox_live or {}).get("session_phase") or "")
         _sox_is_live = (
             isinstance(_sox_live, dict)
             and float((_sox_live or {}).get("close") or 0) > 0
             and int((_sox_live or {}).get("live_session") or 0) == 1
+            and (
+                _sox_phase == "regular"
+                or (
+                    not _sox_phase
+                    and _sox_cash_session_live(_query_now_from_pack(pack))
+                )
+            )
         )
         _pair = _us_real_close_pair(sox, _sox_live if _sox_is_live else None)
         _tip_close = _pair.get("close")
@@ -10036,7 +10187,9 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         )
     # 漲跌一律對官方參考價（CRefPrice）；不准用前一夜盤收當 prev
     _tx_chg_tip = _resolve_tx_after_hours_tip(db_path, pack)
-    _tx_night_live = bool(_tx_night_session_live())
+    _tx_night_live = bool(
+        _tx_night_session_live(_query_now_from_pack(pack))
+    )
     if _tx_last_repaint and _tx_chg_tip:
         _tx_clock = str(
             _tx_chg_tip.get("clock")

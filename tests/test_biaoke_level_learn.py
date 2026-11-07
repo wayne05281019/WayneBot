@@ -1490,8 +1490,11 @@ def test_stamp_md_phase_close_or_intraday_before_numbers():
     from zoneinfo import ZoneInfo
 
     from biaoke_level_learn import (
+        _sox_cash_session_live,
         _stamp_md_phase,
         _stamp_when_bit,
+        _teach_stamp_line,
+        _twii_cash_session_live,
         _tx_night_session_live,
     )
 
@@ -1507,10 +1510,88 @@ def test_stamp_md_phase_close_or_intraday_before_numbers():
         == "11/5盤中 查詢當下為04:59"
     )
     tz = ZoneInfo("Asia/Taipei")
+    # 開市日夜盤窗才盤中
     assert _tx_night_session_live(datetime(2026, 11, 5, 21, 0, tzinfo=tz)) is True
     assert _tx_night_session_live(datetime(2026, 11, 6, 4, 59, tzinfo=tz)) is True
     assert _tx_night_session_live(datetime(2026, 11, 6, 7, 20, tzinfo=tz)) is False
     assert _tx_night_session_live(datetime(2026, 11, 6, 10, 0, tzinfo=tz)) is False
+    # 週末／休市起日：鐘點落在 15:00 後也不准標盤中（Bug A）
+    assert _tx_night_session_live(datetime(2026, 11, 7, 16, 22, tzinfo=tz)) is False
+    assert _tx_night_session_live(datetime(2026, 11, 8, 16, 22, tzinfo=tz)) is False
+    # 週五夜→週六清晨仍算進行中；週六下午起日＝六＝休
+    assert _tx_night_session_live(datetime(2026, 11, 7, 3, 0, tzinfo=tz)) is True
+    # 加權現貨：週末／盤後不准盤中
+    assert _twii_cash_session_live(datetime(2026, 11, 6, 10, 17, tzinfo=tz)) is True
+    assert _twii_cash_session_live(datetime(2026, 11, 7, 10, 17, tzinfo=tz)) is False
+    assert _twii_cash_session_live(datetime(2026, 11, 6, 16, 22, tzinfo=tz)) is False
+    # 費半：台北 16:22＝美東凌晨＝非 NYSE regular
+    assert _sox_cash_session_live(datetime(2026, 11, 6, 16, 22, tzinfo=tz)) is False
+    # 週末即使 live_session 殘旗，加權白底戳仍寫收盤
+    weekend_stamp = _teach_stamp_line(
+        [
+            {"date": "20261105", "close": 41575.0},
+            {"date": "20261106", "close": 42000.0, "live_session": 1},
+        ],
+        pack={"query_at": datetime(2026, 11, 7, 16, 22, tzinfo=tz).isoformat()},
+        close=42000.0,
+        label_prefix="加權",
+    )
+    assert "盤中" not in weekend_stamp
+    assert "收盤" in weekend_stamp
+
+
+def test_far_tx_skips_fill_forward_dup_candles():
+    """電子盤缺日若被前收填滿，遠窗不准畫成一排同 OHLC 假重複K。"""
+    import inspect
+
+    from biaoke_level_learn import (
+        _align_us_to_twii_dates,
+        _ensure_tx_night_for_teach,
+        _render_twii_far_dark,
+        _ymd,
+    )
+
+    src = inspect.getsource(_render_twii_far_dark)
+    assert "_tx_real_days" in src
+    assert "_ensure_tx_night_for_teach" in src
+    assert "d not in _tx_real_days" in src or "not in _tx_real_days" in src
+    # 對齊仍可前收填軸，但填日 OHLC 全同＝假柱訊號
+    bars = [
+        {"date": "20260731", "open": 1, "high": 2, "low": 1, "close": 1.5, "volume": 1},
+        {"date": "20260803", "open": 1, "high": 2, "low": 1, "close": 1.5, "volume": 1},
+        {"date": "20260804", "open": 1, "high": 2, "low": 1, "close": 1.5, "volume": 1},
+        {"date": "20260807", "open": 1, "high": 2, "low": 1, "close": 1.5, "volume": 1},
+    ]
+    tx = [
+        {
+            "date": "20260731",
+            "open": 40035.0,
+            "high": 41874.0,
+            "low": 39866.0,
+            "close": 41859.0,
+            "volume": 100,
+        },
+        {
+            "date": "20260807",
+            "open": 44129.0,
+            "high": 44873.0,
+            "low": 43800.0,
+            "close": 44543.0,
+            "volume": 100,
+        },
+    ]
+    aligned = _align_us_to_twii_dates(tx, bars)
+    # 缺日填成與 7/31 同 OHLC
+    assert aligned["close"][1] == aligned["close"][0]
+    assert aligned["high"][2] == aligned["high"][0]
+    real = {_ymd(r["date"]) for r in tx}
+    painted = [
+        i
+        for i, b in enumerate(bars)
+        if _ymd(b["date"]) in real
+    ]
+    assert painted == [0, 3]
+    assert inspect.getsource(_ensure_tx_night_for_teach).count("sync_futures_daily") >= 1
 
 
 def test_tx_next_layer_33799_is_press_not_support():
