@@ -56,3 +56,9 @@ compare_long_only_vs_long_short(df, symbol="2330")
 
 ## 過閘才談下一步
 獨立交易日 n≥20 且誠實 integrity 過，並對得上飆大點過的位，才再生「要不要上大盤說法」下一版；**仍不是買訊**。查股顯示異動同樣要過閘。
+
+
+## 持續強化軌（個股×大盤同步）
+- 腳本：`scripts/decade_lab_phone_market_wave_sync.py`
+- 買＝波浪起漲（主 W3）；出＝相對高點（蕭 20 高）；蕭量價；飆大裸K 建設／挡；**TWII 位階同步**。
+- `phone_sync=blocked`；過閘才談查股。
