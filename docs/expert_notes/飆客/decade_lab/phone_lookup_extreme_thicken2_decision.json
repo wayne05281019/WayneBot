@@ -1,0 +1,24 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "as_of_taipei": "2026-11-08T00:22:24.167520+08:00",
+  "gate_one_liner": "extreme_thicken2 ge80=0 ge80_d30=0 ge80_d50=0; best_win=None win=None days=None; best_ge80_d50=None; best_ge80_days=None; promote_lookup=NO",
+  "n_stocks": 100,
+  "elapsed_s": 276.4,
+  "ge80_n": 0,
+  "ge80_d50_n": 0,
+  "best_near": null,
+  "top_near75": [],
+  "read_zh": [
+    "thicken2 首跑 ge80=0 因 API 簽章錯（非策略失敗）",
+    "已修 thicken2／early_free／mix_thicken；鏈後重跑 thicken2",
+    "phone_sync=blocked；不准輕言放棄"
+  ],
+  "next_lab": [
+    "spirit_mix_thicken",
+    "early_marks_free",
+    "thicken3_tight_champ"
+  ],
+  "never_quit": true,
+  "root_cause_zh": "build_v3_extras／build_v4_extras 呼叫簽章錯誤 → 100檔全錯 → ranking 空；已修並排隊重跑"
+}

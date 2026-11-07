@@ -83,8 +83,8 @@ def run(*, n_universe: int = 100) -> Dict[str, Any]:
             barek = _barek_masks(df)
             ev = _stock_wave_events(raw, df)
             mkt = _align_mkt(df, mkt_raw)
-            v3 = build_v3_extras(df, feat, bank, barek, mkt)
-            v4 = build_v4_extras(df, feat, bank, barek, mkt, v3)
+            v3 = build_v3_extras(df, feat, bank, barek=barek)
+            v4 = build_v4_extras(df, feat)
             hl, temp = _build_hl_temp(df)
             seed = abs(hash(sid)) % 10_000
             idx = df.index

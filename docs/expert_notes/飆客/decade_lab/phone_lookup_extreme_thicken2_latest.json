@@ -1,0 +1,26 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "user_goal_zh": "查股五張圖買賣相對位置＋極高勝率；thicken2 衝≥80%×≥50d",
+  "never_quit_zh": "不准輕言放棄：未過閘＝加因子／分測／混測再跑",
+  "parent_seal": "phone_lookup_extreme_thicken_decision.json",
+  "elapsed_s": 276.4,
+  "n_stocks": 100,
+  "ranking": [],
+  "extreme_win_ge80": [],
+  "extreme_win_ge80_days30": [],
+  "extreme_win_ge80_days50": [],
+  "by_balanced_score": [],
+  "gate_one_liner": "extreme_thicken2 ge80=0 ge80_d30=0 ge80_d50=0; best_win=None win=None days=None; best_ge80_d50=None; best_ge80_days=None; promote_lookup=NO",
+  "errors_n": 100,
+  "errors_sample": [
+    "2383:TypeError:build_v3_extras() takes 3 positional arguments but 5 were given",
+    "3081:TypeError:build_v3_extras() takes 3 positional arguments but 5 were given",
+    "6274:TypeError:build_v3_extras() takes 3 positional arguments but 5 were given",
+    "6442:TypeError:build_v3_extras() takes 3 positional arguments but 5 were given",
+    "8299:TypeError:build_v3_extras() takes 3 positional arguments but 5 were given",
+    "2330:TypeError:build_v3_extras() takes 3 positional arguments but 5 were given",
+    "2454:TypeError:build_v3_extras() takes 3 positional arguments but 5 were given",
+    "2408:TypeError:build_v3_extras() takes 3 positional arguments but 5 were given"
+  ]
+}

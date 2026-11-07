@@ -2,7 +2,7 @@
   "phone_sync": "blocked",
   "promote_to_lookup_display": false,
   "NOT_BUY_SIGNAL": true,
-  "as_of_taipei": "2026-11-08T00:09:02.753301+08:00",
+  "as_of_taipei": "2026-11-08T00:22:24.167520+08:00",
   "deliverable_zh": "查股五張圖：極高勝率買進起漲＋相對高點賣出相對位置",
   "candidate_buy_rule": {
     "key": "core_w3_or_ma60w3__BAL_Vnear2_or_S55__hi20_or_desync",
@@ -76,7 +76,7 @@
       "balanced_score": 0.7586206896551724
     }
   },
-  "gate_status": "goal_early_buy_sell_free_factors_after_spirit_seal",
+  "gate_status": "thicken2_ge80_0_continue_mix_early_thicken3",
   "evidence": {
     "win_rate": 0.76,
     "independent_days": 50,
@@ -266,6 +266,12 @@
       "five_proxies_version": "pre_strengthen",
       "useful_ge80_n": 13,
       "promote": false
+    },
+    "extreme_thicken2": {
+      "source": "phone_lookup_extreme_thicken2_decision.json",
+      "gate": "extreme_thicken2 ge80=0 ge80_d30=0 ge80_d50=0; best_win=None win=None days=None; best_ge80_d50=None; best_ge80_days=None; promote_lookup=NO",
+      "ge80_n": 0,
+      "promote": false
     }
   },
   "blockers": [
@@ -281,13 +287,12 @@
     "使用者 2026-11-08：材料若限制達標可自由加因子；目標＝提早知買／賣"
   ],
   "next_experiments": [
-    "spirit_mix_thicken：對 B_intent_soft／MIX_spirit_core／FIVE_cross2 等 ge80 肢近窗加厚",
-    "spirit_split_mix 用新 FIVE 重跑",
-    "thicken2 衝 ge80×days≥50",
-    "early_marks_free：以提早買賣為主指標，自由加真史因子（不限既定材料清單）",
-    "有用肢 B_intent_soft／MIX_spirit_core／FIVE_cross2／turn_barek 加厚"
+    "spirit_mix_thicken 對 spirit ge80 有用肢近窗加厚",
+    "early_marks_free 勝率×提早買／賣",
+    "thicken3：回到 thicken1 冠軍（turn_barek_n3／t60）緊加厚，避免過寬軟OR稀釋",
+    "不准輕言放棄；材料非籠子"
   ],
-  "gate_one_liner": "draft: spirit sealed (pre-FIVE) MIX ge80=7 best≈90%@29; thicken1 80%@49d; goal=early buy+sell free-factors; phone_sync=blocked; promote=false",
+  "gate_one_liner": "draft: thicken2 ge80=0; thicken1 still best thick 80%@49d; spirit useful ge80=13; continue mix_thicken+early+thicken3; phone_sync=blocked; promote=false",
   "user_goal_zh": "提早知道個股買點＋提早知道賣點（查股五張圖極高勝率相對位置）；材料不夠可自由加因子",
   "metric_priority_zh": [
     "提早買（訊號相對後續漲段／20高）",
