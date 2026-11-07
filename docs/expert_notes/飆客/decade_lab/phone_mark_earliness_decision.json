@@ -1,0 +1,160 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "NOT_BUY_SIGNAL": true,
+  "as_of_taipei": "2026-11-07T23:25:09.343299+08:00",
+  "method_zh": "買標提早量＝訊號到首碰20高根數；命中＝次日開進／首碰20高出（hi20_only）",
+  "gate_one_liner": "mark_earliness winners=2/5; earliest_n20=ma60_lower_confirmed bars=21.126808834729626 win=0.6735054828440042 days=1583; best_bal=core_w3_start; phone_sync=blocked; promote_lookup=NO",
+  "best_balanced": [
+    {
+      "key": "core_w3_start",
+      "n_trades": 58,
+      "n_unique_entry_days": 57,
+      "win_rate": 0.7586206896551724,
+      "expectancy": -0.003529762536926254,
+      "avg_hold": 19.67241379310345,
+      "exit_reason_counts": {
+        "first_hi20": 53,
+        "max_hold_60": 5
+      },
+      "mean_bars_before_hi20": 16.88679245283019,
+      "median_bars_before_hi20": 12.0,
+      "hit_hi20_rate": 0.9137931034482759,
+      "mean_fwd_ret_5d": -0.0029360435939220853,
+      "mean_fwd_ret_10d": -0.0014419939981803913,
+      "n_signals": 58,
+      "random_win_rate": 0.6379310344827587,
+      "random_expectancy": -0.005055409203427303,
+      "random_mean_bars_before_hi20": 20.76923076923077,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "balanced_score": 0.7586206896551724,
+      "days_ge20": true
+    },
+    {
+      "key": "ma60_lower_confirmed",
+      "n_trades": 2827,
+      "n_unique_entry_days": 1583,
+      "win_rate": 0.6735054828440042,
+      "expectancy": 0.011056310565186599,
+      "avg_hold": 23.450654403961796,
+      "exit_reason_counts": {
+        "max_hold_60": 213,
+        "first_hi20": 2614
+      },
+      "mean_bars_before_hi20": 21.126808834729626,
+      "median_bars_before_hi20": 18.0,
+      "hit_hi20_rate": 0.9288998938804386,
+      "mean_fwd_ret_5d": 0.001601527482339989,
+      "mean_fwd_ret_10d": 0.00461521924008512,
+      "n_signals": 2827,
+      "random_win_rate": 0.6596434359805511,
+      "random_expectancy": 0.007797885432861056,
+      "random_mean_bars_before_hi20": 21.645359019264447,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "balanced_score": 0.6735054828440042,
+      "days_ge20": true
+    }
+  ],
+  "earliest_n20": [
+    {
+      "key": "bal_Vnear_or_S55",
+      "n_trades": 50,
+      "n_unique_entry_days": 50,
+      "win_rate": 0.76,
+      "expectancy": 0.019308804579812437,
+      "avg_hold": 17.34,
+      "exit_reason_counts": {
+        "first_hi20": 46,
+        "max_hold_60": 4
+      },
+      "mean_bars_before_hi20": 14.869565217391305,
+      "median_bars_before_hi20": 12.0,
+      "hit_hi20_rate": 0.92,
+      "mean_fwd_ret_5d": 0.004728477119071646,
+      "mean_fwd_ret_10d": 0.005872471244345944,
+      "n_signals": 50,
+      "random_win_rate": 0.72,
+      "random_expectancy": 0.029641747255505696,
+      "random_mean_bars_before_hi20": 19.822222222222223,
+      "beats_random": false,
+      "beats_leave_zero": true,
+      "balanced_score": 0.76,
+      "days_ge20": true
+    },
+    {
+      "key": "core_w3_start",
+      "n_trades": 58,
+      "n_unique_entry_days": 57,
+      "win_rate": 0.7586206896551724,
+      "expectancy": -0.003529762536926254,
+      "avg_hold": 19.67241379310345,
+      "exit_reason_counts": {
+        "first_hi20": 53,
+        "max_hold_60": 5
+      },
+      "mean_bars_before_hi20": 16.88679245283019,
+      "median_bars_before_hi20": 12.0,
+      "hit_hi20_rate": 0.9137931034482759,
+      "mean_fwd_ret_5d": -0.0029360435939220853,
+      "mean_fwd_ret_10d": -0.0014419939981803913,
+      "n_signals": 58,
+      "random_win_rate": 0.6379310344827587,
+      "random_expectancy": -0.005055409203427303,
+      "random_mean_bars_before_hi20": 20.76923076923077,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "balanced_score": 0.7586206896551724,
+      "days_ge20": true
+    },
+    {
+      "key": "core_w3_or_ma60w3",
+      "n_trades": 96,
+      "n_unique_entry_days": 94,
+      "win_rate": 0.75,
+      "expectancy": 0.004148640187770915,
+      "avg_hold": 19.96875,
+      "exit_reason_counts": {
+        "first_hi20": 87,
+        "max_hold_60": 9
+      },
+      "mean_bars_before_hi20": 17.545454545454547,
+      "median_bars_before_hi20": 13.0,
+      "hit_hi20_rate": 0.9166666666666666,
+      "mean_fwd_ret_5d": 0.002732274788117247,
+      "mean_fwd_ret_10d": 0.004350950736302747,
+      "n_signals": 96,
+      "random_win_rate": 0.6722689075630253,
+      "random_expectancy": 0.0168425090359746,
+      "random_mean_bars_before_hi20": 23.486486486486488,
+      "beats_random": false,
+      "beats_leave_zero": true,
+      "balanced_score": 0.75,
+      "days_ge20": true
+    }
+  ],
+  "winners_beat_random": [
+    {
+      "key": "core_w3_start",
+      "win_rate": 0.7586206896551724,
+      "n_unique_entry_days": 57,
+      "mean_bars_before_hi20": 16.88679245283019,
+      "balanced_score": 0.7586206896551724,
+      "beats_leave_zero": true
+    },
+    {
+      "key": "ma60_lower_confirmed",
+      "win_rate": 0.6735054828440042,
+      "n_unique_entry_days": 1583,
+      "mean_bars_before_hi20": 21.126808834729626,
+      "balanced_score": 0.6735054828440042,
+      "beats_leave_zero": true
+    }
+  ],
+  "read_zh": [
+    "均衡最佳=core_w3_start win=0.7586206896551724 days=57 bars_before_hi20=16.88679245283019",
+    "n≥20最早標=bal_Vnear_or_S55 bars=14.869565217391305（早≠勝；需 wins）",
+    "phone_sync=blocked；不准上查股"
+  ]
+}

@@ -113,7 +113,12 @@
       "/opt/cursor/artifacts/phone_balanced_enlarge_n100_latest.json",
       "/opt/cursor/artifacts/phone_curriculum_merged_decision.json",
       "/opt/cursor/artifacts/phone_autonomous_loop_state.json"
-    ]
+    ],
+    "mark_earliness": {
+      "source": "phone_mark_earliness_decision.json",
+      "best_bal_key": "core_w3_start",
+      "note_zh": "起漲核相對 leave_zero 更早碰上20高窗口且贏隨機；仍非查股顯示"
+    }
   },
   "blockers": [
     "phone_sync 鎖 blocked；LOOKUP_LAB_MARKS_ENABLED 預設 False；promote_to_lookup_display 必須維持 false",
@@ -125,6 +130,7 @@
     "所有 sealed 決策皆 promote_lookup=NO／promote_to_lookup_display=false"
   ],
   "next_experiments": [
+    "mark_earliness sealed: core_w3_start beats random ~76%@57d mean_bars_before_hi20≈17；ma60_lower earliest bars≈21 but lower win — still blocked",
     "重跑並封口 relhigh_sell：hi20_only vs hi20_or_desync vs 浪頂／相對高點定義對質",
     "balanced 冠軍核在 n≥100 母體上續累獨立日，盯 ge50 是否仍贏核心＋隨機",
     "market_feat_sync（週線／非過熱／拉回推動）加厚 W3×S55 薄樣至遠超 n=20 再比均衡分",
