@@ -2,7 +2,7 @@
   "phone_sync": "blocked",
   "promote_to_lookup_display": false,
   "NOT_BUY_SIGNAL": true,
-  "as_of_taipei": "2026-11-07T23:30:03.846602+08:00",
+  "as_of_taipei": "2026-11-07T23:31:54.308246+08:00",
   "deliverable_zh": "查股五張圖：LAB_BUY_W3_START（起漲買）＋REL_HIGH_SELL（相對高點賣）；過閘才畫",
   "candidate_buy_rule": {
     "key": "core_w3_or_ma60w3__BAL_Vnear2_or_S55__hi20_or_desync",
@@ -45,20 +45,36 @@
     }
   },
   "candidate_sell_rule": {
-    "zh": "相對高點賣＝首碰蕭20高為主；浪頂對質尚未封口",
+    "zh": "相對高點賣＝首碰蕭20高為主；浪頂可併",
     "sealed_exit_leg": "hi20_or_desync",
     "sealed_exit_alts": [
       "hi20_only"
     ],
     "user_lock_zh": "相對高點就賣；課程 sell＝相對高點＝蕭20高",
-    "wave_top_status": "confronted_see_relhigh_decision",
+    "wave_top_status": "confronted_optional",
     "source_seal": [
       "phone_curriculum_merged_decision.json curriculum_zh.sell",
       "phone_winrate_boost_decision.json what_lifted_winrate_zh／top_winners exit keys",
       "phone_balanced_enlarge_decision.json champion key 尾段 __hi20_or_desync",
       "phone_extreme_merged_decision.json 出場腿同 hi20_or_desync／hi20_only"
     ],
-    "relhigh_confront": "sealed: relhigh_sell winners=2/9; best=w3_or_ma60__SELL_hi20_or_desync win=0.75 days=94; promote_lookup=NO"
+    "relhigh_confront": "sealed: relhigh_sell winners=4/9; best=w3__SELL_hi20_or_desync win=0.7586206896551724 days=57; promote_lookup=NO",
+    "best_ge50": {
+      "key": "w3__SELL_hi20_or_desync",
+      "n_trades": 58,
+      "n_unique_entry_days": 57,
+      "win_rate": 0.7586206896551724,
+      "expectancy": -0.003529762536926254,
+      "avg_hold": 19.67241379310345,
+      "exit_reason_counts": {
+        "first_hi20": 53,
+        "max_hold_60": 5
+      },
+      "random_win_rate": 0.6545454545454545,
+      "random_expectancy": -0.021598585086409258,
+      "beats_random": true,
+      "balanced_score": 0.7586206896551724
+    }
   },
   "gate_status": "collecting_v3_and_feat",
   "evidence": {
@@ -121,23 +137,8 @@
     },
     "relhigh_sell": {
       "source": "phone_relhigh_sell_decision.json",
-      "gate": "relhigh_sell winners=2/9; best=w3_or_ma60__SELL_hi20_or_desync win=0.75 days=94; promote_lookup=NO",
-      "best": {
-        "key": "w3_or_ma60__SELL_hi20_or_desync",
-        "n_trades": 96,
-        "n_unique_entry_days": 94,
-        "win_rate": 0.75,
-        "expectancy": 0.004148640187770915,
-        "avg_hold": 19.96875,
-        "exit_reason_counts": {
-          "first_hi20": 87,
-          "max_hold_60": 9
-        },
-        "random_win_rate": 0.6612903225806451,
-        "random_expectancy": -0.003436108125417449,
-        "beats_random": true,
-        "balanced_score": 0.75
-      }
+      "gate": "relhigh_sell winners=4/9; best=w3__SELL_hi20_or_desync win=0.7586206896551724 days=57; promote_lookup=NO",
+      "n_winners": 4
     },
     "market_feat_resync": {
       "source": "phone_market_wave_sync_feat_decision.json",

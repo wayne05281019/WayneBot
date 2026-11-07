@@ -2,9 +2,25 @@
   "phone_sync": "blocked",
   "not_buy_signal": true,
   "sell_lock_zh": "相對高點＝賣股票",
-  "elapsed_s": 306.3,
+  "elapsed_s": 298.8,
   "n_stocks": 100,
   "ranking": [
+    {
+      "key": "w3__SELL_hi20_or_desync",
+      "n_trades": 58,
+      "n_unique_entry_days": 57,
+      "win_rate": 0.7586206896551724,
+      "expectancy": -0.003529762536926254,
+      "avg_hold": 19.67241379310345,
+      "exit_reason_counts": {
+        "first_hi20": 53,
+        "max_hold_60": 5
+      },
+      "random_win_rate": 0.6545454545454545,
+      "random_expectancy": -0.021598585086409258,
+      "beats_random": true,
+      "balanced_score": 0.7586206896551724
+    },
     {
       "key": "w3_or_ma60__SELL_hi20_or_desync",
       "n_trades": 96,
@@ -16,10 +32,27 @@
         "first_hi20": 87,
         "max_hold_60": 9
       },
-      "random_win_rate": 0.6612903225806451,
-      "random_expectancy": -0.003436108125417449,
+      "random_win_rate": 0.6774193548387096,
+      "random_expectancy": -0.009709210338104542,
       "beats_random": true,
       "balanced_score": 0.75
+    },
+    {
+      "key": "w3__SELL_hi20_or_wave_top",
+      "n_trades": 58,
+      "n_unique_entry_days": 57,
+      "win_rate": 0.7413793103448276,
+      "expectancy": -0.0009146288987634542,
+      "avg_hold": 17.24137931034483,
+      "exit_reason_counts": {
+        "first_hi20": 48,
+        "max_hold_60": 4,
+        "wave_rel_high": 6
+      },
+      "random_win_rate": 0.7142857142857143,
+      "random_expectancy": -0.008667443181163746,
+      "beats_random": true,
+      "balanced_score": 0.7413793103448276
     },
     {
       "key": "bal_Vnear_or_S55__SELL_hi20_or_wave_top",
@@ -33,8 +66,8 @@
         "max_hold_60": 4,
         "wave_rel_high": 2
       },
-      "random_win_rate": 0.7021276595744681,
-      "random_expectancy": 0.00540721446973481,
+      "random_win_rate": 0.6808510638297872,
+      "random_expectancy": -0.0023277060183347774,
       "beats_random": true,
       "balanced_score": 0.74
     },
@@ -49,43 +82,10 @@
         "first_hi20": 46,
         "max_hold_60": 4
       },
-      "random_win_rate": 0.782608695652174,
-      "random_expectancy": 0.015617092843910082,
+      "random_win_rate": 0.7659574468085106,
+      "random_expectancy": 0.01649165132914652,
       "beats_random": false,
       "balanced_score": 0.76
-    },
-    {
-      "key": "w3__SELL_hi20_or_desync",
-      "n_trades": 58,
-      "n_unique_entry_days": 57,
-      "win_rate": 0.7586206896551724,
-      "expectancy": -0.003529762536926254,
-      "avg_hold": 19.67241379310345,
-      "exit_reason_counts": {
-        "first_hi20": 53,
-        "max_hold_60": 5
-      },
-      "random_win_rate": 0.6491228070175439,
-      "random_expectancy": 0.013361163156069356,
-      "beats_random": false,
-      "balanced_score": 0.7586206896551724
-    },
-    {
-      "key": "w3__SELL_hi20_or_wave_top",
-      "n_trades": 58,
-      "n_unique_entry_days": 57,
-      "win_rate": 0.7413793103448276,
-      "expectancy": -0.0009146288987634542,
-      "avg_hold": 17.24137931034483,
-      "exit_reason_counts": {
-        "first_hi20": 48,
-        "max_hold_60": 4,
-        "wave_rel_high": 6
-      },
-      "random_win_rate": 0.7857142857142857,
-      "random_expectancy": 0.02169995845758716,
-      "beats_random": false,
-      "balanced_score": 0.7413793103448276
     },
     {
       "key": "w3_or_ma60__SELL_hi20_or_wave_top",
@@ -99,8 +99,8 @@
         "max_hold_60": 8,
         "wave_rel_high": 6
       },
-      "random_win_rate": 0.711864406779661,
-      "random_expectancy": 0.009957880302873229,
+      "random_win_rate": 0.7258064516129032,
+      "random_expectancy": 0.016844162526659462,
       "beats_random": false,
       "balanced_score": 0.7395833333333334
     },
@@ -115,8 +115,8 @@
         "max_hold_60": 55,
         "wave_rel_high": 23
       },
-      "random_win_rate": 0.6557377049180327,
-      "random_expectancy": 0.08315669800351665,
+      "random_win_rate": 0.4426229508196721,
+      "random_expectancy": 0.01284261576299237,
       "beats_random": false,
       "balanced_score": 0.48717948717948717
     },
@@ -131,8 +131,8 @@
         "max_hold_60": 32,
         "wave_rel_high": 15
       },
-      "random_win_rate": 0.5217391304347826,
-      "random_expectancy": 0.03619094887026831,
+      "random_win_rate": 0.5333333333333333,
+      "random_expectancy": 0.04581780234568455,
       "beats_random": false,
       "balanced_score": 0.4799999999999999
     },
@@ -147,14 +147,30 @@
         "max_hold_60": 39,
         "wave_rel_high": 19
       },
-      "random_win_rate": 0.5454545454545454,
-      "random_expectancy": 0.02334965213506682,
+      "random_win_rate": 0.5740740740740741,
+      "random_expectancy": 0.07275968292375244,
       "beats_random": false,
       "balanced_score": 0.4482758620689655
     }
   ],
   "winners_beat_random": [
     {
+      "key": "w3__SELL_hi20_or_desync",
+      "n_trades": 58,
+      "n_unique_entry_days": 57,
+      "win_rate": 0.7586206896551724,
+      "expectancy": -0.003529762536926254,
+      "avg_hold": 19.67241379310345,
+      "exit_reason_counts": {
+        "first_hi20": 53,
+        "max_hold_60": 5
+      },
+      "random_win_rate": 0.6545454545454545,
+      "random_expectancy": -0.021598585086409258,
+      "beats_random": true,
+      "balanced_score": 0.7586206896551724
+    },
+    {
       "key": "w3_or_ma60__SELL_hi20_or_desync",
       "n_trades": 96,
       "n_unique_entry_days": 94,
@@ -165,10 +181,27 @@
         "first_hi20": 87,
         "max_hold_60": 9
       },
-      "random_win_rate": 0.6612903225806451,
-      "random_expectancy": -0.003436108125417449,
+      "random_win_rate": 0.6774193548387096,
+      "random_expectancy": -0.009709210338104542,
       "beats_random": true,
       "balanced_score": 0.75
+    },
+    {
+      "key": "w3__SELL_hi20_or_wave_top",
+      "n_trades": 58,
+      "n_unique_entry_days": 57,
+      "win_rate": 0.7413793103448276,
+      "expectancy": -0.0009146288987634542,
+      "avg_hold": 17.24137931034483,
+      "exit_reason_counts": {
+        "first_hi20": 48,
+        "max_hold_60": 4,
+        "wave_rel_high": 6
+      },
+      "random_win_rate": 0.7142857142857143,
+      "random_expectancy": -0.008667443181163746,
+      "beats_random": true,
+      "balanced_score": 0.7413793103448276
     },
     {
       "key": "bal_Vnear_or_S55__SELL_hi20_or_wave_top",
@@ -182,14 +215,30 @@
         "max_hold_60": 4,
         "wave_rel_high": 2
       },
-      "random_win_rate": 0.7021276595744681,
-      "random_expectancy": 0.00540721446973481,
+      "random_win_rate": 0.6808510638297872,
+      "random_expectancy": -0.0023277060183347774,
       "beats_random": true,
       "balanced_score": 0.74
     }
   ],
   "by_balanced": [
     {
+      "key": "w3__SELL_hi20_or_desync",
+      "n_trades": 58,
+      "n_unique_entry_days": 57,
+      "win_rate": 0.7586206896551724,
+      "expectancy": -0.003529762536926254,
+      "avg_hold": 19.67241379310345,
+      "exit_reason_counts": {
+        "first_hi20": 53,
+        "max_hold_60": 5
+      },
+      "random_win_rate": 0.6545454545454545,
+      "random_expectancy": -0.021598585086409258,
+      "beats_random": true,
+      "balanced_score": 0.7586206896551724
+    },
+    {
       "key": "w3_or_ma60__SELL_hi20_or_desync",
       "n_trades": 96,
       "n_unique_entry_days": 94,
@@ -200,10 +249,27 @@
         "first_hi20": 87,
         "max_hold_60": 9
       },
-      "random_win_rate": 0.6612903225806451,
-      "random_expectancy": -0.003436108125417449,
+      "random_win_rate": 0.6774193548387096,
+      "random_expectancy": -0.009709210338104542,
       "beats_random": true,
       "balanced_score": 0.75
+    },
+    {
+      "key": "w3__SELL_hi20_or_wave_top",
+      "n_trades": 58,
+      "n_unique_entry_days": 57,
+      "win_rate": 0.7413793103448276,
+      "expectancy": -0.0009146288987634542,
+      "avg_hold": 17.24137931034483,
+      "exit_reason_counts": {
+        "first_hi20": 48,
+        "max_hold_60": 4,
+        "wave_rel_high": 6
+      },
+      "random_win_rate": 0.7142857142857143,
+      "random_expectancy": -0.008667443181163746,
+      "beats_random": true,
+      "balanced_score": 0.7413793103448276
     },
     {
       "key": "bal_Vnear_or_S55__SELL_hi20_or_wave_top",
@@ -217,8 +283,8 @@
         "max_hold_60": 4,
         "wave_rel_high": 2
       },
-      "random_win_rate": 0.7021276595744681,
-      "random_expectancy": 0.00540721446973481,
+      "random_win_rate": 0.6808510638297872,
+      "random_expectancy": -0.0023277060183347774,
       "beats_random": true,
       "balanced_score": 0.74
     },
@@ -233,43 +299,10 @@
         "first_hi20": 46,
         "max_hold_60": 4
       },
-      "random_win_rate": 0.782608695652174,
-      "random_expectancy": 0.015617092843910082,
+      "random_win_rate": 0.7659574468085106,
+      "random_expectancy": 0.01649165132914652,
       "beats_random": false,
       "balanced_score": 0.76
-    },
-    {
-      "key": "w3__SELL_hi20_or_desync",
-      "n_trades": 58,
-      "n_unique_entry_days": 57,
-      "win_rate": 0.7586206896551724,
-      "expectancy": -0.003529762536926254,
-      "avg_hold": 19.67241379310345,
-      "exit_reason_counts": {
-        "first_hi20": 53,
-        "max_hold_60": 5
-      },
-      "random_win_rate": 0.6491228070175439,
-      "random_expectancy": 0.013361163156069356,
-      "beats_random": false,
-      "balanced_score": 0.7586206896551724
-    },
-    {
-      "key": "w3__SELL_hi20_or_wave_top",
-      "n_trades": 58,
-      "n_unique_entry_days": 57,
-      "win_rate": 0.7413793103448276,
-      "expectancy": -0.0009146288987634542,
-      "avg_hold": 17.24137931034483,
-      "exit_reason_counts": {
-        "first_hi20": 48,
-        "max_hold_60": 4,
-        "wave_rel_high": 6
-      },
-      "random_win_rate": 0.7857142857142857,
-      "random_expectancy": 0.02169995845758716,
-      "beats_random": false,
-      "balanced_score": 0.7413793103448276
     },
     {
       "key": "w3_or_ma60__SELL_hi20_or_wave_top",
@@ -283,8 +316,8 @@
         "max_hold_60": 8,
         "wave_rel_high": 6
       },
-      "random_win_rate": 0.711864406779661,
-      "random_expectancy": 0.009957880302873229,
+      "random_win_rate": 0.7258064516129032,
+      "random_expectancy": 0.016844162526659462,
       "beats_random": false,
       "balanced_score": 0.7395833333333334
     },
@@ -299,8 +332,8 @@
         "max_hold_60": 55,
         "wave_rel_high": 23
       },
-      "random_win_rate": 0.6557377049180327,
-      "random_expectancy": 0.08315669800351665,
+      "random_win_rate": 0.4426229508196721,
+      "random_expectancy": 0.01284261576299237,
       "beats_random": false,
       "balanced_score": 0.48717948717948717
     },
@@ -315,8 +348,8 @@
         "max_hold_60": 32,
         "wave_rel_high": 15
       },
-      "random_win_rate": 0.5217391304347826,
-      "random_expectancy": 0.03619094887026831,
+      "random_win_rate": 0.5333333333333333,
+      "random_expectancy": 0.04581780234568455,
       "beats_random": false,
       "balanced_score": 0.4799999999999999
     },
@@ -331,13 +364,13 @@
         "max_hold_60": 39,
         "wave_rel_high": 19
       },
-      "random_win_rate": 0.5454545454545454,
-      "random_expectancy": 0.02334965213506682,
+      "random_win_rate": 0.5740740740740741,
+      "random_expectancy": 0.07275968292375244,
       "beats_random": false,
       "balanced_score": 0.4482758620689655
     }
   ],
-  "gate_one_liner": "relhigh_sell winners=2/9; best=w3_or_ma60__SELL_hi20_or_desync win=0.75 days=94; promote_lookup=NO",
+  "gate_one_liner": "relhigh_sell winners=4/9; best=w3__SELL_hi20_or_desync win=0.7586206896551724 days=57; promote_lookup=NO",
   "errors_n": 0,
   "errors_sample": []
 }
