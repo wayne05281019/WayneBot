@@ -53,11 +53,24 @@ def test_strip_meta_clause_keeps_product_note():
     """夾了『更新通知會依時段…』只留產品句。"""
     import phone_update as pu
 
-    raw = "更新通知會依時段說正在忙什麼，舊海選早報改寄勝率大量圖"
-    assert pu._clean_note(raw) == "舊海選早報改寄勝率大量圖"
+    raw = "更新通知會依時段說正在忙什麼，週末休市不再誤說盤後融合"
+    assert pu._clean_note(raw) == "週末休市不再誤說盤後融合"
     start = phone_update_starting("abc", note=raw)
-    assert start == f"{UPDATE_START}：舊海選早報改寄勝率大量圖"
+    assert start == f"{UPDATE_START}：週末休市不再誤說盤後融合"
     assert "依時段" not in start
+
+
+def test_file_note_matches_this_change():
+    """備援檔必須是這次真改動，不准殘留舊早報／通知機制句。"""
+    from pathlib import Path
+
+    import phone_update as pu
+
+    raw = Path(pu._NOTE_FILE).read_text(encoding="utf-8").splitlines()[0]
+    assert "舊海選早報" not in raw
+    assert "依時段" not in raw
+    assert "盤後融合" in raw
+    assert pu._clean_note(raw) == "週末休市不再誤說盤後融合"
 
 
 def test_schedule_wait_note_at_fuse_window():

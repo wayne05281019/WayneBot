@@ -189,18 +189,27 @@ def phone_schedule_wait_note(now: Optional[datetime] = None) -> str:
 
 
 def _git_head_note() -> str:
-    """這次合進的最後一筆非 merge 標題＝真口語來源。"""
-    try:
-        raw = subprocess.check_output(
-            ["git", "log", "-1", "--format=%s", "--no-merges"],
-            cwd=os.path.dirname(os.path.abspath(__file__)),
-            timeout=2,
-            text=True,
-            stderr=subprocess.DEVNULL,
-        )
-        return _clean_note(raw)
-    except Exception:
-        return ""
+    """這次合進的標題＝真口語來源（Render 常無深歷史，備援 HEAD）。"""
+    cwd = os.path.dirname(os.path.abspath(__file__))
+    cmds = (
+        ["git", "log", "-1", "--format=%s", "--no-merges"],
+        ["git", "log", "-1", "--format=%s"],
+    )
+    for cmd in cmds:
+        try:
+            raw = subprocess.check_output(
+                cmd,
+                cwd=cwd,
+                timeout=2,
+                text=True,
+                stderr=subprocess.DEVNULL,
+            )
+        except Exception:
+            continue
+        note = _clean_note(raw)
+        if note and _has_han(note):
+            return note
+    return ""
 
 
 def _file_note() -> str:
