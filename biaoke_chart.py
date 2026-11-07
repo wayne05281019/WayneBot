@@ -4713,7 +4713,8 @@ def render_biaoke_structure_png(
         if yf:
             ymin = min(ymin, float(yf) - span * 0.04)
             ymax = max(ymax, float(yf) + span * 0.04)
-    # 原文目標／下一層：近才吃 ylim；太遠不硬拉（縮圖 K 清楚），圖說仍可寫
+    # 原文目標／下一層：近才吃 ylim；太遠不硬拉。出圖用複本，不准覆寫圖說用 next_support
+    _next_chart: Dict[str, Any] = {}
     try:
         from biaoke_next_support import (
             chart_next_pack_for_ylim,
@@ -4721,11 +4722,11 @@ def render_biaoke_structure_png(
         )
 
         _face_y0, _face_y1 = float(ymin), float(ymax)
-        ns = chart_next_pack_for_ylim(
+        _next_chart = chart_next_pack_for_ylim(
             dict(info.get("next_support") or {}), _face_y0, _face_y1
         )
-        info["next_support"] = ns
-        layer = dict(ns.get("layer") or {})
+        info["next_support_chart"] = _next_chart
+        layer = dict(_next_chart.get("layer") or {})
         for key in ("low", "high"):
             try:
                 yf = float(layer.get(key) or 0)
@@ -4734,7 +4735,7 @@ def render_biaoke_structure_png(
             if yf > 0:
                 ymax = max(ymax, yf + span * 0.05)
                 ymin = min(ymin, yf - span * 0.05)
-        for row in list(ns.get("written") or []):
+        for row in list(_next_chart.get("written") or []):
             try:
                 yv = float(row.get("price") or 0)
             except (TypeError, ValueError):
@@ -4742,7 +4743,7 @@ def render_biaoke_structure_png(
             if yv > 0 and next_layer_fits_face_ylim(_face_y0, _face_y1, yv, yv):
                 ymin = min(ymin, yv - span * 0.05)
                 ymax = max(ymax, yv + span * 0.05)
-        prim = ns.get("primary") or {}
+        prim = _next_chart.get("primary") or {}
         try:
             yv = float(prim.get("price") or 0)
         except (TypeError, ValueError):
@@ -4751,7 +4752,8 @@ def render_biaoke_structure_png(
             ymin = min(ymin, yv - span * 0.05)
             ymax = max(ymax, yv + span * 0.05)
     except Exception:
-        pass
+        _next_chart = dict(info.get("next_support") or {})
+        info["next_support_chart"] = _next_chart
     ymax = max(ymax, y_top + span * 0.07)
     ymin = min(ymin, y_bot - span * 0.07)
     # press_band 參數保留相容；使用者定案不畫 next-press 帶（只留大量壓／撐）
@@ -4884,7 +4886,8 @@ def render_biaoke_structure_png(
             ax1,
             sid=str(sid or ""),
             next_pack={
-                **dict(info.get("next_support") or {}),
+                **dict(info.get("next_support_chart") or info.get("next_support") or {}),
+                "layer": {},
                 "broke": False,
                 "over": False,
             },
@@ -5140,7 +5143,7 @@ def render_biaoke_structure_png(
                         continue
             except Exception:
                 pass
-        _np = dict(info.get("next_support") or {})
+        _np = dict(info.get("next_support_chart") or info.get("next_support") or {})
         _np["written"] = []
         paint_written_and_next_levels(
             ax1,
@@ -5675,7 +5678,13 @@ def render_biaoke_structure_png(
         from biaoke_next_support import find_layer_bar_index
 
         layer_i = find_layer_bar_index(
-            work, dict((info.get("next_support") or {}).get("layer") or {})
+            work,
+            dict(
+                (
+                    info.get("next_support_chart") or info.get("next_support") or {}
+                ).get("layer")
+                or {}
+            ),
         )
     except Exception:
         layer_i = -1

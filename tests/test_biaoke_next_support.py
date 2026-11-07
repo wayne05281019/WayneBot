@@ -640,7 +640,10 @@ def test_face_path_sr_levels_switches_to_next_after_break():
 
 
 def test_next_layer_ylim_smart_skips_far_band():
-    """急殺下一層很遠：不吃 ylim／不上圖；價近才上圖。圖說仍可有 layer。"""
+    """急殺下一層很遠：不吃 ylim／不上圖；價近才上圖。圖說原包仍可有 layer。"""
+    import inspect
+
+    from biaoke_chart import render_biaoke_structure_png
     from biaoke_next_support import (
         chart_next_pack_for_ylim,
         next_layer_fits_face_ylim,
@@ -650,18 +653,26 @@ def test_next_layer_ylim_smart_skips_far_band():
     assert next_layer_fits_face_ylim(3800, 5400, 1840, 2005) is False
     # 下一層貼近臉幅
     assert next_layer_fits_face_ylim(3800, 5400, 3600, 3900) is True
+    # 倍率卡邊但空隙過大 → 仍不上圖（臉 4000–5400、下一層貼拉長下限）
+    assert next_layer_fits_face_ylim(4000, 5400, 3370, 3400) is False
     pack = {
         "broke": True,
         "layer": {"low": 1840.0, "high": 2005.0, "date": "20260206"},
+        "reason_line": "破撐，下一層＝次大量區壓 2,005／撐 1,840",
         "written": [],
     }
     chart = chart_next_pack_for_ylim(pack, 3800.0, 5400.0)
     assert chart.get("layer_on_chart") is False
     assert not (chart.get("layer") or {}).get("low")
     assert float((chart.get("layer_offchart") or {}).get("low") or 0) == 1840.0
+    assert "下一層" in str(chart.get("reason_line") or "")
     # 價回、下一層落入近窗相對幅
     near = chart_next_pack_for_ylim(
         {"layer": {"low": 3600.0, "high": 3900.0}}, 3800.0, 5400.0
     )
     assert near.get("layer_on_chart") is True
     assert float((near.get("layer") or {}).get("low") or 0) == 3600.0
+    # 結構圖：出圖複本不准覆寫圖說用 next_support
+    src = inspect.getsource(render_biaoke_structure_png)
+    assert "next_support_chart" in src
+    assert 'info["next_support"] = ' not in src or 'info["next_support"] = ns' not in src

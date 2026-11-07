@@ -80,9 +80,14 @@ def next_layer_history_bars(
     return rows[-need:]
 
 
-# 下一層吃進 ylim 的最大拉長倍率（相對近窗臉價幅）。超出＝圖上不畫灰帶、不硬拉 Y，
-# 圖說仍可寫下一層；股價回歸／下一層變近 → 自動再畫進圖（縮圖 K 要清楚）。
+# 自動呈現（大量區／結構圖 Y＋灰帶）：
+# 1) 破撐才有下一層；站回主撐 → 下一層整組收掉 → Y 回近窗（原本清楚 K）。
+# 2) 仍破撐但下一層離近窗臉價幅太遠 → 圖上不畫灰帶、不硬拉 Y（縮圖 K 清楚）；
+#    圖說／reason 仍可寫下一層（演算包不刪）。
+# 3) 價回歸、下一層落入近窗相對幅 → 灰帶自動再上圖。
+# 閘門＝拉長倍率＋與臉緣的空隙（兩者都過才上圖）。
 NEXT_LAYER_YLIM_MAX_STRETCH = 1.45
+NEXT_LAYER_YLIM_MAX_GAP_FRAC = 0.40  # 臉緣到下一層近緣 ≤ 臉幅×此值
 
 
 def next_layer_fits_face_ylim(
@@ -92,11 +97,11 @@ def next_layer_fits_face_ylim(
     next_hi: float,
     *,
     max_stretch: float = NEXT_LAYER_YLIM_MAX_STRETCH,
+    max_gap_frac: float = NEXT_LAYER_YLIM_MAX_GAP_FRAC,
 ) -> bool:
-    """下一層價帶可否併進近窗 ylim。
+    """下一層價帶可否併進近窗 ylim／上圖灰帶。
 
-    急殺下一層很遠時硬拉 Y 會把 Telegram 縮圖 K 壓扁；只留圖說／角標語意。
-    價回主區附近或下一層落入近窗價幅 → 回 True，灰帶再上圖。
+    急殺很遠：False → 不拉 Y。價回／下一層變近：True → 灰帶再上圖。
     """
     try:
         y0 = float(face_ymin)
@@ -104,6 +109,7 @@ def next_layer_fits_face_ylim(
         lo = float(next_lo or 0)
         hi = float(next_hi or 0)
         stretch = float(max_stretch or NEXT_LAYER_YLIM_MAX_STRETCH)
+        gap_frac = float(max_gap_frac or NEXT_LAYER_YLIM_MAX_GAP_FRAC)
     except (TypeError, ValueError):
         return False
     if y1 <= y0 or lo <= 0 or hi <= 0 or hi < lo or stretch < 1.0:
@@ -111,7 +117,18 @@ def next_layer_fits_face_ylim(
     span = y1 - y0
     need_lo = min(y0, lo)
     need_hi = max(y1, hi)
-    return (need_hi - need_lo) <= span * stretch
+    if (need_hi - need_lo) > span * stretch:
+        return False
+    # 與臉緣空隙：下一層整段落在臉下／臉上時，近緣距離不得太大
+    if hi < y0:
+        gap = y0 - hi
+    elif lo > y1:
+        gap = lo - y1
+    else:
+        gap = 0.0
+    if gap > span * max(0.0, gap_frac):
+        return False
+    return True
 
 
 def chart_next_pack_for_ylim(
@@ -120,8 +137,9 @@ def chart_next_pack_for_ylim(
     face_ymax: float,
     *,
     max_stretch: float = NEXT_LAYER_YLIM_MAX_STRETCH,
+    max_gap_frac: float = NEXT_LAYER_YLIM_MAX_GAP_FRAC,
 ) -> Dict[str, Any]:
-    """出圖用 next_pack：太遠的下一層從圖上拿掉（保留演算包給圖說），不改買訊。"""
+    """出圖專用 next_pack 複本：太遠則清空 layer 不上圖；呼叫端勿覆寫圖說用原包。"""
     pack = dict(next_pack or {})
     layer = dict(pack.get("layer") or {})
     try:
@@ -131,11 +149,15 @@ def chart_next_pack_for_ylim(
         lo = hi = 0.0
     if lo > 0 and hi > 0 and hi >= lo:
         if next_layer_fits_face_ylim(
-            face_ymin, face_ymax, lo, hi, max_stretch=max_stretch
+            face_ymin,
+            face_ymax,
+            lo,
+            hi,
+            max_stretch=max_stretch,
+            max_gap_frac=max_gap_frac,
         ):
             pack["layer_on_chart"] = True
             return pack
-        # 太遠：圖上不畫灰帶／不吃 ylim；圖說仍用原 pack
         out = dict(pack)
         out["layer"] = {}
         out["layer_on_chart"] = False
