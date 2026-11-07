@@ -1,0 +1,134 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "NOT_BUY_SIGNAL": true,
+  "as_of_taipei": "2026-11-07T23:23:01+08:00",
+  "deliverable_zh": "查股五張圖：LAB_BUY_W3_START（起漲買）＋REL_HIGH_SELL（相對高點賣）；過閘才畫",
+  "candidate_buy_rule": {
+    "key": "core_w3_or_ma60w3__BAL_Vnear2_or_S55__hi20_or_desync",
+    "zh": "W3起漲∪確認紅箭×W3 ×（近窗量Vnear2∨引擎分S55）；出場腿見 sell",
+    "source_seal": "phone_balanced_enlarge_decision.json / phone_curriculum_merged_decision.json best_ge50／best_balanced[0]",
+    "source_run": "n100",
+    "entry_legs": [
+      "core_w3_or_ma60w3",
+      "BAL_Vnear2_or_S55"
+    ],
+    "win_rate": 0.76,
+    "independent_days": 50,
+    "balanced_score": 0.76,
+    "expectancy": 0.0193,
+    "n_symbols": 100,
+    "n_universe_request": 100,
+    "beats_random": true,
+    "beats_leave_zero": true,
+    "lifts_core_winrate": true,
+    "alt_thin_ceiling_keys": [
+      {
+        "key": "core_w3_start__V__hi20_or_desync",
+        "win_rate": 0.8696,
+        "independent_days": 22,
+        "source_seal": "phone_extreme_merged_decision.json best_by_winrate[0]"
+      },
+      {
+        "key": "E_w3_start__mkt_ok_pull_or_impulse__F_hsiao_S55__hi20_or_desync",
+        "win_rate": 0.95,
+        "independent_days": 20,
+        "balanced_score": 0.38,
+        "source_seal": "phone_market_wave_sync_decision.json w3_meaningful_mkt_lifts[0]"
+      }
+    ],
+    "alt_robust_macd_key": {
+      "key": "core_w3_or_ma60w3__hsiao_macd__hi20_or_desync",
+      "win_rate": 0.7805,
+      "independent_days": 80,
+      "source_seal": "phone_extreme_merged_decision.json best_robust_days40plus[0]"
+    }
+  },
+  "candidate_sell_rule": {
+    "zh": "相對高點賣＝首碰蕭20高為主；浪頂對質尚未封口",
+    "sealed_exit_leg": "hi20_or_desync",
+    "sealed_exit_alts": [
+      "hi20_only"
+    ],
+    "user_lock_zh": "相對高點就賣；課程 sell＝相對高點＝蕭20高",
+    "wave_top_status": "unsealed",
+    "source_seal": [
+      "phone_curriculum_merged_decision.json curriculum_zh.sell",
+      "phone_winrate_boost_decision.json what_lifted_winrate_zh／top_winners exit keys",
+      "phone_balanced_enlarge_decision.json champion key 尾段 __hi20_or_desync",
+      "phone_extreme_merged_decision.json 出場腿同 hi20_or_desync／hi20_only"
+    ],
+    "relhigh_confront": "awaiting_seal（scripts/decade_lab_phone_relhigh_sell.py 對質未成決策檔；artifacts/phone_relhigh_sell_run.log 失敗）"
+  },
+  "gate_status": "awaiting_relhigh_seal",
+  "evidence": {
+    "win_rate": 0.76,
+    "independent_days": 50,
+    "balanced_score": 0.76,
+    "expectancy": 0.0193,
+    "n_symbols": 100,
+    "n_universe_request": 100,
+    "leave_zero_baseline_n100": {
+      "win_rate": 0.650546780072904,
+      "n_unique_entry_days": 1965,
+      "n_sids": 100,
+      "source": "phone_balanced_enlarge_n100_latest.json leave_zero_baseline"
+    },
+    "winrate_boost_top": {
+      "key": "w3_start__hi20_or_desync",
+      "win_rate": 0.7632,
+      "independent_days": 74,
+      "source": "phone_winrate_boost_decision.json top_winners[0]"
+    },
+    "market_sync_thin_best": {
+      "key": "E_w3_start__mkt_ok_pull_or_impulse__F_hsiao_S55__hi20_or_desync",
+      "win_rate": 0.95,
+      "independent_days": 20,
+      "balanced_score": 0.38,
+      "source": "phone_market_wave_sync_decision.json"
+    },
+    "twii_discriminate": {
+      "preset": "A0_strict",
+      "score_threshold": 40.0,
+      "n_w3_start": 0,
+      "impulse_pct": 0.003870254330998894,
+      "source": "phone_twii_wave_discriminate_decision.json"
+    },
+    "hsiao_promote_lookup": {
+      "leave_zero_h5_hit": 0.5123473541383989,
+      "leave_zero_h5_days": 3759,
+      "ma60_lower_h5_hit": 0.5127664064148555,
+      "ma60_lower_h5_days": 2131,
+      "promote": false,
+      "source": "hsiao_promote_lookup_decision.json"
+    },
+    "sources": [
+      "docs/expert_notes/飆客/decade_lab/phone_curriculum_merged_decision.json",
+      "docs/expert_notes/飆客/decade_lab/phone_balanced_enlarge_decision.json",
+      "docs/expert_notes/飆客/decade_lab/phone_extreme_merged_decision.json",
+      "docs/expert_notes/飆客/decade_lab/phone_market_wave_sync_decision.json",
+      "docs/expert_notes/飆客/decade_lab/phone_twii_wave_discriminate_decision.json",
+      "docs/expert_notes/飆客/decade_lab/phone_winrate_boost_decision.json",
+      "docs/expert_notes/飆客/decade_lab/hsiao_promote_lookup_decision.json",
+      "/opt/cursor/artifacts/phone_balanced_enlarge_n100_latest.json",
+      "/opt/cursor/artifacts/phone_curriculum_merged_decision.json",
+      "/opt/cursor/artifacts/phone_autonomous_loop_state.json"
+    ]
+  },
+  "blockers": [
+    "phone_sync 鎖 blocked；LOOKUP_LAB_MARKS_ENABLED 預設 False；promote_to_lookup_display 必須維持 false",
+    "相對高點賣專軌 relhigh_sell（20高 vs 浪頂）尚未封口決策檔 → gate_status=awaiting_relhigh_seal",
+    "薄樣本天花板（extreme V/VT≈87%@22；mkt×S55≈95%@20）日數剛過／剛好 n≥20，不當主推顯示",
+    "TWII Elliott 狀態機本期幾乎無 W3（n_w3_start=0）；大盤浪段閘不夠當顯示條件",
+    "hsiao_promote_lookup：leave_zero／ma60_lower 長窗 h5≈五成 → 不准改現況藍▲／確認紅箭顯示",
+    "不准改 leave_zero／ma60_lower 公式；不准發明話筒浪號 5／9；LAB 記號僅候選",
+    "所有 sealed 決策皆 promote_lookup=NO／promote_to_lookup_display=false"
+  ],
+  "next_experiments": [
+    "重跑並封口 relhigh_sell：hi20_only vs hi20_or_desync vs 浪頂／相對高點定義對質",
+    "balanced 冠軍核在 n≥100 母體上續累獨立日，盯 ge50 是否仍贏核心＋隨機",
+    "market_feat_sync（週線／非過熱／拉回推動）加厚 W3×S55 薄樣至遠超 n=20 再比均衡分",
+    "查股五張圖 paint stub 就緒後，僅在 gate 過關才開 LOOKUP_LAB_MARKS_ENABLED"
+  ],
+  "gate_one_liner": "draft promote-gate: buy=core_w3_or_ma60w3__BAL_Vnear2_or_S55__hi20_or_desync win=0.76 days=50 B=0.76 n=100; sell=hi20_or_desync (relhigh_wave_top unsealed); phone_sync=blocked; promote_to_lookup_display=false; gate_status=awaiting_relhigh_seal"
+}
