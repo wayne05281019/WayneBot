@@ -2,7 +2,7 @@
   "phone_sync": "blocked",
   "promote_to_lookup_display": false,
   "NOT_BUY_SIGNAL": true,
-  "as_of_taipei": "2026-11-08T06:22:31.866295+08:00",
+  "as_of_taipei": "2026-11-08T06:39:03.767205+08:00",
   "deliverable_zh": "查股五張圖：極高勝率買進起漲＋相對高點賣出相對位置",
   "candidate_buy_rule": {
     "key": "core_w3_or_ma60w3__BAL_Vnear2_or_S55__hi20_or_desync",
@@ -76,7 +76,7 @@
       "balanced_score": 0.7586206896551724
     }
   },
-  "gate_status": "mix_v17_u112_still_short_invent_v18_cut",
+  "gate_status": "mix_v18_cut0_invent_v19_hybrid_exit",
   "evidence": {
     "win_rate": 0.76,
     "independent_days": 50,
@@ -449,6 +449,12 @@
       "gate": "spirit_mix_thicken_v17 U112 n=112 profit_sell_ge80_d50=0; best=None win=None days=None hold=None base_hold=15.176470588235293; near=v11_softbody__SELL_profit_early_2 near_win=0.7884615384615384; promote_lookup=NO",
       "profit_sell_ge80_d50_n": 0,
       "promote": false
+    },
+    "spirit_mix_thicken_v18": {
+      "source": "phone_spirit_mix_thicken_v18_decision.json",
+      "gate": "spirit_mix_thicken_v18 U112 n=112 cut_pass=0 pe_ge80_d50=0; best=None win=None hold=None; best_cut=None; promote_lookup=NO",
+      "cut_pass_n": 0,
+      "promote": false
     }
   },
   "blockers": [
@@ -464,10 +470,10 @@
     "使用者 2026-11-08：材料若限制達標可自由加因子；目標＝提早知買／賣"
   ],
   "next_experiments": [
-    "mix_v18：U112 pe3 去損掃＋AND／minhold2",
+    "mix_v19：U112 混合出場（訊號日無 body 才 pe）",
     "五张图 placement stub（仍 flag off）"
   ],
-  "gate_one_liner": "draft: mix_v17 U112 pe still ~78.9%; invent v18 cut+strict trigger; phone_sync=blocked; U250 pe OK",
+  "gate_one_liner": "draft: mix_v18 cut0; invent v19 hybrid nobody-pe; phone_sync=blocked; U250 pe OK",
   "user_goal_zh": "提早知道個股買點＋提早知道賣點；材料不夠可自由加因子",
   "metric_priority_zh": [
     "提早買（訊號相對後續漲段／20高）",

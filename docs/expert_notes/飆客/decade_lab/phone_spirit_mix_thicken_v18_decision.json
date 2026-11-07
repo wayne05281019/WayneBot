@@ -1,0 +1,13 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "as_of_taipei": "2026-11-08T06:39:03.466122+08:00",
+  "gate_one_liner": "spirit_mix_thicken_v18 U112 n=112 cut_pass=0 pe_ge80_d50=0; best=None win=None hold=None; best_cut=None; promote_lookup=NO",
+  "parent_seal": "phone_spirit_mix_thicken_v17_decision.json",
+  "elapsed_s": 328.3,
+  "n_stocks": 112,
+  "cut_pass_n": 0,
+  "pe_ge80_d50_n": 0,
+  "finding_zh": "cut_pass=0；嚴觸發無效；body==false 仍 84%@44d。下一版混合出場：nobody 才 pe。",
+  "next": "mix_v19 hybrid exit nobody-only pe; phone_sync=blocked"
+}
