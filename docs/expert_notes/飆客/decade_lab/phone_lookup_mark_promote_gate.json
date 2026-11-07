@@ -2,7 +2,7 @@
   "phone_sync": "blocked",
   "promote_to_lookup_display": false,
   "NOT_BUY_SIGNAL": true,
-  "as_of_taipei": "2026-11-07T23:48:48.649630+08:00",
+  "as_of_taipei": "2026-11-07T23:53:42.300442+08:00",
   "deliverable_zh": "查股五張圖：極高勝率買進起漲＋相對高點賣出相對位置",
   "candidate_buy_rule": {
     "key": "core_w3_or_ma60w3__BAL_Vnear2_or_S55__hi20_or_desync",
@@ -76,7 +76,7 @@
       "balanced_score": 0.7586206896551724
     }
   },
-  "gate_status": "collecting_v4_after_v3_no_ge50_lift",
+  "gate_status": "collecting_extreme_thicken_after_v4_no_B_lift",
   "evidence": {
     "win_rate": 0.76,
     "independent_days": 50,
@@ -154,6 +154,95 @@
       "ge50_best": "B_bal__M0__X0 @74%/50d (baseline)",
       "thin_lifts": true,
       "promote": false
+    },
+    "champion_v4": {
+      "gate": "v4 winners=12/48; lift_win=7; lift_B=0; best_bal=B_bal__M0__X0__SELL_hi20_or_wave_top win=0.74 days=50; ge50=B_bal__M0__X0__SELL_hi20_or_wave_top; promote_lookup=NO",
+      "lift_B_n": 0,
+      "high_win_ge80": [
+        {
+          "key": "B_bal__M_feat_ok__V4_t60_or_time__SELL_hi20_or_wave_top",
+          "n_trades": 20,
+          "n_unique_entry_days": 20,
+          "win_rate": 0.85,
+          "expectancy": 0.04104367484791359,
+          "avg_hold": 15.55,
+          "exit_reason_counts": {
+            "first_hi20": 18,
+            "wave_rel_high": 1,
+            "max_hold_60": 1
+          },
+          "random_win_rate": 0.6470588235294118,
+          "random_expectancy": -0.01683461495743484,
+          "beats_random": true,
+          "lifts_bal_baseline": true,
+          "lifts_balanced_score": false,
+          "balanced_score": 0.34,
+          "days_ge40": false,
+          "days_ge50": false
+        },
+        {
+          "key": "B_bal__M_feat_ok__V4_week_or_kd__SELL_hi20_or_wave_top",
+          "n_trades": 22,
+          "n_unique_entry_days": 22,
+          "win_rate": 0.8181818181818182,
+          "expectancy": 0.031078200367331464,
+          "avg_hold": 17.363636363636363,
+          "exit_reason_counts": {
+            "first_hi20": 19,
+            "max_hold_60": 2,
+            "wave_rel_high": 1
+          },
+          "random_win_rate": 0.6111111111111112,
+          "random_expectancy": 0.004437516476374507,
+          "beats_random": true,
+          "lifts_bal_baseline": true,
+          "lifts_balanced_score": false,
+          "balanced_score": 0.36000000000000004,
+          "days_ge40": false,
+          "days_ge50": false
+        },
+        {
+          "key": "B_bal__M0__V3_turn_barek__SELL_hi20_or_wave_top",
+          "n_trades": 31,
+          "n_unique_entry_days": 31,
+          "win_rate": 0.8064516129032258,
+          "expectancy": 0.04476773536570325,
+          "avg_hold": 13.838709677419354,
+          "exit_reason_counts": {
+            "first_hi20": 29,
+            "wave_rel_high": 2
+          },
+          "random_win_rate": 0.7407407407407407,
+          "random_expectancy": 0.010628883679428072,
+          "beats_random": true,
+          "lifts_bal_baseline": true,
+          "lifts_balanced_score": false,
+          "balanced_score": 0.49999999999999994,
+          "days_ge40": false,
+          "days_ge50": false
+        },
+        {
+          "key": "B_bal__M_feat_ok__V4_week_stack__SELL_hi20_or_wave_top",
+          "n_trades": 20,
+          "n_unique_entry_days": 20,
+          "win_rate": 0.8,
+          "expectancy": 0.02974875860101849,
+          "avg_hold": 17.95,
+          "exit_reason_counts": {
+            "first_hi20": 17,
+            "max_hold_60": 2,
+            "wave_rel_high": 1
+          },
+          "random_win_rate": 0.6875,
+          "random_expectancy": -0.012559818160371529,
+          "beats_random": true,
+          "lifts_bal_baseline": true,
+          "lifts_balanced_score": false,
+          "balanced_score": 0.32000000000000006,
+          "days_ge40": false,
+          "days_ge50": false
+        }
+      ]
     }
   },
   "blockers": [
@@ -167,11 +256,9 @@
     "所有 sealed 決策皆 promote_lookup=NO／promote_to_lookup_display=false"
   ],
   "next_experiments": [
-    "champion_v4：V4 新欄＋v3 薄高肢軟 OR 加厚",
-    "目標：日≥50 且 B>0.74（或贏均衡 76%/50d）才考慮查股候選",
-    "跑 champion_v3（bal核×relhigh賣×mkt_feat×barek/XG）",
-    "累積 W3×S55×feat 獨立日至遠超 20 再比均衡 B",
-    "earliness 已封：W3 start 較早碰上 20高，顯示仍 blocked"
+    "lookup_extreme_thicken：把 v4≥80% 肢近窗／軟OR加厚到日≥30",
+    "lookup_extreme_win 封口後合併極高勝率池",
+    "過閘前主戰場＝大量撐壓買賣相對位置"
   ],
   "gate_one_liner": "draft promote-gate: buy=bal Vnear2∨S55 @76%/50d; sell=relhigh sealed w3_or_ma60__SELL_hi20_or_desync; phone_sync=blocked; promote_to_lookup_display=false; gate_status=collecting_v3_and_feat",
   "user_goal_zh": "查某一檔時，在現有五張圖內強化買賣相對位置，且勝率極高",
