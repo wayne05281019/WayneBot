@@ -3902,6 +3902,16 @@ def render_lookup_intraday_result(
         ymd = resolve_intraday_asof_ymd(path_db, prefer=None)
     series = apply_live_quote_to_series(series, live)
     os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
+    # LAB-ONLY：當天走勢記號入口（旗標預設關＝no-op；axes 由 render_path 內畫）
+    # 過閘後再於 render_path／此處延伸 LAB_BUY_W3_START／REL_HIGH_SELL
+    try:
+        from wayne_navigator import _maybe_lab_lookup_marks
+
+        _maybe_lab_lookup_marks(
+            None, None, None, chart_kind="intraday", card=card if isinstance(card, dict) else None
+        )
+    except Exception:
+        pass
     try:
         _path, gate = render_path(series, out, db_path=path_db)
     except Exception:

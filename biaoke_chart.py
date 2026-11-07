@@ -6052,6 +6052,15 @@ def render_biaoke_structure_png(
                     )
     except Exception:
         logger.debug("結構圖外資觀察標略過", exc_info=True)
+    # LAB-ONLY：結構圖補 W3 起漲／相對高點賣 glyph（旗標預設關＝no-op；不發明 5／9）
+    try:
+        from wayne_navigator import _maybe_lab_lookup_marks
+
+        _maybe_lab_lookup_marks(
+            ax1, None, xs, chart_kind="struct", card=card if isinstance(card, dict) else None
+        )
+    except Exception:
+        pass
     from wayne_navigator import _savefig_lookup_png
 
     # 查股順序三／飆大結構：墨線定稿套皮；失敗略過不准炸出圖

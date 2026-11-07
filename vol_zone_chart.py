@@ -6415,6 +6415,16 @@ def _paint_volume_zone(
                 draw_ma20=False,
                 signal_work=signal_work,
             )
+            # LAB-ONLY：大量撐壓圖額外 W3／相對高點 glyph（旗標預設關＝no-op）
+            # overlay 內已掛 vol kind；此處再留一層 chart_kind=vol 入口給非 nav 疊層
+            try:
+                from wayne_navigator import _maybe_lab_lookup_marks
+
+                _maybe_lab_lookup_marks(
+                    ax1, view, None, chart_kind="vol", card=paint_card
+                )
+            except Exception:
+                pass
         except Exception:
             logger.exception("大量區疊導航指標失敗 sid=%s", sid)
 
