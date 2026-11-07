@@ -712,18 +712,27 @@ def _ensure_teach_index_bars(db_path: str) -> None:
         sync_index_daily(db_path, range_="3mo")
     except Exception:
         logger.exception("教具補加權日K略過")
-    # 開市日若仍缺「今天」柱：再短窗 sync 一次（修盤後空窗話筒仍停昨日）
+    # 加權軸要比到「最近一個台股開市日」：週末／假日也要補齊上一個開市收
+    # （舊邏輯只在開市日且 asof<today 才短窗 sync → 週日仍停週四時，
+    #  費半周五會變成延長格，四欄共用軸被標成「11/6費半」、下三欄右緣像缺K）
     try:
-        from trading_calendar import is_tw_open_calendar_day
+        from trading_calendar import (
+            is_tw_open_calendar_day,
+            last_open_calendar_day_on_or_before,
+        )
         from taiwan_market import sync_index_daily
 
         today = datetime.now(TAIPEI).strftime("%Y%m%d")
-        if is_tw_open_calendar_day(today):
-            asof = _twii_chart_as_of(db_path)
-            if asof < today:
-                sync_index_daily(db_path, range_="1mo")
+        target = (
+            today
+            if is_tw_open_calendar_day(today)
+            else last_open_calendar_day_on_or_before(today)
+        )
+        asof = _twii_chart_as_of(db_path)
+        if target and asof < target:
+            sync_index_daily(db_path, range_="1mo")
     except Exception:
-        logger.debug("教具補今日加權再同步略過", exc_info=True)
+        logger.debug("教具補最近開市加權再同步略過", exc_info=True)
     try:
         _ensure_us_index_daily(db_path)
     except Exception:
@@ -6496,23 +6505,36 @@ def _sparse_xticks(
     labels: Sequence[str],
     *,
     min_gap: int = 2,
+    must_keep: Optional[Sequence[int]] = None,
 ) -> Tuple[List[int], List[str]]:
     """日期刻度稀釋：相鄰索引少於 min_gap 只留前一個，不准 10/15 壓 10/16。
 
     首尾必留：最新交易日刻度不准被稀釋掉（否則會以為沒畫 11/6）。
+    must_keep：加權末日等錨點必留；與延長格太近時兩邊都留（不准用費半延長日盖掉加權末日）。
     """
     pairs = sorted(((int(i), str(lab)) for i, lab in zip(idxs, labels)), key=lambda t: t[0])
     if not pairs:
         return [], []
+    lab_by_i = {i: lab for i, lab in pairs}
+    must = {int(x) for x in (must_keep or []) if int(x) in lab_by_i}
     out_i: List[int] = []
     out_l: List[str] = []
     last = -10**9
     first_i, first_lab = pairs[0]
     last_i, last_lab = pairs[-1]
+    must.add(first_i)
+    must.add(last_i)
     for i, lab in pairs:
         if i == last_i:
             continue  # 末日最後強制補
-        if out_i and i - last < int(min_gap):
+        close = bool(out_i and i - last < int(min_gap))
+        if close and i not in must:
+            continue
+        if close and i in must and out_i and out_i[-1] not in must:
+            # 必留錨蓋掉可丟的前一刻度
+            out_i[-1] = i
+            out_l[-1] = lab
+            last = i
             continue
         out_i.append(i)
         out_l.append(lab)
@@ -6521,13 +6543,75 @@ def _sparse_xticks(
         out_i.insert(0, first_i)
         out_l.insert(0, first_lab)
     if out_i[-1] != last_i:
-        if out_i and last_i - out_i[-1] < int(min_gap):
+        if out_i and last_i - out_i[-1] < int(min_gap) and out_i[-1] not in must:
             out_i[-1] = last_i
             out_l[-1] = last_lab
         else:
             out_i.append(last_i)
             out_l.append(last_lab)
+    # must_keep 漏網（被末日替換擠掉）→ 插回正確位置
+    for mi in sorted(must):
+        if mi in out_i:
+            continue
+        lab = lab_by_i.get(mi)
+        if lab is None:
+            continue
+        insert_at = next((k for k, x in enumerate(out_i) if x > mi), len(out_i))
+        out_i.insert(insert_at, mi)
+        out_l.insert(insert_at, lab)
     return out_i, out_l
+
+
+def _far_shared_axis_xticks(
+    bars: Sequence[Dict[str, Any]],
+    *,
+    sox_extra_dates: Sequence[str],
+    want: set,
+    i5s: int,
+    i5e: int,
+    i_alow: int,
+    i_b_end: int,
+    min_gap: int = 4,
+) -> Tuple[List[int], List[str]]:
+    """遠窗四欄共用日軸刻度。
+
+    只寫月日＋結構錨（⑤起／大A底…）。費半官方日若晚於加權軸，延長格
+    **仍只寫月日**，不准標「費半」——四欄 sharex，電盤／加權／量底緣寫費半會誤導。
+    費半身分看上欄左軸／黃框。加權末日刻度必留（must_keep）。
+    """
+    n_tw = len(bars or [])
+    t2: List[int] = []
+    l2: List[str] = []
+    for i, r in enumerate(bars or []):
+        d = _ymd(r.get("date"))
+        if d in want or i % 10 == 0:
+            if i not in t2:
+                t2.append(i)
+                tag = ""
+                if i == i5s or d == "20260401":
+                    tag = "⑤起"
+                elif i == i5e or d == "20260623":
+                    tag = "⑤終"
+                elif d == "20260225":
+                    tag = "費再回測"
+                elif d == "20260428":
+                    tag = "費次回測"
+                elif d == "20260729" or i == i_alow:
+                    tag = "大A底"
+                elif i == i_b_end or d == "20261006":
+                    tag = "大B末假突破"
+                l2.append(f"{_md(d)}{tag}")
+    # 費半官方日晚於加權軸：補月日（不加「費半」後綴）
+    for j, d in enumerate(sox_extra_dates or []):
+        i = n_tw + int(j)
+        dd = _ymd(d)
+        if dd in want and i not in t2:
+            t2.append(i)
+            l2.append(f"{_md(dd)}")
+    must_keep: List[int] = []
+    if n_tw > 0:
+        must_keep.append(n_tw - 1)
+    return _sparse_xticks(t2, l2, min_gap=min_gap, must_keep=must_keep)
 
 
 def _pin_pivot_name(
@@ -8648,9 +8732,14 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     except Exception:
         return ""
     try:
-        _ensure_us_index_daily(db_path)
+        # 加權＋費半一起補：週末也要比到最近開市收，不准加權落後讓費半延長格誤標
+        _ensure_teach_index_bars(db_path)
     except Exception:
-        logger.exception("遠窗費半補資料略過")
+        logger.exception("遠窗加權／費半補資料略過")
+        try:
+            _ensure_us_index_daily(db_path)
+        except Exception:
+            logger.exception("遠窗費半補資料略過")
     bars = _twii_bars_for_teach(db_path, 400, pack)
     if len(bars) < 20 or not save_path:
         return ""
@@ -9400,11 +9489,18 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 except (TypeError, ValueError):
                     pass
             _tx_px_rail = float(tx_c[tip_i])
+            _tx_rail_live = bool(
+                isinstance(_tx_live_sr, dict)
+                and float((_tx_live_sr or {}).get("close") or 0) > 0
+                and _tx_night_session_live(_tx_wall)
+            )
+            # 夜盤進行中才寫「即時」；收盤／休市改「電盤收」，不准週末還寫即時
+            _tx_rail_lab = "電盤即時" if _tx_rail_live else "電盤收"
             _tx_right_notes.append(
                 {
                     "x": tip_i,
                     "y": _tx_px_rail,
-                    "text": f"電盤即時 {_px(_tx_px_rail)}",
+                    "text": f"{_tx_rail_lab} {_px(_tx_px_rail)}",
                     "color": "#ea80fc",
                 }
             )
@@ -9413,11 +9509,6 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 bars, tx_h, tx_l, px=_tx_px_rail, before_i=int(tip_i)
             )
             _tx_near_sup = _nearest_vol_support_row(tx_vol_sr, px=_tx_px_rail)
-            _tx_rail_live = bool(
-                isinstance(_tx_live_sr, dict)
-                and float((_tx_live_sr or {}).get("close") or 0) > 0
-                and _tx_night_session_live(_tx_wall)
-            )
             _tx_rail_asof = ""
             if isinstance(_tx_live_sr, dict):
                 _tx_rail_asof = _ymd(_tx_live_sr.get("date"))
@@ -9895,33 +9986,17 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     want.update(sox_extra_dates)
     for row in ((pack or {}).get("pred_levels") or {}).get("sox") or []:
         want.add(_ymd(row.get("ref_ymd")))
-    t2, l2 = [], []
-    for i, r in enumerate(bars):
-        d = _ymd(r.get("date"))
-        if d in want or i % 10 == 0:
-            if i not in t2:
-                t2.append(i)
-                tag = ""
-                if i == i5s or d == "20260401":
-                    tag = "⑤起"
-                elif i == i5e or d == "20260623":
-                    tag = "⑤終"
-                elif d == "20260225":
-                    tag = "費再回測"
-                elif d == "20260428":
-                    tag = "費次回測"
-                elif d == "20260729" or i == i_alow:
-                    tag = "大A底"
-                elif i == i_b_end or d == "20261006":
-                    tag = "大B末假突破"
-                l2.append(f"{_md(d)}{tag}")
-    # 費半官方日晚於加權軸：x 軸補日期（加權那格不畫假K）
-    for j, d in enumerate(sox_extra_dates):
-        i = n_tw + j
-        if d in want and i not in t2:
-            t2.append(i)
-            l2.append(f"{_md(d)}費半")
-    t2, l2 = _sparse_xticks(t2, l2, min_gap=4)
+    # 四欄共用軸：延長格只寫月日，不准寫「費半」（電盤／加權／量會一起被誤標）
+    t2, l2 = _far_shared_axis_xticks(
+        bars,
+        sox_extra_dates=sox_extra_dates,
+        want=want,
+        i5s=i5s,
+        i5e=i5e,
+        i_alow=i_alow,
+        i_b_end=i_b_end,
+        min_gap=4,
+    )
     # 右標／xlim 跟最長軸（費半可多日）；加權右標仍貼加權末日；費半黃框右欄要留空
     x_right = max(
         n_axis + 8.6,

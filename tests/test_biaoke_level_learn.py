@@ -384,6 +384,64 @@ def test_sparse_xticks_no_adjacent_crush():
     )
     assert l2[0] == "10/15" and l2[-1] == "11/6"
     assert i2[-1] == 18
+    # must_keep：加權末日與延長格太近時兩邊都留，不准延長日盖掉加權末日
+    i3, l3 = _sparse_xticks(
+        [10, 16, 17],
+        ["10/15", "11/5", "11/6"],
+        min_gap=3,
+        must_keep=[16],
+    )
+    assert 16 in i3 and 17 in i3
+    assert l3[i3.index(16)] == "11/5"
+    assert l3[i3.index(17)] == "11/6"
+
+
+def test_far_shared_axis_xticks_no_feiban_suffix_on_extra():
+    """遠窗共用軸：費半延長格只寫月日，不准標「費半」（電盤／加權／量會誤讀）。"""
+    from biaoke_level_learn import _far_shared_axis_xticks
+
+    bars = [{"date": f"202610{d:02d}"} for d in range(1, 28)]
+    bars.append({"date": "20261105"})
+    want = {"20261001", "20261006", "20261015", "20261105", "20261106"}
+    # 模擬加權停 11/5、費半有 11/6 延長格（話筒紅圈「11/6 費半」根因）
+    t, labs = _far_shared_axis_xticks(
+        bars,
+        sox_extra_dates=["20261106"],
+        want=want,
+        i5s=0,
+        i5e=0,
+        i_alow=0,
+        i_b_end=5,
+        min_gap=4,
+    )
+    assert labs, "應有刻度"
+    assert all("費半" not in str(x) for x in labs)
+    assert any(str(x) == "11/6" or str(x).startswith("11/6") for x in labs)
+    # 加權末日 11/5 必留
+    assert len(bars) - 1 in t
+    assert "11/5" in labs[t.index(len(bars) - 1)]
+
+
+def test_far_render_shared_xticks_forbid_feiban_suffix_in_source():
+    """遠窗源碼：共用軸不准再 append「費半」後綴；改走 _far_shared_axis_xticks。"""
+    from pathlib import Path
+
+    src = Path("biaoke_level_learn.py").read_text(encoding="utf-8")
+    far_blk = src[
+        src.index("def _render_twii_far_dark") : src.index("def _render_twii_live_dark")
+    ]
+    assert "_far_shared_axis_xticks" in far_blk
+    assert 'l2.append(f"{_md(d)}費半")' not in far_blk
+    assert 'f"{_md(d)}費半"' not in far_blk
+    assert "_ensure_teach_index_bars" in far_blk
+    # 週末也要比到最近開市收
+    ensure_src = src[
+        src.index("def _ensure_teach_index_bars") : src.index(
+            "def _fill_live_twii_when_official_lags"
+        )
+    ]
+    assert "last_open_calendar_day_on_or_before" in ensure_src
+    assert "電盤收" in far_blk
 
 
 def test_next_support_resist_nearest():
