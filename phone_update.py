@@ -22,7 +22,8 @@ _HEX = re.compile(r"\b[0-9a-f]{12,}\b", re.I)
 # 把「通知機制本身」寫進話筒＝沒人看得懂；這類一律當無效
 _META_NOTE = re.compile(
     r"(正在更新什麼|再說更新完成|開機推.{0,4}正在更新|就緒再推|"
-    r"開機會先說|兩支話筒各收開始|同\s*SHA\s*不)",
+    r"開機會先說|兩支話筒各收開始|同\s*SHA\s*不|"
+    r"更新通知會依時段|依時段說正在忙)",
     re.I,
 )
 
@@ -109,6 +110,15 @@ def _is_meta_update_note(text: str) -> bool:
     return False
 
 
+def _strip_meta_clauses(text: str) -> str:
+    """逗號句裡若夾「更新通知會依時段…」這類機制句，只留產品口語。"""
+    parts = [p.strip() for p in re.split(r"[，,]", str(text or "")) if p.strip()]
+    if not parts:
+        return ""
+    kept = [p for p in parts if not _META_NOTE.search(p)]
+    return "，".join(kept).strip(" ，,")
+
+
 def _clean_note(raw: str) -> str:
     t = str(raw or "").replace("\r", "").split("\n", 1)[0].strip()
     t = _COMMIT_PREFIX.sub("", t).strip()
@@ -116,6 +126,7 @@ def _clean_note(raw: str) -> str:
         return ""
     t = _HEX.sub("", t)
     t = re.sub(r"\s+", " ", t).strip(" ，,")
+    t = _strip_meta_clauses(t)
     t = t[:80]
     if _is_meta_update_note(t):
         return ""

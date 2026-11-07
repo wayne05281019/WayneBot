@@ -49,6 +49,17 @@ def test_meta_update_mechanism_note_is_rejected(monkeypatch):
     )
 
 
+def test_strip_meta_clause_keeps_product_note():
+    """夾了『更新通知會依時段…』只留產品句。"""
+    import phone_update as pu
+
+    raw = "更新通知會依時段說正在忙什麼，舊海選早報改寄勝率大量圖"
+    assert pu._clean_note(raw) == "舊海選早報改寄勝率大量圖"
+    start = phone_update_starting("abc", note=raw)
+    assert start == f"{UPDATE_START}：舊海選早報改寄勝率大量圖"
+    assert "依時段" not in start
+
+
 def test_schedule_wait_note_at_fuse_window():
     """16:30 左右更新＝講盤後融合等候句，不准內部說明。"""
     from datetime import datetime
