@@ -189,13 +189,15 @@ def run_single_backtest(
     benchmark_df: Optional[pd.DataFrame] = None,
     allow_short: bool = False,
     initial_cash: float = 1_000_000.0,
+    entry_preset: str = "A0_strict",
+    score_threshold: float = 55.0,
 ) -> BacktestResult:
     """單一標的實驗室回測。"""
     prep = prepare_ohlcv(ohlcv)
     feat = compute_hsiao_features(prep)
     feat = attach_benchmark_rs(feat, benchmark_df)
     feat["prev_low"] = feat["Low"].shift(1)
-    eng = ElliottHsiaoEngine()
+    eng = ElliottHsiaoEngine(entry_preset=entry_preset, score_threshold=score_threshold)
     labeled = eng.run(feat, already_featured=True)
 
     cash = float(initial_cash)
@@ -472,13 +474,27 @@ def compare_long_only_vs_long_short(
     symbol: str = "SYM",
     benchmark_df: Optional[pd.DataFrame] = None,
     initial_cash: float = 1_000_000.0,
+    entry_preset: str = "A0_strict",
+    score_threshold: float = 55.0,
 ) -> Dict[str, Any]:
-    """一鍵：純多方 vs 多空雙向 20 年績效對比（實驗室）。"""
+    """一鍵：純多方 vs 多空雙向績效對比（實驗室）。"""
     long_only = run_single_backtest(
-        ohlcv, symbol=symbol, benchmark_df=benchmark_df, allow_short=False, initial_cash=initial_cash
+        ohlcv,
+        symbol=symbol,
+        benchmark_df=benchmark_df,
+        allow_short=False,
+        initial_cash=initial_cash,
+        entry_preset=entry_preset,
+        score_threshold=score_threshold,
     )
     long_short = run_single_backtest(
-        ohlcv, symbol=symbol, benchmark_df=benchmark_df, allow_short=True, initial_cash=initial_cash
+        ohlcv,
+        symbol=symbol,
+        benchmark_df=benchmark_df,
+        allow_short=True,
+        initial_cash=initial_cash,
+        entry_preset=entry_preset,
+        score_threshold=score_threshold,
     )
     report = {
         "long_only": long_only.summary,

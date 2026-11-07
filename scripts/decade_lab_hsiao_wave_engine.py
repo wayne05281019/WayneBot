@@ -61,8 +61,16 @@ def _log_len(a: float, b: float) -> float:
     return float(np.log(a / b))
 
 
+# 實驗室進場预设（不上話筒）
+ENTRY_PRESETS = ("A0_strict", "A1_score", "A2_hammer_kd", "A3_squeeze")
+
+
 @dataclass
 class ElliottHsiaoEngine:
+    """entry_preset 僅實驗室；預設 A0_strict。phone_sync 永遠 blocked。"""
+
+    entry_preset: str = "A0_strict"
+    score_threshold: float = 55.0
     state: WaveState = WaveState.BASE_BOTTOM
     cand_high: SwingCandidate = field(default_factory=SwingCandidate)
     cand_low: SwingCandidate = field(default_factory=SwingCandidate)
@@ -451,7 +459,18 @@ class ElliottHsiaoEngine:
                     and ma60_safe >= 0
                 )
                 ang_ok = (np.isfinite(angle5) and angle5 >= 40.0 and turn) or kd_buy or hammer_confirm
-                mtf_ok = weekly_bull and (not overext) and (not block_entry) and turnover_ok
+                squeeze = bool(row.get("is_short_squeeze_setup"))
+                # A3：軋空時允許正乖離 < 20% 仍進；其餘预设過熱即擋
+                if self.entry_preset == "A3_squeeze" and squeeze:
+                    bias_pct = (
+                        float(row["bias_ma20_pct"])
+                        if np.isfinite(row.get("bias_ma20_pct", np.nan))
+                        else float("nan")
+                    )
+                    overext_block = overext and (not np.isfinite(bias_pct) or bias_pct >= 0.20)
+                else:
+                    overext_block = overext
+                mtf_ok = weekly_bull and (not overext_block) and (not block_entry) and turnover_ok
                 lock = self.sum_vol_w2_down / (self.sum_vol_w1_up + 1e-8)
                 if lock <= 0.45 and self.sum_vol_w1_up > 0:
                     self.score_boost = max(self.score_boost, 8.0)
@@ -459,14 +478,47 @@ class ElliottHsiaoEngine:
                 if bool(row.get("chip_clean_candidate")):
                     self.chip_clean_boost = 15.0
                     self._emit(t, "LAB_CHIP_CLEAN_BONUS")
-                if (
-                    price_ok
-                    and (vol_ok or kd_buy or hammer_confirm)
-                    and time_ok
-                    and ang_ok
-                    and mtf_ok
-                    and (self._confirm_swing_low(t, row) or kd_buy or hammer_confirm)
-                ):
+                eff_score = min(
+                    100.0,
+                    base_score + float(self.score_boost or 0.0) + float(self.chip_clean_boost or 0.0),
+                )
+                swing_ok = self._confirm_swing_low(t, row) or kd_buy or hammer_confirm
+                preset = self.entry_preset if self.entry_preset in ENTRY_PRESETS else "A0_strict"
+                if preset == "A0_strict":
+                    enter = (
+                        price_ok
+                        and (vol_ok or kd_buy or hammer_confirm)
+                        and time_ok
+                        and ang_ok
+                        and mtf_ok
+                        and swing_ok
+                    )
+                elif preset == "A1_score":
+                    soft = (vol_ok or kd_buy or hammer_confirm or eff_score >= self.score_threshold)
+                    # 硬濾：週線／不過熱／結構回撤／時間安全墊（月線）
+                    hard = (
+                        mtf_ok
+                        and price_ok
+                        and np.isfinite(ma20_safe)
+                        and ma20_safe >= 0
+                        and swing_ok
+                    )
+                    enter = hard and soft and eff_score >= self.score_threshold
+                elif preset == "A2_hammer_kd":
+                    hard = mtf_ok and price_ok and np.isfinite(ma20_safe) and ma20_safe >= 0
+                    enter = hard and (
+                        hammer_confirm
+                        or kd_buy
+                        or (eff_score >= self.score_threshold and swing_ok)
+                    )
+                else:  # A3_squeeze
+                    hard = mtf_ok and price_ok and np.isfinite(ma20_safe) and ma20_safe >= 0 and swing_ok
+                    soft = vol_ok or kd_buy or hammer_confirm or eff_score >= self.score_threshold
+                    if squeeze:
+                        enter = hard and soft
+                    else:
+                        enter = hard and soft and eff_score >= self.score_threshold
+                if enter:
                     self._apply_breakaway_gap(t, row, True)
                     self.P2 = self.cand_low.price
                     self.t_P2 = self.cand_low.t_idx

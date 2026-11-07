@@ -48,5 +48,11 @@ from scripts.decade_lab_hsiao_backtest import compare_long_only_vs_long_short
 compare_long_only_vs_long_short(df, symbol="2330")
 ```
 
+## 資料誠實（2026-11-07）
+- 官方 `daily_quotes` 上市深史在本雲端常被證交所 WAF 擋；上櫃可用櫃買月表補到該檔實際最長。
+- `scripts/decade_lab_hsiao_max_history_fill.py`：各檔取真實最長窗（官方優先；Yahoo 長史寫 `lab_daily` 並與官方短窗對齊；對齊失敗標 suspicious 不用）。
+- 不足 20 年＝用該檔實際 years／n_bars 測，摘要寫明 source；**不准捏柱、不准冒充官方**。
+- `load_stock_ohlcv(prefer_longest=True)` 自動選較長真史；attrs 帶 source／years。
+
 ## 過閘才談下一步
-獨立交易日 n≥20 且誠實 integrity 過，並對得上飆大點過的位，才再生「要不要上大盤說法」下一版；**仍不是買訊**。
+獨立交易日 n≥20 且誠實 integrity 過，並對得上飆大點過的位，才再生「要不要上大盤說法」下一版；**仍不是買訊**。查股顯示異動同樣要過閘。
