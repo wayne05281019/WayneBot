@@ -11,11 +11,14 @@
 - 波浪轉折：W2 近窗、拉回底近窗、非 B/C、分數門檻
 - 蕭條件：攻擊量、非竭盡、壓縮突破、MACD 翻多、缺口突破、過熱擋
 - 我的加強：elite / max_gate 多條件共振（仍要過隨機＋leave_zero）
+- 下一層 nextlayer：脫離缺口／軋空／W3 延續持有／禁 X 浪／籌碼×週線×4D／缺口×月線角／
+  W3 區 MACD＋乖離／仙人指路×週線 KD（僅既有 lab_signal／state／特徵欄；浪號不上話筒）
 
 用法：
   PYTHONPATH=. python3 -u scripts/decade_lab_phone_extreme_hillclimb.py --track wave
   PYTHONPATH=. python3 -u scripts/decade_lab_phone_extreme_hillclimb.py --track hsiao
   PYTHONPATH=. python3 -u scripts/decade_lab_phone_extreme_hillclimb.py --track fusion
+  PYTHONPATH=. python3 -u scripts/decade_lab_phone_extreme_hillclimb.py --track nextlayer
   PYTHONPATH=. python3 -u scripts/decade_lab_phone_extreme_hillclimb.py --track all
 """
 from __future__ import annotations
@@ -135,6 +138,15 @@ def _wave_hsiao_bank(
     hammer_w2 = sig.eq("LAB_W2_HAMMER") | _near(sig.eq("LAB_W2_HAMMER"), 3)
     chip_bonus = sig.eq("LAB_CHIP_CLEAN_BONUS") | _near(sig.eq("LAB_CHIP_CLEAN_BONUS"), 5)
     immortal = sig.isin(["LAB_IMMORTAL_GUIDE", "LAB_ADD_ON_IMMORTAL_BREAK"])
+    # 下一層引擎事件（未進既有 TRACK；仍是 lab_signal／state，不發明話筒 5／9）
+    breakaway = sig.eq("LAB_BREAKAWAY_GAP") | _near(sig.eq("LAB_BREAKAWAY_GAP"), 3)
+    squeeze = sig.eq("LAB_SHORT_SQUEEZE_SETUP") | _near(sig.eq("LAB_SHORT_SQUEEZE_SETUP"), 5)
+    ext_hold = sig.isin(["LAB_W3_EXTENSION_HOLD", "LAB_W3_SUBWAVE_HOLD"]) | _near(
+        sig.isin(["LAB_W3_EXTENSION_HOLD", "LAB_W3_SUBWAVE_HOLD"]), 5
+    )
+    no_x = ~st.eq("WAVE_X_REBOUND")
+    wash_fail = sig.isin(["LAB_WASHOUT_WATCH_CANDIDATE", "LAB_W3_FAIL_BREAK_P2", "LAB_FAKE_BREAKOUT_EXIT"])
+    no_wash = ~(_near(wash_fail, 5))
 
     # —— 蕭四維／既有欄 ——
     attack = _bool(feat.get("is_attack_vol"), idx)
@@ -243,6 +255,15 @@ def _wave_hsiao_bank(
         "fuse_elite_struct": week_ok & compress_break & v_ok & a_ok & clean & not_hot & wave_safe,
         "fuse_max": week_ok & kd_ok & v_ok & p_ok & t_ok & clean & not_hot & bias_ok & wave_safe & score50,
         "fuse_immortal_V": (immortal | hammer_w2) & v_ok & wave_safe & not_hot,
+        # —— 下一層（波浪×蕭深組合；只疊在核上抬勝率）——
+        "nx_breakaway_V": breakaway & v_ok & wave_safe & no_x & not_hot,
+        "nx_squeeze_VPT": squeeze & v_ok & p_ok & t_ok & wave_safe & no_x,
+        "nx_ext_hold_clean": ext_hold & clean & not_hot & t_ok & wave_safe & no_wash,
+        "nx_no_x_pull_V": no_x & pull_near & v_ok & wave_safe & clean,
+        "nx_chip_week_S55": chip_bonus & week_ok & s4d55 & wave_safe & not_hot & no_x,
+        "nx_gap_T60_A": gap_br & t60_ok & a_ok & wave_safe & not_hot & clean,
+        "nx_w3z_macd_bias": w3z & macd_turn & bias_ok & clean & wave_safe & no_x & no_wash,
+        "nx_immortal_week_kd": immortal & week_ok & kd_ok & not_hot & wave_safe & no_x,
     }
 
 
@@ -298,6 +319,17 @@ TRACK_KEYS: Dict[str, Tuple[str, ...]] = {
         "fuse_elite_struct",
         "fuse_max",
         "fuse_immortal_V",
+    ),
+    # 下一層：引擎未掃過的 wave×Hsiao 深組合（不上話筒；過閘才談）
+    "nextlayer": (
+        "nx_breakaway_V",
+        "nx_squeeze_VPT",
+        "nx_ext_hold_clean",
+        "nx_no_x_pull_V",
+        "nx_chip_week_S55",
+        "nx_gap_T60_A",
+        "nx_w3z_macd_bias",
+        "nx_immortal_week_kd",
     ),
 }
 
