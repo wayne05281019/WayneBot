@@ -1,0 +1,35 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "as_of_taipei": "2026-11-08T13:12:50.949075+08:00",
+  "gate_one_liner": "spirit_mix_thicken_v47 U180 n=112 confirm_parent=True confirm_bars=15.94; buy_ge80_d50=4 earlier=0; best_early=None bars=None; sell_lock=pe2_mh20_vdry_gb15 hold=8.901960784313726; promote_lookup=NO",
+  "parent_seal": "phone_spirit_mix_thicken_v46_decision.json",
+  "n_stocks": 112,
+  "confirm_v11_buy": {
+    "key": "ei_n6_and_room__SELL_hi20_or_wave_top",
+    "n_trades": 52,
+    "n_unique_entry_days": 51,
+    "win_rate": 0.8076923076923077,
+    "expectancy": 0.024182177829618248,
+    "beats_random": true,
+    "balanced_score": 0.8076923076923077,
+    "win_ge80": true,
+    "days_ge50": true,
+    "mean_bars_before_hi20": 15.94,
+    "earlier_than_parent": false
+  },
+  "upgrade_lock": null,
+  "keep_lock": {
+    "key": "ei_n6_and_room__SELL_hi20_or_wave_top",
+    "bars_before_hi20": 15.94,
+    "win_rate": 0.8076923076923077,
+    "days": 51,
+    "reason_zh": "v47 ei_n4／intent 放寬未過 earlier×ge80；維持買鎖"
+  },
+  "sell_lock_unchanged": {
+    "key": "pe2_mh20_vdry_gb15",
+    "hold_days": 8.901960784313726
+  },
+  "finding_zh": "v47 keep。下一輪換軸再掃。",
+  "next": "mix_v48 continue earlier×ge80; phone_sync=blocked"
+}
