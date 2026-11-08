@@ -76,7 +76,7 @@
       "balanced_score": 0.7586206896551724
     }
   },
-  "gate_status": "mix_v30_upgrade_pe2_mh20_ma3_confirm_v31",
+  "gate_status": "mix_v31_upgrade_pe2_mh20_ma2_confirm_v32",
   "evidence": {
     "win_rate": 0.76,
     "independent_days": 50,

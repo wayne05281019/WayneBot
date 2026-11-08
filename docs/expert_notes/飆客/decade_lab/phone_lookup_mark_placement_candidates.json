@@ -2,7 +2,7 @@
   "phone_sync": "blocked",
   "LOOKUP_LAB_MARKS_ENABLED": false,
   "promote_to_lookup_display": false,
-  "as_of_taipei": "2026-11-08T09:27:00+08:00",
+  "as_of_taipei": "2026-11-08T09:36:00+08:00",
   "candidates": {
     "early_buy_u112": {
       "key": "ei_n5_week_n3_softbody__SELL_hi20_or_wave_top",
@@ -15,20 +15,21 @@
       "status": "locked_lab_candidate"
     },
     "early_sell_u112": {
-      "key": "pe2_mh20_ma3",
-      "formula": "entry=v11 & (~body | near(intent,3)); exit=hi20|wave|(exhaust|hi10 & unreal>=2%)|(close<ma3 & unreal>=2%)|max_hold_20",
+      "key": "pe2_mh20_ma2",
+      "formula": "entry=v11 & (~body | near(intent,3)); exit=hi20|wave|(exhaust|hi10 & unreal>=2%)|(close<ma2 & unreal>=2%)|max_hold_20",
       "win_rate": 0.803921568627451,
       "days": 50,
-      "hold_days": 9.27450980392157,
-      "expectancy": 0.01296256030384796,
+      "hold_days": 9.215686274509803,
+      "expectancy": 0.011684783219760238,
       "base_hold_hi20": 15.176470588235293,
+      "parent_ma3_hold": 9.27450980392157,
       "parent_ma5_hold": 9.352941176470589,
       "parent_mh20_hold": 9.450980392156863,
       "parent_mh30_hold": 11.019607843137255,
       "universe": "U112",
       "glyph": "REL_HIGH_SELL",
       "status": "locked_lab_candidate",
-      "note_zh": "v30 升級 ma3 破線；旗標仍關"
+      "note_zh": "v31 升級 ma2 破線；旗標仍關"
     },
     "early_sell_u112_ma5_backup": {
       "key": "pe2_mh20_ma5",
@@ -63,6 +64,13 @@
       "win_rate": 0.8039,
       "days": 50,
       "hold_days": 11.02,
+      "status": "confirmed_backup"
+    },
+    "early_sell_u112_ma3_backup": {
+      "key": "pe2_mh20_ma3",
+      "win_rate": 0.8039,
+      "days": 50,
+      "hold_days": 9.27,
       "status": "confirmed_backup"
     }
   },
