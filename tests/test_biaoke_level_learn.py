@@ -504,7 +504,8 @@ def test_far_yellow_band_is_max_vol_day_hl():
     near_src = src[src.index("def _render_twii_live_dark") : src.index("def _render_twii_super_near_dark")]
     micro_src = src[src.index("def _render_twii_super_near_dark") : src.index("def _render_us_compare_dark")]
     assert (
-        "0.062 if _c9_near_now else 0.055" in near_src
+        "0.078 if _c9_near_now else 0.068" in near_src
+        or "0.062 if _c9_near_now else 0.055" in near_src
         or "min_gap=(ymax - ymin) * 0.055" in near_src
     )
     assert "nudge=True" in near_src
@@ -514,11 +515,16 @@ def test_far_yellow_band_is_max_vol_day_hl():
     # 超近窗標題不准把 C3-3-4 裁成 C3-3（保留 now 尾碼）
     assert 'one_line")[:40]' not in micro_src and "one_line')[:40]" not in micro_src
     assert "_now" in micro_src
-    # 右欄預設 n+2.55（對齊長標）；不准再漂到 n+1.15、不准 right=0.90 把標甩進圖外溝
-    assert "2.55" in place
+    # 右欄預設走 _TEACH_RIGHT_GUTTER=2.55（_teach_right_col_x）；不准再漂 n+1.15／right=0.90
+    assert "_TEACH_RIGHT_GUTTER" in src and "2.55" in src
+    assert "_teach_right_col_x" in place or "_teach_right_col_x" in block
     assert "n) + 1.15" not in place and "n + 1.15" not in place
-    assert "x_right_col" in block or "x_col=x_right_col" in block
-    assert "min_gap=(ymax - ymin) * 0.055" in block or "0.062 if _c9_now else 0.055" in block
+    assert "x_right_col" in block or "x_col=x_right_col" in block or "_teach_right_col_x" in block
+    assert (
+        "0.092 if _c9_now else 0.078" in block
+        or "0.062 if _c9_now else 0.055" in block
+        or "min_gap=(ymax - ymin) * 0.055" in block
+    )
     assert "900.0" not in block[block.index("_place_live_right_labels") :]
     # 遠窗 xlim 跟最長軸（費半可晚於加權）；舊寫 n+8.6，現況 n_axis+8.6
     assert "n_axis + 8.6" in block or "n + 8.6" in block
@@ -526,7 +532,8 @@ def test_far_yellow_band_is_max_vol_day_hl():
     assert "right=0.90" not in block
     assert "_extend_us_ohlc_past_twii" in block or "_extend_us_ohlc_past_twii" in src
     assert "_FAR_SOX_MIN_BODY_FRAC" in src
-    assert "facecolors=\"none\"" in block or "facecolors='none'" in block
+    # 末根矛點改 _spear_ring（遠窗不再用 facecolors=none 空心 scatter）
+    assert "_spear_ring" in block
     # 浪名：high 在尖上、low 在尖下，不准左右蓋住縮圖K
     pin = src[src.index("def _pin_pivot_name") : src.index("def _c_path_label_xy")]
     assert '"high"' in pin and '"bottom"' in pin
@@ -2175,27 +2182,38 @@ def test_far_twii_macro_wave5_apr_to_jun_and_big_a_729():
     pack = _build_live_pack(
         db, now=datetime(2026, 11, 1, 13, 0, tzinfo=ZoneInfo("Asia/Taipei"))
     )
-    bars = _twii_bars_for_teach(db, 400, pack)
-    if len(bars) < 80:
+    bars_full = _twii_bars_for_teach(db, 400, pack)
+    if len(bars_full) < 80:
         pytest.skip("twii bars too short")
+    # 現況：大結構在完整柱算，再 clamp 進定長窗（窗可能裁掉 4/1，尖點釘左緣）
+    mac_full = _twii_macro_wave_anchors(bars_full)
+    assert mac_full, "macro anchors must resolve on full teach bars"
     bars, _sr = _far_teach_bars_keeping_vol_sr(
-        list(bars),
+        list(bars_full),
         max_bars=_FAR_TEACH_MAX_BARS,
         vol_lookback=_FAR_TEACH_VOL_LOOKBACK,
         keep_ymds=("20260331", "20260401"),
     )
-    mac = _twii_macro_wave_anchors(bars)
-    assert mac, "macro anchors must stay after vol-SR left-extend"
-    assert _ymd(bars[int(mac["i5_start"])].get("date")) in ("20260331", "20260401")
-    assert _ymd(bars[int(mac["i5_end"])].get("date")) == "20260623"
-    assert _ymd(bars[int(mac["i_alow"])].get("date")) in ("20260728", "20260729")
-    lows = [float(r.get("low") or 0) for r in bars]
-    i729 = int(mac["i_alow"])
-    i5e = int(mac["i5_end"])
+    from biaoke_level_learn import _clamp_macro_wave_to_window
+
+    mac = _clamp_macro_wave_to_window(mac_full, bars)
+    assert mac, "macro anchors must clamp into vol-SR window"
+    assert _ymd(bars_full[int(mac_full["i5_start"])].get("date")) in (
+        "20260331",
+        "20260401",
+    )
+    assert _ymd(bars_full[int(mac_full["i5_end"])].get("date")) == "20260623"
+    assert _ymd(bars_full[int(mac_full["i_alow"])].get("date")) in (
+        "20260728",
+        "20260729",
+    )
+    lows_full = [float(r.get("low") or 0) for r in bars_full]
+    i729 = int(mac_full["i_alow"])
+    i5e = int(mac_full["i5_end"])
     # 窗內最低可在四月 → 大A底仍釘 7/29，不准用 min
-    i_min = min(range(0, i5e + 1), key=lambda i: lows[i])
-    assert _ymd(bars[i_min].get("date")) < "20260701"
-    assert abs(float(lows[i729]) - 39384.85) < 2.0
+    i_min = min(range(0, i5e + 1), key=lambda i: lows_full[i])
+    assert _ymd(bars_full[i_min].get("date")) < "20260701"
+    assert abs(float(lows_full[i729]) - 39384.85) < 2.0
 
 
 def test_thesis_and_ladder_say_big_abc_not_wave5_from_july():
@@ -3071,7 +3089,9 @@ def test_finish_last_twii_used_by_near_and_micro():
     assert "_twii_bars_for_teach" in micro
     assert "_twii_bars_for_teach" in far
     src = inspect.getsource(_finish_last_twii_candle)
-    assert "facecolors=\"none\"" in src or "facecolors='none'" in src
+    # 末根改白邊實心K＋_spear_ring 細圈（不再用 facecolors=none 空心 scatter）
+    assert "_spear_ring" in src
+    assert "edgecolor=\"#ffffff\"" in src or "edgecolor='#ffffff'" in src
 
 
 def test_place_live_right_labels_keeps_c4_c5_now():
