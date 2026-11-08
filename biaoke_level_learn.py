@@ -4708,8 +4708,8 @@ def _c9_ext_bar_pivots(
 
 
 def _c9_path_line_spec(lab: str, style: str) -> Tuple[str, float, float]:
-    """回傳 (線色, 線寬, 外描邊寬)。style＝color_thin｜white_thin｜color_bold。"""
-    st = str(style or "color_thin").strip().lower()
+    """回傳 (線色, 線寬, 外描邊寬)。style＝white_thin｜color_thin｜color_bold。"""
+    st = str(style or "white_thin").strip().lower()
     hot = lab in {"C7", "C8"}
     odd = lab in {"C1", "C3", "C5"}
     if st == "white_thin":
@@ -4745,18 +4745,18 @@ def _paint_c9_ext_k_path(
     fp: Any,
     tip: Optional[Dict[str, Any]] = None,
     fontsize: float = 9,
-    style: str = "color_thin",
+    style: str = "white_thin",
 ) -> bool:
     """主圖 K：B→C1…C8 折線＋浪號釘點；C9 只走預估虛線端。
 
-    style：color_thin（預設・分色細線）｜white_thin（細白）｜color_bold（舊粗分色）。
+    style：white_thin（預設・細白）｜color_thin（分色細線）｜color_bold（舊粗分色）。
     """
     rows = [(int(i), float(y), str(lab)) for i, y, lab in (pivots or [])]
     if len(rows) < 3:
         return False
     xs = [r[0] for r in rows]
     ys = [r[1] for r in rows]
-    st = str(style or "color_thin").strip().lower()
+    st = str(style or "white_thin").strip().lower()
     # 找到 C7／C8 索引
     i_c7 = next((j for j, r in enumerate(rows) if r[2] == "C7"), None)
     i_c8 = next((j for j, r in enumerate(rows) if r[2] == "C8"), None)
@@ -4901,12 +4901,12 @@ def _paint_c9_extension_on_bars(
     """三窗 K：有官方轉折就釘 C1…C8＋虛線 C9；否則只留此刻／C9 人話標。"""
     if not _c9_extension_active(pack):
         return False
-    # 預設細分色；pack／環境可覆寫 white_thin｜color_bold 做對照
+    # 預設細白（話筒較清楚）；pack／環境可覆寫 color_thin｜color_bold 做對照
     st = (
         str(style or "").strip()
         or str((pack or {}).get("_c9_path_style") or "").strip()
         or str(os.environ.get("WAYNE_C9_PATH_STYLE") or "").strip()
-        or "color_thin"
+        or "white_thin"
     )
     if pivots and _paint_c9_ext_k_path(
         ax, pivots, n=n, fp=fp, tip=tip, fontsize=fontsize, style=st
