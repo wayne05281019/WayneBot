@@ -5245,9 +5245,9 @@ def _tw_active_low_zone(
     return None
 
 
-# 下週底黃標／AI結束觀察標同一 x＝齊頭（遠／近預設；超近另傳更左避開末K）
-_TEACH_ZONE_LABEL_X = 0.58
-_TEACH_ZONE_LABEL_X_MICRO = 0.34
+# 下週底黃標／AI結束觀察標同一左緣＝齊頭（ha=left；超近更左避開末K）
+_TEACH_ZONE_LABEL_X = 0.42
+_TEACH_ZONE_LABEL_X_MICRO = 0.22
 
 
 def _paint_c9_low_zone_band(
@@ -5290,7 +5290,7 @@ def _paint_c9_low_zone_band(
         transform=ax.get_yaxis_transform(),
         fontproperties=fp(fsz, "bold" if kind == "week_bot" else "normal"),
         color=txt_c if kind == "week_bot" else ink,
-        ha="center",
+        ha="left",
         va="center",
         zorder=11,
         bbox=dict(
@@ -5351,7 +5351,7 @@ def _paint_ai_end_zone_band(
     lo, hi = zone
     face, ink = "#ce93d8", "#e1bee7"
     ax.axhspan(lo, hi, facecolor=face, alpha=0.10, zorder=0.30)
-    y_lab = float(lo) + (float(hi) - float(lo)) * 0.55  # 帶內垂直置中，與上黃標同欄齊頭
+    y_lab = float(lo) + (float(hi) - float(lo)) * 0.55  # 帶內垂直置中
     x_lab = float(_TEACH_ZONE_LABEL_X if label_x is None else label_x)
     ax.text(
         x_lab,
@@ -5360,7 +5360,7 @@ def _paint_ai_end_zone_band(
         transform=ax.get_yaxis_transform(),
         fontproperties=fp(13.0, "bold"),
         color=ink,
-        ha="center",
+        ha="left",  # 與下週底黃標左緣齊頭
         va="center",
         zorder=12.0,
         bbox=dict(
