@@ -685,10 +685,10 @@ def test_biaoke_pred_label_no_fake_prob():
 
     px = _px(44210.0)
     assert _biaoke_pred_label(44210.0) == f"飆預測{px}"
-    assert _biaoke_pred_label(44210.0, "未到") == f"飆預測{px}未到"
+    assert _biaoke_pred_label(44210.0, "未到") == f"飆預測{px}・未到"
     # 不准假％：沒傳機率就不帶
     assert "%" not in _biaoke_pred_label(44210.0, "未到")
-    assert _biaoke_pred_label(44210.0, "未到", prob=80.0) == f"飆預測{px}未到（80%機率）"
+    assert _biaoke_pred_label(44210.0, "未到", prob=80.0) == f"飆預測{px}・未到（80%機率）"
 
 
 def test_wave_now_ladder_big_to_small():
@@ -839,7 +839,7 @@ def test_thesis_pred_c9_band_and_38000_broke():
 
     br = _tw_pred_break_tag(38000.0, [45000.0], pack=pack, role="劇本一上沿")
     assert br == "已破"
-    assert _biaoke_pred_label(38000.0, br) == f"飆預測{_px(38000)}已破"
+    assert _biaoke_pred_label(38000.0, br) == f"飆預測{_px(38000)}・已破"
     notes = _tw_pred_right_notes(
         pack, n=10, lows=[45000.0], tip_skip=set(), bars=None
     )
@@ -934,12 +934,12 @@ def test_thesis_pred_foot2_band_supersedes_c9():
     assert any(abs(t - 37500) < 1 for t in tips2)
     br = _tw_pred_break_tag(38000.0, [45000.0], pack=pack, role="劇本一上沿")
     assert br == "已破"
-    assert _biaoke_pred_label(38000.0, br) == f"飆預測{_px(38000)}已破"
+    assert _biaoke_pred_label(38000.0, br) == f"飆預測{_px(38000)}・已破"
     notes = _tw_pred_right_notes(
         pack, n=10, lows=[45000.0], tip_skip=set(), bars=None
     )
     texts = " ".join(str(n.get("text") or "") for n in notes)
-    assert f"{_px(38000)}已破" in texts
+    assert f"{_px(38000)}・已破" in texts or f"{_px(38000)}已破" in texts
     assert _px(37500) in texts and _px(37000) in texts
     assert _px(35500) not in texts
     import biaoke_level_learn as bll

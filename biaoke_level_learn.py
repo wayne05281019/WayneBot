@@ -5115,11 +5115,18 @@ def _biaoke_pred_label(
     *,
     prob: Optional[float] = None,
 ) -> str:
-    """他點過的位：標成『飆預測』＋狀態；機率只有真量化傳入才帶％（不准假％）。"""
+    """他點過的位：標成『飆預測』＋狀態；機率只有真量化傳入才帶％（不准假％）。
+
+    價與後綴（日期／狀態）中間固定「・」分隔，不准黏成 37,1644/23。
+    """
     base = f"飆預測{_px(price)}"
     t = str(tag or "").strip()
+    # 已帶分隔就不重複
     if t:
-        base = f"{base}{t}"
+        if t[0] in "・（(／/":
+            base = f"{base}{t}"
+        else:
+            base = f"{base}・{t}"
     if prob is None:
         return base
     try:
@@ -5329,15 +5336,16 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
             label=lab,
         )
     # 11/8 雙軌點位（只認原文）：37837／37164／35579／31705
+    # 標籤：價・日期／狀態（中間分隔，不准黏讀）
     if re.search(r"37837", s):
-        tag = "假跌破觀察" if re.search(r"假跌破", s) else "週五低"
+        tag = "假跌破" if re.search(r"假跌破", s) else "週五低"
         _add(
             "tw",
             level=37837.0,
             ref_ymd="20261106",
             role="五波末／週五低",
             tag=tag,
-            label=f"飆預測{_px(37837)}{tag}",
+            label=f"飆預測{_px(37837)}・{tag}",
         )
     if re.search(r"37164", s):
         _add(
@@ -5346,7 +5354,7 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
             ref_ymd="20260423",
             role="4/23低",
             tag="近對照",
-            label=f"飆預測{_px(37164)}4/23低",
+            label=f"飆預測{_px(37164)}・4/23低",
         )
     if re.search(r"35579", s):
         _add(
@@ -5355,7 +5363,7 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
             ref_ymd="20260226",
             role="九波備線破位",
             tag="未到",
-            label=f"飆預測{_px(35579)}2/26第一波高",
+            label=f"飆預測{_px(35579)}・2/26第一波高",
         )
     if re.search(r"31705", s):
         _add(
@@ -5364,7 +5372,7 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
             ref_ymd="20260331",
             role="九波備線深殺",
             tag="未到",
-            label=f"飆預測{_px(31705)}3/31低",
+            label=f"飆預測{_px(31705)}・3/31低",
         )
     # 改口低點區：37000~37500（後文壓 C9；他原文兩端；不准發明中間價）
     has_foot2_zone = bool(
@@ -7243,7 +7251,11 @@ def _place_live_right_labels(
     # 浪／細浪硬標可互近，仍留呼吸；c5(45677)↔今(45212) 差值約 465 必須雙留
     gap_wave = max(span * 0.033, 360.0)
     # 字盒視覺高度約略；nudge 用這個當最小字距（框高約 5% 窗，再加呼吸）
-    box_gap = max(gap * 0.95, span * 0.062)
+    # 標多時加寬字距，不准框疊框把數字／日期蓋住
+    n_items_est = len(items)
+    box_gap = max(gap * 0.95, span * (0.078 if n_items_est >= 5 else 0.062))
+    if n_items_est >= 7:
+        box_gap = max(box_gap, span * 0.088)
 
     def _tier(t: str) -> int:
         """0=浪／細浪／今（必留）→1=飆預測等→2=Fib／切／錨（可丟）。"""
@@ -7440,17 +7452,23 @@ def _place_live_right_labels(
                     zorder=5,
                     solid_capstyle="butt",
                 )
+        # 價・日期／狀態完整可見；長標略放寬裁切，不准黏字難讀
+        lab_txt = str(it["text"] or "")
+        if "・" in lab_txt:
+            lab_txt = lab_txt[:34]
+        else:
+            lab_txt = lab_txt[:28]
         ax.text(
             x_label,
             float(y_draw),
-            str(it["text"])[:28],
+            lab_txt,
             fontproperties=fp(float(fontsize), "normal"),
             color=color,
             ha="left",
             va="center",
             zorder=10,
             clip_on=False,
-            bbox=dict(boxstyle="round,pad=0.08", fc="#0b0f14", ec=color, lw=0.45, alpha=0.94),
+            bbox=dict(boxstyle="round,pad=0.10", fc="#0b0f14", ec=color, lw=0.5, alpha=0.96),
         )
 
 
@@ -9315,11 +9333,13 @@ def _tw_pred_right_notes(
             col = "#ce93d8"
         else:
             col = "#82b1ff" if lv < 45000 else "#4dd0e1"
+        # 價・日期完整；雙軌長標略放寬
+        lim = 34 if ("・" in text or role.startswith("九波") or "五波" in role) else 28
         out.append(
             {
                 "x": x_note,
                 "y": lv,
-                "text": text[:28],
+                "text": text[:lim],
                 "color": col,
             }
         )
@@ -10560,12 +10580,19 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             pack, n=n_axis, lows=c_seg_lows, tip_skip=tip_skip, bars=bars
         )
     )
-    # 右標在末日右側；八浪縮圖已改黃虛線左，不再跟右欄搶位
-    x_right_col = float(n_axis) + 1.95
+    # 右標在末日右側；拉開欄位，不准蓋住 K 上 C7／C8 圓點
+    x_right_col = float(n_axis) + 2.55
     try:
-        x_right_col = max(x_right_col, float(tip.get("fut_x") or n_axis) + 0.35)
+        x_right_col = max(x_right_col, float(tip.get("fut_x") or n_axis) + 0.85)
     except (TypeError, ValueError):
         pass
+    # 雙軌四價＋今標：再右移半欄，字盒不壓浪點
+    if any(
+        abs(float(n0.get("y") or 0) - lv) < 1.0
+        for n0 in right_notes
+        for lv in (37837.0, 37164.0, 35579.0, 31705.0)
+    ):
+        x_right_col = max(x_right_col, float(n_axis) + 3.05)
     x_sox_col = x_right_col + 0.40
     if _sox_right_deferred and _sox_ylabel_span is not None:
         # 費半價窗窄：間距略鬆才留得下 A低10445＋次回測9865＋費C今
@@ -10604,7 +10631,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         fp=_fp,
         level_dash=True,
         # 加權資訊多：再鬆間距＋字盒 nudge，虛線仍貼真價（防日期／價標互壓）
-        min_gap=(ymax - ymin) * (0.078 if _c9_now else 0.068),
+        min_gap=(ymax - ymin) * (0.092 if _c9_now else 0.078),
         x_col=x_right_col,
         nudge=True,
         fontsize=8.5 if _c9_now else 9.0,
@@ -10675,12 +10702,14 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         min_gap=6,
     )
     # 右標／xlim 跟最長軸（費半可多日）；加權右標仍貼加權末日；費半黃框右欄要留空
+    # 雙軌長標（價・日期）需更右，不准字盒裁切或互壓
     x_right = max(
-        n_axis + 8.6,
-        n_tw + 8.6,
+        n_axis + 10.2,
+        n_tw + 10.2,
         float(tip.get("xlim_right") or n_tw) + 2.0,
         fut_x + 2.0,
-        float(x_sox_col) + 5.2,
+        float(x_sox_col) + 6.4,
+        float(x_right_col) + 7.2,
     )
     # 遠窗自 3 月底起：左側多留一格，⑤起首根不准被裁
     need_apr = True

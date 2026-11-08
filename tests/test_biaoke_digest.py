@@ -1180,7 +1180,7 @@ def test_format_teach_brief_bb_dual_path_beats_foot2(monkeypatch):
                         "level": 37837.0,
                         "role": "五波末／週五低",
                         "tag": "假跌破觀察",
-                        "label": "飆預測37837假跌破觀察",
+                        "label": "飆預測37,837・假跌破",
                     },
                     {
                         "level": 35579.0,
