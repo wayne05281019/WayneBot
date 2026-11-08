@@ -5332,28 +5332,34 @@ def _paint_ai_end_zone_band(
     pack: Optional[Dict[str, Any]],
     *,
     fp: Any,
+    label_x: float = 0.80,
 ) -> Optional[Tuple[float, float]]:
-    """備線最差：35579~31705 畫 AI 結束觀察帶（非買訊；右欄掛上緣35579＋深殺端31705）。"""
+    """備線最差：35579~31705 畫 AI 結束觀察帶（非買訊；右欄掛上緣35579＋深殺端31705）。
+
+    帶內標放大；預設靠右上避開左下八浪／九波縮圖。超近可傳 label_x 避開右下九波框。
+    """
     zone = _tw_ai_end_zone(pack)
     if not zone:
         return None
     lo, hi = zone
     face, ink = "#ce93d8", "#e1bee7"
     ax.axhspan(lo, hi, facecolor=face, alpha=0.10, zorder=0.30)
-    mid = (lo + hi) * 0.5
+    # 上緣 78% 高：縮圖多在左下／底排，標貼上緣才不被擋
+    y_lab = float(lo) + (float(hi) - float(lo)) * 0.78
     ax.text(
-        0.42,
-        mid,
+        float(label_x),
+        y_lab,
         f"飆預測{_px(lo)}~{_px(hi)}（AI行情結束觀察）",
         transform=ax.get_yaxis_transform(),
-        fontproperties=fp(9.0, "normal"),
+        fontproperties=fp(13.0, "bold"),
         color=ink,
         ha="center",
         va="center",
-        zorder=10.5,
+        zorder=12.0,
         bbox=dict(
-            boxstyle="round,pad=0.22", fc="#140c18", ec=ink, lw=0.9, alpha=0.92
+            boxstyle="round,pad=0.45", fc="#140c18", ec=ink, lw=1.8, alpha=0.96
         ),
+        clip_on=False,
     )
     return (lo, hi)
 
@@ -13093,7 +13099,8 @@ def _render_twii_super_near_c9_60m(
         vol_lookback=40,
     )
     _paint_c9_low_zone_band(ax, pack, fp=_fp)
-    _paint_ai_end_zone_band(ax, pack, fp=_fp)
+    # 超近60分：九波在底排右側，AI標改偏中，不准被擋
+    _paint_ai_end_zone_band(ax, pack, fp=_fp, label_x=0.48)
     # 交易日界線：垂直淡線，對日期
     _xticks, _xlabs, _bounds = _c9_60m_day_boundary_ticks(rows)
     for bi in _bounds[1:]:
@@ -13455,7 +13462,8 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         vol_sr=micro_vol_sr,
     )
     _paint_c9_low_zone_band(ax, pack, fp=_fp)
-    _paint_ai_end_zone_band(ax, pack, fp=_fp)
+    # 超近日K：底排有九波框，AI標偏中上緣，不准被縮圖擋
+    _paint_ai_end_zone_band(ax, pack, fp=_fp, label_x=0.48)
     _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_up_taiwan)
     i_vmax = zone.get("i_vmax")
     if i_vmax is not None:
