@@ -285,7 +285,7 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "clip_on=False" in src  # 左軸逐字 ax.text
     assert "labels=False" in far_blk
     assert "0.13" in far_blk  # 電子盤右標間距（疏開字盒）
-    assert "nudge=True" in far_blk  # 字盒疏開、虛線仍貼真價
+    assert "nudge=True" in far_blk  # 參數保留；標籤 Y 已鎖真價（水平接虛線）
     # 各欄各自爆大量日豎線；不准加權 10/15 貫穿費半／電子盤
     assert "_paint_vol_sr_mark_on_axis" in far_blk
     assert "def _paint_vol_sr_day_guides" in src
@@ -3098,9 +3098,47 @@ def test_place_live_right_labels_keeps_c4_c5_now():
         fp=_fp,
         level_dash=True,
         min_gap=(52000 - 39000) * 0.055,
+        nudge=True,  # 相容參數；不准因此漂離真價
     )
     texts = [t.get_text() for t in ax.texts]
+    # 標籤 Y 鎖真價：文字中心＝note['y']；虛線同水平（不准上下漂）
+    by_txt = {t.get_text(): t for t in ax.texts}
+    for note in notes:
+        if note["text"] not in by_txt:
+            continue
+        assert abs(float(by_txt[note["text"]].get_position()[1]) - float(note["y"])) < 1e-6
+        assert by_txt[note["text"]].get_va() == "center"
+    for line in ax.lines:
+        ys = [float(y) for y in line.get_ydata()]
+        assert len(ys) >= 2 and abs(ys[0] - ys[-1]) < 1e-6  # 水平虛線
     plt.close(fig)
     assert any("c4細" in t for t in texts), texts
     assert any("c5細" in t for t in texts), texts
     assert any(t.startswith("今") for t in texts), texts
+
+
+def test_paint_left_sr_label_locks_va_center():
+    """左欄價標鎖 va=center；標前短虛線與標籤同一水平真價。"""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from biaoke_level_learn import _paint_left_sr_label
+    from wayne_navigator import _fp
+
+    fig, ax = plt.subplots()
+    ax.set_ylim(40000, 50000)
+    _paint_left_sr_label(
+        ax,
+        45677.0,
+        "大量壓 45,677",
+        fp=_fp,
+        color="#ffe082",
+        edge="#ffeb3b",
+        va="bottom",  # 呼叫端即使傳 bottom 也鎖 center
+        avoid_top_left_stamp=True,
+    )
+    assert len(ax.texts) == 1
+    assert ax.texts[0].get_va() == "center"
+    assert abs(float(ax.texts[0].get_position()[1]) - 45677.0) < 1e-6
+    plt.close(fig)

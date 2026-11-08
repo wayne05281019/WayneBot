@@ -6837,9 +6837,9 @@ def _paint_tx_now_price_rail(
         return
     if y <= 0 or tip < 0:
         return
-    # 水平虛線：左緣 → 末根（不准貫穿右欄標籤）
+    # 水平虛線：左緣 → 末根 tip 圈（對現價垂直距離）；不准停在圖中段
     ax.plot(
-        [-0.45, float(tip) + 0.15],
+        [-0.45, float(tip) + 0.35],
         [y, y],
         color="#ea80fc",
         lw=1.25,
@@ -6874,7 +6874,7 @@ def _paint_tx_now_price_rail(
         try:
             sy = float(near_sup["low"])
             ax.plot(
-                [-0.45, float(tip) + 0.15],
+                [-0.45, float(tip) + 0.35],
                 [sy, sy],
                 color="#4dd0e1",
                 lw=1.05,
@@ -6885,8 +6885,9 @@ def _paint_tx_now_price_rail(
             )
         except (TypeError, ValueError):
             pass
-    # 貼在現價線左側中段，不准蓋末根 tip
-    x_lab = max(0.6, float(tip) * 0.42)
+    # 智慧標：釘在末根 tip 圈右側（圈圈處）；不准漂到圖中左半
+    _spear_ring(ax, float(tip), y, color="#ea80fc", zorder=9.5, hot=True)
+    x_lab = float(tip) + 0.70
     ax.text(
         x_lab,
         y,
@@ -6894,7 +6895,7 @@ def _paint_tx_now_price_rail(
         fontproperties=fp(8, "bold"),
         color="#f3e5f5",
         ha="left",
-        va="bottom",
+        va="center",
         zorder=12,
         bbox=dict(
             boxstyle="round,pad=0.14",
@@ -6937,15 +6938,20 @@ def _paint_left_sr_label(
     fp: Any,
     color: str,
     edge: str,
-    va: str,
+    va: str = "center",
     fontsize: float = 9,
     avoid_top_left_stamp: bool = False,
 ) -> None:
-    """左欄大量／下一層標；若與遠窗白底戳互壓 → 右移＋虛線連回價位。"""
+    """左欄大量／下一層標；標籤 Y＝真價（va 鎖 center）；右移時短虛線水平連回價位。
+
+    va 參數保留相容，一律當 center（不准標在價上／價下讓人自己對）。
+    """
     if ax is None or fp is None or not text:
         return
+    _ = va  # 相容；鎖死水平對價
     x, need_dash = _left_sr_label_xy(ax, y, avoid_top_left_stamp=avoid_top_left_stamp)
     tr = ax.get_yaxis_transform()
+    # 右移避戳時：標前短虛線水平連回真價（與標籤同一 Y）
     if need_dash:
         ax.plot(
             [0.02, max(0.04, float(x) - 0.02)],
@@ -6967,7 +6973,7 @@ def _paint_left_sr_label(
         fontproperties=fp(float(fontsize), "bold"),
         color=str(color),
         ha="left",
-        va=str(va),
+        va="center",
         zorder=11,
         bbox=dict(
             boxstyle="round,pad=0.12",
@@ -7491,12 +7497,14 @@ def _place_live_right_labels(
     nudge: bool = False,
     fontsize: float = 9,
 ) -> None:
-    """右側價標：全部對齊同一右欄；同色水平虛線從指定點位連到標籤。
+    """右側價標：全部對齊同一右欄；同色水平虛線對真價拉過末根 tip。
 
-    - 字 Y＝真價（不准漂離）；真價互撞→丟低優先。
-    - nudge=True：虛線仍貼真價，字盒可上下微挪，避免框貼框卡住。
+    - 字 Y＝真價（鎖死；標籤與虛線同一水平，不准上下漂讓人猜股價在標上還是標下）。
+    - 真價互撞→丟低優先（寧可少標，不准把字盒挪離真價）。
+    - nudge 參數保留相容；不再上下微挪字盒（2026-11-08 鎖死水平對價）。
     - 字 X＝同一欄（預設對齊長標如「7/29低…」那欄），不准左一截右一截。
-    - 虛線：note['x']（轉折／末日）→ 標籤左緣，顏色＝標籤色。
+    - 虛線：轉折錨／左側 → 穿過末根 tip → 標籤左緣；水平接到標前短虛線。
+      不准只剩右欄短 stub（末根 x≈標籤時往左拉開可見長度）。
     note 可設 dash=False；level_dash=False 時整批不畫虛線。
     """
     items = [dict(x) for x in (notes or []) if x.get("y") is not None and x.get("text")]
@@ -7652,7 +7660,8 @@ def _place_live_right_labels(
             continue
         t = str(it.get("text") or "")
         tier = _tier(t)
-        if (not nudge) and _collide(
+        # 一律真價碰撞丟低優先；nudge 不再上下挪字盒
+        if _collide(
             y_true, tier, placed, placed_tiers, text=t, kept_texts=placed_texts
         ):
             continue
@@ -7660,34 +7669,26 @@ def _place_live_right_labels(
         placed_tiers.append(tier)
         placed_texts.append(t)
         draw_items.append((it, y_true))
-    # nudge：由高到低把字盒撐開；虛線仍用真價
+    # 標籤 Y 鎖死真價（draw_ys 僅相容迴圈；不再上下微挪）
     draw_ys: List[float] = [y for _, y in draw_items]
-    if nudge and len(draw_ys) >= 2:
-        # 高→低
-        for i in range(1, len(draw_ys)):
-            ceiling = draw_ys[i - 1] - box_gap
-            if draw_ys[i] > ceiling:
-                draw_ys[i] = ceiling
-        # 低→高回推，避免沉到窗底又互壓
-        for i in range(len(draw_ys) - 2, -1, -1):
-            floor = draw_ys[i + 1] + box_gap
-            if draw_ys[i] < floor:
-                draw_ys[i] = floor
-        lo_b = float(ymin) + span * 0.02
-        hi_b = float(ymax) - span * 0.02
-        draw_ys = [max(lo_b, min(hi_b, y)) for y in draw_ys]
-    for (it, y_true), y_draw in zip(draw_items, draw_ys):
+    _ = (nudge, box_gap)  # 相容保留參數；不再用於漂 Y
+    x_tip = max(0.0, float(n) - 1.0)
+    # 虛線至少跨末根左側一段，才對得起現價垂直距離
+    dash_span_need = max(14.0, float(max(n, 1)) * 0.20)
+    for (it, y_true), _y_ignored in zip(draw_items, draw_ys):
+        # 鎖死：標籤 Y＝真價；虛線同水平；不准上下漂
+        y_draw = float(y_true)
         color = str(it.get("color") or _LIVE_MUTED)
         try:
             x_from = float(it.get("x"))
         except (TypeError, ValueError):
-            x_from = float(n) - 1.0
-        # 點位在標籤右側時仍從左側合理點拉（末日K）
-        if x_from >= x_label - 0.25:
-            x_from = max(0.0, float(n) - 1.0)
+            x_from = 0.0
         x_from = max(0.0, float(x_from))
-        # 虛線停在標籤左緣外，不准切進框內數字
-        x_dash_end = max(x_from + 0.2, x_label - 0.55)
+        # 錨太靠近 tip／標籤 → 往左拉開；有較早轉折日則保留（從點位拉到 tip）
+        if x_from >= x_tip - dash_span_need * 0.45:
+            x_from = max(0.0, x_tip - dash_span_need)
+        # 虛線穿過末根 tip，水平接到標籤左緣（標前短虛線與長虛線同一水平）
+        x_dash_end = max(x_from + 0.35, float(x_label) - 0.48)
         if level_dash and it.get("dash", True) and x_dash_end > x_from + 0.15:
             # 標多時改更細虛線，仍對得上右欄數字；少標維持可讀粗細
             n_dash = sum(
@@ -7711,17 +7712,6 @@ def _place_live_right_labels(
                 zorder=5,
                 solid_capstyle="butt",
             )
-            # 字盒若被 nudge 離真價，短豎線連回真價水平線
-            if abs(float(y_draw) - float(y_true)) > span * 0.008:
-                ax.plot(
-                    [x_dash_end, x_dash_end],
-                    [y_true, y_draw],
-                    color=color,
-                    lw=0.85,
-                    alpha=0.55,
-                    zorder=5,
-                    solid_capstyle="butt",
-                )
         # 價・日期／狀態完整可見；長標略放寬裁切，不准黏字難讀
         lab_txt = str(it["text"] or "")
         if "・" in lab_txt:
@@ -11081,7 +11071,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         x_right_col = max(x_right_col, float(n_axis) + 3.05)
     x_sox_col = x_right_col + 0.40
     if _sox_right_deferred and _sox_ylabel_span is not None:
-        # 費半價窗窄：間距略鬆＋字盒 nudge，才留得下結構⑤/A/B／今＋大量撐壓
+        # 費半價窗窄：間距略鬆；標籤 Y 鎖真價（互撞丟低優先），虛線水平接標
         _place_live_right_labels(
             axu,
             _sox_right_deferred,
@@ -11096,7 +11086,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             fontsize=8.5,
         )
     if _tx_right_notes and _tx_ylabel_span is not None:
-        # 電子盤右標：真價虛線＋字盒 nudge 疏開，不准框貼框卡住
+        # 電子盤右標：真價虛線水平接標；標籤 Y 鎖真價（互撞丟低優先）
         _place_live_right_labels(
             axt,
             _tx_right_notes,
@@ -11118,7 +11108,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         ymax=ymax,
         fp=_fp,
         level_dash=True,
-        # 加權資訊多：再鬆間距＋字盒 nudge，虛線仍貼真價（防日期／價標互壓）
+        # 加權資訊多：再鬆間距；標籤 Y 鎖真價、虛線水平接標（互撞丟低優先）
         min_gap=(ymax - ymin) * (0.092 if _c9_now else 0.078),
         x_col=x_right_col,
         nudge=True,
