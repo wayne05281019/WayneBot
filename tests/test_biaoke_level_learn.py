@@ -3262,6 +3262,14 @@ def test_week_bot_zone_and_dual_pred_from_thesis():
     assert src.count("_paint_ai_end_zone_band(ax") >= 4
     assert "ffeb3b" in src  # 下週底部黃框
     assert "_zone_label_x_clear_of_inset" in src  # 兩標清過九波縮圖右緣才齊頭可見
+    assert "_reserve_zone_label_avoid" in src  # 區帶大標佔位，尖點不准坐進框
+    assert "_TEACH_ZONE_LABEL_PAD = 0.18" in src  # 縮小 pad，不准蓋 A末／7/29
+    assert 'tip="high"' in src  # 近窗大A末在尖點上方，不准 tip=low 鑽黃框
+    assert "zorder=7" in src  # 區帶大標低於尖點浪名
+    assert 'x_base=0.13' in src  # 左欄壓／撐錯欄，Y 接近不准互壓
+    assert "_TEACH_ZONE_LABEL_X_MICRO = 0.22" in src  # 超近黃標清過左欄撐
+    assert "_y_inside_pred_zone_bands" in src  # 下一層左標不准進黃／紫帶紅圈互壓
+    assert "excluded.as_of!=biaoke_open_day_paints.as_of" in src  # as_of 更新必清未重渲窗路徑
     assert callable(_paint_c9_low_zone_band) and callable(_paint_ai_end_zone_band)
     # 空 pack 也能補
     slim = _ensure_teach_pack_preds("data/wayne_market.db", {"thesis": "B-b"})
