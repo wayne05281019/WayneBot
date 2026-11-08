@@ -5253,20 +5253,27 @@ def _paint_c9_low_zone_band(
 ) -> Optional[Tuple[float, float]]:
     """三窗共用：現行低點區底帶＋標。
 
-    雙軌當令＝下週底部 37100~39000；否則改口 37000~37500；再否則 C-9 35500~37300。
-    他原文兩端；非買訊。
+    雙軌當令＝下週底部 37100~39000（顯眼黃框大標）；否則改口 37000~37500；再否則 C-9 35500~37300。
+    他原文兩端；底帶本身非買訊（買點另釘 37837）。
     """
     zone = _tw_active_low_zone(pack)
     if not zone:
         return None
     lo, hi, kind = zone
     if kind == "week_bot":
-        face, ink, tag = "#80cbc4", "#80cbc4", "下週底部觀察"
+        # 下週預計底部：顯眼黃底大框＋大字，右欄不再另掛 39,000／37,100
+        face, ink, tag = "#fff59d", "#fbc02d", "下週底部觀察"
+        fsz, pad, lw, alpha_span = 14.5, 0.55, 2.4, 0.28
+        txt_c, fc = "#1a1400", "#ffeb3b"
     elif kind == "foot2":
         face, ink, tag = "#80deea", "#80deea", "改口低點區"
+        fsz, pad, lw, alpha_span = 7.5, 0.10, 0.45, 0.16
+        txt_c, fc = ink, "#0b0f14"
     else:
         face, ink, tag = "#ce93d8", "#ce93d8", "C-9低點區"
-    ax.axhspan(lo, hi, facecolor=face, alpha=0.16, zorder=0.35)
+        fsz, pad, lw, alpha_span = 7.5, 0.10, 0.45, 0.16
+        txt_c, fc = ink, "#0b0f14"
+    ax.axhspan(lo, hi, facecolor=face, alpha=alpha_span, zorder=0.35)
     mid = (lo + hi) * 0.5
     # 標在底帶水平置中（略偏右避開左下九波縮圖）；貼最左會被忽略
     ax.text(
@@ -5274,13 +5281,78 @@ def _paint_c9_low_zone_band(
         mid,
         f"飆預測{_px(lo)}~{_px(hi)}（{tag}）",
         transform=ax.get_yaxis_transform(),
-        fontproperties=fp(7.5, "normal"),
-        color=ink,
+        fontproperties=fp(fsz, "bold" if kind == "week_bot" else "normal"),
+        color=txt_c if kind == "week_bot" else ink,
         ha="center",
         va="center",
         zorder=11,
         bbox=dict(
-            boxstyle="round,pad=0.10", fc="#0b0f14", ec=ink, lw=0.45, alpha=0.90
+            boxstyle=f"round,pad={pad}", fc=fc, ec=ink, lw=lw, alpha=0.95
+        ),
+    )
+    return (lo, hi)
+
+
+def _tw_ai_end_zone(
+    pack: Optional[Dict[str, Any]] = None,
+) -> Optional[Tuple[float, float]]:
+    """九波備線：35579→31705＝AI行情結束觀察帶（只認原文兩端）。"""
+    preds = ((pack or {}).get("pred_levels") or {}).get("tw") or []
+    hi = lo = None
+    for row in preds:
+        role = str(row.get("role") or "")
+        try:
+            lv = float(row.get("level"))
+        except (TypeError, ValueError):
+            continue
+        if role == "九波備線破位" or abs(lv - 35579.0) < 1.0:
+            hi = lv
+        elif role == "九波備線深殺" or abs(lv - 31705.0) < 1.0:
+            lo = lv
+    if hi is None or lo is None:
+        blob = " ".join(
+            str(x or "")
+            for x in (
+                (pack or {}).get("thesis"),
+                (pack or {}).get("snippet"),
+                (pack or {}).get("snippet_full"),
+                (pack or {}).get("wait_struct"),
+            )
+        )
+        if re.search(r"35579", blob) and re.search(r"31705", blob):
+            hi = 35579.0 if hi is None else hi
+            lo = 31705.0 if lo is None else lo
+    if hi is not None and lo is not None and float(hi) > float(lo):
+        return (float(lo), float(hi))
+    return None
+
+
+def _paint_ai_end_zone_band(
+    ax: Any,
+    pack: Optional[Dict[str, Any]],
+    *,
+    fp: Any,
+) -> Optional[Tuple[float, float]]:
+    """備線最差：35579~31705 畫 AI 結束觀察帶（非買訊；右欄只留深殺端）。"""
+    zone = _tw_ai_end_zone(pack)
+    if not zone:
+        return None
+    lo, hi = zone
+    face, ink = "#ce93d8", "#e1bee7"
+    ax.axhspan(lo, hi, facecolor=face, alpha=0.10, zorder=0.30)
+    mid = (lo + hi) * 0.5
+    ax.text(
+        0.42,
+        mid,
+        f"飆預測{_px(lo)}~{_px(hi)}（AI行情結束觀察）",
+        transform=ax.get_yaxis_transform(),
+        fontproperties=fp(9.0, "normal"),
+        color=ink,
+        ha="center",
+        va="center",
+        zorder=10.5,
+        bbox=dict(
+            boxstyle="round,pad=0.22", fc="#140c18", ec=ink, lw=0.9, alpha=0.92
         ),
     )
     return (lo, hi)
@@ -5530,16 +5602,16 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
             label=lab,
         )
     # 11/8 雙軌點位（只認原文）：37837／37164／35579／31705
-    # 標籤：價・日期／狀態（中間分隔，不准黏讀）
+    # 右欄只掛：最佳買點 37837＋深殺端 31705；39000／37164／35579 改走底帶／AI結束帶
     if re.search(r"37837", s):
-        tag = "假跌破" if re.search(r"假跌破", s) else "週五低"
+        tag = "最佳買點" if re.search(r"假跌破|買點", s) else "週五低"
         _add(
             "tw",
             level=37837.0,
             ref_ymd="20261106",
             role="五波末／週五低",
             tag=tag,
-            label=f"飆預測{_px(37837)}・{tag}",
+            label=f"最佳買點／{_px(37837)}",
         )
     if re.search(r"37164", s):
         _add(
@@ -5566,7 +5638,7 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
             ref_ymd="20260331",
             role="九波備線深殺",
             tag="未到",
-            label=f"飆預測{_px(31705)}・3/31低",
+            label=f"AI結束深殺／{_px(31705)}",
         )
     # 下週底部觀察區：37100~39000（他原文兩端；雙軌當令底帶；不准發明中間價）
     has_week_bot_zone = bool(
@@ -7730,19 +7802,11 @@ def _place_live_right_labels(
             # 雙軌關鍵位：數字＋虛線必留
             or "37,837" in s
             or "37837" in s
-            or "37,164" in s
-            or "37164" in s
-            or "35,579" in s
-            or "35579" in s
             or "31,705" in s
             or "31705" in s
-            or "39,000" in s
-            or "39000" in s
-            or "下週底" in s
+            or "最佳買點" in s
+            or "AI結束" in s
             or "五波末" in s
-            or "假跌破" in s
-            or "九波備線" in s
-            or "4/23低" in s
         ):
             return 0
         # 電盤下一層可丟；一般飆預測次之（已破／C9 已升 0）
@@ -7765,19 +7829,11 @@ def _place_live_right_labels(
             for x in (
                 "37,837",
                 "37837",
-                "37,164",
-                "37164",
-                "35,579",
-                "35579",
                 "31,705",
                 "31705",
-                "39,000",
-                "39000",
-                "下週底",
+                "最佳買點",
+                "AI結束",
                 "五波末",
-                "假跌破",
-                "九波備線",
-                "4/23低",
             )
         )
 
@@ -9751,18 +9807,21 @@ def _tw_pred_right_notes(
             continue
         tag = str(row.get("tag") or "")
         role = str(row.get("role") or "")
-        # 雙軌當令：右欄優先 37837／37164／35579／31705＋39000上沿；
-        # 改口帶／下週底下沿／舊38000／裸抽近點讓給底帶，不准擠掉雙軌
+        # 雙軌當令：右欄只留 最佳買點37837＋AI結束深殺31705；
+        # 39,000／37,164／35,579 改走黃底帶／AI結束帶，不准再佔右欄
         if bb_dual_active and role in {
             "改口低上沿",
             "改口低下沿",
             "劇本一上沿",
             "下週底下沿",
+            "下週底上沿",
+            "4/23低",
+            "九波備線破位",
         }:
             continue
-        if bb_dual_active and abs(lv - 38000.0) < 1.0:
-            continue
-        if bb_dual_active and abs(lv - 37100.0) < 1.0:
+        if bb_dual_active and any(
+            abs(lv - x) < 1.0 for x in (39000.0, 37164.0, 35579.0, 37100.0, 38000.0)
+        ):
             continue
         if bb_dual_active and role in {"點位", ""} and any(
             abs(lv - x) < 80.0
@@ -9774,17 +9833,7 @@ def _tw_pred_right_notes(
             role == "劇本一下沿" or abs(lv - 35000.0) < 1.0
         ):
             continue
-        # 下週底上沿 39000：紅框內必留；跟官方柱標已破／未破
-        if role == "下週底上沿" or (
-            bb_dual_active
-            and abs(lv - 39000.0) < 1.0
-            and role in {"點位", "下週底上沿", ""}
-        ):
-            role = "下週底上沿"
-            text = _biaoke_pred_label(
-                lv, _tw_pred_break_tag(lv, lows, pack=pack, role=role)
-            )
-        elif tag in {"未到", "未破", "已破"}:
+        if tag in {"未到", "未破", "已破"}:
             br = (
                 _tw_pred_break_tag(lv, lows, pack=pack, role=role)
                 if tag == "未到"
@@ -9794,9 +9843,7 @@ def _tw_pred_right_notes(
         else:
             text = str(row.get("label") or _biaoke_pred_label(lv))
         # 周一破台指／反彈穿刺／轉震盪：狀態跟官方柱
-        if role == "下週底上沿":
-            pass  # 上文已定 text
-        elif abs(lv - 44042.0) < 0.6:
+        if abs(lv - 44042.0) < 0.6:
             text = _biaoke_pred_label(lv, _level_break_tag(lv, lows) + "周一")
         elif role in {"反彈穿刺", "轉震盪"}:
             # 上方觀察壓：看「現在」有無站回／向上穿刺，不准拿下跌低點標成「已破」
@@ -9828,11 +9875,9 @@ def _tw_pred_right_notes(
             )
         elif role in {
             "五波末／週五低",
-            "4/23低",
-            "九波備線破位",
             "九波備線深殺",
         }:
-            # 雙軌關鍵位：右欄必見數字＋角色；虛線對齊真價
+            # 右欄必見：最佳買點37837／AI結束深殺31705；虛線對齊真價
             text = str(row.get("label") or _biaoke_pred_label(lv, role))
         # 近／超近窗沒有 ref 日柱時從窗左拉滿，不准縮成末日短樁
         x_note = 0
@@ -9841,10 +9886,10 @@ def _tw_pred_right_notes(
             ii = _bar_index_by_ymd(bars, ref)
             if ii is not None:
                 x_note = int(ii)
-        # 雙軌分色：主線 B-b（37837／37164）暖色；備線九波（35579／31705）冷紫
-        if role in {"五波末／週五低", "4/23低"}:
-            col = "#ffab91"
-        elif role in {"九波備線破位", "九波備線深殺"}:
+        # 雙軌分色：最佳買點金；AI結束深殺冷紫
+        if role == "五波末／週五低" or abs(lv - 37837.0) < 1.0:
+            col = "#ffd54f"
+        elif role == "九波備線深殺" or abs(lv - 31705.0) < 1.0:
             col = "#b39ddb"
         elif role in {"改口低上沿", "改口低下沿"}:
             col = "#80deea"
@@ -9852,8 +9897,8 @@ def _tw_pred_right_notes(
             col = "#ce93d8"
         else:
             col = "#82b1ff" if lv < 45000 else "#4dd0e1"
-        # 價・日期完整；雙軌長標略放寬
-        lim = 34 if ("・" in text or role.startswith("九波") or "五波" in role) else 28
+        # 價・日期完整；買點／深殺長標略放寬
+        lim = 34 if ("／" in text or "・" in text or role.startswith("九波") or "五波" in role) else 28
         out.append(
             {
                 "x": x_note,
@@ -10495,7 +10540,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         tx_for_sr,
         lookback=min(_FAR_TEACH_VOL_LOOKBACK, max(40, len(tx_for_sr) - 1)),
     )
-    # 撐壓底色先畫在K下層
+    # 撐壓底色先畫在K下層；雙軌當令：primary 右標＋水平虛線拿掉，只留淺黃底
     if (tx_vol_sr.get("primary") or {}).get("high"):
         pri = tx_vol_sr["primary"]
         _paint_max_vol_hl_zone(
@@ -10504,31 +10549,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             low=float(pri["low"]),
             date_lab=str(pri.get("date") or ""),
             fp=_fp,
-            # 左標關掉：右欄已有電盤大量壓／撐，左右雙貼會卡死中欄
             labels=False,
-        )
-        _tx_pri_md = _md(pri.get("date"))
-        _tx_pri_tag = f"{_tx_pri_md} " if _tx_pri_md else ""
-        _tx_right_notes.append(
-            {
-                "x": n_tw - 1,
-                "y": float(pri["high"]),
-                "text": f"{_tx_pri_tag}電盤大量壓 {_px(pri['high'])}",
-                "color": "#ffe082",
-            }
-        )
-        _pri_broke = bool(pri.get("broke_support"))
-        _tx_right_notes.append(
-            {
-                "x": n_tw - 1,
-                "y": float(pri["low"]),
-                "text": (
-                    f"{_tx_pri_tag}電盤大量撐 {_px(pri['low'])}已破"
-                    if _pri_broke
-                    else f"{_tx_pri_tag}電盤大量撐 {_px(pri['low'])}"
-                ),
-                "color": "#ffe082",
-            }
         )
         if (tx_vol_sr.get("next") or {}).get("high"):
             nxt = tx_vol_sr["next"]
@@ -10637,8 +10658,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                     "color": "#4dd0e1",
                 }
             )
-    # 他原文台指期：週五低 37837 很近 4/23 低 37164（假跌破觀察）
-    # 紫標現價／收盤軌不准換掉；這兩檔另掛水平真價標
+    # 他原文台指期：週五低 37837＝假跌破最佳買點；紫標現價軌不准換掉
     _tx_have_ys = {
         round(float(n0.get("y") or 0), 1) for n0 in _tx_right_notes if n0.get("y") is not None
     }
@@ -10652,37 +10672,16 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         )
     )
     if _text_has_bb_dual_path(_tx_dual_blob) or "37837" in _tx_dual_blob:
-        _tx_lows_for_tag: List[float] = []
-        for i in tx_valid:
-            try:
-                _tx_lows_for_tag.append(float(tx_l[i]))
-            except (TypeError, ValueError, IndexError):
-                continue
-        for _lv, _role, _lab, _col in (
-            (
-                37837.0,
-                "五波末／週五低",
-                f"飆預測{_px(37837)}・假跌破",
-                "#ffab91",
-            ),
-            (
-                37164.0,
-                "4/23低",
-                f"飆預測{_px(37164)}・4/23低",
-                "#ffab91",
-            ),
-        ):
-            if round(_lv, 1) in _tx_have_ys:
-                continue
+        if round(37837.0, 1) not in _tx_have_ys:
             _tx_right_notes.append(
                 {
                     "x": 0,
-                    "y": float(_lv),
-                    "text": _lab,
-                    "color": _col,
+                    "y": 37837.0,
+                    "text": f"最佳買點／{_px(37837)}",
+                    "color": "#ffd54f",
                 }
             )
-            _tx_have_ys.add(round(_lv, 1))
+            _tx_have_ys.add(round(37837.0, 1))
     _tx_valid_set = set(tx_valid)
     if len(tx_valid) >= 2:
         for i in tx_valid:
@@ -10983,6 +10982,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         avoid_top_left_stamp=True,
     )
     _paint_c9_low_zone_band(ax, pack, fp=_fp)
+    _paint_ai_end_zone_band(ax, pack, fp=_fp)
     sr = zone.get("sr") or {}
     sr_skip = zone.get("sr_skip") or {}
     if zone.get("i_vmax") is not None:
@@ -11287,11 +11287,11 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         x_right_col = max(x_right_col, float(tip.get("fut_x") or n_axis) + 0.85)
     except (TypeError, ValueError):
         pass
-    # 雙軌四價＋今標：再右移半欄，字盒不壓浪點
+    # 右欄買點／深殺＋今標：再右移半欄，字盒不壓浪點
     if any(
         abs(float(n0.get("y") or 0) - lv) < 1.0
         for n0 in right_notes
-        for lv in (37837.0, 37164.0, 35579.0, 31705.0)
+        for lv in (37837.0, 31705.0)
     ):
         x_right_col = max(x_right_col, float(n_axis) + 3.05)
     x_sox_col = x_right_col + 0.40
@@ -12231,6 +12231,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         avoid_top_left_stamp=True,
     )
     _paint_c9_low_zone_band(ax, pack, fp=_fp)
+    _paint_ai_end_zone_band(ax, pack, fp=_fp)
     _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_up_taiwan)
     i_vmax = zone.get("i_vmax")
     if i_vmax is not None:
@@ -12553,12 +12554,21 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         )
     )
     # 落在黃帶內的青標改右欄（與遠窗同一套；已有同價／預估端則不重複）
+    # 雙軌下週底當令：39,000／37,100 已有黃框底帶，不准再掛青「飆預測」右標
     have_ys = {round(float(n0["y"]), 1) for n0 in right_notes} | tip_skip
+    _wb_zone = _tw_active_low_zone(pack)
+    _wb_edges = (
+        {round(float(_wb_zone[0]), 1), round(float(_wb_zone[1]), 1)}
+        if _wb_zone and _wb_zone[2] == "week_bot"
+        else set()
+    )
     for key, col in (("resist", "#4dd0e1"), ("support", "#4dd0e1")):
         yv = sr_skip.get(key)
         if yv is None:
             continue
         if round(float(yv), 1) in have_ys:
+            continue
+        if round(float(yv), 1) in _wb_edges:
             continue
         right_notes.append(
             {
@@ -13097,6 +13107,7 @@ def _render_twii_super_near_c9_60m(
         vol_lookback=40,
     )
     _paint_c9_low_zone_band(ax, pack, fp=_fp)
+    _paint_ai_end_zone_band(ax, pack, fp=_fp)
     # 交易日界線：垂直淡線，對日期
     _xticks, _xlabs, _bounds = _c9_60m_day_boundary_ticks(rows)
     for bi in _bounds[1:]:
@@ -13458,6 +13469,7 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         vol_sr=micro_vol_sr,
     )
     _paint_c9_low_zone_band(ax, pack, fp=_fp)
+    _paint_ai_end_zone_band(ax, pack, fp=_fp)
     _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_up_taiwan)
     i_vmax = zone.get("i_vmax")
     if i_vmax is not None:
@@ -13913,11 +13925,19 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         )
     )
     have_ys = {round(float(n0["y"]), 1) for n0 in right_notes} | tip_skip
+    _wb_zone_m = _tw_active_low_zone(pack)
+    _wb_edges_m = (
+        {round(float(_wb_zone_m[0]), 1), round(float(_wb_zone_m[1]), 1)}
+        if _wb_zone_m and _wb_zone_m[2] == "week_bot"
+        else set()
+    )
     for key, col in (("resist", "#4dd0e1"), ("support", "#4dd0e1")):
         yv = sr_skip.get(key)
         if yv is None:
             continue
         if round(float(yv), 1) in have_ys:
+            continue
+        if round(float(yv), 1) in _wb_edges_m:
             continue
         right_notes.append(
             {

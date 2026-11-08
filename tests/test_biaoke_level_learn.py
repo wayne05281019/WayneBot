@@ -3194,18 +3194,25 @@ def test_far_tx_now_rail_deferred_until_tip_fixed():
     assert "x_label" in rail
     assert "clip_on=False" in rail
     assert "va=\"center\"" in rail or "va='center'" in rail
-    # 紫標＝夜盤收／盤中真價；雙軌 37837／37164 另掛，不准換掉紫標文案
+    # 紫標＝夜盤收／盤中真價；最佳買點37837 另掛，不准換掉紫標文案
     assert "收盤" in rail and "盤中" in rail
-    assert "37837" in far and "37164" in far
+    assert "37837" in far and "最佳買點" in far
+    assert "37164" not in far  # 4/23 對照不進電盤右欄
+    # 6/9 primary 右標＋虛線拿掉（不准再 append 電盤大量* 文案）
+    assert "電盤大量壓" not in far and "電盤大量撐" not in far
+    assert far.count("電盤下一層") >= 2  # next-layer 仍可留
     assert "紫標現價" in far or "不准換掉" in far
 
 
 def test_week_bot_zone_and_dual_pred_from_thesis():
-    """原文 37100~39000 底帶＋雙軌四價抽出；空 pack 重渲會補 pred。"""
+    """原文 37100~39000 黃底帶＋右欄只留最佳買點37837／深殺31705。"""
     from biaoke_level_learn import (
         _ensure_teach_pack_preds,
+        _paint_ai_end_zone_band,
+        _paint_c9_low_zone_band,
         _thesis_pred_levels,
         _tw_active_low_zone,
+        _tw_ai_end_zone,
         _tw_pred_right_notes,
     )
 
@@ -3219,6 +3226,8 @@ def test_week_bot_zone_and_dual_pred_from_thesis():
     tw = pred.get("tw") or []
     levels = {round(float(r["level"]), 1) for r in tw}
     assert {37837.0, 37164.0, 35579.0, 31705.0, 39000.0, 37100.0} <= levels
+    buy = next(r for r in tw if abs(float(r["level"]) - 37837.0) < 1)
+    assert "最佳買點" in str(buy.get("label") or "")
     pack = {
         "thesis": "主線五波跌完走B-b・備線九波擴延",
         "snippet_full": snip,
@@ -3227,10 +3236,19 @@ def test_week_bot_zone_and_dual_pred_from_thesis():
     zone = _tw_active_low_zone(pack)
     assert zone and zone[2] == "week_bot"
     assert abs(zone[0] - 37100.0) < 1 and abs(zone[1] - 39000.0) < 1
+    ai_z = _tw_ai_end_zone(pack)
+    assert ai_z and abs(ai_z[0] - 31705.0) < 1 and abs(ai_z[1] - 35579.0) < 1
     notes = _tw_pred_right_notes(pack, n=80, lows=[37837.0], tip_skip=set())
     texts = " ".join(n["text"] for n in notes)
-    assert "37,837" in texts and "假跌破" in texts
-    assert "37,164" in texts and "35,579" in texts and "31,705" in texts
+    assert "37,837" in texts and "最佳買點" in texts
+    assert "31,705" in texts
+    # 右欄刪：39,000／37,164／35,579（改走黃底帶／AI結束帶）
+    assert "39,000" not in texts and "37,164" not in texts and "35,579" not in texts
+    src = open("biaoke_level_learn.py", encoding="utf-8").read()
+    assert "_paint_ai_end_zone_band" in src
+    assert src.count("_paint_ai_end_zone_band(ax") >= 4
+    assert "ffeb3b" in src  # 下週底部黃框
+    assert callable(_paint_c9_low_zone_band) and callable(_paint_ai_end_zone_band)
     # 空 pack 也能補
     slim = _ensure_teach_pack_preds("data/wayne_market.db", {"thesis": "B-b"})
     assert ((slim.get("pred_levels") or {}).get("tw") or [])
