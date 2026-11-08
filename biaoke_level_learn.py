@@ -5353,12 +5353,12 @@ def _paint_c9_low_zone_band(
         face, ink, tag = "#ce93d8", "#ce93d8", "C-9低點區"
         fsz, pad, lw, alpha_span = 7.5, 0.10, 0.45, 0.16
         txt_c, fc = ink, "#0b0f14"
-    ax.axhspan(lo, hi, facecolor=face, alpha=alpha_span, zorder=0.35)
-    # 下週底標貼帶更靠下緣：上緣留給大A末／7/29；zorder 低於尖點(10)，不准蓋轉折字
-    if kind == "week_bot":
-        y_lab = float(lo) + (float(hi) - float(lo)) * 0.10
-    else:
-        y_lab = (float(lo) + float(hi)) * 0.5
+    # 下週底黃帶必須壓過灰「下一層」底色（0.45），不然看起來像灰帶、黃標像浮在帶外
+    span_z = 0.58 if kind == "week_bot" else 0.35
+    span_a = 0.32 if kind == "week_bot" else float(alpha_span)
+    ax.axhspan(lo, hi, facecolor=face, alpha=span_a, zorder=span_z)
+    # 區帶大標＝帶內正中（黃／紫同一做法）；大A末 tip=high 在尖點上方
+    y_lab = (float(lo) + float(hi)) * 0.5
     x_lab = float(_TEACH_ZONE_LABEL_X if label_x is None else label_x)
     ax.text(
         x_lab,
@@ -5369,7 +5369,7 @@ def _paint_c9_low_zone_band(
         color=txt_c if kind == "week_bot" else ink,
         ha="left",
         va="center",
-        zorder=7,
+        zorder=12,  # 高於左欄壓撐(11)，帶內字不准被下一層左標蓋
         bbox=dict(
             boxstyle=f"round,pad={pad}", fc=fc, ec=ink, lw=lw, alpha=0.95
         ),
@@ -5429,9 +5429,9 @@ def _paint_ai_end_zone_band(
         return None
     lo, hi = zone
     face, ink = "#ce93d8", "#e1bee7"
-    ax.axhspan(lo, hi, facecolor=face, alpha=0.10, zorder=0.30)
-    # 標貼帶下緣內側，跟黃「下週底」上下錯開，不准互壓
-    y_lab = float(lo) + (float(hi) - float(lo)) * 0.28
+    ax.axhspan(lo, hi, facecolor=face, alpha=0.16, zorder=0.56)
+    # 紫標＝帶內正中（與黃下週底同一排版）
+    y_lab = (float(lo) + float(hi)) * 0.5
     x_lab = float(_TEACH_ZONE_LABEL_X if label_x is None else label_x)
     # pad／ha／x 必須與下週底黃標相同，左緣才真齊頭
     ax.text(
@@ -5443,7 +5443,7 @@ def _paint_ai_end_zone_band(
         color=ink,
         ha="left",
         va="center",
-        zorder=7.0,  # 與下週底同層，低於尖點浪名，不准蓋 大A末／C釘
+        zorder=12.0,  # 與下週底同層，高於左欄壓撐，尖點 tip=high 已讓開
         bbox=dict(
             boxstyle=f"round,pad={float(_TEACH_ZONE_LABEL_PAD)}",
             fc="#140c18",
@@ -6232,6 +6232,27 @@ def _resolve_teach_vol_sr(
     return out
 
 
+def _y_inside_pred_zone_bands(
+    y: float, pack: Optional[Dict[str, Any]], *, pad: float = 120.0
+) -> bool:
+    """價位落在下週底／AI結束觀察帶（含呼吸）→ 左欄壓撐不准再佔同一帶（紅圈互壓）。"""
+    try:
+        yy = float(y)
+    except (TypeError, ValueError):
+        return False
+    wb = _tw_active_low_zone(pack)
+    if wb and str(wb[2]) == "week_bot":
+        lo, hi = float(wb[0]), float(wb[1])
+        if (lo - float(pad)) <= yy <= (hi + float(pad)):
+            return True
+    ai = _tw_ai_end_zone(pack)
+    if ai:
+        lo, hi = float(ai[0]), float(ai[1])
+        if (lo - float(pad)) <= yy <= (hi + float(pad)):
+            return True
+    return False
+
+
 def _paint_next_layer_vol_zone(
     ax,
     *,
@@ -6242,6 +6263,7 @@ def _paint_next_layer_vol_zone(
     direction: str = "below",
     labels: bool = True,
     avoid_top_left_stamp: bool = False,
+    pack: Optional[Dict[str, Any]] = None,
 ) -> None:
     """下一層大量區灰帶（對齊結構圖下一層；暗底教具可讀）。"""
     y0, y1 = float(low), float(high)
@@ -6249,33 +6271,37 @@ def _paint_next_layer_vol_zone(
         return
     md = _md(date_lab) if _ymd(date_lab) else ""
     day_tag = f"{md} " if md else ""
+    # 與下週底黃帶大幅重疊時只留灰底邊緣感、不准蓋黃地色（黃帶 zorder 更高）
     ax.axhspan(y0, y1, facecolor="#90a4ae", alpha=0.20, zorder=0.45)
     if not labels:
         return
-    _paint_left_sr_label(
-        ax,
-        y1,
-        f"{day_tag}下一層壓 {_px(y1)}",
-        fp=fp,
-        color="#cfd8dc",
-        edge="#78909c",
-        va="bottom",
-        fontsize=8.5,
-        avoid_top_left_stamp=avoid_top_left_stamp,
-        x_base=0.01,
-    )
-    _paint_left_sr_label(
-        ax,
-        y0,
-        f"{day_tag}下一層撐 {_px(y0)}",
-        fp=fp,
-        color="#cfd8dc",
-        edge="#78909c",
-        va="top",
-        fontsize=8.5,
-        avoid_top_left_stamp=avoid_top_left_stamp,
-        x_base=0.13,
-    )
+    # 壓／撐落在飆預測黃／紫帶內 → 不准畫左標（紅圈互壓）
+    if not _y_inside_pred_zone_bands(y1, pack):
+        _paint_left_sr_label(
+            ax,
+            y1,
+            f"{day_tag}下一層壓 {_px(y1)}",
+            fp=fp,
+            color="#cfd8dc",
+            edge="#78909c",
+            va="bottom",
+            fontsize=8.5,
+            avoid_top_left_stamp=avoid_top_left_stamp,
+            x_base=0.01,
+        )
+    if not _y_inside_pred_zone_bands(y0, pack):
+        _paint_left_sr_label(
+            ax,
+            y0,
+            f"{day_tag}下一層撐 {_px(y0)}",
+            fp=fp,
+            color="#cfd8dc",
+            edge="#78909c",
+            va="top",
+            fontsize=8.5,
+            avoid_top_left_stamp=avoid_top_left_stamp,
+            x_base=0.13,
+        )
     _ = direction
 
 
@@ -6294,6 +6320,7 @@ def _paint_window_dual_zones(
     vol_lookback: int = 40,
     vol_sr: Optional[Dict[str, Any]] = None,
     avoid_top_left_stamp: bool = False,
+    pack: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """遠／近／超近共用：黃＝大量撐壓、灰＝下一層大量區、青＝飆預測位階帶；底色在K下層。"""
     n = len(highs)
@@ -6332,6 +6359,7 @@ def _paint_window_dual_zones(
             fp=fp,
             direction=str(nxt.get("direction") or "below"),
             avoid_top_left_stamp=avoid_top_left_stamp,
+            pack=pack,
         )
         # 下一層帶也列入青帶避讓
         try:
@@ -11094,6 +11122,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         vol_lookback=_FAR_TEACH_VOL_LOOKBACK,
         vol_sr=far_vol_sr,
         avoid_top_left_stamp=True,
+        pack=pack,
     )
     # 區帶兩標改到九波縮圖定位後再畫（須清過縮圖右緣，否則 AI 標左半被裁）
     sr = zone.get("sr") or {}
@@ -12356,6 +12385,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         vol_lookback=40,
         vol_sr=near_vol_sr,
         avoid_top_left_stamp=True,
+        pack=pack,
     )
     # 區帶兩標改到九波縮圖定位後再畫（與遠窗同一套：齊頭＋不被縮圖裁字）
     _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_up_taiwan)
@@ -12479,13 +12509,13 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         _wb_early = _tw_active_low_zone(pack)
         if _wb_early and _wb_early[2] == "week_bot":
             _elo, _ehi = float(_wb_early[0]), float(_wb_early[1])
-            _ey = _elo + (_ehi - _elo) * 0.10
+            _ey = (_elo + _ehi) * 0.5
             _reserve_avoid_zone(
                 ax,
                 float(n) * 0.12,
-                _ey - max((_ehi - _elo) * 0.35, span * 0.04),
+                _ey - max((_ehi - _elo) * 0.42, span * 0.045),
                 float(n) * 0.52,
-                _ey + max((_ehi - _elo) * 0.35, span * 0.04),
+                _ey + max((_ehi - _elo) * 0.42, span * 0.045),
             )
         _ai_early = _tw_ai_end_zone(pack)
         if _ai_early:
@@ -12564,6 +12594,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         fontsize=9,
         pri=12,
         clear_dy=max(span * 0.062, 380.0),
+        zorder=13,  # 高於區帶大標(12)，轉折字不准被黃框蓋
     )
     _pin_pivot_name(
         ax,
@@ -13290,6 +13321,7 @@ def _render_twii_super_near_c9_60m(
         resists=(47637.0, 48613.0, y_b),
         skip_label_ys=[float(v) for v in tip_anchors],
         vol_lookback=40,
+        pack=pack,
     )
     _paint_c9_low_zone_band(ax, pack, fp=_fp, label_x=_TEACH_ZONE_LABEL_X_MICRO)
     # 超近60分：黃標／AI標同欄偏左，齊頭且不准壓末K
@@ -13653,6 +13685,7 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         skip_label_ys=_skip_left,
         vol_lookback=40,
         vol_sr=micro_vol_sr,
+        pack=pack,
     )
     _paint_c9_low_zone_band(ax, pack, fp=_fp, label_x=_TEACH_ZONE_LABEL_X_MICRO)
     # 超近日K：黃標／AI標同欄偏左，齊頭且不准壓末K／九波框
@@ -15373,12 +15406,15 @@ def paint_open_day_hypothesis(
                     ELSE biaoke_open_day_paints.tx60_path END,
                 us_note=excluded.us_note,
                 far_path=CASE WHEN excluded.far_path!='' THEN excluded.far_path
+                    WHEN excluded.as_of!=biaoke_open_day_paints.as_of THEN ''
                     ELSE biaoke_open_day_paints.far_path END,
                 near_path=CASE WHEN excluded.near_path!='' THEN excluded.near_path
+                    WHEN excluded.as_of!=biaoke_open_day_paints.as_of THEN ''
                     ELSE biaoke_open_day_paints.near_path END,
                 us_path=CASE WHEN excluded.us_path!='' THEN excluded.us_path
                     ELSE biaoke_open_day_paints.us_path END,
                 micro_path=CASE WHEN excluded.micro_path!='' THEN excluded.micro_path
+                    WHEN excluded.as_of!=biaoke_open_day_paints.as_of THEN ''
                     ELSE biaoke_open_day_paints.micro_path END,
                 pending=1,
                 verdict='',
