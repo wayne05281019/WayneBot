@@ -2,7 +2,7 @@
   "phone_sync": "blocked",
   "LOOKUP_LAB_MARKS_ENABLED": false,
   "promote_to_lookup_display": false,
-  "as_of_taipei": "2026-11-08T11:39:09+08:00",
+  "as_of_taipei": "2026-11-08T11:51:40.668450+08:00",
   "candidates": {
     "early_buy_u112": {
       "key": "ei_n6_and_room__SELL_hi20_or_wave_top",
@@ -13,7 +13,7 @@
       "universe": "U112",
       "glyph": "LAB_BUY_W3_START",
       "status": "locked_lab_candidate",
-      "note_zh": "v40 升級 ei_n6_and_room bars15.94；旗標仍關",
+      "note_zh": "v41 keep ei_n6_and_room bars15.94；旗標仍關；v42 救 body_n5_room ge80",
       "parent_bars": 15.854166666666666
     },
     "early_sell_u112": {
