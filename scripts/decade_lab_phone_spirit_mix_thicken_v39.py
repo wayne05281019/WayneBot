@@ -50,39 +50,59 @@ def _bal(w: float, d: int) -> float:
 
 def run(*, n_stocks: int = 112) -> Dict[str, Any]:
     t0 = time.time()
-    u = select_g_universe(n=n_stocks, must_include=MUST_INCLUDE)
-    meta_n = int(u.get("n") or len(u.get("symbols") or []))
-    symbols: List[str] = list(u.get("symbols") or [])
-    seed = 39039
+    # select_g_universe 回 DataFrame（stock_id 欄），不准當 dict.get("symbols")
+    uni = select_g_universe(
+        n=max(150, int(n_stocks)),
+        include_twse_top100=True,
+        min_avg_turnover_k=1_500_000.0,
+    )
+    symbols: List[str] = uni["stock_id"].astype(str).tolist()
+    for sid in MUST_INCLUDE:
+        sid_s = str(sid)
+        if sid_s not in symbols:
+            symbols.append(sid_s)
+    # U112 目標：必測先留，再補到 n_stocks
+    must = [str(s) for s in MUST_INCLUDE]
+    rest = [s for s in symbols if s not in must]
+    symbols = must + rest
+    symbols = symbols[: max(int(n_stocks), len(must))]
     _, mkt_raw = _twii_wave_pack(entry_preset="A0_strict", score_threshold=40.0)
     trade_bucket: Dict[str, list] = {}
     early_bucket: Dict[str, list] = {}
     errors: List[str] = []
+    meta_n = 0
 
     for sid in symbols:
         try:
             raw = load_stock_ohlcv(sid)
-            if raw is None or len(raw) < 80:
+            if raw is None or len(raw) < 150:
                 continue
-            df = prepare_ohlcv(_normalize_ohlc(raw))
-            if df is None or len(df) < 80:
+            # 與 v38 同口：df＝小寫 OHLC；feat／wave 另吃 prepare_ohlcv(raw)
+            df = _normalize_ohlc(raw)
+            if df is None or len(df) < 150:
                 continue
-            feat = compute_hsiao_features(df)
+            meta_n += 1
+            feat = _align_feat(df, compute_hsiao_features(prepare_ohlcv(raw)))
+            wave = _align_wave(df, _wave_frame(raw))
+            wmasks = _wave_masks(wave)
+            cores = _cores(_build_mark_masks(df), wmasks, feat)
+            bank = _wave_hsiao_bank(feat, wmasks, wave)
+            spirit = build_spirit_masks(df, feat, wmasks=wmasks, bank=bank)
+            barek = _barek_masks(df)
+            ev = _stock_wave_events(raw, df)
+            mkt = _align_mkt(df, mkt_raw)
+            v3 = build_v3_extras(df, feat, bank, barek=barek)
+            v4 = build_v4_extras(df, feat)
             hl, temp = _build_hl_temp(df)
             idx = df.index
-            marks = _build_mark_masks(df, feat)
-            spirit = build_spirit_masks(df, feat)
-            v3 = build_v3_extras(df, feat)
-            v4 = build_v4_extras(df, feat)
-            cores = _cores(df, feat, marks)
-            wpack = _wave_frame(df)
-            wmasks = _wave_masks(wpack)
-            w3u = wmasks.get("w3_up", pd.Series(False, index=idx)).reindex(idx).fillna(False)
-            turn = spirit.get("turn_up", pd.Series(False, index=idx)).reindex(idx).fillna(False)
-            intent = spirit.get("intent_buy", pd.Series(False, index=idx)).reindex(idx).fillna(False)
-            risk = (~spirit.get("risk_off", pd.Series(False, index=idx)).reindex(idx).fillna(False)).fillna(True)
-            t60 = cores.get("t60", pd.Series(True, index=idx)).reindex(idx).fillna(True)
-            week = v3.get("V3_weekly_turn", pd.Series(False, index=idx)).reindex(idx).fillna(False)
+            seed = abs(hash(sid)) % 10_000
+
+            w3u = cores["core_w3_or_ma60w3"].fillna(False)
+            turn = v3["V3_macd_or_kd"].fillna(False) & v3["V3_barek_ok"].fillna(False)
+            intent = spirit["INTENT_build_soft"].fillna(False)
+            t60 = v4["V4_t60_safe"].fillna(False)
+            risk = ~mkt["mkt_rel_high_risk"].fillna(False)
+            week = v4["V4_week_stack"].fillna(False)
             body = v4["V4_body_thrust"].fillna(False)
             no_fake = v4["V4_no_fake_break"].fillna(False)
             bull = (df["close"].astype(float) > df["open"].astype(float)).fillna(False)
@@ -109,26 +129,22 @@ def run(*, n_stocks: int = 112) -> Dict[str, Any]:
                 "ei_n5_body_n3_or_bull": ei_n5 & (_near(body, 3) | _near(bull, 2)),
             }
             wave_top = (
-                spirit.get("LAB_W1_TOP", pd.Series(False, index=idx))
-                | spirit.get("LAB_W3_TOP", pd.Series(False, index=idx))
-                | spirit.get("LAB_SELL_W5_TOP", pd.Series(False, index=idx))
+                ev.get("LAB_W1_TOP", pd.Series(False, index=idx))
+                | ev.get("LAB_W3_TOP", pd.Series(False, index=idx))
+                | ev.get("LAB_SELL_W5_TOP", pd.Series(False, index=idx))
             ).fillna(False)
-            # stock wave events fallback
-            try:
-                ev = _stock_wave_events(df)
-                wave_top = (
-                    wave_top
-                    | ev.get("LAB_W1_TOP", pd.Series(False, index=idx))
-                    | ev.get("LAB_W3_TOP", pd.Series(False, index=idx))
-                    | ev.get("LAB_SELL_W5_TOP", pd.Series(False, index=idx))
-                ).fillna(False)
-            except Exception:
-                pass
 
             for cn, entry in cores_entry.items():
                 key = f"{cn}__SELL_hi20_or_wave_top"
                 trades = _simulate_relhigh(
-                    df, entry, hl=hl, temp_label=temp, sid=sid, entry_tag=key, wave_top=wave_top, mode="hi20_or_wave_top"
+                    df,
+                    entry,
+                    hl=hl,
+                    temp_label=temp,
+                    sid=sid,
+                    entry_tag=key,
+                    wave_top=wave_top,
+                    mode="hi20_or_wave_top",
                 )
                 trade_bucket.setdefault(key, []).extend(trades)
                 early_bucket.setdefault(key, []).extend(
@@ -139,7 +155,14 @@ def run(*, n_stocks: int = 112) -> Dict[str, Any]:
                 rkey = f"random__{key}"
                 trade_bucket.setdefault(rkey, []).extend(
                     _simulate_relhigh(
-                        df, rnd, hl=hl, temp_label=temp, sid=sid, entry_tag=rkey, wave_top=wave_top, mode="hi20_or_wave_top"
+                        df,
+                        rnd,
+                        hl=hl,
+                        temp_label=temp,
+                        sid=sid,
+                        entry_tag=rkey,
+                        wave_top=wave_top,
+                        mode="hi20_or_wave_top",
                     )
                 )
         except Exception as e:
