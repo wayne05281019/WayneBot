@@ -1,0 +1,40 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "as_of_taipei": "2026-11-08T08:51:55.188226+08:00",
+  "gate_one_liner": "spirit_mix_thicken_v27 U112 n=112 confirm_mh30=True confirm_hold=11.019607843137255; pe_ge80_d50=5 earlier=4; best_early=pe2_mh20 hold=9.450980392156863; promote_lookup=NO",
+  "parent_seal": "phone_spirit_mix_thicken_v26_decision.json",
+  "elapsed_s": 338.9,
+  "n_stocks": 112,
+  "confirm_pe2_mh30": {
+    "key": "pe2_mh30",
+    "n_trades": 51,
+    "n_unique_entry_days": 50,
+    "win_rate": 0.803921568627451,
+    "expectancy": 0.009928805544068777,
+    "beats_random": true,
+    "balanced_score": 0.803921568627451,
+    "win_ge80": true,
+    "days_ge50": true,
+    "mean_bars_before_hi20": 15.854166666666666,
+    "mean_hold_days": 11.019607843137255,
+    "earlier_than_parent": false
+  },
+  "upgrade_lock": {
+    "from": "sell_pe2_mh30",
+    "to": "pe2_mh20",
+    "formula": "entry=v11 & (~body | near(intent,3)); exit=hi20|wave|(exhaust|hi10 & unreal>=2%)|max_hold_20",
+    "win_rate": 0.803921568627451,
+    "days": 50,
+    "hold_days": 9.450980392156863,
+    "expectancy": 0.015031084253507002,
+    "ladder_ok": [
+      "pe2_mh28",
+      "pe2_mh25",
+      "pe2_mh22",
+      "pe2_mh20"
+    ]
+  },
+  "finding_zh": "mh30 复現；階梯全過閘，升級 mh20 hold≈9.45（相對 mh30≈11.0、hi20≈15.2），胜率／days／beats_random 維持。",
+  "next": "mix_v28 confirm mh20 + hunt hold<9.45; phone_sync=blocked"
+}
