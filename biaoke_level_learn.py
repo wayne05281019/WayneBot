@@ -5245,16 +5245,23 @@ def _tw_active_low_zone(
     return None
 
 
+# 下週底黃標／AI結束觀察標同一 x＝齊頭（遠／近預設；超近另傳更左避開末K）
+_TEACH_ZONE_LABEL_X = 0.58
+_TEACH_ZONE_LABEL_X_MICRO = 0.34
+
+
 def _paint_c9_low_zone_band(
     ax: Any,
     pack: Optional[Dict[str, Any]],
     *,
     fp: Any,
+    label_x: Optional[float] = None,
 ) -> Optional[Tuple[float, float]]:
     """三窗共用：現行低點區底帶＋標。
 
     雙軌當令＝下週底部 37100~39000（顯眼黃框大標）；否則改口 37000~37500；再否則 C-9 35500~37300。
     他原文兩端；底帶本身非買訊（買點另釘 37837）。
+    label_x：與 AI結束觀察標齊頭；超近須更左，不准壓最後一根K。
     """
     zone = _tw_active_low_zone(pack)
     if not zone:
@@ -5275,9 +5282,9 @@ def _paint_c9_low_zone_band(
         txt_c, fc = ink, "#0b0f14"
     ax.axhspan(lo, hi, facecolor=face, alpha=alpha_span, zorder=0.35)
     mid = (lo + hi) * 0.5
-    # 標在底帶水平置中（略偏右避開左下九波縮圖）；貼最左會被忽略
+    x_lab = float(_TEACH_ZONE_LABEL_X if label_x is None else label_x)
     ax.text(
-        0.58,
+        x_lab,
         mid,
         f"飆預測{_px(lo)}~{_px(hi)}（{tag}）",
         transform=ax.get_yaxis_transform(),
@@ -5332,11 +5339,11 @@ def _paint_ai_end_zone_band(
     pack: Optional[Dict[str, Any]],
     *,
     fp: Any,
-    label_x: float = 0.80,
+    label_x: Optional[float] = None,
 ) -> Optional[Tuple[float, float]]:
     """備線最差：35579~31705 畫 AI 結束觀察帶（非買訊；右欄掛上緣35579＋深殺端31705）。
 
-    帶內標放大；預設靠右上避開左下八浪／九波縮圖。超近可傳 label_x 避開右下九波框。
+    帶內標放大；x 與下週底部觀察黃標齊頭（同 _TEACH_ZONE_LABEL_X／超近 MICRO）。
     """
     zone = _tw_ai_end_zone(pack)
     if not zone:
@@ -5344,10 +5351,10 @@ def _paint_ai_end_zone_band(
     lo, hi = zone
     face, ink = "#ce93d8", "#e1bee7"
     ax.axhspan(lo, hi, facecolor=face, alpha=0.10, zorder=0.30)
-    # 上緣 78% 高：縮圖多在左下／底排，標貼上緣才不被擋
-    y_lab = float(lo) + (float(hi) - float(lo)) * 0.78
+    y_lab = float(lo) + (float(hi) - float(lo)) * 0.55  # 帶內垂直置中，與上黃標同欄齊頭
+    x_lab = float(_TEACH_ZONE_LABEL_X if label_x is None else label_x)
     ax.text(
-        float(label_x),
+        x_lab,
         y_lab,
         f"飆預測{_px(lo)}~{_px(hi)}（AI行情結束觀察）",
         transform=ax.get_yaxis_transform(),
@@ -13098,9 +13105,9 @@ def _render_twii_super_near_c9_60m(
         skip_label_ys=[float(v) for v in tip_anchors],
         vol_lookback=40,
     )
-    _paint_c9_low_zone_band(ax, pack, fp=_fp)
-    # 超近60分：九波在底排右側，AI標改偏中，不准被擋
-    _paint_ai_end_zone_band(ax, pack, fp=_fp, label_x=0.48)
+    _paint_c9_low_zone_band(ax, pack, fp=_fp, label_x=_TEACH_ZONE_LABEL_X_MICRO)
+    # 超近60分：黃標／AI標同欄偏左，齊頭且不准壓末K
+    _paint_ai_end_zone_band(ax, pack, fp=_fp, label_x=_TEACH_ZONE_LABEL_X_MICRO)
     # 交易日界線：垂直淡線，對日期
     _xticks, _xlabs, _bounds = _c9_60m_day_boundary_ticks(rows)
     for bi in _bounds[1:]:
@@ -13461,9 +13468,9 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         vol_lookback=40,
         vol_sr=micro_vol_sr,
     )
-    _paint_c9_low_zone_band(ax, pack, fp=_fp)
-    # 超近日K：底排有九波框，AI標偏中上緣，不准被縮圖擋
-    _paint_ai_end_zone_band(ax, pack, fp=_fp, label_x=0.48)
+    _paint_c9_low_zone_band(ax, pack, fp=_fp, label_x=_TEACH_ZONE_LABEL_X_MICRO)
+    # 超近日K：黃標／AI標同欄偏左，齊頭且不准壓末K／九波框
+    _paint_ai_end_zone_band(ax, pack, fp=_fp, label_x=_TEACH_ZONE_LABEL_X_MICRO)
     _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_up_taiwan)
     i_vmax = zone.get("i_vmax")
     if i_vmax is not None:
