@@ -15003,22 +15003,33 @@ def render_oral_dual_path_schematic(
         logger.exception("口述對照圖缺 matplotlib")
         return ""
 
-    fp_path = ""
-    for cand in (
-        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-        "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
-    ):
-        if os.path.isfile(cand):
-            fp_path = cand
-            break
+    # 與三窗／高低卡同源：wayne_navigator 打包 NotoSansTC（Render 無系統 CJK 也要有字）
+    # 不准只用系統 NotoSansCJK.ttc——缺檔或 TTC 選錯面＝豆腐「字」方塊，話筒讀不到
+    try:
+        from wayne_navigator import _fp as _nav_fp
 
-    def _fp(size: float = 11.0, weight: str = "normal"):
-        if fp_path:
-            return font_manager.FontProperties(
-                fname=fp_path, size=size, weight=weight
-            )
-        return font_manager.FontProperties(size=size, weight=weight)
+        def _fp(size: float = 11.0, weight: str = "normal"):
+            return _nav_fp(float(size), weight)
+
+    except Exception:
+        fp_path = ""
+        for cand in (
+            os.path.join(os.path.dirname(__file__) or ".", "fonts", "NotoSansTC-w860.ttf"),
+            os.path.join(os.path.dirname(__file__) or ".", "fonts", "NotoSansTC-w560.ttf"),
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+        ):
+            if os.path.isfile(cand):
+                fp_path = cand
+                break
+
+        def _fp(size: float = 11.0, weight: str = "normal"):
+            if fp_path:
+                return font_manager.FontProperties(
+                    fname=fp_path, size=size, weight=weight
+                )
+            return font_manager.FontProperties(size=size, weight=weight)
 
     fig, axes = plt.subplots(2, 1, figsize=(11.2, 9.0), dpi=150)
     fig.patch.set_facecolor("#0f1419")
