@@ -537,8 +537,13 @@ def _merge_live_twii_display_bar(
 def _merge_live_sox_display_bar(
     bars: Sequence[Dict[str, Any]], live: Optional[Dict[str, Any]]
 ) -> List[Dict[str, Any]]:
-    """美股現金盤中：Yahoo 費半當日未收柱疊顯示（不寫庫）。"""
+    """美股現金盤中：Yahoo 費半當日未收柱疊顯示（不寫庫）。
+
+    live_session≠1（含週末休市官方收）不准蓋掉日K，否則黃框「收盤」會吃到盤後殘價。
+    """
     if not live:
+        return [dict(r) for r in (bars or [])]
+    if int((live or {}).get("live_session") or 0) != 1:
         return [dict(r) for r in (bars or [])]
     day = _ymd(live.get("date")) or ""
     if len(day) != 8:
@@ -554,6 +559,7 @@ def _ensure_paint_live_sox(
     """出圖當下再抓費半（force）：現金盤中／盤後／盤前有價都疊。
 
     話筒晚上按波浪也要更新黃框＋末根；不准只吃現金盤中才動。
+    週末／全日休市：清掉 live_sox，黃框走官方收。
     """
     dt = now or datetime.now(TAIPEI)
     if getattr(dt, "tzinfo", None) is None:
@@ -570,6 +576,13 @@ def _ensure_paint_live_sox(
         live = None
     # 只把「真的在動」的費半當 live_sox（盤中／盤前／盤後末筆）；否則清掉舊 live，改走收盤注入
     is_live = bool(live) and int((live or {}).get("live_session") or 0) == 1
+    try:
+        from us_overnight import _us_cash_calendar_closed
+
+        if is_live and _us_cash_calendar_closed(dt):
+            is_live = False
+    except Exception:
+        pass
     if is_live and isinstance(pack, dict):
         pack["live_sox"] = live
         try:
@@ -585,8 +598,9 @@ def _ensure_paint_live_sox(
             logger.debug("出圖費半撐壓階梯略過", exc_info=True)
         return live
     if isinstance(pack, dict):
-        if live and not is_live:
-            pack.pop("live_sox", None)
+        # 休市／非 live：一律清殘旗，不准週末還拿舊 live_sox 蓋收盤
+        pack.pop("live_sox", None)
+        if live:
             try:
                 pred = (
                     pack.get("pred_levels")
@@ -598,8 +612,6 @@ def _ensure_paint_live_sox(
                 )
             except Exception:
                 pass
-        elif isinstance(pack.get("live_sox"), dict):
-            return pack.get("live_sox")
     return None
 
 
@@ -1730,14 +1742,20 @@ def _resolve_tx_after_hours_tip(
 
     漲跌對照＝官方 CRefPrice（參考價／日盤結算），不准用前一夜盤收當前收
    （否則會把 −4.5% 算成 −8.7%）。
+    夜盤未進行（週末／白天）：不准吃 MIS 殘價；改走庫內官方夜盤收。
     """
     close: Optional[float] = None
     prev: Optional[float] = None
     asof = ""
     clock = ""
-    # 0) pack 已抓的 live_tx（同口 OHLC＋ref）
+    night_live = _tx_night_session_live(_query_now_from_pack(pack))
+    # 0) pack 已抓的 live_tx（同口 OHLC＋ref）——只在夜盤進行中
     live0 = (pack or {}).get("live_tx") if isinstance(pack, dict) else None
-    if isinstance(live0, dict) and float(live0.get("close") or 0) > 0:
+    if (
+        night_live
+        and isinstance(live0, dict)
+        and float(live0.get("close") or 0) > 0
+    ):
         close = float(live0["close"])
         clock = str(live0.get("update_time") or "").strip()
         asof = _ymd(live0.get("date")) or ""
@@ -1758,8 +1776,8 @@ def _resolve_tx_after_hours_tip(
                         prev = None
             except (TypeError, ValueError):
                 prev = None
-    # 1) 夜盤即時 MIS
-    if close is None:
+    # 1) 夜盤即時 MIS——週末／白天不准抓殘價冒充收盤
+    if night_live and close is None:
         try:
             from market_ticker import fetch_tx_live
 
@@ -3196,7 +3214,8 @@ def _fetch_yahoo_index_near_bars(yid: str = "^SOX") -> List[Dict[str, Any]]:
         phase = str(us_tape_phase(datetime.now(TAIPEI)) or "")
     except Exception:
         phase = ""
-    if phase != "regular":
+    # 只在同日盤後（post）用 meta 修盤中殘值；週末 overnight 不准蓋官方收
+    if phase == "post":
         try:
             px = float(meta.get("regularMarketPrice") or 0)
         except (TypeError, ValueError):
@@ -3344,10 +3363,11 @@ def _reconcile_us_index_last_close(db_path: str, *, sym: str, yid: str) -> bool:
         return False
     now = datetime.now(TAIPEI)
     try:
-        if us_tape_phase(now) == "regular":
+        # 只在同日盤後修盤中殘值；週末 overnight 不准用 meta 蓋官方收
+        if us_tape_phase(now) != "post":
             return False
     except Exception:
-        pass
+        return False
     ua = {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -3569,12 +3589,19 @@ def _ensure_paint_live_tx(
     *,
     now: Optional[datetime] = None,
 ) -> Optional[Dict[str, Any]]:
-    """出圖當下抓台指電子盤即時 OHLC；遠窗台指電子盤欄＋紅框同口價。"""
+    """出圖當下抓台指電子盤即時 OHLC；遠窗台指電子盤欄＋紅框同口價。
+
+    只在夜盤進行中才疊；週末／白天清掉殘 live，紅框走官方夜盤收。
+    """
     dt = now or datetime.now(TAIPEI)
     if getattr(dt, "tzinfo", None) is None:
         dt = dt.replace(tzinfo=TAIPEI)
     else:
         dt = dt.astimezone(TAIPEI)
+    if not _tx_night_session_live(dt):
+        if isinstance(pack, dict):
+            pack.pop("live_tx", None)
+        return None
     live: Optional[Dict[str, Any]] = None
     try:
         from biaoke_verify import fetch_tx_ohlc

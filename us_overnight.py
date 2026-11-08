@@ -315,6 +315,23 @@ def _fetch_symbol(sym: str, *, session_open: bool = False, timeout: float = 20) 
     return {"symbol": meta.get("symbol") or sym, "price": px, "pct": pct, "chg": chg, "session": session}
 
 
+def _us_cash_calendar_closed(now: Optional[datetime] = None) -> bool:
+    """美股現金全日休市／週末：不准把盤前／盤後殘價當收盤黃框。"""
+    if now is None:
+        dt = datetime.now(NY)
+    elif now.tzinfo is None:
+        dt = now.replace(tzinfo=NY)
+    else:
+        dt = now.astimezone(NY)
+    try:
+        from us_holidays import lookup_us_session
+
+        kind = lookup_us_session(dt.strftime("%Y%m%d")).get("kind") or "open"
+    except Exception:
+        kind = "weekend" if dt.weekday() >= 5 else "open"
+    return kind in ("weekend", "full_close")
+
+
 def fetch_live_sox_display_bar(
     now: Optional[datetime] = None, *, force: bool = False
 ) -> Optional[Dict[str, Any]]:
@@ -322,13 +339,15 @@ def fetch_live_sox_display_bar(
 
     - regular：現金盤中未收 OHLC（live_session=1）
     - post：現金收＋盤後末筆疊上（live_session=1）
-    - overnight＋force：試盤前末筆；有就 live；沒有就回最新日K（live_session=0）
+    - overnight＋force：開市日試盤前末筆；有就 live；沒有就回最新日K（live_session=0）
+    - 週末／全日休市：只回日K官方收（live_session=0），不准盤前／盤後殘價蓋收盤
     費半指數量常為 0 → 另帶 SOXX 量代理（標 volume_proxy）。
     話筒波浪鍵 force=True：晚上也隨時重抓費半。
     """
     phase = us_tape_phase(now)
     if phase not in ("regular", "post") and not force:
         return None
+    us_closed = _us_cash_calendar_closed(now)
     try:
         url = _chart_url("^SOX", interval="1d", range_="5d")
         resp = _SESSION.get(url, timeout=20)
@@ -344,14 +363,23 @@ def fetch_live_sox_display_bar(
         lows = qblock.get("low") or []
         closes = qblock.get("close") or []
         vols = qblock.get("volume") or []
-        last_px = _as_float(meta.get("regularMarketPrice"))
+        # 休市黃框只認日K官方收；meta／盤後殘價不准蓋
+        cash_close = _as_float(closes[-1]) if closes else None
+        last_px = cash_close
         if last_px is None or last_px <= 0:
-            last_px = _as_float(closes[-1]) if closes else None
+            last_px = _as_float(meta.get("regularMarketPrice"))
+        if not us_closed:
+            meta_px = _as_float(meta.get("regularMarketPrice"))
+            if meta_px is not None and meta_px > 0:
+                last_px = meta_px
+            if last_px is None or last_px <= 0:
+                last_px = cash_close
         if last_px is None or last_px <= 0:
             return None
         # 盤前：Yahoo meta.preMarketPrice（指數有才用；仍須 >=500）
+        # 週末／全日休市不准盤前殘價
         pre_from_meta = False
-        if phase == "overnight":
+        if phase == "overnight" and not us_closed:
             pre_px = _as_float(meta.get("preMarketPrice"))
             if pre_px is not None and pre_px >= 500:
                 last_px = float(pre_px)
@@ -406,7 +434,11 @@ def fetch_live_sox_display_bar(
             if expected:
                 session = expected
         # 盤後／盤前：只疊 ^SOX 1 分末筆（不准用 SOXX ETF 價蓋指數）
-        if phase in ("post", "overnight") or (force and phase != "regular"):
+        # 週末／全日休市：不准盤後殘價蓋官方收（話筒黃框會標成「收盤」卻是隔夜價）
+        if (
+            not us_closed
+            and (phase in ("post", "overnight") or (force and phase != "regular"))
+        ):
             ext = None
             try:
                 if phase == "post":
@@ -434,6 +466,10 @@ def fetch_live_sox_display_bar(
                             ).strftime("%Y%m%d")
                         except Exception:
                             pass
+        if us_closed:
+            live_flag = 0
+            if cash_close is not None and cash_close > 0:
+                last_px = float(cash_close)
         return {
             "date": session,
             "open": float(o),
