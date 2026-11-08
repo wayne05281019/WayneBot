@@ -6992,9 +6992,11 @@ class WayneTelegramBot:
         sent = 0
         try:
             from biaoke_level_learn import (
+                compute_teach_tip_snapshot,
                 latest_teach_kit,
                 paint_open_day_hypothesis,
                 prepare_wave_live_pack,
+                teach_tip_snapshots_match,
                 _wave_now_ladder,
             )
             from wayne_navigator import submit_mpl_paint
@@ -7047,6 +7049,12 @@ class WayneTelegramBot:
             thesis = str(pack.get("thesis") or stored.get("thesis") or "").strip()
             as_of = str(pack.get("chart_as_of") or stored.get("as_of") or "").strip()
             want_as = str(pack.get("chart_as_of") or "").replace("-", "")[:8]
+            want_tip: dict = {}
+            try:
+                want_tip = compute_teach_tip_snapshot(self.db_path, pack) or {}
+            except Exception:
+                logger.exception("大盤現況 tip 略過")
+                want_tip = {}
 
             def _stored_asof_ok() -> bool:
                 """存檔 as_of 不得落後 pack 顯示日；落後＝舊圖，不准回退。"""
@@ -7056,6 +7064,17 @@ class WayneTelegramBot:
                 if want_as and len(want_as) == 8 and not got:
                     return False
                 return True
+
+            def _stored_reuse_ok() -> bool:
+                """as_of 夠新還不夠：費半／電子盤／加權 tip 一口要對得上，不准混舊戳。"""
+                if not _stored_asof_ok():
+                    return False
+                got_tip = stored.get("teach_tip") if isinstance(stored, dict) else None
+                if not isinstance(got_tip, dict) or not got_tip:
+                    return False
+                if not want_tip:
+                    return False
+                return bool(teach_tip_snapshots_match(want_tip, got_tip))
 
             # 層級一句用同一 pack，不准再 _build_live_pack
             ladder_line = ""
@@ -7117,7 +7136,7 @@ class WayneTelegramBot:
                 if far_painted:
                     thesis = str(far_painted.get("thesis") or thesis)[:180]
                     as_of = str(far_painted.get("as_of") or as_of)
-                if not self._market_teach_path_ok(far_path) and _stored_asof_ok():
+                if not self._market_teach_path_ok(far_path) and _stored_reuse_ok():
                     far_path = str(stored.get("far_path") or "")
                 if not self._market_teach_path_ok(far_path):
                     if wait_h and wait_h[0] is not None:
@@ -7188,7 +7207,7 @@ class WayneTelegramBot:
                     logger.exception("大盤近窗活畫略過")
                     near_painted = {}
                 near_path = str((near_painted or {}).get("near_path") or "")
-                if not self._market_teach_path_ok(near_path) and _stored_asof_ok():
+                if not self._market_teach_path_ok(near_path) and _stored_reuse_ok():
                     near_path = str(stored.get("near_path") or "")
 
                 # 3) 開超近 paint，同時送近窗
@@ -7240,7 +7259,7 @@ class WayneTelegramBot:
                     logger.exception("大盤超近活畫略過")
                     micro_painted = {}
                 micro_path = str((micro_painted or {}).get("micro_path") or "")
-                if not self._market_teach_path_ok(micro_path) and _stored_asof_ok():
+                if not self._market_teach_path_ok(micro_path) and _stored_reuse_ok():
                     micro_path = str(stored.get("micro_path") or "")
 
                 if self._market_teach_path_ok(micro_path):

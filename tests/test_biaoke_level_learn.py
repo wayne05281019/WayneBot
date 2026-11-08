@@ -1489,11 +1489,71 @@ def test_far_paint_wires_sox_yahoo_inject_and_stamp_uses_pair():
     assert "_us_real_close_pair(sox," in src
     assert '_sox_chg_tip = {\n            "close": float(_sox_last_repaint["c"])' not in src
     assert '"close": float(_tip_close)' in src
-    # tip／黃框釘真實美股日；盤中只認 live_session=1；填日不畫假K
+    # tip／黃框釘真實美股日；盤中只認現金 regular；填日不畫假K
     assert "_sox_axis_index_for_ymd" in src
     assert 'int((_sox_live or {}).get("live_session") or 0) == 1' in src
+    assert "_sox_cash_session_live(_query_now_from_pack(pack))" in src
+    assert "_resolve_tx_after_hours_tip(db_path, pack)" in src
+    assert "not _tx_night_live" in src
     assert "_sox_real_days" in src
     assert "not in _sox_real_days" in src
+
+
+def test_ensure_paint_live_sox_rejects_post_overlay(monkeypatch):
+    """美股盤後即使 live_session=1，也不准寫進 pack.live_sox 蓋官方收。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_level_learn import _ensure_paint_live_sox
+
+    post_bar = {
+        "date": "20261106",
+        "open": 9495.0,
+        "high": 9627.0,
+        "low": 9221.0,
+        "close": 9474.0,
+        "volume": 0,
+        "live_session": 1,
+        "session_phase": "post",
+    }
+    monkeypatch.setattr(
+        "us_overnight.fetch_live_sox_display_bar",
+        lambda now=None, force=False: dict(post_bar),
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._sox_cash_session_live",
+        lambda now=None: False,
+    )
+    pack: dict = {"live_sox": {"close": 9999.0, "live_session": 1}}
+    out = _ensure_paint_live_sox(
+        pack, now=datetime(2026, 11, 7, 6, 30, tzinfo=ZoneInfo("Asia/Taipei"))
+    )
+    assert out is None
+    assert pack.get("live_sox") is None
+
+
+def test_teach_tip_snapshots_match_gates_stale_kit():
+    """三窗 tip 一口：價／日／盤中旗不一致 → 不准回退舊圖。"""
+    from biaoke_level_learn import teach_tip_snapshots_match
+
+    base = {
+        "tw_asof": "20261106",
+        "tw_close": 39701.64,
+        "tw_live": 0,
+        "sox_asof": "20261106",
+        "sox_close": 9390.25,
+        "sox_live": 0,
+        "tx_asof": "20261106",
+        "tx_close": 38936.0,
+        "tx_live": 0,
+    }
+    assert teach_tip_snapshots_match(base, dict(base))
+    stale_sox = dict(base, sox_close=9474.0)
+    assert not teach_tip_snapshots_match(base, stale_sox)
+    bad_day = dict(base, tx_asof="20261105")
+    assert not teach_tip_snapshots_match(base, bad_day)
+    assert not teach_tip_snapshots_match(base, {})
+    assert not teach_tip_snapshots_match(base, None)
 
 
 def test_sox_axis_index_for_ymd_prefers_tw_then_extra():
@@ -2184,6 +2244,7 @@ def test_latest_teach_kit_reads_paths(tmp_path):
     assert kit["micro_path"] == str(micro)
     assert kit["us_path"] == ""
     assert "C" in kit["thesis"]
+    assert kit.get("teach_tip") == {}
 
 
 def test_latest_teach_kit_skips_missing_files(tmp_path):

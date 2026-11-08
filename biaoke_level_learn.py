@@ -556,10 +556,12 @@ def _ensure_paint_live_sox(
     *,
     now: Optional[datetime] = None,
 ) -> Optional[Dict[str, Any]]:
-    """出圖當下再抓費半（force）：現金盤中／盤後／盤前有價都疊。
+    """出圖當下再抓費半（force）。
 
-    話筒晚上按波浪也要更新黃框＋末根；不准只吃現金盤中才動。
-    週末／全日休市：清掉 live_sox，黃框走官方收。
+    黃框／末根K 只在美股**現金盤中**（regular）疊即時＝標「盤中」。
+    盤後／盤前／週末：清掉 live_sox，黃框走官方收＝標「收盤」；
+    不准把盤後殘價併進列卻寫收盤（話筒會看成錯價）。
+    撐壓階梯仍可用抓到的價刷新（不寫進 live_sox）。
     """
     dt = now or datetime.now(TAIPEI)
     if getattr(dt, "tzinfo", None) is None:
@@ -574,8 +576,10 @@ def _ensure_paint_live_sox(
     except Exception:
         logger.debug("出圖費半即時略過", exc_info=True)
         live = None
-    # 只把「真的在動」的費半當 live_sox（盤中／盤前／盤後末筆）；否則清掉舊 live，改走收盤注入
+    # 只認現金盤中；盤前／盤後 live_session=1 也不准蓋官方收
     is_live = bool(live) and int((live or {}).get("live_session") or 0) == 1
+    if is_live and not _sox_cash_session_live(dt):
+        is_live = False
     try:
         from us_overnight import _us_cash_calendar_closed
 
@@ -598,7 +602,7 @@ def _ensure_paint_live_sox(
             logger.debug("出圖費半撐壓階梯略過", exc_info=True)
         return live
     if isinstance(pack, dict):
-        # 休市／非 live：一律清殘旗，不准週末還拿舊 live_sox 蓋收盤
+        # 休市／非現金盤中：一律清殘旗，不准盤後殘價蓋收盤
         pack.pop("live_sox", None)
         if live:
             try:
@@ -613,6 +617,97 @@ def _ensure_paint_live_sox(
             except Exception:
                 pass
     return None
+
+
+def compute_teach_tip_snapshot(
+    db_path: str, pack: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """三窗現況一口：加權／費半／台指電子盤 asof＋收／是否盤中。
+
+    話筒存檔回退要比對這份；三張對不起來＝不准混用舊圖。
+    """
+    pack = pack if isinstance(pack, dict) else {}
+    out: Dict[str, Any] = {
+        "tw_asof": "",
+        "tw_close": None,
+        "tw_live": 0,
+        "sox_asof": "",
+        "sox_close": None,
+        "sox_live": 0,
+        "tx_asof": "",
+        "tx_close": None,
+        "tx_live": 0,
+    }
+    wall = _query_now_from_pack(pack)
+    try:
+        bars = _twii_bars_for_teach(db_path, 8, pack)
+        if bars:
+            out["tw_asof"] = _ymd(bars[-1].get("date"))
+            try:
+                out["tw_close"] = float(bars[-1].get("close") or 0) or None
+            except (TypeError, ValueError):
+                out["tw_close"] = None
+            live = int((bars[-1] or {}).get("live_session") or 0) == 1
+            if live and not _twii_cash_session_live(wall):
+                live = False
+            out["tw_live"] = 1 if live else 0
+    except Exception:
+        logger.debug("teach tip tw 略過", exc_info=True)
+    try:
+        sox_live = None
+        raw = pack.get("live_sox") if isinstance(pack.get("live_sox"), dict) else None
+        if (
+            isinstance(raw, dict)
+            and float(raw.get("close") or 0) > 0
+            and int(raw.get("live_session") or 0) == 1
+            and _sox_cash_session_live(wall)
+        ):
+            sox_live = raw
+        sox_rows = _load_us_daily(db_path, "SOX", "20260101") if db_path else []
+        pair = _us_real_close_pair(sox_rows, sox_live)
+        out["sox_asof"] = _ymd(pair.get("asof")) or ""
+        out["sox_close"] = pair.get("close")
+        out["sox_live"] = 1 if sox_live else 0
+    except Exception:
+        logger.debug("teach tip sox 略過", exc_info=True)
+    try:
+        tip = _resolve_tx_after_hours_tip(db_path, pack)
+        if tip and float(tip.get("close") or 0) > 0:
+            out["tx_asof"] = _ymd(tip.get("asof")) or ""
+            out["tx_close"] = float(tip["close"])
+            night = bool(_tx_night_session_live(wall))
+            out["tx_live"] = 1 if night and str(tip.get("clock") or "").strip() else 0
+    except Exception:
+        logger.debug("teach tip tx 略過", exc_info=True)
+    return out
+
+
+def teach_tip_snapshots_match(
+    want: Optional[Dict[str, Any]],
+    got: Optional[Dict[str, Any]],
+    *,
+    px_tol: float = 1.5,
+) -> bool:
+    """存檔 tip 與當下 tip 同口才准回退舊圖；缺欄／價差＝否。"""
+    if not isinstance(want, dict) or not isinstance(got, dict) or not want or not got:
+        return False
+    for prefix in ("tw", "sox", "tx"):
+        wa = _ymd(want.get(f"{prefix}_asof"))
+        ga = _ymd(got.get(f"{prefix}_asof"))
+        if wa and ga and wa != ga:
+            return False
+        if int(want.get(f"{prefix}_live") or 0) != int(got.get(f"{prefix}_live") or 0):
+            return False
+        try:
+            wc = float(want.get(f"{prefix}_close") or 0)
+            gc = float(got.get(f"{prefix}_close") or 0)
+        except (TypeError, ValueError):
+            return False
+        if wc <= 0 or gc <= 0:
+            return False
+        if abs(wc - gc) > float(px_tol):
+            return False
+    return True
 
 
 def _sox_axis_index_for_ymd(
@@ -10038,23 +10133,80 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     for a in (axu, axt, ax, axv):
         a.set_xlim(x_left, x_right)
     # xlim 定完再蓋末根費半K（避免右標／裁切吃掉周五官方柱）
+    # 電子盤／費半黃框與末根同口：先算 tip，休市末K不准停在軸上殘值
+    _tx_chg_tip = _resolve_tx_after_hours_tip(db_path, pack)
+    _tx_night_live = bool(_tx_night_session_live(_query_now_from_pack(pack)))
+    if _tx_last_repaint and _tx_chg_tip and not _tx_night_live:
+        try:
+            _tip_tx_c = float(_tx_chg_tip.get("close") or 0)
+        except (TypeError, ValueError):
+            _tip_tx_c = 0.0
+        _tip_tx_asof = _ymd(_tx_chg_tip.get("asof"))
+        if _tip_tx_c > 0:
+            _tx_last_repaint["c"] = _tip_tx_c
+            if _tip_tx_asof:
+                _tx_last_repaint["asof"] = _tip_tx_asof
+                # 末根索引／OHLC 釘官方夜盤日，不准停在加權填日格
+                for _i, _r in enumerate(bars):
+                    if _ymd((_r or {}).get("date")) != _tip_tx_asof:
+                        continue
+                    if _i >= len(tx_c):
+                        break
+                    _tx_last_repaint["i"] = int(_i)
+                    try:
+                        # 官方列優先（軸可能被前收填污染）
+                        _off = next(
+                            (
+                                r
+                                for r in reversed(list(tx_rows or []))
+                                if _ymd((r or {}).get("date")) == _tip_tx_asof
+                                and float((r or {}).get("close") or 0) > 0
+                            ),
+                            None,
+                        )
+                    except Exception:
+                        _off = None
+                    if isinstance(_off, dict):
+                        try:
+                            _tx_last_repaint["o"] = float(
+                                _off.get("open") or _tip_tx_c
+                            )
+                            _tx_last_repaint["h"] = float(
+                                _off.get("high") or _tip_tx_c
+                            )
+                            _tx_last_repaint["l"] = float(
+                                _off.get("low") or _tip_tx_c
+                            )
+                            _tx_last_repaint["c"] = float(
+                                _off.get("close") or _tip_tx_c
+                            )
+                        except (TypeError, ValueError):
+                            pass
+                    _prev_i = next(
+                        (
+                            j
+                            for j in range(int(_i) - 1, -1, -1)
+                            if j in _tx_valid_set
+                        ),
+                        None,
+                    )
+                    if _prev_i is not None and _tx_chg_tip.get("prev"):
+                        try:
+                            _tx_last_repaint["prev"] = float(_tx_chg_tip["prev"])
+                        except (TypeError, ValueError):
+                            _tx_last_repaint["prev"] = float(tx_c[_prev_i])
+                    break
     if _sox_last_repaint:
         # 黃框＋末根K同口：只認真實美股列（Yahoo 已注入）；不准軸上前收填日殘值
+        # 現金盤中才 live；盤後／盤前殘旗不准蓋官方收
         _sox_live = (pack or {}).get("live_sox") if isinstance(pack, dict) else None
         if not isinstance(_sox_live, dict):
             _sox_live = live_sox if isinstance(live_sox, dict) else None
-        _sox_phase = str((_sox_live or {}).get("session_phase") or "")
         _sox_is_live = (
             isinstance(_sox_live, dict)
             and float((_sox_live or {}).get("close") or 0) > 0
             and int((_sox_live or {}).get("live_session") or 0) == 1
-            and (
-                _sox_phase == "regular"
-                or (
-                    not _sox_phase
-                    and _sox_cash_session_live(_query_now_from_pack(pack))
-                )
-            )
+            and _sox_cash_session_live(_query_now_from_pack(pack))
         )
         _pair = _us_real_close_pair(sox, _sox_live if _sox_is_live else None)
         _tip_close = _pair.get("close")
@@ -10287,60 +10439,52 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             pack=pack,
             ax=axu,
         )
-    # 漲跌一律對官方參考價（CRefPrice）；不准用前一夜盤收當 prev
-    _tx_chg_tip = _resolve_tx_after_hours_tip(db_path, pack)
-    _tx_night_live = bool(
-        _tx_night_session_live(_query_now_from_pack(pack))
-    )
-    if _tx_last_repaint and _tx_chg_tip:
+    # 漲跌一律對官方參考價（CRefPrice）；戳價＝tip 一口（與末根K已同步）
+    if _tx_chg_tip:
         _tx_clock = str(
             _tx_chg_tip.get("clock")
             or ((live_tx or (pack or {}).get("live_tx") or {}).get("update_time"))
             or ""
         )
         _tx_asof_stamp = str(
-            _tx_last_repaint.get("asof")
-            or _tx_chg_tip.get("asof")
+            _tx_chg_tip.get("asof")
+            or (_tx_last_repaint or {}).get("asof")
             or _ymd(((live_tx or (pack or {}).get("live_tx") or {}).get("date")))
-            or (bars[_tx_last_repaint["i"]].get("date") if bars else "")
+            or (
+                bars[_tx_last_repaint["i"]].get("date")
+                if _tx_last_repaint and bars
+                else ""
+            )
             or ""
         )
-        _paint_tx_after_hours_tip(
-            fig,
-            close=float(_tx_last_repaint["c"]),
-            prev_close=_tx_chg_tip.get("prev"),
-            label_prefix="台指電子盤",
-            fp=_fp,
-            x=_stamp_ax_x,
-            y=_stamp_ax_y,
-            ha="left",
-            va="top",
-            clock=_tx_clock,
-            asof_ymd=_tx_asof_stamp,
-            # 夜盤進行中才盤中；MIS 末筆鐘／殘 live 不准白天冒充盤中
-            session_live=_tx_night_live
-            and bool(live_tx or (pack or {}).get("live_tx") or _tx_clock),
-            pack=pack,
-            ax=axt,
-        )
-    elif _tx_chg_tip:
-        _tx_clock = str(_tx_chg_tip.get("clock") or "")
-        _paint_tx_after_hours_tip(
-            fig,
-            close=float(_tx_chg_tip["close"]),
-            prev_close=_tx_chg_tip.get("prev"),
-            label_prefix=str(_tx_chg_tip.get("label") or "台指電子盤"),
-            fp=_fp,
-            x=_stamp_ax_x,
-            y=_stamp_ax_y,
-            ha="left",
-            va="top",
-            clock=_tx_clock,
-            asof_ymd=str(_tx_chg_tip.get("asof") or ""),
-            session_live=_tx_night_live and bool(_tx_clock),
-            pack=pack,
-            ax=axt,
-        )
+        try:
+            _tx_stamp_px = float(_tx_chg_tip.get("close") or 0)
+        except (TypeError, ValueError):
+            _tx_stamp_px = 0.0
+        if _tx_stamp_px <= 0 and _tx_last_repaint:
+            try:
+                _tx_stamp_px = float(_tx_last_repaint.get("c") or 0)
+            except (TypeError, ValueError):
+                _tx_stamp_px = 0.0
+        if _tx_stamp_px > 0:
+            _paint_tx_after_hours_tip(
+                fig,
+                close=float(_tx_stamp_px),
+                prev_close=_tx_chg_tip.get("prev"),
+                label_prefix=str(_tx_chg_tip.get("label") or "台指電子盤"),
+                fp=_fp,
+                x=_stamp_ax_x,
+                y=_stamp_ax_y,
+                ha="left",
+                va="top",
+                clock=_tx_clock,
+                asof_ymd=_tx_asof_stamp,
+                # 夜盤進行中才盤中；MIS 末筆鐘／殘 live 不准白天冒充盤中
+                session_live=_tx_night_live
+                and bool(live_tx or (pack or {}).get("live_tx") or _tx_clock),
+                pack=pack,
+                ax=axt,
+            )
     _paint_teach_query_stamp(
         fig,
         bars,
@@ -13373,6 +13517,15 @@ def paint_open_day_hypothesis(
             chart_as_of = _ymd(live_bars[-1].get("date")) or chart_as_of
     except Exception:
         pass
+    # 三窗現況 tip 落 key_levels：話筒回退舊圖要比對同口
+    if not isinstance(key_levels, dict):
+        key_levels = {}
+    else:
+        key_levels = dict(key_levels)
+    try:
+        key_levels["_teach_tip"] = compute_teach_tip_snapshot(db_path, pack)
+    except Exception:
+        logger.debug("teach tip 落檔略過", exc_info=True)
 
     conn = sqlite3.connect(db_path, timeout=30.0)
     try:
@@ -13468,12 +13621,13 @@ def paint_open_day_hypothesis(
     }
 
 
-def latest_teach_kit(db_path: str) -> Dict[str, str]:
+def latest_teach_kit(db_path: str) -> Dict[str, Any]:
     """話筒空白鍵教具：取最近一槽已存遠／近／超級近／外圍路徑（有檔才回）。
 
     失敗回空 dict；不准擋主摘要。不在這裡重渲（重渲走 paint_open_day_hypothesis）。
+    附 teach_tip（key_levels._teach_tip）供回退比對三窗現況一口。
     """
-    out: Dict[str, str] = {
+    out: Dict[str, Any] = {
         "far_path": "",
         "near_path": "",
         "micro_path": "",
@@ -13481,6 +13635,7 @@ def latest_teach_kit(db_path: str) -> Dict[str, str]:
         "thesis": "",
         "slot_id": "",
         "as_of": "",
+        "teach_tip": {},
     }
     if not db_path:
         return out
@@ -13490,7 +13645,7 @@ def latest_teach_kit(db_path: str) -> Dict[str, str]:
         try:
             row = conn.execute(
                 "SELECT slot_id, as_of, thesis, far_path, near_path, us_path, "
-                "COALESCE(micro_path,'') "
+                "COALESCE(micro_path,''), COALESCE(key_levels,'') "
                 "FROM biaoke_open_day_paints "
                 "ORDER BY created_at DESC, slot_id DESC LIMIT 1"
             ).fetchone()
@@ -13518,6 +13673,13 @@ def latest_teach_kit(db_path: str) -> Dict[str, str]:
         out["micro_path"] = micro
     if us and os.path.isfile(us):
         out["us_path"] = us
+    try:
+        levels = json.loads(row[7] or "{}") if row[7] else {}
+        tip = levels.get("_teach_tip") if isinstance(levels, dict) else None
+        if isinstance(tip, dict):
+            out["teach_tip"] = tip
+    except Exception:
+        out["teach_tip"] = {}
     return out
 
 
