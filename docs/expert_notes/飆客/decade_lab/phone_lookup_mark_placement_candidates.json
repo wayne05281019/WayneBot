@@ -2,7 +2,7 @@
   "phone_sync": "blocked",
   "LOOKUP_LAB_MARKS_ENABLED": false,
   "promote_to_lookup_display": false,
-  "as_of_taipei": "2026-11-08T08:51:55.188226+08:00",
+  "as_of_taipei": "2026-11-08T08:58:12.497115+08:00",
   "candidates": {
     "early_buy_u112": {
       "key": "ei_n5_week_n3_softbody__SELL_hi20_or_wave_top",
@@ -26,7 +26,7 @@
       "universe": "U112",
       "glyph": "REL_HIGH_SELL",
       "status": "locked_lab_candidate",
-      "note_zh": "v27 升級 max_hold_20；旗標仍關"
+      "note_zh": "v27 升級 max_hold_20；v28 复現維持；旗標仍關"
     },
     "early_sell_u112_pe3_backup": {
       "key": "add_i3_pe3",
