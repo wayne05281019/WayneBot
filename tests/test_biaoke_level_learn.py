@@ -1304,6 +1304,18 @@ def test_bb_dual_path_thesis_beats_earlier_foot2(tmp_path):
     assert got and __import__("os").path.isfile(got)
 
 
+def test_oral_dual_path_uses_bundled_cjk_font():
+    """口述雙軌圖必須走打包 NotoSansTC；系統 CJK 缺／TTC 選錯＝話筒豆腐「字」。"""
+    import inspect
+
+    from biaoke_level_learn import render_oral_dual_path_schematic
+
+    src = inspect.getsource(render_oral_dual_path_schematic)
+    assert "wayne_navigator" in src
+    assert "_fp" in src
+    assert "NotoSansTC" in src or "wayne_navigator import _fp" in src
+
+
 def test_same_day_fake_break_reply_merges_into_main_chrono(tmp_path):
     """11/5 短回『假跌破』依時間序併進主文；不准短回蓋掉 C3-5 主文當唯一題旨。"""
     import sqlite3
