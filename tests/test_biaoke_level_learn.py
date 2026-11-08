@@ -526,19 +526,20 @@ def test_far_yellow_band_is_max_vol_day_hl():
         or "min_gap=(ymax - ymin) * 0.055" in block
     )
     assert "900.0" not in block[block.index("_place_live_right_labels") :]
-    # 遠窗 xlim 跟最長軸（費半可晚於加權）；舊寫 n+8.6，現況 n_axis+8.6
-    assert "n_axis + 8.6" in block or "n + 8.6" in block
-    assert "right=0.978" in block or "right=0.98" in block
+    # 遠窗 xlim 走 _teach_xlim_right（定長滾動右欄 pad）；不准再寫死 n+8.6／right=0.90
+    assert "_teach_xlim_right" in block
+    assert "n_axis + 8.6" not in block
+    assert "right=0.978" in block or "right=0.98" in block or "subplots_adjust" in block
     assert "right=0.90" not in block
     assert "_extend_us_ohlc_past_twii" in block or "_extend_us_ohlc_past_twii" in src
     assert "_FAR_SOX_MIN_BODY_FRAC" in src
     # 末根矛點改 _spear_ring（遠窗不再用 facecolors=none 空心 scatter）
     assert "_spear_ring" in block
-    # 浪名：high 在尖上、low 在尖下，不准左右蓋住縮圖K
+    # 浪名：tip=high 整盒在尖上、tip=low 在尖下（與右欄現況標分開）
     pin = src[src.index("def _pin_pivot_name") : src.index("def _c_path_label_xy")]
     assert '"high"' in pin and '"bottom"' in pin
     assert '"low"' in pin and '"top"' in pin
-    assert "不准蓋住縮圖K" in pin or "整盒不准蓋住縮圖K" in pin
+    assert "整盒在高點上方" in pin or "tip=high" in pin
     assert 'tip="high"' in block and 'tip="low"' in block
     # 大結構：⑤起4/1／⑤終6/23／大A底／大B末；近窗細分另淡標
     assert '"大A底' in block and '"大B末' in block
@@ -3132,8 +3133,20 @@ def test_place_live_right_labels_keeps_c4_c5_now():
         assert abs(float(by_txt[note["text"]].get_position()[1]) - float(note["y"])) < 1e-6
         assert by_txt[note["text"]].get_va() == "center"
     for line in ax.lines:
+        xs = [float(x) for x in line.get_xdata()]
         ys = [float(y) for y in line.get_ydata()]
         assert len(ys) >= 2 and abs(ys[0] - ys[-1]) < 1e-6  # 水平虛線
+        # 不准豎折／斜折接標（虛線 Y 必須對上某個標籤中心）
+        assert abs(xs[0] - xs[-1]) > 0.2  # 不是豎線
+        assert any(abs(ys[0] - float(t.get_position()[1])) < 1e-6 for t in ax.texts)
+    # 原始碼鎖死：不准再啟 nudge 上下撐開 draw_ys
+    import inspect
+    from biaoke_level_learn import _place_live_right_labels as _pl
+
+    src = inspect.getsource(_pl)
+    assert "y_draw = float(y_true)" in src
+    assert "draw_ys[i] = ceiling" not in src
+    assert "不再上下微挪" in src or "不准把字盒挪離真價" in src
     plt.close(fig)
     assert any("c4細" in t for t in texts), texts
     assert any("c5細" in t for t in texts), texts
