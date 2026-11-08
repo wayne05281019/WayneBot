@@ -120,6 +120,29 @@ def _px(v: Any) -> str:
     return f"{x:,.0f}"
 
 
+def _spear_ring(
+    ax: Any,
+    x: float,
+    y: float,
+    *,
+    color: str,
+    zorder: float = 8.5,
+    hot: bool = False,
+    clip_on: bool = True,
+) -> None:
+    """矛點空心圈：只畫一圈、線細。hot＝C7／C8／今 略大仍細。"""
+    ax.scatter(
+        [float(x)],
+        [float(y)],
+        s=30 if hot else 22,
+        facecolors="none",
+        edgecolors=str(color),
+        linewidths=0.38 if hot else 0.32,
+        zorder=float(zorder),
+        clip_on=bool(clip_on),
+    )
+
+
 def ensure_tables(db_path: str) -> None:
     if not db_path:
         return
@@ -921,15 +944,14 @@ def _finish_last_twii_candle(
         edgecolor="#ffffff",
         edge_lw=0.9,
     )
-    # 今收 tip：略偏右，不准坐在實心邊上看成浪點；Y 仍鎖收盤
-    ax.scatter(
-        [float(i_now) + 0.38],
-        [float(closes[i_now])],
-        s=46,
-        facecolors="none",
-        edgecolors="#ea80fc",
-        linewidths=1.25,
+    # 今收 tip：略偏右，不准坐在實心邊上看成浪點；Y 仍鎖收盤；單一細圈
+    _spear_ring(
+        ax,
+        float(i_now) + 0.38,
+        float(closes[i_now]),
+        color="#ea80fc",
         zorder=16,
+        hot=True,
         clip_on=False,
     )
 
@@ -4856,26 +4878,20 @@ def _paint_c9_ext_k_path(
             col = "#ff8a80" if is_hot else "#f5f5f5"
         else:
             col = _c9_wave_color(lab)
-        ax.scatter(
-            [ii],
-            [yy],
-            s=44 if is_hot else 26,
-            c=col,
-            zorder=8.7,
-            edgecolors="#0b0f14",
-            linewidths=0.55,
-        )
+        # 矛點只一圈細線；C7／C8 不准實心＋外圈疊成雙圈
         if is_hot:
+            _spear_ring(ax, ii, yy, color=col, zorder=8.8, hot=True)
+        else:
             ax.scatter(
                 [ii],
                 [yy],
-                s=78,
-                facecolors="none",
-                edgecolors=col,
-                linewidths=1.05,
-                zorder=8.8,
+                s=22,
+                c=col,
+                zorder=8.7,
+                edgecolors="#0b0f14",
+                linewidths=0.35,
             )
-        # C7／C8 只留圓點（右欄已有「C-7轉C-8今」）；其餘僅 pin_labs
+        # C7／C8 只留細圈（右欄已有「C-7轉C-8今」）；其餘僅 pin_labs
         if lab in {"C7", "C8"} or lab not in pin_labs:
             continue
         odd = lab in {"C1", "C3", "C5"}
@@ -4920,15 +4936,8 @@ def _paint_c9_ext_k_path(
             ls=(0, (4.0, 2.0)),
             zorder=6.5,
         )
-        ax.scatter(
-            [fx],
-            [fy],
-            s=52,
-            facecolors="none",
-            edgecolors=c9_col,
-            linewidths=1.25,
-            zorder=8.9,
-        )
+        _spear_ring(ax, fx, fy, color=c9_col, zorder=8.9, hot=True)
+        # C9 預估標釘在虛線端點下方偏左，不准跟右欄飆預測互壓
         _pin_pivot_name(
             ax,
             fx,
@@ -4936,12 +4945,14 @@ def _paint_c9_ext_k_path(
             "C9（預估）",
             c9_col,
             fp,
-            side="right",
+            side="left",
             tip="low",
             n=n,
-            pad_x=0.45,
+            pad_x=0.85,
             fontsize=max(8.0, float(fontsize) - 0.5),
-            pri=9,
+            pri=12,
+            clear_dy=None,
+            zorder=12,
         )
     return True
 
@@ -5003,11 +5014,13 @@ def _paint_c9_extension_on_bars(
             "→C-9（預估・跌完＝這段完）",
             "#ce93d8",
             fp,
-            side="right",
-            tip="mid",
+            side="left",
+            tip="low",
             n=n,
-            pad_x=0.4,
+            pad_x=0.85,
             fontsize=max(8.0, float(fontsize) - 0.5),
+            pri=12,
+            zorder=12,
         )
     return True
 
@@ -6029,10 +6042,79 @@ _LIVE_DOWN = "#26a69a"
 # 遠窗縮圖：絕對 min body=6 對費半／加權價軸幾乎看不見；改跟價窗比例走
 _LIVE_CANDLE_MIN_BODY_FRAC = 0.01
 _FAR_SOX_MIN_BODY_FRAC = 0.018
-# 遠窗預設根數（約 2026-03-31→最新）：含推進⑤＝4/1→6/23；每多一日刪最左
-# 若大量撐壓／下一層日期更早 → `_far_teach_bars_keeping_vol_sr` 自動拉長左側
+# 教具 X／標籤契約（鎖死；不准無限變瘦、不准右欄越擠越亂）
+# 1) 定長滾動：新交易日進一根 → 刪最左一根；K 寬穩定。
+# 2) 右欄現況標（今／飆預測／雙軌關鍵／大量撐壓價）：x＝末根+_TEACH_RIGHT_GUTTER，
+#    相對圖右緣位置幾乎不變；只跟 n（定長）走，不跟歷史總日數走。
+# 3) 尖點浪名（C1…C9、⑤起、A/B）：釘該日 K 的 x；滾動後跟著那根移；
+#    該日被滾出窗外 → 不釘幽靈標（價位改由右欄／帶狀承接）。
+# 4) 座位：右欄=_place_live_right_labels；尖點=_pin_pivot_name（禁區＋pri）。
+# 遠窗預設根數；撐壓日可略超 soft，再長硬滾（不准為浪階日無限拉長變瘦）
 _FAR_TEACH_MAX_BARS = 152
+_FAR_TEACH_EXTEND_SOFT = 168  # 僅大量撐壓／下一層可略超；硬上限
 _FAR_TEACH_VOL_LOOKBACK = 200
+_NEAR_TEACH_MAX_BARS = 130  # 近窗：⑤起地板；滿長後滾（A／B／C 仍優先留窗）
+_MICRO_TEACH_MAX_BARS = 55  # 超近：B／C 特寫定長
+_TEACH_RIGHT_GUTTER = 2.55  # 右欄現況相對末K的固定槽（bar 單位）
+_TEACH_RIGHT_XLIM_PAD = 10.2  # xlim 右側固定留白（bar 單位）
+
+
+def _teach_right_col_x(
+    n: int,
+    *,
+    tip_fut_x: Optional[float] = None,
+    extra: float = 0.0,
+    x_col: Optional[float] = None,
+) -> float:
+    """右欄現況標 X：永遠＝末根＋固定 gutter（可被 tip／呼叫端略拉）。"""
+    if x_col is not None:
+        try:
+            base = float(x_col)
+        except (TypeError, ValueError):
+            base = float(n) + float(_TEACH_RIGHT_GUTTER)
+    else:
+        base = float(n) + float(_TEACH_RIGHT_GUTTER) + float(extra or 0.0)
+    if tip_fut_x is not None:
+        try:
+            base = max(base, float(tip_fut_x) + 0.85)
+        except (TypeError, ValueError):
+            pass
+    return float(base)
+
+
+def _teach_xlim_right(
+    n: int,
+    *,
+    tip_xlim: float = 0.0,
+    right_col: float = 0.0,
+    fut_x: float = 0.0,
+    extra: float = 0.0,
+) -> float:
+    """右緣 xlim：相對末K固定 pad，右欄字寬不隨歷史拉長而變瘦。"""
+    return max(
+        float(n) + float(_TEACH_RIGHT_XLIM_PAD) + float(extra or 0.0),
+        float(tip_xlim or 0.0),
+        float(right_col or 0.0) + 7.2,
+        float(fut_x or 0.0) + 2.0,
+    )
+
+
+def _teach_roll_from_floor(
+    bars: Sequence[Dict[str, Any]],
+    *,
+    floor_i: int = 0,
+    max_bars: int,
+) -> List[Dict[str, Any]]:
+    """結構地板＋定長滾動：未滿 max 從地板起；滿了就進一根刪最左。"""
+    rows = list(bars or [])
+    if not rows:
+        return rows
+    cap = max(20, int(max_bars or 20))
+    i0 = max(0, min(int(floor_i or 0), len(rows) - 1))
+    window = rows[i0:]
+    if len(window) > cap:
+        return window[-cap:]
+    return window
 
 
 def _far_teach_roll_bars(
@@ -6123,11 +6205,13 @@ def _far_teach_bars_keeping_vol_sr(
     max_bars: int = _FAR_TEACH_MAX_BARS,
     vol_lookback: int = _FAR_TEACH_VOL_LOOKBACK,
     keep_ymds: Sequence[str] = ("20260331", "20260401"),
+    extend_soft: int = _FAR_TEACH_EXTEND_SOFT,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
-    """遠窗切片：預設滾動；大量撐壓／下一層／浪階起點若被裁掉 → 左側拉到該日。
+    """遠窗切片：定長滾動為主；大量撐壓／浪階日被裁可略拉左，但硬卡 soft 上限。
 
-    例：要測的撐壓在 3/28，滾動後最左是 4 月底 → 改最左＝3/28、最右＝最近交易日。
-    keep_ymds＝推進⑤起日必須進窗（可超過 max_bars）；撐壓日另由 earliest_ymd 拉。
+    例：撐壓在窗左外 → 左側拉到該日，最右仍＝最新；若因此超過 soft → 仍硬滾，
+    撐壓改由帶狀／右欄承接（不准為留舊浪階日把 K 棒無限變瘦）。
+    keep_ymds＝希望進窗的浪階日（能留才留，不准破 soft）。
     """
     story = list(bars or [])
     lb = max(40, int(vol_lookback or _FAR_TEACH_VOL_LOOKBACK))
@@ -6160,7 +6244,7 @@ def _far_teach_bars_keeping_vol_sr(
     left = _ymd(rolled[0].get("date"))
     if left and need >= left:
         return rolled, _remap_teach_vol_sr_index(sr, rolled)
-    # 左側拉到最早需求日（可超過 max_bars）
+    # 左側拉到最早需求日；硬卡 soft，超過就改硬滾（尖點滾出＝不釘幽靈）
     i_need = _bar_index_by_ymd(story, need)
     if i_need is None:
         for i, r in enumerate(story):
@@ -6170,7 +6254,10 @@ def _far_teach_bars_keeping_vol_sr(
                 break
     if i_need is None:
         return rolled, _remap_teach_vol_sr_index(sr, rolled)
+    soft = max(int(max_bars or _FAR_TEACH_MAX_BARS), int(extend_soft or _FAR_TEACH_EXTEND_SOFT))
     extended = story[int(i_need) :]
+    if len(extended) > soft:
+        extended = extended[-soft:]
     return extended, _remap_teach_vol_sr_index(sr, extended)
 _LIVE_LV = (
     ("tx60_down", "#ce93d8", "降軌"),
@@ -7086,11 +7173,26 @@ def _pin_pivot_name(
     clear_dy: Optional[float] = None,
     pri: int = 5,
 ) -> None:
-    """浪名智慧標：尖點對準，整盒不准蓋住縮圖K；走座位，不准互壓／蓋禁區。
+    """浪名智慧標（尖點類）：跟著該日 K 的 x 走；滾出窗外就不釘。
+
+    與右欄現況標分開：右欄走 `_place_live_right_labels`／`_teach_right_col_x`，
+    圖右位置幾乎固定；本函式只服務釘在柱上的浪名／轉折名。
 
     tip=high → 整盒在高點上方；tip=low → 整盒在低點下方（含 bbox pad 也離尖）；
     tip=mid → 左右錯開到柱外（C／今）。
     """
+    # 滾動窗外／尚未進窗：不准留幽靈標
+    try:
+        xx0 = float(x)
+    except (TypeError, ValueError):
+        return
+    if n is not None:
+        try:
+            nn = float(n)
+            if xx0 < -0.75 or xx0 > nn + 0.6:
+                return
+        except (TypeError, ValueError):
+            pass
     tip_k = str(tip or "mid").lower()
     try:
         y_lo, y_hi = ax.get_ylim()
@@ -7369,8 +7471,8 @@ def _place_live_right_labels(
     placed_tiers: List[int] = []
     placed_texts: List[str] = []
     draw_items: List[Tuple[Dict[str, Any], float]] = []
-    # 同一右欄：預設 n+2.55（夠長標「7/29低…」）；可被 x_col／x_text_min 拉開
-    x_label = float(x_col) if x_col is not None else float(n) + 2.55
+    # 同一右欄現況槽：末根＋固定 gutter（滾窗後圖右位置幾乎不變）
+    x_label = _teach_right_col_x(int(n), x_col=x_col)
     if x_text_min is not None:
         try:
             x_label = max(x_label, float(x_text_min) + 0.85)
@@ -8015,15 +8117,7 @@ def _paint_c_forecast(
             alpha=0.92,
             zorder=6,
         )
-        ax.scatter(
-            [fut_x],
-            [fut_y],
-            s=40,
-            c="#ea80fc",
-            zorder=7,
-            edgecolors="#0b0f14",
-            linewidths=0.55,
-        )
+        _spear_ring(ax, fut_x, fut_y, color="#ea80fc", zorder=7, hot=True)
         if show_label:
             # 預估端標釘在端點同價；遠窗停右欄左側，不准壓右價標、不准漂到端點下方
             if keep_left_of_right:
@@ -8291,7 +8385,70 @@ def _twii_macro_wave_anchors(
         "highs": highs,
         "lows": lows,
         "closes": closes,
+        "ymd_5_start": _ymd(bars[int(i5s)].get("date")),
+        "ymd_5_end": _ymd(bars[int(i5e)].get("date")),
+        "ymd_alow": _ymd(bars[int(i_alow)].get("date")),
+        "ymd_b_end": _ymd(bars[int(i_bend)].get("date")),
+        "ymd_c": _ymd(bars[int(i_c)].get("date")),
     }
+
+
+def _clamp_macro_wave_to_window(
+    mac: Dict[str, Any],
+    bars_window: Sequence[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    """定長滾動後：尖點 x 對到窗內；滾出左緣的釘在 x=0（價仍用完整柱真值）。
+
+    右欄現況標不走這裡。尖點滾出＝跟左緣走／或由右欄價位承接，不准幽靈 x。
+    """
+    if not mac or not bars_window:
+        return None
+    by = {_ymd(r.get("date")): i for i, r in enumerate(bars_window) if _ymd(r.get("date"))}
+    left = _ymd(bars_window[0].get("date"))
+    n = len(bars_window)
+
+    def _xi(ymd: str, fallback: int) -> int:
+        d = _ymd(ymd)
+        if d and d in by:
+            return int(by[d])
+        if d and left and d < left:
+            return 0
+        return int(fallback)
+
+    i5s = _xi(str(mac.get("ymd_5_start") or ""), 0)
+    i5e = _xi(str(mac.get("ymd_5_end") or ""), min(1, n - 1))
+    i_alow = _xi(str(mac.get("ymd_alow") or ""), min(2, n - 1))
+    i_bend = _xi(str(mac.get("ymd_b_end") or ""), min(3, n - 1))
+    i_c = _xi(str(mac.get("ymd_c") or ""), min(4, n - 1))
+    # 滾掉前段時允許左緣重疊；仍須 A→B→C 順序在窗內站得住
+    if not (i_alow < i_bend <= i_c < n):
+        return None
+    if i5e > i_alow:
+        i5e = int(i_alow)
+    if i5s > i5e:
+        i5s = int(i5e)
+    highs = [float(r.get("high") or 0) for r in bars_window]
+    lows = [float(r.get("low") or 0) for r in bars_window]
+    closes = [float(r.get("close") or 0) for r in bars_window]
+    out = dict(mac)
+    out.update(
+        {
+            "i5_start": int(i5s),
+            "i5_end": int(i5e),
+            "i_a_start": int(i5e),
+            "i_alow": int(i_alow),
+            "i_b_start": int(i_alow),
+            "i_b_end": int(i_bend),
+            "i_c": int(i_c),
+            "i_now": int(n - 1),
+            "y_now": float(closes[-1]),
+            "highs": highs,
+            "lows": lows,
+            "closes": closes,
+            "clipped_left": bool(left and str(mac.get("ymd_5_start") or "") < left),
+        }
+    )
+    return out
 
 
 def _macro_wave_calendar_line() -> str:
@@ -8850,37 +9007,27 @@ def _paint_eight_wave_inset(
             if hot is None:
                 hot = lab_idx.get("C7")
             if hot is not None and hot < len(flash_pts):
-                ax.scatter(
-                    [flash_pts[hot][0]],
-                    [flash_pts[hot][1]],
-                    s=52,
-                    facecolors="none",
-                    edgecolors="#ffd54f",
-                    linewidths=0.85,
+                _spear_ring(
+                    ax,
+                    flash_pts[hot][0],
+                    flash_pts[hot][1],
+                    color="#ffd54f",
                     zorder=9,
+                    hot=True,
                 )
             i9 = lab_idx.get("C9")
             if i9 is not None and i9 < len(flash_pts):
-                ax.scatter(
-                    [flash_pts[i9][0]],
-                    [flash_pts[i9][1]],
-                    s=38,
-                    facecolors="none",
-                    edgecolors="#ce93d8",
-                    linewidths=0.75,
+                _spear_ring(
+                    ax,
+                    flash_pts[i9][0],
+                    flash_pts[i9][1],
+                    color="#ce93d8",
                     zorder=9,
+                    hot=False,
                 )
         elif 1 <= flash_step < len(flash_pts):
             sx, sy = flash_pts[flash_step]
-            ax.scatter(
-                [sx],
-                [sy],
-                s=48,
-                facecolors="none",
-                edgecolors="#ffd54f",
-                linewidths=0.85,
-                zorder=9,
-            )
+            _spear_ring(ax, sx, sy, color="#ffd54f", zorder=9, hot=True)
     # 此刻框：detail＝近／超近要框選＋註；遠窗只圈點
     if 0 <= hi < len(pts):
         x0, y0 = pts[hi]
@@ -8942,15 +9089,7 @@ def _paint_eight_wave_inset(
                 zorder=8,
             )
         else:
-            ax.scatter(
-                [x0],
-                [y0],
-                s=40,
-                facecolors="none",
-                edgecolors="#ffd54f",
-                linewidths=0.85,
-                zorder=7,
-            )
+            _spear_ring(ax, x0, y0, color="#ffd54f", zorder=7, hot=True)
             ax.text(
                 x0,
                 y0 - 0.14,
@@ -9373,22 +9512,25 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             _ensure_us_index_daily(db_path)
         except Exception:
             logger.exception("遠窗費半補資料略過")
-    bars = _twii_bars_for_teach(db_path, 400, pack)
-    if len(bars) < 20 or not save_path:
+    bars_full = _twii_bars_for_teach(db_path, 400, pack)
+    if len(bars_full) < 20 or not save_path:
         return ""
-    # 預設滾動；大量撐壓／下一層／⑤起日／費半回測日若更早 → 左側自動拉長
+    # 錨在完整柱算；顯示窗定長滾動。尖點跟 K 移；滾出左緣 clamp。
+    mac_full = _twii_macro_wave_anchors(bars_full)
+    if not mac_full:
+        return ""
     keep_ymds: List[str] = ["20260331", "20260401"]
     for row in ((pack or {}).get("pred_levels") or {}).get("sox") or []:
         rd = _ymd(row.get("ref_ymd"))
         if rd:
             keep_ymds.append(rd)
     bars, far_vol_sr = _far_teach_bars_keeping_vol_sr(
-        list(bars),
+        list(bars_full),
         max_bars=_FAR_TEACH_MAX_BARS,
         vol_lookback=_FAR_TEACH_VOL_LOOKBACK,
         keep_ymds=tuple(dict.fromkeys(keep_ymds)),
     )
-    mac = _twii_macro_wave_anchors(bars)
+    mac = _clamp_macro_wave_to_window(mac_full, bars)
     anc = _twii_abc_anchors(bars)  # 近窗細分（右標／預估仍可參考）
     if not mac:
         return ""
@@ -9666,14 +9808,8 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 (sb, syb, "#ffd54f"),
                 (sox_i_now, sn, "#ea80fc"),
             ):
-                axu.scatter(
-                    [ii],
-                    [yy],
-                    s=44,
-                    facecolors="none",
-                    edgecolors=col,
-                    linewidths=1.35,
-                    zorder=8,
+                _spear_ring(
+                    axu, ii, yy, color=col, zorder=8, hot=(col == "#ea80fc")
                 )
             # 右標延到加權 tip 後，與加權同一 x_col（對齊「7/29低…」那欄）
             _sox_y0 = y_lo_s - span_s * 0.22
@@ -10376,22 +10512,17 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         draw=not (_c9_now and len(_c9_pivots_far) >= 3),
     )
     fut_x = float(tip.get("fut_x") or fut_x)
-    for ii, yy, col in (
+    # 矛點細圈；9波時末日已有 C7／C8 細圈，不准再疊「今」雙圈
+    _macro_spear = [
         (i5s, y5s, "#40c4ff"),
         (i5e, y5e, "#40c4ff"),
         (i_alow, y_alow, "#ff8a80"),
         (i_b_end, y_b_end, "#ffd54f"),
-        (i_now, y_now, "#ea80fc"),
-    ):
-        ax.scatter(
-            [ii],
-            [yy],
-            s=48,
-            facecolors="none",
-            edgecolors=col,
-            linewidths=1.4,
-            zorder=8,
-        )
+    ]
+    if not (_c9_now and len(_c9_pivots_far) >= 3):
+        _macro_spear.append((i_now, y_now, "#ea80fc"))
+    for ii, yy, col in _macro_spear:
+        _spear_ring(ax, ii, yy, color=col, zorder=8, hot=(col == "#ea80fc"))
     # 末根加權K參數先記；等右標畫完再蓋回（避免虛線／字壓掉縮圖K）
     _tw_span = max(highs) - min(lows) if highs and lows else 0.0
     _tw_min_body = max(
@@ -10701,15 +10832,15 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         i_b_end=i_b_end,
         min_gap=6,
     )
-    # 右標／xlim 跟最長軸（費半可多日）；加權右標仍貼加權末日；費半黃框右欄要留空
-    # 雙軌長標（價・日期）需更右，不准字盒裁切或互壓
+    # 右標／xlim：定長滾動下右欄 pad 鎖死；費半可多日時取較長軸
     x_right = max(
-        n_axis + 10.2,
-        n_tw + 10.2,
-        float(tip.get("xlim_right") or n_tw) + 2.0,
-        fut_x + 2.0,
+        _teach_xlim_right(
+            max(int(n_axis), int(n_tw)),
+            tip_xlim=float(tip.get("xlim_right") or n_tw) + 2.0,
+            right_col=max(float(x_sox_col), float(x_right_col)),
+            fut_x=float(fut_x),
+        ),
         float(x_sox_col) + 6.4,
-        float(x_right_col) + 7.2,
     )
     # 遠窗自 3 月底起：左側多留一格，⑤起首根不准被裁
     need_apr = True
@@ -10870,18 +11001,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             edgecolor="#ffffff",
             edge_lw=0.9,
         )
-        # 空心 tip：略偏右＝今收，不准坐實心邊上看成浪點
-        axu.scatter(
-            [float(_sox_last_repaint["i"]) + 0.38],
-            [float(_sox_last_repaint["c"])],
-            s=52,
-            facecolors="none",
-            edgecolors="#ea80fc",
-            linewidths=1.5,
-            zorder=16,
-            clip_on=False,
-        )
-        # 末根K再蓋一次（空心 tip 已在上）；費半漲跌黃框改圖層座標、與加權黃框錯開
+        # 末根K再蓋一次；費半漲跌黃框改圖層座標、與加權黃框錯開
         _paint_one_live_candle(
             axu,
             int(_sox_last_repaint["i"]),
@@ -10899,14 +11019,14 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             edgecolor="#ffffff",
             edge_lw=0.9,
         )
-        axu.scatter(
-            [float(_sox_last_repaint["i"]) + 0.38],
-            [float(_sox_last_repaint["c"])],
-            s=52,
-            facecolors="none",
-            edgecolors="#ea80fc",
-            linewidths=1.5,
+        # 空心 tip：略偏右＝今收；只畫一圈細線（不准疊兩次變粗）
+        _spear_ring(
+            axu,
+            float(_sox_last_repaint["i"]) + 0.38,
+            float(_sox_last_repaint["c"]),
+            color="#ea80fc",
             zorder=20,
+            hot=True,
             clip_on=False,
         )
         _sox_chg_tip = {
@@ -10934,27 +11054,27 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             edgecolor="#ffffff",
             edge_lw=0.9,
         )
-        axt.scatter(
-            [float(_tx_last_repaint["i"]) + 0.38],
-            [float(_tx_last_repaint["c"])],
-            s=52,
-            facecolors="none",
-            edgecolors="#ea80fc",
-            linewidths=1.5,
+        _spear_ring(
+            axt,
+            float(_tx_last_repaint["i"]) + 0.38,
+            float(_tx_last_repaint["c"]),
+            color="#ea80fc",
             zorder=20,
+            hot=True,
             clip_on=False,
         )
     if _tw_last_repaint:
-        ax.scatter(
-            [float(_tw_last_repaint["i"]) + 0.38],
-            [float(_tw_last_repaint["c"])],
-            s=52,
-            facecolors="none",
-            edgecolors="#ea80fc",
-            linewidths=1.5,
-            zorder=16,
-            clip_on=False,
-        )
+        # 9波末日已有 C7／C8 細圈時，不再疊今收圈（雙圈太粗）
+        if not (_c9_now and len(_c9_pivots_far) >= 3):
+            _spear_ring(
+                ax,
+                float(_tw_last_repaint["i"]) + 0.38,
+                float(_tw_last_repaint["c"]),
+                color="#ea80fc",
+                zorder=16,
+                hot=True,
+                clip_on=False,
+            )
     # 欄間小間距放日期：費半／電子盤／加權三欄底緣都標（量欄仍有完整軸）
     # pad 略加大＋細體，白底戳／浪標才不易壓住該注意的日期
     for a in (axu, axt, ax, axv):
@@ -11246,7 +11366,14 @@ def _render_twii_self_pred_dark(db_path: str, save_path: str, pack: Dict[str, An
     span = max(y_hi - y_lo, 1.0)
     ymin, ymax = y_lo - span * 0.12, y_hi + span * 0.14
     ax.set_ylim(ymin, ymax)
-    ax.set_xlim(-0.5, n + 4.2)
+    ax.set_xlim(
+        -0.5,
+        _teach_xlim_right(
+            int(n),
+            right_col=float(n) + float(_TEACH_RIGHT_GUTTER),
+            extra=-6.0,  # 我估主圖右欄較短
+        ),
+    )
 
     right: List[Dict[str, Any]] = []
     # 主：我估（亮）
@@ -11358,16 +11485,21 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         return ""
     # 大量撐壓／下一層＝結構圖同一套（先在完整柱算，再切片畫黃／灰帶）
     near_vol_sr = _resolve_teach_vol_sr(bars_full, lookback=40)
-    # 近窗＝大結構特寫：從⑤起入窗，⑤／A／B 起末與遠窗／縮圖同一日曆
-    i0 = (
+    mac_full = _twii_macro_wave_anchors(bars_full)
+    if not mac_full:
+        return ""
+    # 近窗＝大結構特寫：⑤起為地板；滿 _NEAR_TEACH_MAX_BARS 後定長滾動（進一根刪最左）
+    i_floor = (
         _bar_index_by_ymd(bars_full, "20260401")
         or _bar_index_by_ymd(bars_full, "20260331")
         or _bar_index_by_ymd(bars_full, "20260325")
         or 0
     )
-    bars = list(bars_full[i0:])
+    bars = _teach_roll_from_floor(
+        bars_full, floor_i=int(i_floor), max_bars=_NEAR_TEACH_MAX_BARS
+    )
     near_vol_sr = _remap_teach_vol_sr_index(near_vol_sr, bars)
-    mac = _twii_macro_wave_anchors(bars)
+    mac = _clamp_macro_wave_to_window(mac_full, bars)
     if not mac:
         return ""
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
@@ -11542,20 +11674,21 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         (i_alow, y_alow, "#ff8a80"),
         (i_b_end, y_b_end, "#ffd54f"),
     ):
-        ax.scatter([ii], [yy], s=56, c=col, zorder=8, edgecolors="#ffffff", linewidths=0.7)
-    ax.scatter(
-        [float(i_now) + 0.38],
-        [y_now],
-        s=56,
-        facecolors="none",
-        edgecolors="#ea80fc",
-        linewidths=1.2,
-        zorder=8,
+        _spear_ring(ax, ii, yy, color=col, zorder=8, hot=True)
+    _spear_ring(
+        ax, float(i_now) + 0.38, y_now, color="#ea80fc", zorder=8, hot=True
     )
     span = max(ymax - ymin, 1.0)
     ax.axvline(i_c, color="#ea80fc", lw=0.95, ls=(0, (2, 2)), alpha=0.8, zorder=5)
-    # 先定 ylim／xlim 再釘浪名（跟遠窗同）：lift／字級才對最終軸距，⑤起不准卡裁
-    ax.set_xlim(-0.6, max(n + 8.6, float(tip.get("xlim_right") or n) + 2.0))
+    # 先定 ylim／xlim 再釘浪名：右欄固定 pad；尖點跟 K 走
+    ax.set_xlim(
+        -0.6,
+        _teach_xlim_right(
+            int(n),
+            tip_xlim=float(tip.get("xlim_right") or n) + 2.0,
+            right_col=float(n) + float(_TEACH_RIGHT_GUTTER),
+        ),
+    )
     ax.set_ylim(ymin, ymax)
     # 禁區先登記：左上白底戳（加寬）＋右上價空＋左下九波帶
     _reserve_avoid_zone(
@@ -11785,12 +11918,12 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
             }
         )
         have_ys.add(round(float(yv), 1))
-    # 與遠窗同一套：同欄右標＋自點位拉滿虛線；C9 略鬆間距＋字盒 nudge
-    x_near_col = float(n) + 2.55
+    # 右欄現況：固定 gutter；尖點浪名另走 _pin_pivot_name 跟 K 移
     try:
-        x_near_col = max(x_near_col, float(tip.get("fut_x") or n) + 0.85)
+        _tip_fx = float(tip.get("fut_x") or n)
     except (TypeError, ValueError):
-        pass
+        _tip_fx = float(n)
+    x_near_col = _teach_right_col_x(int(n), tip_fut_x=_tip_fx)
     _place_live_right_labels(
         ax,
         right_notes,
@@ -12416,7 +12549,12 @@ def _render_twii_super_near_c9_60m(
         nudge=True,
         fontsize=8.5,
     )
-    x_right = max(n + 6.5, float(tip.get("fut_x") or n) + 2.2)
+    x_right = _teach_xlim_right(
+        int(n),
+        tip_xlim=float(tip.get("fut_x") or n) + 2.2,
+        right_col=float(x_col) if x_col is not None else float(n) + float(_TEACH_RIGHT_GUTTER),
+        extra=-3.7,  # 中排日K右欄略緊於遠／近
+    )
     ax.set_xlim(-0.6, x_right)
     axv.set_xlim(-0.6, x_right)
     ax_date.set_xlim(-0.6, x_right)
@@ -12571,14 +12709,16 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         return ""
     # 大量撐壓／下一層＝結構圖同一套（完整柱算完再裁超近窗）
     micro_vol_sr = _resolve_teach_vol_sr(bars_full, lookback=40)
-    # 資料窗仍留⑤錨（鐵律要⑤）；畫面 xlim 再裁到 B／C 超級近窗
-    i0 = (
+    # 超近：B／C 地板＋定長滾動；xlim 再裁到 B 峰特寫
+    i_floor = (
         _bar_index_by_ymd(bars_full, "20261006")
         or _bar_index_by_ymd(bars_full, "20260929")
         or _bar_index_by_ymd(bars_full, "20260925")
         or 0
     )
-    bars = list(bars_full[i0:])
+    bars = _teach_roll_from_floor(
+        bars_full, floor_i=int(i_floor), max_bars=_MICRO_TEACH_MAX_BARS
+    )
     micro_vol_sr = _remap_teach_vol_sr_index(micro_vol_sr, bars)
     anc = _twii_abc_anchors(bars)
     if not anc:
@@ -12765,24 +12905,18 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         flash_step = _c_flash_step(str(ladder.get("now") or ""))
         for j, (gx, gy) in enumerate(zip(geom_xs, geom_ys)):
             is_now = j == flash_step
-            ax.scatter(
-                [gx],
-                [gy],
-                s=78 if is_now else 44,
-                c="#ffd54f" if is_now else "#ffab40",
-                zorder=8.5,
-                edgecolors="#111111",
-                linewidths=0.7,
-            )
+            # 此刻只一圈細空心；其餘小實心點（不准粗雙圈）
             if is_now:
+                _spear_ring(ax, gx, gy, color="#ffd54f", zorder=8.6, hot=True)
+            else:
                 ax.scatter(
                     [gx],
                     [gy],
-                    s=130,
-                    facecolors="none",
-                    edgecolors="#ffd54f",
-                    linewidths=1.8,
-                    zorder=8.6,
+                    s=20,
+                    c="#ffab40",
+                    zorder=8.5,
+                    edgecolors="#111111",
+                    linewidths=0.35,
                 )
         _paint_c9_extension_on_bars(
             ax,
@@ -13006,8 +13140,15 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
                 t2.append(i)
                 l2.append(_md(d))
     t2, l2 = _sparse_xticks(t2, l2, min_gap=2)
-    # 右欄飆預測字往右移後，xlim 要夠寬，不准裁掉標籤
-    ax.set_xlim(x_left, max(n + 8.6, float(tip.get("xlim_right") or n) + 2.0))
+    # 右欄現況固定槽；xlim 跟定長窗走，不准越畫越瘦
+    ax.set_xlim(
+        x_left,
+        _teach_xlim_right(
+            int(n),
+            tip_xlim=float(tip.get("xlim_right") or n) + 2.0,
+            right_col=float(n) + float(_TEACH_RIGHT_GUTTER),
+        ),
+    )
     # 超級近窗 y：上方多留空給層級標，下方給小波①／預估端；雙底色價也要進窗
     sr = zone.get("sr") or {}
     sr_skip = zone.get("sr_skip") or {}

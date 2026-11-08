@@ -844,7 +844,7 @@ def test_thesis_pred_c9_band_and_38000_broke():
         pack, n=10, lows=[45000.0], tip_skip=set(), bars=None
     )
     texts = " ".join(str(n.get("text") or "") for n in notes)
-    assert f"{_px(38000)}已破" in texts
+    assert f"{_px(38000)}・已破" in texts or f"{_px(38000)}已破" in texts
     assert _px(37300) in texts and _px(35500) in texts
     # 有 C9 區：舊 35000 劇本一下沿不准再出現在右標
     assert _px(35000) not in texts
@@ -1410,8 +1410,9 @@ def test_far_teach_rolls_left_when_over_max():
 
 
 def test_far_teach_extends_left_for_vol_sr_date():
-    """大量撐壓日若被滾動裁掉 → 左側自動拉到該日，最右仍＝最新。"""
+    """大量撐壓日若被滾動裁掉 → 左側可略拉回，但硬卡 soft，不准無限變瘦。"""
     from biaoke_level_learn import (
+        _FAR_TEACH_EXTEND_SOFT,
         _FAR_TEACH_MAX_BARS,
         _far_teach_bars_keeping_vol_sr,
         _far_teach_roll_bars,
@@ -1440,13 +1441,17 @@ def test_far_teach_extends_left_for_vol_sr_date():
         keep_ymds=(),  # 只測撐壓日拉長，不強制浪階日
     )
     assert (sr.get("primary") or {}).get("date") == "20260020"
-    assert got[0]["date"] == "20260020"
     assert got[-1]["date"] == rows[-1]["date"]
-    assert len(got) > _FAR_TEACH_MAX_BARS
+    # 可略超 max，但硬卡 soft（尖點滾出改由帶／右欄承接）
+    assert len(got) <= _FAR_TEACH_EXTEND_SOFT
+    assert len(got) >= _FAR_TEACH_MAX_BARS
+    # 拉回後若仍裝得下撐壓日 → 最左＝該日；否則硬滾後最左晚於該日
+    if len(rows) - 19 <= _FAR_TEACH_EXTEND_SOFT:
+        assert got[0]["date"] == "20260020"
 
 
 def test_far_teach_keep_wave_floor_and_vol_sr():
-    """浪階起點＋更早撐壓日：左側取最早需求，最右仍最新。"""
+    """浪階／撐壓可略拉左，硬卡 soft；最右仍最新（不准無限變瘦）。"""
     from biaoke_level_learn import _far_teach_bars_keeping_vol_sr
 
     rows = []
@@ -1466,10 +1471,90 @@ def test_far_teach_keep_wave_floor_and_vol_sr():
         max_bars=80,
         vol_lookback=199,
         keep_ymds=("20260030",),
+        extend_soft=100,
     )
     assert (sr.get("primary") or {}).get("date") == "20260015"
-    assert got[0]["date"] == "20260015"  # 撐壓早於 keep → 取更早
     assert got[-1]["date"] == rows[-1]["date"]
+    assert len(got) <= 100
+    # soft=100 裝不下從 day15 起的 186 根 → 硬滾；裝得下才最左＝撐壓日
+    if len(rows) - 14 <= 100:
+        assert got[0]["date"] == "20260015"
+
+
+def test_teach_roll_from_floor_and_right_gutter():
+    """近／超近：地板＋定長滾動；右欄現況 X 相對末K固定；尖點可 clamp。"""
+    from biaoke_level_learn import (
+        _TEACH_RIGHT_GUTTER,
+        _clamp_macro_wave_to_window,
+        _teach_right_col_x,
+        _teach_roll_from_floor,
+        _teach_xlim_right,
+        _twii_macro_wave_anchors,
+    )
+
+    rows = [{"date": f"2026{i:04d}", "close": float(i)} for i in range(1, 201)]
+    # 地板在第 50 根（0-based 49）；max=80 → 滾到最右 80
+    got = _teach_roll_from_floor(rows, floor_i=49, max_bars=80)
+    assert len(got) == 80
+    assert got[-1]["date"] == rows[-1]["date"]
+    assert got[0]["date"] == rows[-80]["date"]
+    # 未滿 max：從地板起
+    short = _teach_roll_from_floor(rows[:60], floor_i=49, max_bars=80)
+    assert short[0]["date"] == rows[49]["date"]
+    assert short[-1]["date"] == rows[59]["date"]
+    # 右欄現況槽：n 變大時仍＝末根＋固定 gutter（相對圖右穩定）
+    assert _teach_right_col_x(110) == 110 + _TEACH_RIGHT_GUTTER
+    assert _teach_right_col_x(152) == 152 + _TEACH_RIGHT_GUTTER
+    assert _teach_xlim_right(152) >= 152 + 10.2
+    # clamp：完整柱有錨 → 滾動窗仍能對上 A／B／C
+    full = []
+    for i in range(1, 250):
+        d = f"2026{i:04d}"
+        full.append(
+            {
+                "date": d,
+                "open": 100.0,
+                "high": 120.0,
+                "low": 80.0,
+                "close": 100.0,
+                "volume": 1.0,
+            }
+        )
+    # 塞真實浪階日（函式認 yyyymmdd）
+    def _put(ymd, high=120.0, low=80.0):
+        for r in full:
+            if str(r["date"]) == ymd:
+                r["high"] = high
+                r["low"] = low
+                return
+
+    for y in ("20260401", "20260623", "20260729", "20261006", "20261015"):
+        _put(y)
+    # 用真實日期列
+    real = []
+    from datetime import date, timedelta
+
+    d0 = date(2026, 3, 1)
+    while d0 <= date(2026, 11, 6):
+        if d0.weekday() < 5:
+            real.append(
+                {
+                    "date": d0.strftime("%Y%m%d"),
+                    "open": 100.0,
+                    "high": 120.0,
+                    "low": 80.0,
+                    "close": 100.0,
+                    "volume": 1.0,
+                }
+            )
+        d0 += timedelta(days=1)
+    mac = _twii_macro_wave_anchors(real)
+    assert mac is not None
+    rolled = _teach_roll_from_floor(real, floor_i=0, max_bars=100)
+    clamped = _clamp_macro_wave_to_window(mac, rolled)
+    assert clamped is not None
+    assert clamped["i_now"] == len(rolled) - 1
+    assert clamped["i_alow"] < clamped["i_b_end"] <= clamped["i_c"]
 
 
 def test_teach_vol_sr_title_bit_has_next_layer():
