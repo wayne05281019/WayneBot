@@ -205,7 +205,6 @@ def run(*, n_stocks: int = 180) -> Dict[str, Any]:
             turn_n2_or_ip3 = turn2_wb | intent_pri3
             ip5_or_ip3 = intent_pri5 | intent_pri3
             ip5_soft_ge = intent_pri5 & (_near(no_fake, 5) | hold_yl | bull)
-            
             ei_n2 = w3u & _near(turn, 3) & t60 & _near(intent, 2) & risk
             ei_n2_wb = ei_n2 & (_near(week, 3) | _near(body, 3))
             ei_n2_wb5 = ei_n2 & (_near(week, 5) | _near(body, 5))
@@ -213,7 +212,13 @@ def run(*, n_stocks: int = 180) -> Dict[str, Any]:
             ei_n2_soft = ei_n2_wb & room_soft
             no_room_ip3 = intent_pri3 & (~room.fillna(False))
             ei2_or_ip3 = ei_n2_wb | intent_pri3
-cores_entry = {
+            cores_entry = {
+                "ei_n2_wb": ei_n2_wb,
+                "ei_n2_wb5": ei_n2_wb5,
+                "ei_n2_noroom": ei_n2_noroom,
+                "ei_n2_soft": ei_n2_soft,
+                "no_room_ip3": no_room_ip3,
+                "ei2_or_ip3": ei2_or_ip3,
                 # 复現買鎖
                 "ei_n6_and_room": parent,
                 "ei_n4_and_room": (ei_n4 & (_near(week, 3) | _near(body, 3))) & room,
@@ -262,12 +267,6 @@ cores_entry = {
                 "ip2_bridge": ip2_bridge,
                 "ip2_bridge_room": ip2_bridge_room,
                 "ip2_or_turn2_soft": ip2_or_turn2_soft,
-                "ei_n2_wb": ei_n2_wb,
-                "ei_n2_wb5": ei_n2_wb5,
-                "ei_n2_noroom": ei_n2_noroom,
-                "ei_n2_soft": ei_n2_soft,
-                "no_room_ip3": no_room_ip3,
-                "ei2_or_ip3": ei2_or_ip3,
                 "turn_n3_wb5": turn_n3_wb5,
                 "turn_n2_wb7": turn_n2_wb7,
                 "turn_n2_or_ip2": turn_n2_or_ip2,
