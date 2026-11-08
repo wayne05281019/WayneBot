@@ -2,7 +2,7 @@
   "phone_sync": "blocked",
   "promote_to_lookup_display": false,
   "NOT_BUY_SIGNAL": true,
-  "as_of_taipei": "2026-11-08T10:38:22+08:00",
+  "as_of_taipei": "2026-11-08T10:49:36+08:00",
   "deliverable_zh": "查股五張圖：極高勝率買進起漲＋相對高點賣出相對位置",
   "candidate_buy_rule": {
     "key": "core_w3_or_ma60w3__BAL_Vnear2_or_S55__hi20_or_desync",
@@ -76,7 +76,7 @@
       "balanced_score": 0.7586206896551724
     }
   },
-  "gate_status": "mix_v36_upgrade_gb15_hunt_v37",
+  "gate_status": "mix_v37_keep_gb15_hunt_v38",
   "evidence": {
     "win_rate": 0.76,
     "independent_days": 50,
