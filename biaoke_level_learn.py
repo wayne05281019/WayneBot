@@ -5600,6 +5600,13 @@ def _tw_tip_anchors(pack: Optional[Dict[str, Any]] = None) -> Tuple[float, ...]:
     """
     _OVERHEAD = {"反彈穿刺", "轉震盪"}
     _OLD_SCRIPT1 = {"劇本一上沿", "劇本一下沿"}
+    # 雙軌關鍵位改走 _tw_pred_right_notes（角色標＋分色）；不准先被裸「未破／未到」佔位
+    _DUAL_PATH = {
+        "五波末／週五低",
+        "4/23低",
+        "九波備線破位",
+        "九波備線深殺",
+    }
     drop_script1 = _tw_has_c9_low_zone(pack)
 
     def _is_old_script1_px(v: float) -> bool:
@@ -5612,7 +5619,7 @@ def _tw_tip_anchors(pack: Optional[Dict[str, Any]] = None) -> Tuple[float, ...]:
         except (TypeError, ValueError):
             continue
         role = str(row.get("role") or "")
-        if role in _OVERHEAD:
+        if role in _OVERHEAD or role in _DUAL_PATH:
             continue
         if drop_script1 and (role in _OLD_SCRIPT1 or _is_old_script1_px(v)):
             continue
@@ -5621,6 +5628,16 @@ def _tw_tip_anchors(pack: Optional[Dict[str, Any]] = None) -> Tuple[float, ...]:
             continue
         if 30000.0 <= v <= 60000.0:
             his.append(v)
+    # 雙軌價（不論從 pred 列或 key_levels）一律不進 tip 裸標
+    _dual_px = {
+        round(float(r.get("level")), 1)
+        for r in ((pack or {}).get("pred_levels") or {}).get("tw") or []
+        if str(r.get("role") or "") in _DUAL_PATH
+        and r.get("level") is not None
+    }
+    # 原文常見雙軌四價：沒 role 也擋
+    for _px0 in (37837.0, 37164.0, 35579.0, 31705.0):
+        _dual_px.add(round(_px0, 1))
     for k, raw in ((pack or {}).get("key_levels") or {}).items():
         if not str(k).startswith("pred_tw_"):
             continue
@@ -5629,6 +5646,8 @@ def _tw_tip_anchors(pack: Optional[Dict[str, Any]] = None) -> Tuple[float, ...]:
         except (TypeError, ValueError):
             continue
         if drop_script1 and _is_old_script1_px(v):
+            continue
+        if round(v, 1) in _dual_px:
             continue
         # key_levels 無 role：上方壓位若已在 pred 列就略；裸數字仍收
         if abs(v - 46292.0) < 0.6 or abs(v - 45546.0) < 0.6:
@@ -7249,6 +7268,19 @@ def _place_live_right_labels(
             or "大C今" in s
             or "大B末" in s
             or "已破" in s
+            # 雙軌關鍵位：數字＋虛線必留
+            or "37,837" in s
+            or "37837" in s
+            or "37,164" in s
+            or "37164" in s
+            or "35,579" in s
+            or "35579" in s
+            or "31,705" in s
+            or "31705" in s
+            or "五波末" in s
+            or "假跌破" in s
+            or "九波備線" in s
+            or "4/23低" in s
         ):
             return 0
         # 電盤下一層可丟；一般飆預測次之（已破／C9 已升 0）
@@ -7258,13 +7290,49 @@ def _place_live_right_labels(
             return 1
         return 1
 
-    def _pri(d: Dict[str, Any]) -> Tuple[int, float]:
-        return (_tier(str(d.get("text") or "")), -float(d["y"]))
+    def _pri(d: Dict[str, Any]) -> Tuple[int, int, float]:
+        t = str(d.get("text") or "")
+        # 同 tier 內：雙軌關鍵價優於一般「已破／今」浪標，避免 38000已破擠掉 37837
+        dual_rank = 0 if _is_dual_key(t) else 1
+        return (_tier(t), dual_rank, -float(d["y"]))
 
-    def _collide(y0: float, tier: int, kept_ys: List[float], kept_tiers: List[int]) -> bool:
-        for ky, kt in zip(kept_ys, kept_tiers):
+    def _is_dual_key(t: str) -> bool:
+        s = str(t or "")
+        return any(
+            x in s
+            for x in (
+                "37,837",
+                "37837",
+                "37,164",
+                "37164",
+                "35,579",
+                "35579",
+                "31,705",
+                "31705",
+                "五波末",
+                "假跌破",
+                "九波備線",
+                "4/23低",
+            )
+        )
+
+    def _collide(
+        y0: float,
+        tier: int,
+        kept_ys: List[float],
+        kept_tiers: List[int],
+        *,
+        text: str = "",
+        kept_texts: Optional[List[str]] = None,
+    ) -> bool:
+        kt_texts = kept_texts or []
+        for i, (ky, kt) in enumerate(zip(kept_ys, kept_tiers)):
             # 兩個浪標：用較緊間距，才留得下 c4／c5／今
             thresh = gap_wave if (tier == 0 and kt == 0) else gap * 0.85
+            # 雙軌四個關鍵價彼此可更近（37837↔37164），仍各自帶虛線
+            other_t = kt_texts[i] if i < len(kt_texts) else ""
+            if _is_dual_key(text) and _is_dual_key(other_t):
+                thresh = max(span * 0.012, 180.0)
             if abs(y0 - ky) < thresh:
                 return True
         return False
@@ -7273,18 +7341,21 @@ def _place_live_right_labels(
     kept: List[Dict[str, Any]] = []
     kept_ys: List[float] = []
     kept_tiers: List[int] = []
+    kept_texts: List[str] = []
     for it in items:
         y0 = float(it["y"])
         t = str(it.get("text") or "")
         tier = _tier(t)
-        if _collide(y0, tier, kept_ys, kept_tiers):
+        if _collide(y0, tier, kept_ys, kept_tiers, text=t, kept_texts=kept_texts):
             continue
         kept.append(it)
         kept_ys.append(y0)
         kept_tiers.append(tier)
+        kept_texts.append(t)
     kept.sort(key=lambda d: float(d["y"]), reverse=True)
     placed: List[float] = []
     placed_tiers: List[int] = []
+    placed_texts: List[str] = []
     draw_items: List[Tuple[Dict[str, Any], float]] = []
     # 同一右欄：預設 n+2.55（夠長標「7/29低…」）；可被 x_col／x_text_min 拉開
     x_label = float(x_col) if x_col is not None else float(n) + 2.55
@@ -7297,11 +7368,15 @@ def _place_live_right_labels(
         y_true = float(it["y"])
         if y_true < ymin or y_true > ymax:
             continue
-        tier = _tier(str(it.get("text") or ""))
-        if (not nudge) and _collide(y_true, tier, placed, placed_tiers):
+        t = str(it.get("text") or "")
+        tier = _tier(t)
+        if (not nudge) and _collide(
+            y_true, tier, placed, placed_tiers, text=t, kept_texts=placed_texts
+        ):
             continue
         placed.append(y_true)
         placed_tiers.append(tier)
+        placed_texts.append(t)
         draw_items.append((it, y_true))
     # nudge：由高到低把字盒撐開；虛線仍用真價
     draw_ys: List[float] = [y for _, y in draw_items]
@@ -7332,13 +7407,25 @@ def _place_live_right_labels(
         # 虛線停在標籤左緣外，不准切進框內數字
         x_dash_end = max(x_from + 0.2, x_label - 0.55)
         if level_dash and it.get("dash", True) and x_dash_end > x_from + 0.15:
+            # 標多時改更細虛線，仍對得上右欄數字；少標維持可讀粗細
+            n_dash = sum(
+                1
+                for d, _y in draw_items
+                if d.get("dash", True) and level_dash
+            )
+            if n_dash >= 7:
+                lw_d, ls_d, al_d = 0.55, (0, (1.6, 2.4)), 0.62
+            elif n_dash >= 5:
+                lw_d, ls_d, al_d = 0.72, (0, (2.2, 2.2)), 0.70
+            else:
+                lw_d, ls_d, al_d = 1.05, (0, (3.2, 2.0)), 0.82
             ax.plot(
                 [x_from, x_dash_end],
                 [y_true, y_true],
                 color=color,
-                lw=1.05,
-                ls=(0, (3.2, 2.0)),
-                alpha=0.82,
+                lw=lw_d,
+                ls=ls_d,
+                alpha=al_d,
                 zorder=5,
                 solid_capstyle="butt",
             )
@@ -7972,7 +8059,13 @@ def _wave_now_ladder(pack: Optional[Dict[str, Any]] = None, *, blob: str = "") -
     thesis = str(pack.get("thesis") or text)
     # 大結構跟他鎖的：A底→B反彈→C；不准寫成「五波升完再ABC」讓人把7/29→四萬九當上升⑤
     steps: List[str] = ["大A底7/29", "大B反彈", "大C進行中"]
-    if (
+    # 後文雙軌（B-b／九波）壓第二隻腳／C9 標號
+    has_bb_ladder = _text_has_bb_dual_path(text) or (
+        "B-b" in thesis or "五波跌完" in thesis or "備線九波" in thesis
+    )
+    if has_bb_ladder:
+        steps.append("主B-b／備九波")
+    elif (
         deg == "第二隻腳"
         or "第二隻腳" in thesis
         or "等第二隻腳" in thesis
@@ -8022,8 +8115,23 @@ def _wave_now_ladder(pack: Optional[Dict[str, Any]] = None, *, blob: str = "") -
     else:
         day_zh = ""
         day_bit = ""
-    # 改口第二隻腳／9波擴延：話筒／超近說明用人話，不准只丟代號
-    if "等第二隻腳" in steps or deg == "第二隻腳":
+    # 雙軌／改口第二隻腳／9波擴延：話筒／超近說明用人話，不准只丟代號
+    if "主B-b／備九波" in steps or has_bb_ladder:
+        oral_now = "主線五波跌完走B-b（假跌破37837觀察）；備線九波→35579→31705"
+        one_line = "現在：主B-b／備九波雙軌（預估）"
+        now_line = (
+            oral_now
+            + (f"・{day_bit}" if day_bit else "")
+            + "・預估會改・非買訊"
+        )
+        teach_box = (
+            "現在走到（大→小）\n"
+            f"{chain}\n"
+            f"{oral_now}"
+            + (f"・{day_bit}" if day_bit else "")
+            + "\n預估會改・非買訊"
+        )
+    elif "等第二隻腳" in steps or deg == "第二隻腳":
         oral_now = _foot2_oral_now_line()
         one_line = "現在：夜盤跌完居多・等第二隻腳（預估）"
         now_line = (
@@ -9107,6 +9215,17 @@ def _tw_pred_right_notes(
             except (TypeError, ValueError, AttributeError):
                 continue
     drop_script1 = _tw_has_c9_low_zone(pack)
+    blob_tw = " ".join(
+        str(x or "")
+        for x in (
+            (pack or {}).get("thesis"),
+            (pack or {}).get("snippet"),
+            (pack or {}).get("wait_struct"),
+        )
+    )
+    bb_dual_active = _text_has_bb_dual_path(blob_tw) or (
+        "B-b" in blob_tw or "五波跌完" in blob_tw or "備線九波" in blob_tw
+    )
     for row in ((pack or {}).get("pred_levels") or {}).get("tw") or []:
         try:
             lv = float(row.get("level"))
@@ -9116,6 +9235,15 @@ def _tw_pred_right_notes(
             continue
         tag = str(row.get("tag") or "")
         role = str(row.get("role") or "")
+        # 雙軌當令：右欄優先 37837／37164／35579／31705；改口帶／舊38000已破／裸抽近點先讓位
+        if bb_dual_active and role in {"改口低上沿", "改口低下沿", "劇本一上沿"}:
+            continue
+        if bb_dual_active and abs(lv - 38000.0) < 1.0:
+            continue
+        if bb_dual_active and role in {"點位", ""} and any(
+            abs(lv - x) < 80.0 for x in (37837.0, 37164.0, 35579.0, 31705.0, 37500.0, 37000.0)
+        ):
+            continue
         # 有 C9 低點區：舊劇本一下沿 35000 不准再畫（上沿 38000 改口「已破」仍留）
         if drop_script1 and (
             role == "劇本一下沿" or abs(lv - 35000.0) < 1.0
@@ -9161,6 +9289,14 @@ def _tw_pred_right_notes(
             text = _biaoke_pred_label(
                 lv, _tw_pred_break_tag(lv, lows, pack=pack, role=role)
             )
+        elif role in {
+            "五波末／週五低",
+            "4/23低",
+            "九波備線破位",
+            "九波備線深殺",
+        }:
+            # 雙軌關鍵位：右欄必見數字＋角色；虛線對齊真價
+            text = str(row.get("label") or _biaoke_pred_label(lv, role))
         # 近／超近窗沒有 ref 日柱時從窗左拉滿，不准縮成末日短樁
         x_note = 0
         ref = _ymd(row.get("ref_ymd"))
@@ -9168,20 +9304,23 @@ def _tw_pred_right_notes(
             ii = _bar_index_by_ymd(bars, ref)
             if ii is not None:
                 x_note = int(ii)
+        # 雙軌分色：主線 B-b（37837／37164）暖色；備線九波（35579／31705）冷紫
+        if role in {"五波末／週五低", "4/23低"}:
+            col = "#ffab91"
+        elif role in {"九波備線破位", "九波備線深殺"}:
+            col = "#b39ddb"
+        elif role in {"改口低上沿", "改口低下沿"}:
+            col = "#80deea"
+        elif role in {"C9低上沿", "C9低下沿"}:
+            col = "#ce93d8"
+        else:
+            col = "#82b1ff" if lv < 45000 else "#4dd0e1"
         out.append(
             {
                 "x": x_note,
                 "y": lv,
                 "text": text[:28],
-                "color": (
-                    "#80deea"
-                    if role in {"改口低上沿", "改口低下沿"}
-                    else (
-                        "#ce93d8"
-                        if role in {"C9低上沿", "C9低下沿"}
-                        else ("#82b1ff" if lv < 45000 else "#4dd0e1")
-                    )
-                ),
+                "color": col,
             }
         )
         skip.add(round(lv, 1))
@@ -14551,6 +14690,7 @@ def maybe_push_level_teach_update(
         ("far_path", "遠窗・波浪／切割（非買訊）"),
         ("near_path", "近窗・細微波／量價（非買訊）"),
         ("micro_path", "超近窗・日K小波（非買訊）"),
+        ("oral_path", "口述雙軌對照・主B-b／備九波（非買訊）"),
     ):
         p = str(kit.get(key) or "").strip()
         if p and os.path.isfile(p):
