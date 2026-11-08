@@ -2188,7 +2188,8 @@ def _biaoke_level_snip_score(blob: str, *, is_main: bool) -> int:
     if re.search(
         r"波浪位階|主跌段|C3-\d|(?<![0-9])3-3-\d|重新修訂|動態修正|不能去抄底|破底|"
         r"假跌破|有效穿刺|1\s*[-–]?\s*4\s*重疊|(?:今天)?走\s*3-5|"
-        r"第二組下跌|落底確認|劇本",
+        r"第二組下跌|落底確認|劇本|5\s*波\s*跌完|走\s*B\s*[-–]?\s*b|"
+        r"9\s*波\s*擴延|37837|底部判斷",
         blob,
     ):
         score += 12
@@ -2563,12 +2564,21 @@ def _latest_level_thesis(
                 snip = f"{c9_snip} {snip}"
     except Exception:
         logger.debug("C9 題旨覆寫略過", exc_info=True)
-    # 後文改口：37000~37500／看不到37000以下／第二隻腳；壓 C9 低點區 35500~37300
+    # 後文改口：37000~37500／第二隻腳；但若已有更新的「五波跌完走B-b／九波雙軌」真文，
+    # 不准用較早第二隻腳整段蓋掉（抓取時差也不准看 updated_at，只認 date+time 後文）。
     try:
+        has_bb_now = _text_has_bb_dual_path(snip) or _text_has_bb_dual_path(
+            post_snip or ""
+        )
         if cap >= _FOOT2_ORAL_AS_OF:
             _ensure_foot2_oral_thesis_snap(db_path, as_of=cap)
         foot2_real = _find_foot2_snip(db_path, cap, include_oral=False)
-        if foot2_real and _text_has_foot2_revision(foot2_real):
+        if has_bb_now:
+            # 雙軌後文已定主線：只補缺的 37000~37500 參考帶，不准整段置換題旨
+            if foot2_real and _text_has_foot2_revision(foot2_real):
+                if not re.search(r"37000\s*[-~～到至\-]\s*37500|37000.{0,8}37500", snip):
+                    snip = f"{snip}｜低點區37000~37500（前改口仍參考）".strip()
+        elif foot2_real and _text_has_foot2_revision(foot2_real):
             if not _text_has_foot2_revision(snip):
                 snip = foot2_real
                 post_id = post_id or _FOOT2_ORAL_POST_ID
@@ -2576,7 +2586,6 @@ def _latest_level_thesis(
                 snip = f"{foot2_real} {snip}"
         elif cap >= _FOOT2_ORAL_AS_OF and not _text_has_foot2_revision(snip):
             # 後文改口壓前文：即使庫內最新是 C3-5 真文，仍併入 37000~37500／第二隻腳
-            # （不准只在空題旨／C9 口頭時才吃，否則話筒會停在舊 35000）
             snip = f"{_FOOT2_ORAL_SNIP} {snip}".strip()
             post_id = post_id or _FOOT2_ORAL_POST_ID
     except Exception:
@@ -2622,6 +2631,8 @@ def _latest_level_thesis(
     has_foot2_band = bool(
         re.search(r"37000\s*[-~～到至\-]\s*37500|37000.{0,8}37500", snip)
     )
+    # 11/8 雙軌（說話時間晚於第二隻腳）＞第二隻腳＞C9 擴延標號
+    has_bb_dual = _text_has_bb_dual_path(snip)
     # 9波擴延 C-7轉C-8→C-9＋低點區 35500~37300（後文改口壓舊 C3-5）
     has_c9_band = bool(
         re.search(r"35500\s*[-~～到至]\s*37300|35500.{0,8}37300", snip)
@@ -2637,7 +2648,14 @@ def _latest_level_thesis(
     )
     has_c9 = bool(re.search(r"C\s*[-–]\s*9", snip))
     # 夜盤第二組落底（C3-5完成）優先於舊 C3-3 題旨；後文改口壓前文
-    if has_foot2 or has_foot2_band:
+    if has_bb_dual:
+        # 主線五波跌完→B-b；備線九波擴延。未定案前雙軌並陳（說明用・非買訊）
+        thesis = "大A→大B→大C｜主線五波跌完走B-b・備線九波擴延（預估）"
+        wait = (
+            "主：假跌破37837觀察；備：35579→31705；"
+            "未定案前口述對照與三窗同口；非買訊"
+        )
+    elif has_foot2 or has_foot2_band:
         # 口述改口：夜盤跌完居多；低點 37000~37500；等第二隻腳（非買訊）
         thesis = "大A→大B→大C｜夜盤跌完居多・等第二隻腳（預估）"
         wait = (
@@ -2682,7 +2700,13 @@ def _latest_level_thesis(
     elif morph:
         wait = f"{wait}｜型態觀察：{morph}"
     if _REVISE_MARK.search(snip):
-        wait = "他已示警重修／動態修正・圖位＝當下預估" + (f"｜{morph}" if morph else "")
+        if has_bb_dual:
+            # 雙軌題旨已帶主／備線，不准改口警語整段蓋掉
+            wait = f"{wait}｜隨時檢視" + (f"｜{morph}" if morph else "")
+        else:
+            wait = "他已示警重修／動態修正・圖位＝當下預估" + (
+                f"｜{morph}" if morph else ""
+            )
     return {
         "thesis": thesis,
         "wait_struct": wait[:360],
@@ -4311,6 +4335,33 @@ def _text_has_foot2_revision(blob: str) -> bool:
     return bool(has_band or (has_floor and has_leg) or (has_floor and has_band))
 
 
+def _text_has_bb_dual_path(blob: str) -> bool:
+    """後文雙軌：五波跌完走 B-b（主）＋不排除九波擴延（備）。
+
+    以他說話時間序為準（date+time）；後文壓前文第二隻腳當主線題旨。
+    例：11/8「5波跌完走B-b／假跌破37837／9波擴延→35579→31705」。
+    """
+    s = str(blob or "")
+    if not s.strip():
+        return False
+    has_bb = bool(
+        re.search(
+            r"5\s*波\s*跌完.{0,12}B\s*[-–]?\s*b|"
+            r"走\s*B\s*[-–]?\s*b|"
+            r"波浪理論\s*5\s*波\s*跌完",
+            s,
+            re.I,
+        )
+    )
+    has_fri = bool(re.search(r"37837", s)) and bool(
+        re.search(r"假跌破|破壞.{0,8}3\s*[-–]?\s*5|3\s*[-–]?\s*5.{0,8}下跌脈動", s)
+    )
+    has_9alt = bool(re.search(r"9\s*波\s*擴延", s)) and bool(
+        re.search(r"35579|31705|第二組下跌", s)
+    )
+    return bool(has_bb or (has_fri and has_9alt) or (has_bb and has_9alt))
+
+
 def _text_has_c9_extension(blob: str) -> bool:
     """是否為 9波擴延／C-7→C-8／C-9／35500~37300 改口題旨。"""
     s = str(blob or "")
@@ -5277,6 +5328,44 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
             tag=tag,
             label=lab,
         )
+    # 11/8 雙軌點位（只認原文）：37837／37164／35579／31705
+    if re.search(r"37837", s):
+        tag = "假跌破觀察" if re.search(r"假跌破", s) else "週五低"
+        _add(
+            "tw",
+            level=37837.0,
+            ref_ymd="20261106",
+            role="五波末／週五低",
+            tag=tag,
+            label=f"飆預測{_px(37837)}{tag}",
+        )
+    if re.search(r"37164", s):
+        _add(
+            "tw",
+            level=37164.0,
+            ref_ymd="20260423",
+            role="4/23低",
+            tag="近對照",
+            label=f"飆預測{_px(37164)}4/23低",
+        )
+    if re.search(r"35579", s):
+        _add(
+            "tw",
+            level=35579.0,
+            ref_ymd="20260226",
+            role="九波備線破位",
+            tag="未到",
+            label=f"飆預測{_px(35579)}2/26第一波高",
+        )
+    if re.search(r"31705", s):
+        _add(
+            "tw",
+            level=31705.0,
+            ref_ymd="20260331",
+            role="九波備線深殺",
+            tag="未到",
+            label=f"飆預測{_px(31705)}3/31低",
+        )
     # 改口低點區：37000~37500（後文壓 C9；他原文兩端；不准發明中間價）
     has_foot2_zone = bool(
         re.search(r"37000\s*[-~～到至\-]\s*37500|37000.{0,8}37500", s)
@@ -5895,6 +5984,7 @@ def _build_live_pack(
         "pred_note": str(pred.get("note") or "")[:280],
         "_fut_snap": fut,
         "snippet": thesis_pack.get("snippet") or "",
+        "snippet_full": thesis_pack.get("snippet_full") or thesis_pack.get("snippet") or "",
         "chart_as_of": chart_as_of,
         "thesis_as_of": thesis_cap,
         "query_at": dt.isoformat(),
@@ -13669,6 +13759,195 @@ def prepare_wave_live_pack(
     return pack
 
 
+def render_oral_dual_path_schematic(
+    save_path: str,
+    *,
+    pack: Optional[Dict[str, Any]] = None,
+    snip: str = "",
+) -> str:
+    """口述雙軌對照圖（主：五波跌完→B-b；備：九波擴延）。說明用・非買訊。
+
+    未定案前與三窗同口重渲；題旨來源＝說話時間序後文，不准用抓取 updated_at。
+    """
+    blob = str(snip or "")
+    if not blob and isinstance(pack, dict):
+        blob = str(
+            pack.get("snippet_full")
+            or pack.get("snippet")
+            or pack.get("thesis")
+            or ""
+        )
+    if not _text_has_bb_dual_path(blob) and "B-b" not in blob and "9波擴延" not in blob:
+        # 無雙軌題旨就不產（避免空圖蓋舊）
+        if not re.search(r"37837|5\s*波\s*跌完", blob):
+            return ""
+    try:
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        from matplotlib import font_manager
+    except Exception:
+        logger.exception("口述對照圖缺 matplotlib")
+        return ""
+
+    fp_path = ""
+    for cand in (
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+    ):
+        if os.path.isfile(cand):
+            fp_path = cand
+            break
+
+    def _fp(size: float = 11.0, weight: str = "normal"):
+        if fp_path:
+            return font_manager.FontProperties(
+                fname=fp_path, size=size, weight=weight
+            )
+        return font_manager.FontProperties(size=size, weight=weight)
+
+    fig, axes = plt.subplots(2, 1, figsize=(11.2, 9.0), dpi=150)
+    fig.patch.set_facecolor("#0f1419")
+    for ax in axes:
+        ax.set_facecolor("#0f1419")
+        ax.set_xticks([])
+        ax.set_yticks([])
+        for sp in ax.spines.values():
+            sp.set_visible(False)
+
+    ax = axes[0]
+    ax.set_xlim(0, 12)
+    ax.set_ylim(0, 10)
+    ax.text(
+        0.15,
+        9.25,
+        "主線：五波跌完 → 走 B-b（不是大C走完、也不是新上升1）",
+        color="#80cbc4",
+        ha="left",
+        va="top",
+        fontproperties=_fp(13, "bold"),
+    )
+    w5 = [(0.6, 7.2), (1.5, 5.0), (2.3, 6.1), (3.3, 3.4), (4.1, 4.6), (5.2, 2.2)]
+    ax.plot(*zip(*w5), color="#e8eaf0", lw=2.1)
+    for i, (x, y) in enumerate(w5[1:], 1):
+        ax.scatter([x], [y], s=32, c="#e8eaf0", zorder=5)
+        ax.text(x, y - 0.4, str(i), color="#90caf9", ha="center", fontproperties=_fp(9, "bold"))
+    ax.text(5.2, 0.7, "約 37,837（五波末）", color="#ce93d8", ha="center", fontproperties=_fp(9))
+    b_pts = [(5.2, 2.2), (6.4, 4.0), (7.6, 2.6), (9.2, 5.2)]
+    ax.plot(*zip(*b_pts), color="#ffd54f", lw=2.3)
+    for lab, (x, y), col in zip(
+        ("B-a", "B-b", "B-c"), b_pts[1:], ("#ffd54f", "#ff8a80", "#ffd54f")
+    ):
+        ax.scatter([x], [y], s=40, c=col, zorder=6, edgecolors="#0f1419", linewidths=0.5)
+        ax.text(
+            x,
+            y + (0.35 if lab != "B-b" else -0.55),
+            lab,
+            color=col,
+            ha="center",
+            fontproperties=_fp(10, "bold"),
+        )
+    ax.text(
+        7.6,
+        1.2,
+        "可能戳破 37,837＝假跌破觀察",
+        color="#ff8a80",
+        ha="center",
+        fontproperties=_fp(9),
+    )
+    ax.text(
+        10.5,
+        6.6,
+        "五波跌完\n之後進 B",
+        color="#80cbc4",
+        ha="center",
+        fontproperties=_fp(10, "bold"),
+        bbox=dict(boxstyle="round,pad=0.3", fc="#1b2838", ec="#80cbc4", lw=0.8),
+    )
+
+    ax = axes[1]
+    ax.set_xlim(0, 12)
+    ax.set_ylim(0, 10)
+    ax.text(
+        0.15,
+        9.25,
+        "備線：若還沒跌完 → 九波擴延（不是轉 B；看 35,579→31,705）",
+        color="#ef9a9a",
+        ha="left",
+        va="top",
+        fontproperties=_fp(13, "bold"),
+    )
+    ext = [
+        (0.6, 7.4),
+        (1.3, 5.4),
+        (2.0, 6.3),
+        (2.8, 4.0),
+        (3.5, 5.0),
+        (4.3, 2.8),
+        (5.0, 3.7),
+        (5.8, 2.1),
+        (6.5, 2.9),
+        (7.6, 0.9),
+    ]
+    ax.plot(*zip(*ext[:6]), color="#e8eaf0", lw=1.9)
+    ax.plot(*zip(*ext[5:]), color="#ef9a9a", lw=2.3)
+    for i, (x, y) in enumerate(ext[1:], 1):
+        col = "#90caf9" if i <= 5 else "#ef9a9a"
+        ax.scatter([x], [y], s=28, c=col, zorder=5)
+        ax.text(x, y - 0.38, str(i), color=col, ha="center", fontproperties=_fp(8.5, "bold"))
+    ax.axvline(4.3, color="#546e7a", lw=0.9, ls=(0, (3, 2)), ymin=0.08, ymax=0.7)
+    ax.text(
+        4.3,
+        7.6,
+        "若只看到這裡\n會以為五波完",
+        color="#b0bec5",
+        ha="center",
+        fontproperties=_fp(8.5),
+    )
+    ax.axhline(1.7, color="#ce93d8", lw=1.0, ls=(0, (4, 2)), xmin=0.55, xmax=0.92)
+    ax.text(10.4, 1.7, "35,579\n(2/26 第一波高)", color="#ce93d8", ha="left", va="center", fontproperties=_fp(8.5))
+    ax.axhline(0.7, color="#ff8a80", lw=1.0, ls=(0, (4, 2)), xmin=0.55, xmax=0.92)
+    ax.text(10.4, 0.7, "31,705\n(3/31 低)", color="#ff8a80", ha="left", va="center", fontproperties=_fp(8.5))
+    ax.text(
+        9.0,
+        5.6,
+        "九波擴延\n＝續跌不是轉 B",
+        color="#ef9a9a",
+        ha="center",
+        fontproperties=_fp(10, "bold"),
+        bbox=dict(boxstyle="round,pad=0.3", fc="#2a1518", ec="#ef9a9a", lw=0.8),
+    )
+
+    fig.suptitle(
+        "飆大口述結構對照（說明用・非買訊）｜與三窗同口・後文壓前文",
+        color="#eceff1",
+        y=0.98,
+        fontproperties=_fp(14, "bold"),
+    )
+    fig.text(
+        0.5,
+        0.012,
+        "官方對照：週五低≈37,837；4/23低≈37,164。浪形＝口述示意，不是已驗證段號。",
+        color="#78909c",
+        ha="center",
+        fontproperties=_fp(8),
+    )
+    try:
+        os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
+        plt.tight_layout(rect=(0.02, 0.03, 0.98, 0.95))
+        fig.savefig(save_path, facecolor=fig.get_facecolor(), bbox_inches="tight")
+    except Exception:
+        logger.exception("口述對照圖存檔失敗")
+        plt.close(fig)
+        return ""
+    plt.close(fig)
+    if os.path.isfile(save_path) and os.path.getsize(save_path) > 2000:
+        return save_path
+    return ""
+
+
 def paint_open_day_hypothesis(
     db_path: str,
     *,
@@ -13840,6 +14119,39 @@ def paint_open_day_hypothesis(
         us_path = ""
         tx60_path = ""
 
+    # 未定案雙軌：口述對照圖與三窗同口重渲（後文題旨；非買訊）
+    oral_path = ""
+    if mode in {"full", "trio", "far"}:
+        try:
+            oral_snip = str(
+                pack.get("snippet_full")
+                or pack.get("snippet")
+                or thesis
+                or ""
+            )
+            if _text_has_bb_dual_path(oral_snip) or _text_has_bb_dual_path(
+                str(wait_struct or "")
+            ):
+                oral_path = os.path.join(snap_root, f"{slot_id}-oral-path.png")
+                oral_path = (
+                    render_oral_dual_path_schematic(
+                        oral_path, pack=pack, snip=oral_snip
+                    )
+                    or ""
+                )
+                # 最新別名：方便話筒／本機對圖同一口
+                if oral_path:
+                    try:
+                        import shutil
+
+                        latest_oral = os.path.join(snap_root, "oral-dual-path-latest.png")
+                        shutil.copy2(oral_path, latest_oral)
+                    except Exception:
+                        pass
+        except Exception:
+            logger.exception("口述對照圖略過")
+            oral_path = ""
+
     # as_of＝加權末柱顯示日（官方收或盤中／空窗疊加），不准寫日曆 ymd 讓舊圖假裝今天
     chart_as_of = _ymd(pack.get("chart_as_of")) or _twii_chart_as_of(db_path) or ymd
     try:
@@ -13857,6 +14169,8 @@ def paint_open_day_hypothesis(
         key_levels["_teach_tip"] = compute_teach_tip_snapshot(db_path, pack)
     except Exception:
         logger.debug("teach tip 落檔略過", exc_info=True)
+    if oral_path:
+        key_levels["_oral_path"] = oral_path
 
     conn = sqlite3.connect(db_path, timeout=30.0)
     try:
@@ -13915,22 +14229,24 @@ def paint_open_day_hypothesis(
         conn.close()
 
     logger.info(
-        "活畫 slot=%s thesis=%s far=%s near=%s micro=%s us=%s tx60=%s as_of=%s",
+        "活畫 slot=%s thesis=%s far=%s near=%s micro=%s oral=%s us=%s tx60=%s as_of=%s",
         slot_id,
         thesis,
         bool(far_path),
         bool(near_path),
         bool(micro_path),
+        bool(oral_path),
         bool(us_path),
         bool(tx60_path),
         chart_as_of,
     )
     return {
-        "ok": bool(near_path or far_path or us_path or micro_path or tx60_path),
+        "ok": bool(near_path or far_path or us_path or micro_path or tx60_path or oral_path),
         "path": chart_path or near_path or "",
         "far_path": far_path or "",
         "near_path": near_path or "",
         "micro_path": micro_path or "",
+        "oral_path": oral_path or "",
         "us_path": us_path or "",
         "tx60_path": tx60_path or "",
         "thesis": thesis,
@@ -13962,6 +14278,7 @@ def latest_teach_kit(db_path: str) -> Dict[str, Any]:
         "far_path": "",
         "near_path": "",
         "micro_path": "",
+        "oral_path": "",
         "us_path": "",
         "thesis": "",
         "slot_id": "",
@@ -14009,6 +14326,15 @@ def latest_teach_kit(db_path: str) -> Dict[str, Any]:
         tip = levels.get("_teach_tip") if isinstance(levels, dict) else None
         if isinstance(tip, dict):
             out["teach_tip"] = tip
+        oral = str((levels or {}).get("_oral_path") or "") if isinstance(levels, dict) else ""
+        if oral and os.path.isfile(oral):
+            out["oral_path"] = oral
+        else:
+            # 別名檔：同口最新對照
+            root = _paint_dir(db_path)
+            latest_oral = os.path.join(root, "oral-dual-path-latest.png")
+            if os.path.isfile(latest_oral):
+                out["oral_path"] = latest_oral
     except Exception:
         out["teach_tip"] = {}
     return out

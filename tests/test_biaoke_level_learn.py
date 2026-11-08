@@ -1220,6 +1220,69 @@ def test_thesis_follows_latest_biaoke_post_up_to_query(tmp_path):
     assert "主跌" in (after.get("snippet") or after.get("thesis") or "")
 
 
+def test_bb_dual_path_thesis_beats_earlier_foot2(tmp_path):
+    """後文 5波跌完走B-b／九波雙軌（說話時間晚）壓前文第二隻腳；抓取時差不准倒序。"""
+    import sqlite3
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_level_learn import (
+        _latest_level_thesis,
+        _text_has_bb_dual_path,
+        _thesis_pred_levels,
+        ensure_tables,
+        render_oral_dual_path_schematic,
+    )
+
+    db = str(tmp_path / "bbdual.db")
+    ensure_tables(db)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS biaoke_posts("
+        "id TEXT PRIMARY KEY, date TEXT, time TEXT, kind TEXT, text TEXT)"
+    )
+    foot2 = (
+        "目前應該看不到37000以下，我夜盤來看應該跌完了居多。"
+        "低點應該最多37000-37500可能性非常高。"
+        "最安全是買反彈之後拉回1-2轉1-3-1，也就是第二隻腳。"
+    )
+    main = (
+        "大盤底部判斷訊號。由台指期來看大盤，星期五夜盤已經破壞最後一組3-5下跌脈動。"
+        "星期五最低點位37837，已經非常接近4/23低點37164。"
+        "這也是波浪理論5波跌完走B-b，也有可能會破37837，但是假跌破買點。"
+        "因為第二組下跌是走5波，當然不排除走9波擴延，非常有可能有效跌破"
+        "2/26第一波高點35579，則殺到3/31低點31705。"
+    )
+    # 較早：第二隻腳；較晚：雙軌主文（即使 updated_at 顛倒，也只認 date+time）
+    conn.execute(
+        "INSERT INTO biaoke_posts(id, date, time, kind, text) VALUES (?,?,?,?,?)",
+        ("187881236:c1", "2026-11-07", "00:13", "reply", foot2),
+    )
+    conn.execute(
+        "INSERT INTO biaoke_posts(id, date, time, kind, text) VALUES (?,?,?,?,?)",
+        ("188039214", "2026-11-08", "12:01", "post", main),
+    )
+    conn.commit()
+    conn.close()
+    assert _text_has_bb_dual_path(main)
+    tz = ZoneInfo("Asia/Taipei")
+    th = _latest_level_thesis(
+        db, as_of="20261108", now=datetime(2026, 11, 8, 13, 30, tzinfo=tz)
+    )
+    assert "B-b" in (th.get("thesis") or "")
+    assert "九波" in (th.get("thesis") or "")
+    assert "第二隻腳" not in (th.get("thesis") or "")
+    assert "37837" in (th.get("snippet_full") or th.get("snippet") or "")
+    pred = _thesis_pred_levels(th.get("snippet_full") or "", db)
+    roles = {str(r.get("role")): float(r["level"]) for r in (pred.get("tw") or [])}
+    assert abs(roles.get("五波末／週五低", 0) - 37837) < 1
+    assert abs(roles.get("九波備線破位", 0) - 35579) < 1
+    assert abs(roles.get("九波備線深殺", 0) - 31705) < 1
+    out = str(tmp_path / "oral.png")
+    got = render_oral_dual_path_schematic(out, snip=main)
+    assert got and __import__("os").path.isfile(got)
+
+
 def test_same_day_fake_break_reply_merges_into_main_chrono(tmp_path):
     """11/5 短回『假跌破』依時間序併進主文；不准短回蓋掉 C3-5 主文當唯一題旨。"""
     import sqlite3
