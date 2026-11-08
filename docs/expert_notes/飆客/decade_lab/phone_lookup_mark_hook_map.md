@@ -47,3 +47,8 @@ Gate 候選：`phone_curriculum_merged_decision.json`、`hsiao_promote_lookup_de
 ## 閘
 
 `phone_sync=blocked`；`promote_to_lookup_display=false` 直到獨立交易日 n≥20 且贏隨機＋leave_zero／現況。未過閘不准開旗標、不准改預設畫面。
+
+
+## 持有／買進建議目標（使用者終點；未過閘不上話筒）
+
+見 `phone_lookup_hold_buy_advice_target.json`。查股時依「有／無持有」給：續抱或先賣（哪天哪價）、能不能買、本金幾成建議。進場仍只認高低卡黃金買點；LAB 標記過閘才加第三路。

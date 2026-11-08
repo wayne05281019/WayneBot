@@ -2,7 +2,7 @@
   "phone_sync": "blocked",
   "promote_to_lookup_display": false,
   "NOT_BUY_SIGNAL": true,
-  "as_of_taipei": "2026-11-08T08:51:55.188226+08:00",
+  "as_of_taipei": "2026-11-08T10:05:13+08:00",
   "deliverable_zh": "查股五張圖：極高勝率買進起漲＋相對高點賣出相對位置",
   "candidate_buy_rule": {
     "key": "core_w3_or_ma60w3__BAL_Vnear2_or_S55__hi20_or_desync",
@@ -76,7 +76,7 @@
       "balanced_score": 0.7586206896551724
     }
   },
-  "gate_status": "mix_v32_keep_pe2_mh20_ma2_hunt_v33",
+  "gate_status": "mix_v33_upgrade_vdry_hunt_v34",
   "evidence": {
     "win_rate": 0.76,
     "independent_days": 50,
@@ -480,7 +480,7 @@
     "U112 pe 续攻或接受 U250-only 早卖政策"
   ],
   "gate_one_liner": "draft: mix_v19 hybrid fail ~78.9%; invent v20 U180+placement stub; phone_sync=blocked; buy U112 locked; sell U250 only",
-  "user_goal_zh": "提早知道個股買點＋提早知道賣點；材料不夠可自由加因子",
+  "user_goal_zh": "查股：有持有→能不能抱／哪天哪價先賣／怎麼抱；沒持有→能不能買／哪天哪價／本金幾成。未過閘不上話筒。",
   "metric_priority_zh": [
     "提早買（訊號相對後續漲段／20高）",
     "提早賣（相對高點／浪頂）",

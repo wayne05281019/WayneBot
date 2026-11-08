@@ -1,0 +1,26 @@
+{
+  "phone_sync": "blocked",
+  "LOOKUP_LAB_MARKS_ENABLED": false,
+  "promote_to_lookup_display": false,
+  "as_of_taipei": "2026-11-08T10:07:18+08:00",
+  "user_goal_zh": "查一檔：有持有→能不能抱／哪天哪價先賣／怎麼抱；沒持有→能不能買／哪天哪價／本金幾成。",
+  "surface_when_promoted": {
+    "holding_yes": [
+      "能不能持續持有（對官方柱：未碰到賣腿＝可續抱）",
+      "先賣提示：價＝賣腿觸發價（hi20／浪頂／vdry+ma2）；日＝最近觸發日或距觸發剩幾根（估）",
+      "怎麼抱：未觸發前續抱；觸發當日減碼；不發明新價"
+    ],
+    "holding_no": [
+      "能不能買：只認 leave_zero∪確認紅箭∪（過閘後）LAB_BUY_W3_START",
+      "哪天哪價：最近買點日＋價；或下一觀察位＝官方柱已有欄（不准發明）",
+      "本金幾成：對齊 AI倉口徑建議——操作池最多約1/3檔位（總本金50萬→操作30萬最多3檔≈每檔≤10%總本金）；大跌才動保留20%；未過閘不上話筒"
+    ]
+  },
+  "lab_legs_now": {
+    "buy_locked": "ei_n5_week_n3_softbody ~80.4%@50d bars≈15.86",
+    "sell_locked": "pe2_mh20_ma2_vdry ~80.4%@50d hold≈9.04",
+    "capital_pct_status": "建議模板已寫；未量化倉位勝率前不上話筒"
+  },
+  "hooks": "見 phone_lookup_mark_hook_map.md；旗標仍關",
+  "NOT_BUY_SIGNAL_until_promote": true
+}
