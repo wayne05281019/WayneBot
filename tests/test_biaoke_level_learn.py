@@ -208,7 +208,8 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "hspace=0.10" in near_blk
     assert "labs_ax" in near_blk and "labs_axv" in near_blk
     assert "0.62" in near_blk and "_teach_eight_wave_inset_wh" in near_blk
-    assert "width) * 0.15" in near_blk  # 九波鎖價欄紅框
+    # 近窗九波改靠右下（0.55），讓左半區帶黃／紫標齊頭
+    assert "width) * 0.55" in near_blk
     assert "35500.0" in near_blk  # 上緣不准碰藍虛線
     assert "float(i5e) + 7.0" in near_blk  # ⑤末尖右下讓過戳
     assert "_near_major_date_labs" in near_blk  # 結構日欄間單行
@@ -455,7 +456,9 @@ def test_far_render_shared_xticks_forbid_feiban_suffix_in_source():
         )
     ]
     assert "last_open_calendar_day_on_or_before" in ensure_src
-    assert "電盤收" in far_blk
+    # 遠窗電子盤戳走 _paint_tx_after_hours_tip（收盤／盤中拆開組，不准再硬拼「電盤收」）
+    assert "_paint_tx_after_hours_tip" in far_blk
+    assert "台指電子盤" in far_blk
 
 
 def test_next_support_resist_nearest():
@@ -504,7 +507,8 @@ def test_far_yellow_band_is_max_vol_day_hl():
     near_src = src[src.index("def _render_twii_live_dark") : src.index("def _render_twii_super_near_dark")]
     micro_src = src[src.index("def _render_twii_super_near_dark") : src.index("def _render_us_compare_dark")]
     assert (
-        "0.078 if _c9_near_now else 0.068" in near_src
+        "0.092 if _c9_near_now else 0.068" in near_src
+        or "0.078 if _c9_near_now else 0.068" in near_src
         or "0.062 if _c9_near_now else 0.055" in near_src
         or "min_gap=(ymax - ymin) * 0.055" in near_src
     )
@@ -848,9 +852,9 @@ def test_thesis_pred_c9_band_and_38000_broke():
     assert "劇本一上沿" in roles
     pack = {"pred_levels": pred}
     tips = _tw_tip_anchors(pack)
+    # C9 兩沿改走底帶；不准進 tip 裸梯。舊劇本一 35000／38000 也不准當下一錨
     assert all(abs(t - 38000) > 1 and abs(t - 35000) > 1 for t in tips)
-    assert any(abs(t - 37300) < 1 for t in tips)
-    assert any(abs(t - 35500) < 1 for t in tips)
+    assert all(abs(t - 37300) > 1 and abs(t - 35500) > 1 for t in tips)
     from biaoke_level_learn import _px
 
     br = _tw_pred_break_tag(38000.0, [45000.0], pack=pack, role="劇本一上沿")
@@ -931,8 +935,8 @@ def test_thesis_pred_foot2_band_supersedes_c9():
     assert zone is not None and zone[2] == "foot2"
     assert abs(zone[0] - 37000) < 1 and abs(zone[1] - 37500) < 1
     tips = _tw_tip_anchors(pack)
-    assert any(abs(t - 37500) < 1 for t in tips)
-    assert any(abs(t - 37000) < 1 for t in tips)
+    # 改口兩沿改走底帶；不准進 tip 裸梯（也不准再掛舊 C9 端）
+    assert all(abs(t - 37500) > 1 and abs(t - 37000) > 1 for t in tips)
     assert all(abs(t - 35500) > 1 and abs(t - 37300) > 1 for t in tips)
     # key_levels 殘留舊 35000／38000 也不准再當虛線下一錨
     tips2 = _tw_tip_anchors(
@@ -947,7 +951,8 @@ def test_thesis_pred_foot2_band_supersedes_c9():
         }
     )
     assert all(abs(t - 38000) > 1 and abs(t - 35000) > 1 for t in tips2)
-    assert any(abs(t - 37500) < 1 for t in tips2)
+    # key_levels 裡的改口兩沿同樣不准進 tip 裸梯（底帶已畫）
+    assert all(abs(t - 37500) > 1 and abs(t - 37000) > 1 for t in tips2)
     br = _tw_pred_break_tag(38000.0, [45000.0], pack=pack, role="劇本一上沿")
     assert br == "已破"
     assert _biaoke_pred_label(38000.0, br) == f"飆預測{_px(38000)}・已破"
@@ -3049,7 +3054,7 @@ def test_near_micro_follow_far_c9_twii_presentation():
     assert "float(i5e) + 7.0" in near
     assert "_teach_eight_wave_inset_wh" in near
     assert "0.62" in near
-    assert "width) * 0.15" in near
+    assert "width) * 0.55" in near  # 九波靠右，區帶兩標靠左齊頭
     assert "35500.0" in near
     assert "_near_major_date_labs" in near
     # C7／C8 字標多餘（右欄已有 C-7轉C-8今）；圓點仍留
