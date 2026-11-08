@@ -1,0 +1,23 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "as_of_taipei": "2026-11-08T15:51:39.983397+08:00",
+  "gate_one_liner": "spirit_mix_thicken_v60 U180 n=112 confirm_parent=False confirm_bars=None; buy_ge80_d50=0 earlier=0; best_early=None bars=None; sell_lock=pe2_mh20_vdry_gb15 hold=8.901960784313726; promote_lookup=NO",
+  "parent_seal": "phone_spirit_mix_thicken_v59_decision.json",
+  "n_stocks": 112,
+  "confirm_v11_buy": null,
+  "upgrade_lock": null,
+  "keep_lock": {
+    "key": "intent_pri3__SELL_hi20_or_wave_top",
+    "bars_before_hi20": 16.26,
+    "reason_zh": "v60 腳本 NameError 作廢；保留 intent_pri3"
+  },
+  "sell_lock_unchanged": {
+    "key": "pe2_mh20_vdry_gb15",
+    "hold_days": 8.901960784313726
+  },
+  "finding_zh": "v60 無效（ei 未定義）。下一輪從 v57 健康底重生 ei_n2／no_room。",
+  "next": "mix_v61 ei_n2/no_room from v57 base；phone_sync=blocked",
+  "parent_bars_next": 16.26,
+  "void_run": true
+}
