@@ -686,6 +686,8 @@ def _plain_wave_now_phrase(now: str) -> str:
         return "9波擴延最後一小段 C-9（跌完＝這段下殺完）"
     if n in ("第二隻腳", "等第二隻腳"):
         return "夜盤跌完居多；低點最多 37000~37500；等反彈後拉回 1-2轉1-3-1 第二隻腳"
+    if n in ("主B-b／備九波", "B-b雙軌", "主B-b"):
+        return "主線五波跌完走 B-b（假跌破 37837 觀察）；備線若九波擴延 → 35579→31705"
     return n
 
 
@@ -720,6 +722,13 @@ def format_teach_brief(db_path: str = "") -> str:
     lines.append("<b>現在</b>")
     # 一條路＋目前落在哪；不准再叠「大A→大B→…→落在」兩段重複
     lines.append(html_escape("大盤：大A底（7/29）→ 大B反彈 → 大C下跌中。"))
+    _bb_dual = (
+        "B-b" in thesis
+        or "五波跌完" in thesis
+        or "備線九波" in thesis
+        or "假跌破37837" in wait
+        or "35579→31705" in wait
+    )
     _foot2_brief = (
         "第二隻腳" in thesis
         or "等第二隻腳" in thesis
@@ -727,7 +736,14 @@ def format_teach_brief(db_path: str = "") -> str:
         or "37000-37500" in wait
         or "看不到37000" in wait
     )
-    if _foot2_brief:
+    if _bb_dual:
+        lines.append(
+            html_escape(
+                "主線：五波跌完走 B-b（假跌破 37837 觀察）；"
+                "備線：若九波擴延 → 35579→31705。未定案前雙軌並陳（非買訊）。"
+            )
+        )
+    elif _foot2_brief:
         lines.append(
             html_escape(
                 "夜盤來看跌完居多；目前應該看不到 37000 以下；"
