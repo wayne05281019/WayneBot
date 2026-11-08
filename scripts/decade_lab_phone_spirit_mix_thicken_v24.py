@@ -167,24 +167,24 @@ def run() -> Dict[str, Any]:
             early_ex = exhaust
             early_hi10 = h >= hi10.shift(1)
 
-            specs: List[Tuple[str, pd.Series, Any, float]] = [
-                ("v11_hi20", v11, "hi20", 0.0),
-                ("add_i3_pe3", add_i3, early_or, 0.03),  # confirm lock
-                ("add_i3_pe2", add_i3, early_or, 0.02),
-                ("add_i3_pe15", add_i3, early_or, 0.015),
-                ("add_i3_pe5", add_i3, early_or, 0.05),
-                ("add_i3_ex3", add_i3, early_ex, 0.03),
-                ("add_i3_hi10_3", add_i3, early_hi10, 0.03),
-                ("add_i2_pe3", add_i2, early_or, 0.03),
-                ("add_i4_pe3", add_i4, early_or, 0.03),
-                ("add_i5_pe3", add_i5, early_or, 0.03),
-                ("add_i3_week_pe3", add_i3_week, early_or, 0.03),
-                ("add_i2_pe2", add_i2, early_or, 0.02),
-                ("nobody_pe3", nobody, early_or, 0.03),
+            specs: List[Tuple[str, pd.Series, str, Any, float]] = [
+                ("v11_hi20", v11, "hi20", None, 0.0),
+                ("add_i3_pe3", add_i3, "pe", early_or, 0.03),  # confirm lock
+                ("add_i3_pe2", add_i3, "pe", early_or, 0.02),
+                ("add_i3_pe15", add_i3, "pe", early_or, 0.015),
+                ("add_i3_pe5", add_i3, "pe", early_or, 0.05),
+                ("add_i3_ex3", add_i3, "pe", early_ex, 0.03),
+                ("add_i3_hi10_3", add_i3, "pe", early_hi10, 0.03),
+                ("add_i2_pe3", add_i2, "pe", early_or, 0.03),
+                ("add_i4_pe3", add_i4, "pe", early_or, 0.03),
+                ("add_i5_pe3", add_i5, "pe", early_or, 0.03),
+                ("add_i3_week_pe3", add_i3_week, "pe", early_or, 0.03),
+                ("add_i2_pe2", add_i2, "pe", early_or, 0.02),
+                ("nobody_pe3", nobody, "pe", early_or, 0.03),
             ]
-            for cn, entry, es, mp in specs:
+            for cn, entry, kind, es, mp in specs:
                 key = cn
-                if es == "hi20":
+                if kind == "hi20":
                     trades = _simulate_relhigh(
                         df, entry, hl=hl, temp_label=temp, sid=sid, entry_tag=key, wave_top=wave_top, mode="hi20_or_wave_top"
                     )
@@ -197,7 +197,7 @@ def run() -> Dict[str, Any]:
                 pool = w3u if int(w3u.sum()) >= 5 else pd.Series(True, index=idx)
                 rnd = _random_matched(entry, pool, seed=seed + len(key))
                 rkey = f"random__{key}"
-                if es == "hi20":
+                if kind == "hi20":
                     trade_bucket.setdefault(rkey, []).extend(
                         _simulate_relhigh(
                             df, rnd, hl=hl, temp_label=temp, sid=sid, entry_tag=rkey, wave_top=wave_top, mode="hi20_or_wave_top"
