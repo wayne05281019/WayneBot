@@ -1794,7 +1794,8 @@ def test_reconcile_sox_last_close_patches_stale_intraday(tmp_path, monkeypatch):
             }
 
     fake_us = types.ModuleType("us_overnight")
-    fake_us.us_tape_phase = lambda *_a, **_k: "closed"
+    # 只在同日盤後（post）修盤中殘值；週末 overnight 不准蓋
+    fake_us.us_tape_phase = lambda *_a, **_k: "post"
     monkeypatch.setitem(sys.modules, "us_overnight", fake_us)
     fake_req = types.ModuleType("requests")
     fake_req.get = lambda *_a, **_k: _Resp()
@@ -1810,6 +1811,10 @@ def test_reconcile_sox_last_close_patches_stale_intraday(tmp_path, monkeypatch):
     assert close is not None
     assert abs(float(close[0]) - 9011.1376953125) < 0.01
     assert float(close[1]) < -12.0
+
+    # overnight（週末）不准改庫
+    fake_us.us_tape_phase = lambda *_a, **_k: "overnight"
+    assert m._reconcile_us_index_last_close(str(db), sym="SOX", yid="^SOX") is False
 
 
 def test_far_twii_macro_wave5_apr_to_jun_and_big_a_729():
@@ -2483,6 +2488,130 @@ def test_merge_live_sox_display_bar_overlays_session():
     assert out[-1]["date"] == "20261029"
     assert out[-1]["close"] == 10300.0
     assert int(out[-1].get("live_session") or 0) == 1
+
+
+def test_merge_live_sox_skips_when_not_live_session():
+    """週末休市 live_session=0：不准把盤後殘價蓋進顯示柱當收盤。"""
+    from biaoke_level_learn import _merge_live_sox_display_bar
+
+    bars = [
+        {
+            "date": "20261106",
+            "open": 9495.0,
+            "high": 9627.0,
+            "low": 9221.0,
+            "close": 9390.25,
+            "volume": 0,
+        }
+    ]
+    stale = {
+        "date": "20261106",
+        "open": 9495.0,
+        "high": 9627.0,
+        "low": 9221.0,
+        "close": 9474.0,
+        "volume": 0,
+        "live_session": 0,
+        "session_phase": "overnight",
+    }
+    out = _merge_live_sox_display_bar(bars, stale)
+    assert len(out) == 1
+    assert abs(float(out[-1]["close"]) - 9390.25) < 1e-6
+
+
+def test_weekend_tx_tip_uses_official_night_not_mis(tmp_path, monkeypatch):
+    """週日白天：台指電子盤戳走庫內夜盤收，不准 MIS 殘價／假今日 asof。
+
+    煙霧 CI 無正式碟：用暫存 futures_daily；並塞 MIS 殘價確認不准被吃。
+    """
+    import sqlite3
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_level_learn import _ensure_paint_live_tx, _resolve_tx_after_hours_tip
+
+    db = tmp_path / "tx_tip.db"
+    conn = sqlite3.connect(str(db))
+    conn.execute(
+        """
+        CREATE TABLE futures_daily (
+            date TEXT, symbol TEXT, session TEXT, contract_month TEXT,
+            open REAL, high REAL, low REAL, close REAL, settlement REAL,
+            volume INTEGER, open_interest INTEGER, pct_change REAL,
+            source TEXT, updated_at TEXT,
+            PRIMARY KEY (date, symbol, session)
+        )
+        """
+    )
+    conn.executemany(
+        """
+        INSERT INTO futures_daily(
+            date, symbol, session, contract_month, open, high, low, close,
+            settlement, volume, open_interest, pct_change, source, updated_at
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """,
+        [
+            (
+                "20261106",
+                "TX",
+                "night",
+                "202611",
+                41990.0,
+                42298.0,
+                38799.0,
+                38936.0,
+                38936.0,
+                1,
+                0,
+                -7.57,
+                "taifex",
+                "t",
+            ),
+            (
+                "20261106",
+                "TX",
+                "regular",
+                "202611",
+                38888.0,
+                40690.0,
+                37694.0,
+                39786.0,
+                39652.0,
+                1,
+                0,
+                -5.27,
+                "taifex",
+                "t",
+            ),
+        ],
+    )
+    conn.commit()
+    conn.close()
+
+    # 若誤抓 MIS，會吐出 40298／今日 asof——測試必須仍走庫內夜盤
+    import market_ticker
+
+    monkeypatch.setattr(
+        market_ticker,
+        "fetch_tx_live",
+        lambda **_k: {
+            "close": 40298.0,
+            "ref": 39652.0,
+            "update_time": "04:59:58",
+            "pct_change": 1.63,
+        },
+    )
+
+    tz = ZoneInfo("Asia/Taipei")
+    pack = {"query_at": datetime(2026, 11, 8, 8, 53, tzinfo=tz).isoformat()}
+    assert _ensure_paint_live_tx(pack, now=datetime(2026, 11, 8, 8, 53, tzinfo=tz)) is None
+    assert pack.get("live_tx") is None
+    tip = _resolve_tx_after_hours_tip(str(db), pack)
+    assert tip is not None
+    assert abs(float(tip["close"]) - 38936.0) < 1.0
+    assert abs(float(tip.get("prev") or 0) - 39786.0) < 1.0
+    assert str(tip.get("asof") or "").startswith("20261106")
+    assert not tip.get("clock")
 
 
 def test_near_micro_right_notes_follow_tip_anchors():

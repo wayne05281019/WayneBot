@@ -83,6 +83,23 @@ def test_last_pre_from_block_uses_pre_window():
     assert abs(got["pct"] - 2.0) < 1e-9
 
 
+def test_weekend_sox_live_bar_is_official_close_not_extended():
+    """週末 force 抓費半：live_session=0，收＝日K官方收，不准盤後殘價。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from us_overnight import _us_cash_calendar_closed, fetch_live_sox_display_bar
+
+    taipei = ZoneInfo("Asia/Taipei")
+    sunday = datetime(2026, 11, 8, 8, 53, tzinfo=taipei)
+    assert _us_cash_calendar_closed(sunday) is True
+    live = fetch_live_sox_display_bar(sunday, force=True)
+    assert live is not None
+    assert int(live.get("live_session") or 0) == 0
+    # 2026-11-06 官方收 9390.25（Yahoo 日K）；盤後殘約 9474 不准進來
+    assert abs(float(live["close"]) - 9390.25) < 1.0
+
+
 def test_outer_rows_brent_dx_twd():
     from us_overnight import outer_rows
 
