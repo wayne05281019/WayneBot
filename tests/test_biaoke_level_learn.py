@@ -3248,9 +3248,10 @@ def test_week_bot_zone_and_dual_pred_from_thesis():
     notes = _tw_pred_right_notes(pack, n=80, lows=[37837.0], tip_skip=set())
     texts = " ".join(n["text"] for n in notes)
     assert "37,837" in texts and "最佳買點" in texts
+    assert "35,579" in texts and "上緣" in texts  # 深殺帶上緣
     assert "31,705" in texts
-    # 右欄刪：39,000／37,164／35,579（改走黃底帶／AI結束帶）
-    assert "39,000" not in texts and "37,164" not in texts and "35,579" not in texts
+    # 右欄刪：39,000／37,164（改走黃底帶）；35579 必留上緣
+    assert "39,000" not in texts and "37,164" not in texts
     src = open("biaoke_level_learn.py", encoding="utf-8").read()
     assert "_paint_ai_end_zone_band" in src
     assert src.count("_paint_ai_end_zone_band(ax") >= 4

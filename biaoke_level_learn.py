@@ -5333,7 +5333,7 @@ def _paint_ai_end_zone_band(
     *,
     fp: Any,
 ) -> Optional[Tuple[float, float]]:
-    """備線最差：35579~31705 畫 AI 結束觀察帶（非買訊；右欄只留深殺端）。"""
+    """備線最差：35579~31705 畫 AI 結束觀察帶（非買訊；右欄掛上緣35579＋深殺端31705）。"""
     zone = _tw_ai_end_zone(pack)
     if not zone:
         return None
@@ -5602,7 +5602,7 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
             label=lab,
         )
     # 11/8 雙軌點位（只認原文）：37837／37164／35579／31705
-    # 右欄只掛：最佳買點 37837＋深殺端 31705；39000／37164／35579 改走底帶／AI結束帶
+    # 右欄：最佳買點 37837＋深殺上緣 35579＋深殺端 31705；39000／37164 改走黃底帶
     if re.search(r"37837", s):
         tag = "最佳買點" if re.search(r"假跌破|買點", s) else "週五低"
         _add(
@@ -5629,7 +5629,8 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
             ref_ymd="20260226",
             role="九波備線破位",
             tag="未到",
-            label=f"飆預測{_px(35579)}・2/26第一波高",
+            # 深殺帶上緣：跌破 2/26 第一波高 → 走到 31705
+            label=f"AI結束上緣／{_px(35579)}",
         )
     if re.search(r"31705", s):
         _add(
@@ -7804,6 +7805,8 @@ def _place_live_right_labels(
             or "37837" in s
             or "31,705" in s
             or "31705" in s
+            or "35,579" in s
+            or "35579" in s
             or "最佳買點" in s
             or "AI結束" in s
             or "五波末" in s
@@ -7831,6 +7834,8 @@ def _place_live_right_labels(
                 "37837",
                 "31,705",
                 "31705",
+                "35,579",
+                "35579",
                 "最佳買點",
                 "AI結束",
                 "五波末",
@@ -9807,8 +9812,8 @@ def _tw_pred_right_notes(
             continue
         tag = str(row.get("tag") or "")
         role = str(row.get("role") or "")
-        # 雙軌當令：右欄只留 最佳買點37837＋AI結束深殺31705；
-        # 39,000／37,164／35,579 改走黃底帶／AI結束帶，不准再佔右欄
+        # 雙軌當令：右欄留 最佳買點37837＋AI結束上緣35579＋深殺31705；
+        # 39,000／37,164 改走黃底帶，不准再佔右欄
         if bb_dual_active and role in {
             "改口低上沿",
             "改口低下沿",
@@ -9816,11 +9821,10 @@ def _tw_pred_right_notes(
             "下週底下沿",
             "下週底上沿",
             "4/23低",
-            "九波備線破位",
         }:
             continue
         if bb_dual_active and any(
-            abs(lv - x) < 1.0 for x in (39000.0, 37164.0, 35579.0, 37100.0, 38000.0)
+            abs(lv - x) < 1.0 for x in (39000.0, 37164.0, 37100.0, 38000.0)
         ):
             continue
         if bb_dual_active and role in {"點位", ""} and any(
@@ -9875,9 +9879,10 @@ def _tw_pred_right_notes(
             )
         elif role in {
             "五波末／週五低",
+            "九波備線破位",
             "九波備線深殺",
         }:
-            # 右欄必見：最佳買點37837／AI結束深殺31705；虛線對齊真價
+            # 右欄必見：最佳買點37837／上緣35579／深殺31705；虛線對齊真價
             text = str(row.get("label") or _biaoke_pred_label(lv, role))
         # 近／超近窗沒有 ref 日柱時從窗左拉滿，不准縮成末日短樁
         x_note = 0
@@ -9886,10 +9891,12 @@ def _tw_pred_right_notes(
             ii = _bar_index_by_ymd(bars, ref)
             if ii is not None:
                 x_note = int(ii)
-        # 雙軌分色：最佳買點金；AI結束深殺冷紫
+        # 雙軌分色：最佳買點金；AI結束上緣／深殺冷紫
         if role == "五波末／週五低" or abs(lv - 37837.0) < 1.0:
             col = "#ffd54f"
-        elif role == "九波備線深殺" or abs(lv - 31705.0) < 1.0:
+        elif role in {"九波備線破位", "九波備線深殺"} or any(
+            abs(lv - x) < 1.0 for x in (35579.0, 31705.0)
+        ):
             col = "#b39ddb"
         elif role in {"改口低上沿", "改口低下沿"}:
             col = "#80deea"
@@ -9897,7 +9904,7 @@ def _tw_pred_right_notes(
             col = "#ce93d8"
         else:
             col = "#82b1ff" if lv < 45000 else "#4dd0e1"
-        # 價・日期完整；買點／深殺長標略放寬
+        # 價・日期完整；買點／上緣／深殺長標略放寬
         lim = 34 if ("／" in text or "・" in text or role.startswith("九波") or "五波" in role) else 28
         out.append(
             {
@@ -11264,11 +11271,11 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         x_right_col = max(x_right_col, float(tip.get("fut_x") or n_axis) + 0.85)
     except (TypeError, ValueError):
         pass
-    # 右欄買點／深殺＋今標：再右移半欄，字盒不壓浪點
+    # 右欄買點／上緣／深殺＋今標：再右移半欄，字盒不壓浪點
     if any(
         abs(float(n0.get("y") or 0) - lv) < 1.0
         for n0 in right_notes
-        for lv in (37837.0, 31705.0)
+        for lv in (37837.0, 35579.0, 31705.0)
     ):
         x_right_col = max(x_right_col, float(n_axis) + 3.05)
     x_sox_col = x_right_col + 0.40
