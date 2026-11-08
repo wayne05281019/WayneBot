@@ -5245,10 +5245,50 @@ def _tw_active_low_zone(
     return None
 
 
-# 下週底黃標／AI結束觀察標：同一左緣齊頭（同 pad＋ha=left；超近更左避開末K）
-_TEACH_ZONE_LABEL_X = 0.32
-_TEACH_ZONE_LABEL_X_MICRO = 0.08
+# 下週底黃標／AI結束觀察標：同一左緣齊頭（同 pad＋ha=left）
+# 遠／近：必須在九波縮圖右緣外（縮圖是另開 axes，zorder 壓不住 → 左半會被裁成「5,579」）
+# 超近：縮圖在中排右格，K 欄可更左；再左避末根K
+_TEACH_ZONE_LABEL_X = 0.48  # 遠窗：縮圖在左下，標在右外側
+_TEACH_ZONE_LABEL_X_NEAR = 0.10  # 近窗：使用者標在左半；縮圖改靠右讓位
+_TEACH_ZONE_LABEL_X_MICRO = 0.05
 _TEACH_ZONE_LABEL_PAD = 0.45  # 兩標 bbox pad 必須相同，否則左緣會錯開
+_TEACH_ZONE_LABEL_W_AX = 0.30  # 長標約佔 axes 寬（估），用來判斷能否完全放在縮圖左側
+
+
+def _zone_label_x_clear_of_inset(
+    ax: Any,
+    fig: Any,
+    inset_rect: Optional[Tuple[float, float, float, float]],
+    *,
+    fallback: float,
+    gap_ax: float = 0.028,
+) -> float:
+    """區帶兩標共用 x（yaxis_transform 0–1）：兩標齊頭，全文不被九波縮圖裁字。
+
+    若 fallback 整段標可完全落在縮圖左側 → 用 fallback（近窗靠左）。
+    否則貼縮圖右緣外側（遠窗縮圖在左下）。
+    """
+    try:
+        fb = float(fallback)
+    except (TypeError, ValueError):
+        fb = float(_TEACH_ZONE_LABEL_X)
+    if not inset_rect:
+        return max(0.04, min(0.62, fb))
+    try:
+        pos = ax.get_position()
+        pw = max(float(pos.width), 1e-9)
+        ins_l, _ins_b, ins_w, _ins_h = (float(x) for x in inset_rect)
+        inset_left_ax = (ins_l - float(pos.x0)) / pw
+        inset_right_ax = (ins_l + ins_w - float(pos.x0)) / pw
+        # 近窗：標在左、縮圖在右 → fallback 整段不撞縮圖就用 fallback
+        if float(fb) + float(_TEACH_ZONE_LABEL_W_AX) + 0.02 <= float(inset_left_ax):
+            return max(0.04, min(0.55, float(fb)))
+        # 否則只能讓到縮圖右側
+        x_clear = float(inset_right_ax) + float(gap_ax)
+        x_ax = max(float(x_clear), float(fb))
+        return max(0.08, min(0.58, float(x_ax)))
+    except Exception:
+        return max(0.04, min(0.62, fb))
 
 
 def _paint_c9_low_zone_band(
@@ -10985,8 +11025,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         vol_sr=far_vol_sr,
         avoid_top_left_stamp=True,
     )
-    _paint_c9_low_zone_band(ax, pack, fp=_fp)
-    _paint_ai_end_zone_band(ax, pack, fp=_fp)
+    # 區帶兩標改到九波縮圖定位後再畫（須清過縮圖右緣，否則 AI 標左半被裁）
     sr = zone.get("sr") or {}
     sr_skip = zone.get("sr_skip") or {}
     if zone.get("i_vmax") is not None:
@@ -11926,6 +11965,12 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         c9_ext=_c9_far,
         flash_pivots=_c9_pivots_far if _c9_far else None,
     )
+    # 黃標／AI標：同一 x，貼縮圖右外側（縮圖另 axes 壓不住字，只能讓位）
+    _zx = _zone_label_x_clear_of_inset(
+        ax, fig, _far_ins, fallback=float(_TEACH_ZONE_LABEL_X)
+    )
+    _paint_c9_low_zone_band(ax, pack, fp=_fp, label_x=_zx)
+    _paint_ai_end_zone_band(ax, pack, fp=_fp, label_x=_zx)
     fig.savefig(save_path, facecolor=_LIVE_BG, bbox_inches="tight", pad_inches=0.22)
     plt.close(fig)
     if not (os.path.isfile(save_path) and os.path.getsize(save_path) > 4000):
@@ -12234,8 +12279,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         vol_sr=near_vol_sr,
         avoid_top_left_stamp=True,
     )
-    _paint_c9_low_zone_band(ax, pack, fp=_fp)
-    _paint_ai_end_zone_band(ax, pack, fp=_fp)
+    # 區帶兩標改到九波縮圖定位後再畫（與遠窗同一套：齊頭＋不被縮圖裁字）
     _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_up_taiwan)
     i_vmax = zone.get("i_vmax")
     if i_vmax is not None:
@@ -12792,13 +12836,17 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
             )
     except Exception:
         pass
-    # 近窗九波：再大一點；底緣貼價欄下框線不准穿出，上緣仍避開 35,500 藍虛線
+    # 近窗九波：靠右下讓位給左半區帶兩標（齊頭）；底緣仍貼價欄下框
     try:
         _iw0, _ih0 = _teach_eight_wave_inset_wh(fig)
-        _sc = 0.62
-        _iw = min(float(_iw0) * _sc, float(_axpos.width) * 0.34)
-        _ih = min(float(_ih0) * _sc, float(_axpos.height) * 0.26)
-        _left = float(_axpos.x0) + float(_axpos.width) * 0.15
+        _sc = 0.58
+        _iw = min(float(_iw0) * _sc, float(_axpos.width) * 0.30)
+        _ih = min(float(_ih0) * _sc, float(_axpos.height) * 0.24)
+        # 右緣留右欄；左緣須 > 區帶標右緣（fallback 0.10 + 約 0.30 寬）
+        _left = float(_axpos.x0) + float(_axpos.width) * 0.55
+        _max_right = float(_axpos.x0) + float(_axpos.width) * 0.92
+        if _left + _iw > _max_right:
+            _left = max(float(_axpos.x0) + float(_axpos.width) * 0.48, _max_right - _iw)
         # 下面那條框線＝價欄底緣；底邊貼齊不准再往下
         _bot = float(_axpos.y0)
         _, _fy_cap = _fig_xy_from_axes_data(ax, fig, float(i5s) + 28.0, 35500.0)
@@ -12830,6 +12878,12 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         c9_ext=_c9_near,
         flash_pivots=_c9_pivots_near if _c9_near else None,
     )
+    # 近窗：兩標齊頭；盡量靠左（使用者標位）但仍清過九波縮圖
+    _zx_n = _zone_label_x_clear_of_inset(
+        ax, fig, _near_inset, fallback=float(_TEACH_ZONE_LABEL_X_NEAR)
+    )
+    _paint_c9_low_zone_band(ax, pack, fp=_fp, label_x=_zx_n)
+    _paint_ai_end_zone_band(ax, pack, fp=_fp, label_x=_zx_n)
     fig.savefig(save_path, facecolor=_LIVE_BG, bbox_inches="tight")
     plt.close(fig)
     return save_path if os.path.isfile(save_path) and os.path.getsize(save_path) > 4000 else ""

@@ -3256,6 +3256,7 @@ def test_week_bot_zone_and_dual_pred_from_thesis():
     assert "_paint_ai_end_zone_band" in src
     assert src.count("_paint_ai_end_zone_band(ax") >= 4
     assert "ffeb3b" in src  # 下週底部黃框
+    assert "_zone_label_x_clear_of_inset" in src  # 兩標清過九波縮圖右緣才齊頭可見
     assert callable(_paint_c9_low_zone_band) and callable(_paint_ai_end_zone_band)
     # 空 pack 也能補
     slim = _ensure_teach_pack_preds("data/wayne_market.db", {"thesis": "B-b"})
