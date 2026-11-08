@@ -2,7 +2,7 @@
   "phone_sync": "blocked",
   "promote_to_lookup_display": false,
   "NOT_BUY_SIGNAL": true,
-  "as_of_taipei": "2026-11-08T08:28:21.727180+08:00",
+  "as_of_taipei": "2026-11-08T08:43:55.150311+08:00",
   "deliverable_zh": "查股五張圖：極高勝率買進起漲＋相對高點賣出相對位置",
   "candidate_buy_rule": {
     "key": "core_w3_or_ma60w3__BAL_Vnear2_or_S55__hi20_or_desync",
@@ -76,7 +76,7 @@
       "balanced_score": 0.7586206896551724
     }
   },
-  "gate_status": "mix_v24_confirm_upgrade_add_i3_pe2_invent_v25",
+  "gate_status": "mix_v26_upgrade_sell_pe2_mh30_confirm_v27",
   "evidence": {
     "win_rate": 0.76,
     "independent_days": 50,
@@ -506,14 +506,12 @@
     "phone_sync": "blocked"
   },
   "early_sell_u112": {
-    "key": "add_i3_pe2",
-    "formula": "entry=v11 & (~body | near(intent,3)); exit=hi20|wave|(exhaust|hi10 & unreal>=2%)",
-    "win_rate": 0.803921568627451,
+    "key": "sell_pe2_mh30",
+    "win_rate": 0.8039,
     "days": 50,
-    "hold_days": 13.058823529411764,
-    "base_hold_hi20": 15.176470588235293,
+    "hold_days": 11.02,
     "status": "locked_lab_candidate",
-    "source": "phone_spirit_mix_thicken_v24_decision.json"
+    "source": "phone_spirit_mix_thicken_v26_decision.json"
   },
   "LOOKUP_LAB_MARKS_ENABLED": false,
   "spirit_mix_early_buy_u112": {
@@ -524,13 +522,11 @@
     "status": "locked_lab_candidate"
   },
   "spirit_mix_early_sell_u112": {
-    "key": "add_i3_pe2",
-    "formula": "entry=v11 & (~body | near(intent,3)); exit=hi20|wave|(exhaust|hi10 & unreal>=2%)",
-    "win_rate": 0.803921568627451,
+    "key": "sell_pe2_mh30",
+    "win_rate": 0.8039,
     "days": 50,
-    "hold_days": 13.058823529411764,
-    "base_hold_hi20": 15.176470588235293,
+    "hold_days": 11.02,
     "status": "locked_lab_candidate",
-    "source": "phone_spirit_mix_thicken_v24_decision.json"
+    "source": "phone_spirit_mix_thicken_v26_decision.json"
   }
 }

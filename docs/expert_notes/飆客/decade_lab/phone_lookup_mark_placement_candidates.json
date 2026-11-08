@@ -2,7 +2,7 @@
   "phone_sync": "blocked",
   "LOOKUP_LAB_MARKS_ENABLED": false,
   "promote_to_lookup_display": false,
-  "as_of_taipei": "2026-11-08T08:28:21.727180+08:00",
+  "as_of_taipei": "2026-11-08T08:43:55.150311+08:00",
   "candidates": {
     "early_buy_u112": {
       "key": "ei_n5_week_n3_softbody__SELL_hi20_or_wave_top",
@@ -15,23 +15,30 @@
       "status": "locked_lab_candidate"
     },
     "early_sell_u112": {
-      "key": "add_i3_pe2",
-      "formula": "entry=v11 & (~body | near(intent,3)); exit=hi20|wave|(exhaust|hi10 & unreal>=2%)",
+      "key": "sell_pe2_mh30",
+      "formula": "entry=v11 & (~body | near(intent,3)); exit=hi20|wave|(exhaust|hi10 & unreal>=2%)|max_hold_30",
       "win_rate": 0.803921568627451,
       "days": 50,
-      "hold_days": 13.058823529411764,
+      "hold_days": 11.019607843137255,
       "base_hold_hi20": 15.176470588235293,
-      "parent_pe3_hold": 13.196078431372548,
+      "parent_pe2_hold": 13.058823529411764,
       "universe": "U112",
       "glyph": "REL_HIGH_SELL",
       "status": "locked_lab_candidate",
-      "note_zh": "v24 升級 pe2；旗標仍關"
+      "note_zh": "v26 升級 max_hold_30；旗標仍關"
     },
     "early_sell_u112_pe3_backup": {
       "key": "add_i3_pe3",
       "win_rate": 0.8039,
       "days": 50,
       "hold_days": 13.196,
+      "status": "confirmed_backup"
+    },
+    "early_sell_u112_pe2_backup": {
+      "key": "add_i3_pe2",
+      "win_rate": 0.8039,
+      "days": 50,
+      "hold_days": 13.06,
       "status": "confirmed_backup"
     }
   },
