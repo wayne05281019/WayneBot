@@ -1491,9 +1491,13 @@ def test_teach_stamp_edge_and_last_date_neon_helpers():
     from biaoke_level_learn import (
         _TEACH_LAST_DATE_NEON,
         _TEACH_RIGHT_SOFT_CAP,
+        _TEACH_STAMP_AX_X_MAX,
+        _TEACH_STAMP_AX_Y_MIN,
         _TEACH_STAMP_EDGE_CLOSED,
         _TEACH_STAMP_EDGE_LIVE,
         _TEACH_STAMP_EDGE_TX_LIVE,
+        _clear_teach_stamp_pin_xy,
+        _left_sr_label_xy,
         _teach_stamp_edge,
     )
 
@@ -1504,6 +1508,39 @@ def test_teach_stamp_edge_and_last_date_neon_helpers():
     assert _teach_stamp_edge(live=False, kind="tx") == _TEACH_STAMP_EDGE_CLOSED
     assert _TEACH_LAST_DATE_NEON.startswith("#")
     assert int(_TEACH_RIGHT_SOFT_CAP) >= 4
+    assert float(_TEACH_STAMP_AX_Y_MIN) <= 0.72
+    assert float(_TEACH_STAMP_AX_X_MAX) >= 0.50
+
+    class _Ax:
+        def get_xlim(self):
+            return (0.0, 100.0)
+
+        def get_ylim(self):
+            return (0.0, 1000.0)
+
+    ax = _Ax()
+    # 左上戳區 → 右移出戳
+    xx, yy, ha = _clear_teach_stamp_pin_xy(ax, 10.0, 950.0, ha="center")
+    assert xx >= 100.0 * float(_TEACH_STAMP_AX_X_MAX)
+    assert ha == "left"
+    # 右下安全區不動
+    xx2, yy2, ha2 = _clear_teach_stamp_pin_xy(ax, 80.0, 200.0, ha="center")
+    assert abs(xx2 - 80.0) < 1e-9 and abs(yy2 - 200.0) < 1e-9 and ha2 == "center"
+    # 左欄頂價：避戳右移（要過戳右緣）
+    x_lab, need = _left_sr_label_xy(ax, 950.0, avoid_top_left_stamp=True)
+    assert need and x_lab >= float(_TEACH_STAMP_AX_X_MAX)
+    x_ok, need_ok = _left_sr_label_xy(ax, 200.0, avoid_top_left_stamp=True)
+    assert not need_ok and abs(x_ok - 0.01) < 1e-9
+    # 費半青帶註不准再貼左上跟戳互壓（說明改走標題）
+    import inspect
+
+    from biaoke_level_learn import _paint_sox_thesis_preds
+
+    sox_src = inspect.getsource(_paint_sox_thesis_preds)
+    assert "axhspan" in sox_src
+    assert "0.96" not in sox_src or "band_lab" in sox_src
+    assert "青＝已破" in sox_src
+    assert "不准再在左上貼字" in sox_src or "_ = band_lab" in sox_src
 
 
 def test_teach_roll_from_floor_and_right_gutter():

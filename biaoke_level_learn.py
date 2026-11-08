@@ -2543,6 +2543,60 @@ def _reserve_avoid_zone(
     )
 
 
+# 白底戳 axes 佔位（左上）：尖點／左欄價標／青帶註不准坐進去
+# 字級17＋長句戳很寬很高 → 禁區要比視覺框再放大一截
+_TEACH_STAMP_AX_X_MAX = 0.56
+_TEACH_STAMP_AX_Y_MIN = 0.62
+
+
+def _reserve_teach_stamp_zone(ax: Any) -> None:
+    """白底戳左上佔位 → data 禁區；尖點／智慧標先避開再畫。"""
+    if ax is None:
+        return
+    try:
+        x0, x1 = ax.get_xlim()
+        y0, y1 = ax.get_ylim()
+    except Exception:
+        return
+    xspan = max(float(x1) - float(x0), 1.0)
+    yspan = max(float(y1) - float(y0), 1.0)
+    _reserve_avoid_zone(
+        ax,
+        float(x0) - 0.75,
+        float(y0) + yspan * float(_TEACH_STAMP_AX_Y_MIN),
+        float(x0) + xspan * float(_TEACH_STAMP_AX_X_MAX),
+        float(y1) + yspan * 0.08,
+    )
+
+
+def _clear_teach_stamp_pin_xy(
+    ax: Any,
+    x: float,
+    y: float,
+    *,
+    ha: str = "center",
+) -> Tuple[float, float, str]:
+    """尖點標若落左上白底戳佔位，水平右移出戳；仍偏高再略降到戳下緣。"""
+    if ax is None:
+        return float(x), float(y), str(ha)
+    try:
+        x0, x1 = ax.get_xlim()
+        y0, y1 = ax.get_ylim()
+    except Exception:
+        return float(x), float(y), str(ha)
+    xspan = max(float(x1) - float(x0), 1e-9)
+    yspan = max(float(y1) - float(y0), 1e-9)
+    ax_xf = (float(x) - float(x0)) / xspan
+    ax_yf = (float(y) - float(y0)) / yspan
+    xx, yy, h = float(x), float(y), str(ha or "center")
+    if ax_xf < float(_TEACH_STAMP_AX_X_MAX) and ax_yf > float(_TEACH_STAMP_AX_Y_MIN):
+        xx = float(x0) + xspan * (float(_TEACH_STAMP_AX_X_MAX) + 0.04)
+        h = "left"
+        if ax_yf > 0.88:
+            yy = float(y0) + yspan * float(_TEACH_STAMP_AX_Y_MIN)
+    return float(xx), float(yy), h
+
+
 def _seat_onchart_labels(
     cands: Sequence[Dict[str, Any]],
     *,
@@ -2565,6 +2619,13 @@ def _seat_onchart_labels(
                 return True
         return False
 
+    def _escape_zone_x(x: float, y: float, min_dx: float) -> Optional[float]:
+        """左上戳等橫向禁區：先水平逃出右緣，再交給垂直微挪。"""
+        for zx0, zy0, zx1, zy1 in zones:
+            if (zx0 - min_dx) <= x <= (zx1 + min_dx) and zy0 <= y <= zy1:
+                return float(zx1) + float(min_dx) + 0.2
+        return None
+
     items.sort(key=lambda d: (-int(d.get("pri") or 0), -float(d.get("y") or 0)))
     placed: List[Dict[str, Any]] = []
     used: List[Tuple[float, float]] = []  # (x, y)
@@ -2573,12 +2634,16 @@ def _seat_onchart_labels(
         y = float(it.get("y") or 0)
         min_dx = float(it.get("min_dx") or 1.2)
         nudge_up = (it.get("nudge") or "up") == "up"
-        for _ in range(10):
+        for _ in range(12):
             hit = any(
                 abs(x - ux) < min_dx and abs(y - uy) < gap * 0.92 for ux, uy in used
             ) or _in_zone(x, y, min_dx)
             if not hit:
                 break
+            esc = _escape_zone_x(x, y, min_dx)
+            if esc is not None:
+                x = float(esc)
+                continue
             y = y + gap * (0.55 if nudge_up else -0.55)
         y = min(max(y, ymin + gap * 0.25), ymax - gap * 0.25)
         if any(
@@ -6846,8 +6911,8 @@ def _left_sr_label_xy(
     y: float,
     *,
     avoid_top_left_stamp: bool = False,
-    stamp_top_frac: float = 0.78,
-    clear_x: float = 0.48,
+    stamp_top_frac: float = _TEACH_STAMP_AX_Y_MIN,
+    clear_x: float = 0.60,
 ) -> Tuple[float, bool]:
     """左欄價標 X（axes）；白底戳佔左上時改右移並回傳 need_dash。"""
     x = 0.01
@@ -6860,7 +6925,7 @@ def _left_sr_label_xy(
     except Exception:
         return float(x), False
     if axes_y >= float(stamp_top_frac):
-        return float(clear_x), True
+        return float(max(clear_x, _TEACH_STAMP_AX_X_MAX + 0.04)), True
     return float(x), False
 
 
@@ -7305,6 +7370,11 @@ def _pin_pivot_name(
     if seats is None:
         ax._wayne_pin_seats = []
         seats = ax._wayne_pin_seats
+    # 左上白底戳禁區：尖點標先水平讓出，再進座位（不准費⑤終／⑤終被戳蓋）
+    if not getattr(ax, "_wayne_stamp_zone_reserved", False):
+        _reserve_teach_stamp_zone(ax)
+        ax._wayne_stamp_zone_reserved = True
+    xx, yy, ha = _clear_teach_stamp_pin_xy(ax, xx, yy, ha=ha)
     avoid = list(getattr(ax, "_wayne_avoid_zones", None) or [])
     prior = [
         {
@@ -7317,6 +7387,16 @@ def _pin_pivot_name(
         for i, (sx, sy) in enumerate(seats)
     ]
     lab_s = str(lab)
+    # 落在戳區時改向下微挪（向上會更深進戳）
+    try:
+        _ax_yf = (float(yy) - float(y_lo)) / max(span, 1e-9)
+        _nudge = (
+            "down"
+            if _ax_yf > float(_TEACH_STAMP_AX_Y_MIN)
+            else ("up" if tip_k == "high" else "down")
+        )
+    except Exception:
+        _nudge = "up" if tip_k == "high" else "down"
     seated = _seat_onchart_labels(
         prior
         + [
@@ -7325,7 +7405,7 @@ def _pin_pivot_name(
                 "y": float(yy),
                 "text": lab_s,
                 "pri": int(pri),
-                "nudge": "up" if tip_k == "high" else "down",
+                "nudge": _nudge,
                 "min_dx": 1.35,
             }
         ],
@@ -7339,6 +7419,7 @@ def _pin_pivot_name(
         return
     xx = float(mine[0]["x"])
     yy = float(mine[0]["y"])
+    xx, yy, ha = _clear_teach_stamp_pin_xy(ax, xx, yy, ha=ha)
     seats.append((xx, yy))
     # 浪號／關鍵標：邊框跟浪色走，底略染同色，遠看也能分 C1…C9
     fc = "#0b0f14"
@@ -9351,20 +9432,8 @@ def _paint_sox_thesis_preds(
         y_hi = y_lo = None
     if y_hi is not None and y_lo is not None and y_hi > y_lo:
         ax.axhspan(y_lo, y_hi, facecolor="#4dd0e1", alpha=0.14, zorder=0.4)
-        ax.text(
-            0.012,
-            0.96,
-            band_lab,
-            transform=ax.transAxes,
-            fontproperties=fp(8, "bold"),
-            color="#4dd0e1",
-            ha="left",
-            va="top",
-            zorder=12,
-            bbox=dict(
-                boxstyle="round,pad=0.14", fc="#0b0f14", ec="#4dd0e1", lw=0.6, alpha=0.92
-            ),
-        )
+        # 青帶說明只留標題「費半青＝…」；不准再在左上貼字跟白底戳互壓
+        _ = band_lab
     right: List[Dict[str, Any]] = []
     for row in preds:
         try:
