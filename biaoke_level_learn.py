@@ -1158,10 +1158,17 @@ def _teach_query_clock(
     return f"{_teach_session_phase_word(dt)} {hm}"
 
 
-# 教具查詢戳：黃框白底；日期／時段黑字；價／漲跌台股紅漲綠跌
-_TEACH_STAMP_EDGE = "#ffff00"
-# 遠窗台指電子盤：紅框白底（夾在加權／費半兩黃框中間）
-_TEACH_STAMP_EDGE_TX = "#e53935"
+# 教具查詢戳：白底；開盤／盤中＝螢光邊；收盤／盤前／休市＝黑邊
+_TEACH_STAMP_EDGE = "#ffff00"  # 加權／費半盤中螢光黃（相容舊讀）
+_TEACH_STAMP_EDGE_LIVE = "#ffff00"
+_TEACH_STAMP_EDGE_CLOSED = "#111111"
+# 遠窗台指電子盤：盤中螢光紅；收盤黑邊
+_TEACH_STAMP_EDGE_TX = "#ff1744"
+_TEACH_STAMP_EDGE_TX_LIVE = "#ff1744"
+# 三欄縮圖K底「末日」刻度：盤中螢光黃綠；收盤／盤前＝一般白字
+_TEACH_LAST_DATE_NEON = "#ccff00"
+# 右欄智慧席：新飆大點位可進；超過軟上限丟低優先，不准一次擠爆
+_TEACH_RIGHT_SOFT_CAP = 9
 # Telegram Bot sendPhoto：寬+高須 ≤10000，否則 PHOTO_INVALID_DIMENSIONS
 _TG_PHOTO_MAX_WH_SUM = 9900
 
@@ -1582,6 +1589,51 @@ def _fig_rect_from_data_box(
     return (float(left), float(bottom), float(width), float(height))
 
 
+def _teach_stamp_edge(*, live: bool, kind: str = "tw") -> str:
+    """戳框邊色：盤中／開盤＝螢光；收盤／盤前／休市＝黑。"""
+    k = str(kind or "tw").lower()
+    if bool(live):
+        if k in {"tx", "te", "electronics", "夜盤"}:
+            return str(_TEACH_STAMP_EDGE_TX_LIVE or _TEACH_STAMP_EDGE_TX)
+        return str(_TEACH_STAMP_EDGE_LIVE or _TEACH_STAMP_EDGE)
+    return str(_TEACH_STAMP_EDGE_CLOSED)
+
+
+def _paint_axis_last_date_neon(
+    ax,
+    *,
+    last_i: int,
+    live: bool,
+    fp=None,
+) -> None:
+    """縮圖K底末日刻度：必顯；盤中螢光黃綠、收盤／盤前白字。"""
+    if ax is None:
+        return
+    try:
+        ticks = list(ax.get_xticks())
+        labels = list(ax.get_xticklabels())
+    except Exception:
+        return
+    want = float(last_i)
+    for lab, xv in zip(labels, ticks):
+        try:
+            if abs(float(xv) - want) > 0.51:
+                continue
+        except (TypeError, ValueError):
+            continue
+        col = _TEACH_LAST_DATE_NEON if bool(live) else _LIVE_TEXT
+        try:
+            lab.set_color(col)
+            if fp is not None:
+                lab.set_fontproperties(
+                    fp(8.0 if live else 7.5, "bold" if live else "normal")
+                )
+            else:
+                lab.set_fontweight("bold" if live else "normal")
+        except Exception:
+            pass
+
+
 def _paint_stamp_hbox(
     fig,
     kids: List[Any],
@@ -1594,7 +1646,7 @@ def _paint_stamp_hbox(
     edgecolor: Optional[str] = None,
     ax: Any = None,
 ) -> None:
-    """白底圓角框（加權／費半黃邊；台指電子盤紅邊；共用框高與線寬）。
+    """白底圓角框（開盤螢光邊；收盤黑邊；共用框高與線寬）。
 
     ax 有給＝用該軸 axes fraction（鎖在主圖框內上緣下方）；否則 figure fraction。
     """
@@ -1618,7 +1670,7 @@ def _paint_stamp_hbox(
         bboxprops=dict(
             boxstyle=f"round,pad={_TEACH_STAMP_BOX_PAD}",
             facecolor=_TEACH_STAMP_FACE,
-            edgecolor=str(edgecolor or _TEACH_STAMP_EDGE),
+            edgecolor=str(edgecolor or _TEACH_STAMP_EDGE_CLOSED),
             linewidth=_TEACH_STAMP_BOX_LW,
         ),
         zorder=float(zorder),
@@ -1721,7 +1773,17 @@ def _paint_teach_query_stamp(
                 },
             )
         )
-    _paint_stamp_hbox(fig, kids, x=x, y=y, ha=ha, va=va, zorder=40, ax=ax)
+    _paint_stamp_hbox(
+        fig,
+        kids,
+        x=x,
+        y=y,
+        ha=ha,
+        va=va,
+        zorder=40,
+        edgecolor=_teach_stamp_edge(live=live, kind="tw"),
+        ax=ax,
+    )
 
 
 def _us_real_close_pair(
@@ -1850,7 +1912,17 @@ def _paint_index_last_chg_tip(
                 textprops={"color": col, "fontproperties": fp(fsz, "bold")},
             )
         )
-    _paint_stamp_hbox(fig, kids, x=x, y=y, ha=ha, va=va, zorder=41, ax=ax)
+    _paint_stamp_hbox(
+        fig,
+        kids,
+        x=x,
+        y=y,
+        ha=ha,
+        va=va,
+        zorder=41,
+        edgecolor=_teach_stamp_edge(live=live, kind="sox"),
+        ax=ax,
+    )
 
 
 def _tx_night_evening_ymd(night_ymd: str) -> str:
@@ -2173,7 +2245,7 @@ def _paint_tx_after_hours_tip(
         ha=ha,
         va=va,
         zorder=42,
-        edgecolor=_TEACH_STAMP_EDGE_TX,
+        edgecolor=_teach_stamp_edge(live=live, kind="tx"),
         ax=ax,
     )
 
@@ -6048,7 +6120,10 @@ _FAR_SOX_MIN_BODY_FRAC = 0.018
 #    相對圖右緣位置幾乎不變；只跟 n（定長）走，不跟歷史總日數走。
 # 3) 尖點浪名（C1…C9、⑤起、A/B）：釘該日 K 的 x；滾動後跟著那根移；
 #    該日被滾出窗外 → 不釘幽靈標（價位改由右欄／帶狀承接）。
-# 4) 座位：右欄=_place_live_right_labels；尖點=_pin_pivot_name（禁區＋pri）。
+# 4) 座位：右欄=_place_live_right_labels（軟上限＋分 tier）；尖點=_pin_pivot_name。
+# 5) 新飆大文／自回抽出的大盤・費半點位 → pred_levels → 右欄席位自動接；
+#    擠不過就丟低優先（Fib／下一層），雙軌／今／已破必留。
+# 6) 末根日期刻度必顯；盤中螢光黃綠、收盤／盤前白字。戳框同：盤中螢光邊、收盤黑邊。
 # 遠窗預設根數；撐壓日可略超 soft，再長硬滾（不准為浪階日無限拉長變瘦）
 _FAR_TEACH_MAX_BARS = 152
 _FAR_TEACH_EXTEND_SOFT = 168  # 僅大量撐壓／下一層可略超；硬上限
@@ -7466,6 +7541,18 @@ def _place_live_right_labels(
         kept_ys.append(y0)
         kept_tiers.append(tier)
         kept_texts.append(t)
+    # 新飆大點位可進席；超過軟上限丟低優先，雙軌／今／已破（tier0）必留
+    soft = max(4, int(_TEACH_RIGHT_SOFT_CAP or 9))
+    if len(kept) > soft:
+        order = sorted(
+            range(len(kept)),
+            key=lambda i: (
+                int(kept_tiers[i]),
+                0 if _is_dual_key(kept_texts[i]) else 1,
+                -float(kept[i]["y"]),
+            ),
+        )[:soft]
+        kept = [kept[i] for i in order]
     kept.sort(key=lambda d: float(d["y"]), reverse=True)
     placed: List[float] = []
     placed_tiers: List[int] = []
@@ -11076,11 +11163,27 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 clip_on=False,
             )
     # 欄間小間距放日期：費半／電子盤／加權三欄底緣都標（量欄仍有完整軸）
-    # pad 略加大＋細體，白底戳／浪標才不易壓住該注意的日期
+    # 末日刻度必顯；各欄依自己盤中螢光／收盤白字
     for a in (axu, axt, ax, axv):
         a.set_xticks(t2)
         a.set_xticklabels(l2, fontproperties=_fp(7.5, "normal"), color=_LIVE_TEXT)
         a.tick_params(axis="x", labelbottom=True, length=3, pad=3.5)
+    _wall_neon = _query_now_from_pack(pack)
+    _last_i_tw = max(0, int(n_tw) - 1)
+    _paint_axis_last_date_neon(
+        axu, last_i=_last_i_tw, live=_sox_cash_session_live(_wall_neon), fp=_fp
+    )
+    _paint_axis_last_date_neon(
+        axt, last_i=_last_i_tw, live=_tx_night_session_live(_wall_neon), fp=_fp
+    )
+    _tw_live_neon = _twii_cash_session_live(_wall_neon)
+    _paint_axis_last_date_neon(ax, last_i=_last_i_tw, live=_tw_live_neon, fp=_fp)
+    _paint_axis_last_date_neon(axv, last_i=_last_i_tw, live=_tw_live_neon, fp=_fp)
+    # 費半官方日若延長過加權末日：延長末日另用費半盤中色
+    if t2 and int(t2[-1]) > _last_i_tw:
+        _paint_axis_last_date_neon(
+            axu, last_i=int(t2[-1]), live=_sox_cash_session_live(_wall_neon), fp=_fp
+        )
     for a in (axu, axt, ax, axv):
         for lab in a.get_yticklabels():
             lab.set_fontproperties(_fp(8, "bold"))
@@ -12020,6 +12123,13 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         color=_LIVE_MUTED,
     )
     axv.tick_params(axis="x", labelbottom=True, length=3, pad=2)
+    if t_merged:
+        _paint_axis_last_date_neon(
+            axv,
+            last_i=int(t_merged[-1]),
+            live=_twii_cash_session_live(_query_now_from_pack(pack)),
+            fp=_fp,
+        )
     # 結構日：subplots_adjust 後用 fig 座標釘在價／量欄間空檔（附圖五上紅框）
     _near_major_date_labs = list(zip(t_ax, l_ax))
     for lab in list(ax.get_yticklabels()) + list(axv.get_yticklabels()):
@@ -13303,6 +13413,13 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     axv.set_ylabel("量", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)
     axv.set_xticks(t2)
     axv.set_xticklabels(l2, fontproperties=_fp(9, "bold"), color=_LIVE_TEXT)
+    if t2:
+        _paint_axis_last_date_neon(
+            axv,
+            last_i=int(t2[-1]),
+            live=_twii_cash_session_live(_query_now_from_pack(pack)),
+            fp=_fp,
+        )
     for lab in list(ax.get_yticklabels()) + list(axv.get_yticklabels()):
         lab.set_fontproperties(_fp(9, "bold"))
         lab.set_color(_LIVE_MUTED)

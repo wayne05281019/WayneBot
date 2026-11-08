@@ -229,7 +229,7 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "_pin_pivot_name" in near_blk
     assert "_pin_pivot_name" in micro_blk
     assert "_pin_pivot_name" in src
-    # 三張共用螢光黃查詢戳（日期／盤中或收／價）；時鐘邏輯仍走 _teach_query_clock
+    # 三張共用白底查詢戳（開盤螢光邊／收盤黑邊；日期／盤中或收／價）
     assert "_paint_teach_query_stamp" in far_blk
     assert "_paint_teach_query_stamp" in near_blk
     assert "_paint_teach_query_stamp" in micro_blk
@@ -237,6 +237,11 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "def _paint_teach_query_stamp" in src
     assert "def _paint_index_last_chg_tip" in src
     assert "_TEACH_STAMP_EDGE" in src
+    assert "_teach_stamp_edge" in src
+    assert "_paint_axis_last_date_neon" in src
+    assert "_TEACH_LAST_DATE_NEON" in src
+    assert "_TEACH_STAMP_EDGE_CLOSED" in src
+    assert "_TEACH_RIGHT_SOFT_CAP" in src
     assert '_TEACH_STAMP_FACE = "#ffffff"' in src or "_TEACH_STAMP_FACE = '#ffffff'" in src
     assert "市撮" in src and "盤前" in src and "收盤" in src
     assert "def _thesis_cap_for_query" in src
@@ -1479,6 +1484,26 @@ def test_far_teach_keep_wave_floor_and_vol_sr():
     # soft=100 裝不下從 day15 起的 186 根 → 硬滾；裝得下才最左＝撐壓日
     if len(rows) - 14 <= 100:
         assert got[0]["date"] == "20260015"
+
+
+def test_teach_stamp_edge_and_last_date_neon_helpers():
+    """開盤螢光邊／收盤黑邊；末日刻度色碼存在。"""
+    from biaoke_level_learn import (
+        _TEACH_LAST_DATE_NEON,
+        _TEACH_RIGHT_SOFT_CAP,
+        _TEACH_STAMP_EDGE_CLOSED,
+        _TEACH_STAMP_EDGE_LIVE,
+        _TEACH_STAMP_EDGE_TX_LIVE,
+        _teach_stamp_edge,
+    )
+
+    assert _teach_stamp_edge(live=True, kind="tw") == _TEACH_STAMP_EDGE_LIVE
+    assert _teach_stamp_edge(live=False, kind="tw") == _TEACH_STAMP_EDGE_CLOSED
+    assert _teach_stamp_edge(live=True, kind="sox") == _TEACH_STAMP_EDGE_LIVE
+    assert _teach_stamp_edge(live=True, kind="tx") == _TEACH_STAMP_EDGE_TX_LIVE
+    assert _teach_stamp_edge(live=False, kind="tx") == _TEACH_STAMP_EDGE_CLOSED
+    assert _TEACH_LAST_DATE_NEON.startswith("#")
+    assert int(_TEACH_RIGHT_SOFT_CAP) >= 4
 
 
 def test_teach_roll_from_floor_and_right_gutter():
