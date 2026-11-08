@@ -3194,3 +3194,43 @@ def test_far_tx_now_rail_deferred_until_tip_fixed():
     assert "x_label" in rail
     assert "clip_on=False" in rail
     assert "va=\"center\"" in rail or "va='center'" in rail
+    # 紫標＝夜盤收／盤中真價；雙軌 37837／37164 另掛，不准換掉紫標文案
+    assert "收盤" in rail and "盤中" in rail
+    assert "37837" in far and "37164" in far
+    assert "紫標現價" in far or "不准換掉" in far
+
+
+def test_week_bot_zone_and_dual_pred_from_thesis():
+    """原文 37100~39000 底帶＋雙軌四價抽出；空 pack 重渲會補 pred。"""
+    from biaoke_level_learn import (
+        _ensure_teach_pack_preds,
+        _thesis_pred_levels,
+        _tw_active_low_zone,
+        _tw_pred_right_notes,
+    )
+
+    snip = (
+        "星期五最低點位37837，已經非常接近4/23低點37164，"
+        "如果下周前三天再出現當天K棒最低點在37100~39000之間再爆一次巨量，"
+        "也有可能會破37837，但是假跌破買點。"
+        "不排除走9波擴延，有效跌破2/26第一波高點35579，則殺到3/31低點31705。"
+    )
+    pred = _thesis_pred_levels(snip, "")
+    tw = pred.get("tw") or []
+    levels = {round(float(r["level"]), 1) for r in tw}
+    assert {37837.0, 37164.0, 35579.0, 31705.0, 39000.0, 37100.0} <= levels
+    pack = {
+        "thesis": "主線五波跌完走B-b・備線九波擴延",
+        "snippet_full": snip,
+        "pred_levels": pred,
+    }
+    zone = _tw_active_low_zone(pack)
+    assert zone and zone[2] == "week_bot"
+    assert abs(zone[0] - 37100.0) < 1 and abs(zone[1] - 39000.0) < 1
+    notes = _tw_pred_right_notes(pack, n=80, lows=[37837.0], tip_skip=set())
+    texts = " ".join(n["text"] for n in notes)
+    assert "37,837" in texts and "假跌破" in texts
+    assert "37,164" in texts and "35,579" in texts and "31,705" in texts
+    # 空 pack 也能補
+    slim = _ensure_teach_pack_preds("data/wayne_market.db", {"thesis": "B-b"})
+    assert ((slim.get("pred_levels") or {}).get("tw") or [])
