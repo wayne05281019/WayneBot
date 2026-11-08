@@ -921,13 +921,14 @@ def _finish_last_twii_candle(
         edgecolor="#ffffff",
         edge_lw=0.9,
     )
+    # 今收 tip：略偏右，不准坐在實心邊上看成浪點；Y 仍鎖收盤
     ax.scatter(
-        [float(i_now)],
+        [float(i_now) + 0.38],
         [float(closes[i_now])],
-        s=42,
+        s=46,
         facecolors="none",
         edgecolors="#ea80fc",
-        linewidths=1.15,
+        linewidths=1.25,
         zorder=16,
         clip_on=False,
     )
@@ -4706,6 +4707,36 @@ def _c9_ext_bar_pivots(
     return _run(thr_d)
 
 
+def _c9_path_line_spec(lab: str, style: str) -> Tuple[str, float, float]:
+    """回傳 (線色, 線寬, 外描邊寬)。style＝color_thin｜white_thin｜color_bold。"""
+    st = str(style or "color_thin").strip().lower()
+    hot = lab in {"C7", "C8"}
+    odd = lab in {"C1", "C3", "C5"}
+    if st == "white_thin":
+        # 細白主線：明顯細過縮圖K影線；C7／C8 略亮
+        col = "#ffffff" if hot else "#e8eaf0"
+        lw = 1.20 if hot else 0.95
+        return col, lw, 0.70
+    if st == "color_bold":
+        col = _c9_wave_color(lab)
+        if hot:
+            lw = 3.85
+        elif odd:
+            lw = 3.05
+        else:
+            lw = 2.65
+        return col, lw, 1.65
+    # 預設 color_thin：留分色，線寬壓到比 K 影線細
+    col = _c9_wave_color(lab)
+    if hot:
+        lw = 1.35
+    elif odd:
+        lw = 1.10
+    else:
+        lw = 0.95
+    return col, lw, 0.75
+
+
 def _paint_c9_ext_k_path(
     ax: Any,
     pivots: Sequence[Tuple[int, float, str]],
@@ -4714,35 +4745,33 @@ def _paint_c9_ext_k_path(
     fp: Any,
     tip: Optional[Dict[str, Any]] = None,
     fontsize: float = 9,
+    style: str = "color_thin",
 ) -> bool:
-    """主圖 K：B→C1…C8 各段分色折線＋浪號釘點；C9 只走預估虛線端。"""
+    """主圖 K：B→C1…C8 折線＋浪號釘點；C9 只走預估虛線端。
+
+    style：color_thin（預設・分色細線）｜white_thin（細白）｜color_bold（舊粗分色）。
+    """
     rows = [(int(i), float(y), str(lab)) for i, y, lab in (pivots or [])]
     if len(rows) < 3:
         return False
     xs = [r[0] for r in rows]
     ys = [r[1] for r in rows]
+    st = str(style or "color_thin").strip().lower()
     # 找到 C7／C8 索引
     i_c7 = next((j for j, r in enumerate(rows) if r[2] == "C7"), None)
     i_c8 = next((j for j, r in enumerate(rows) if r[2] == "C8"), None)
-    # 實線到 C7（或 C8 若已走出反彈高）；每段浪色＋外描邊，縮圖也分得清
+    # 實線到 C7（或 C8 若已走出反彈高）
     solid_end = i_c8 if i_c8 is not None else (i_c7 if i_c7 is not None else len(rows) - 1)
     solid_end = max(1, int(solid_end))
     for j in range(solid_end):
         x0, y0, _lab0 = rows[j]
         x1, y1, lab1 = rows[j + 1]
-        col = _c9_wave_color(lab1)
-        # C7／C8 最粗；奇數下跌浪次之；偶數反彈略細但仍醒目（要比 K 影線搶眼）
-        if lab1 in {"C7", "C8"}:
-            lw = 3.85
-        elif lab1 in {"C1", "C3", "C5"}:
-            lw = 3.05
-        else:
-            lw = 2.65
+        col, lw, edge = _c9_path_line_spec(lab1, st)
         ax.plot(
             [x0, x1],
             [y0, y1],
             color="#0b0f14",
-            lw=lw + 1.65,
+            lw=lw + edge,
             solid_capstyle="round",
             zorder=6.3,
         )
@@ -4754,32 +4783,37 @@ def _paint_c9_ext_k_path(
             solid_capstyle="round",
             zorder=6.4,
         )
+    # 浪號：只釘 C1／C3／C5／C6（偶數反彈只留 C6），避免 C2／C4 跟鄰標互壓
+    pin_labs = {"C1", "C3", "C5", "C6"}
     for j, (ii, yy, lab) in enumerate(rows):
         if lab == "B":
             continue
         is_hot = lab in {"C7", "C8"}
-        col = _c9_wave_color(lab)
+        if st == "white_thin":
+            col = "#ff8a80" if is_hot else "#f5f5f5"
+        else:
+            col = _c9_wave_color(lab)
         ax.scatter(
             [ii],
             [yy],
-            s=58 if is_hot else 38,
+            s=44 if is_hot else 26,
             c=col,
             zorder=8.7,
             edgecolors="#0b0f14",
-            linewidths=0.65,
+            linewidths=0.55,
         )
         if is_hot:
             ax.scatter(
                 [ii],
                 [yy],
-                s=96,
+                s=78,
                 facecolors="none",
                 edgecolors=col,
-                linewidths=1.25,
+                linewidths=1.05,
                 zorder=8.8,
             )
-        # 浪號一眼對哪根 K：C1…C6 釘字；C7／C8 只留圓點（右欄已有「C-7轉C-8今」）
-        if lab in {"C7", "C8"}:
+        # C7／C8 只留圓點（右欄已有「C-7轉C-8今」）；其餘僅 pin_labs
+        if lab in {"C7", "C8"} or lab not in pin_labs:
             continue
         odd = lab in {"C1", "C3", "C5"}
         tip_side = "low" if odd else "high"
@@ -4793,8 +4827,9 @@ def _paint_c9_ext_k_path(
             side="left" if odd else "right",
             tip=tip_side,
             n=n,
-            pad_x=0.32,
-            fontsize=max(8.0, float(fontsize)),
+            pad_x=0.42,
+            fontsize=max(7.5, float(fontsize) - 0.5),
+            pri=8,
         )
     # C9 只標在預估虛線端，不准拿已走柱冒充
     if tip is not None:
@@ -4804,29 +4839,31 @@ def _paint_c9_ext_k_path(
         except (TypeError, ValueError):
             return True
         last_i, last_y = xs[-1], ys[-1]
+        c9_col = "#ce93d8" if st != "white_thin" else "#e1bee7"
+        c9_lw = 1.35 if st != "color_bold" else 2.15
         ax.plot(
             [last_i, fx],
             [last_y, fy],
             color="#0b0f14",
-            lw=3.0,
+            lw=c9_lw + 0.9,
             ls=(0, (4.0, 2.0)),
             zorder=6.45,
         )
         ax.plot(
             [last_i, fx],
             [last_y, fy],
-            color="#ce93d8",
-            lw=2.15,
+            color=c9_col,
+            lw=c9_lw,
             ls=(0, (4.0, 2.0)),
             zorder=6.5,
         )
         ax.scatter(
             [fx],
             [fy],
-            s=64,
+            s=52,
             facecolors="none",
-            edgecolors="#ce93d8",
-            linewidths=1.55,
+            edgecolors=c9_col,
+            linewidths=1.25,
             zorder=8.9,
         )
         _pin_pivot_name(
@@ -4834,13 +4871,14 @@ def _paint_c9_ext_k_path(
             fx,
             fy,
             "C9（預估）",
-            "#ce93d8",
+            c9_col,
             fp,
             side="right",
             tip="low",
             n=n,
-            pad_x=0.4,
-            fontsize=max(8.5, fontsize),
+            pad_x=0.45,
+            fontsize=max(8.0, float(fontsize) - 0.5),
+            pri=9,
         )
     return True
 
@@ -4858,12 +4896,20 @@ def _paint_c9_extension_on_bars(
     side: str = "left",
     fontsize: float = 9,
     pivots: Optional[Sequence[Tuple[int, float, str]]] = None,
+    style: str = "",
 ) -> bool:
     """三窗 K：有官方轉折就釘 C1…C8＋虛線 C9；否則只留此刻／C9 人話標。"""
     if not _c9_extension_active(pack):
         return False
+    # 預設細分色；pack／環境可覆寫 white_thin｜color_bold 做對照
+    st = (
+        str(style or "").strip()
+        or str((pack or {}).get("_c9_path_style") or "").strip()
+        or str(os.environ.get("WAYNE_C9_PATH_STYLE") or "").strip()
+        or "color_thin"
+    )
     if pivots and _paint_c9_ext_k_path(
-        ax, pivots, n=n, fp=fp, tip=tip, fontsize=fontsize
+        ax, pivots, n=n, fp=fp, tip=tip, fontsize=fontsize, style=st
     ):
         # C1…C8 已釘在 K 上＋右欄有「C-7轉C-8今」→ 不准再塞長口頭句互壓
         return True
@@ -10246,7 +10292,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             ymax=float(_sox_ylabel_span[1]),
             fp=_fp,
             level_dash=True,
-            min_gap=(float(_sox_ylabel_span[1]) - float(_sox_ylabel_span[0])) * 0.045,
+            min_gap=(float(_sox_ylabel_span[1]) - float(_sox_ylabel_span[0])) * 0.055,
             x_col=x_sox_col,
         )
     if _tx_right_notes and _tx_ylabel_span is not None:
@@ -10259,7 +10305,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             ymax=float(_tx_ylabel_span[1]),
             fp=_fp,
             level_dash=True,
-            min_gap=(float(_tx_ylabel_span[1]) - float(_tx_ylabel_span[0])) * 0.11,
+            min_gap=(float(_tx_ylabel_span[1]) - float(_tx_ylabel_span[0])) * 0.13,
             x_col=x_right_col + 0.15,
             nudge=True,
             fontsize=8.5,
@@ -10272,8 +10318,8 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         ymax=ymax,
         fp=_fp,
         level_dash=True,
-        # 加權資訊多：略鬆間距＋字盒 nudge，虛線仍貼真價
-        min_gap=(ymax - ymin) * (0.062 if _c9_now else 0.055),
+        # 加權資訊多：再鬆間距＋字盒 nudge，虛線仍貼真價（防日期／價標互壓）
+        min_gap=(ymax - ymin) * (0.078 if _c9_now else 0.068),
         x_col=x_right_col,
         nudge=True,
         fontsize=8.5 if _c9_now else 9.0,
@@ -10341,7 +10387,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         i5e=i5e,
         i_alow=i_alow,
         i_b_end=i_b_end,
-        min_gap=4,
+        min_gap=6,
     )
     # 右標／xlim 跟最長軸（費半可多日）；加權右標仍貼加權末日；費半黃框右欄要留空
     x_right = max(
@@ -10510,9 +10556,9 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             edgecolor="#ffffff",
             edge_lw=0.9,
         )
-        # 空心 tip 最後蓋在末根收上（環看得見、不塗死K）
+        # 空心 tip：略偏右＝今收，不准坐實心邊上看成浪點
         axu.scatter(
-            [float(_sox_last_repaint["i"])],
+            [float(_sox_last_repaint["i"]) + 0.38],
             [float(_sox_last_repaint["c"])],
             s=52,
             facecolors="none",
@@ -10540,7 +10586,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             edge_lw=0.9,
         )
         axu.scatter(
-            [float(_sox_last_repaint["i"])],
+            [float(_sox_last_repaint["i"]) + 0.38],
             [float(_sox_last_repaint["c"])],
             s=52,
             facecolors="none",
@@ -10575,7 +10621,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             edge_lw=0.9,
         )
         axt.scatter(
-            [float(_tx_last_repaint["i"])],
+            [float(_tx_last_repaint["i"]) + 0.38],
             [float(_tx_last_repaint["c"])],
             s=52,
             facecolors="none",
@@ -10586,7 +10632,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         )
     if _tw_last_repaint:
         ax.scatter(
-            [float(_tw_last_repaint["i"])],
+            [float(_tw_last_repaint["i"]) + 0.38],
             [float(_tw_last_repaint["c"])],
             s=52,
             facecolors="none",
@@ -11184,7 +11230,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     ):
         ax.scatter([ii], [yy], s=56, c=col, zorder=8, edgecolors="#ffffff", linewidths=0.7)
     ax.scatter(
-        [i_now],
+        [float(i_now) + 0.38],
         [y_now],
         s=56,
         facecolors="none",
@@ -11439,7 +11485,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         ymax=ymax,
         fp=_fp,
         level_dash=True,
-        min_gap=(ymax - ymin) * (0.062 if _c9_near_now else 0.055),
+        min_gap=(ymax - ymin) * (0.078 if _c9_near_now else 0.068),
         x_col=x_near_col,
         nudge=True,
         fontsize=8.5 if _c9_near_now else 9.0,
@@ -11506,12 +11552,12 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     t_ax, l_ax = _sparse_xticks(
         [t for t, lab in zip(t_all, labs_ax) if lab],
         [lab for lab in labs_ax if lab],
-        min_gap=4,
+        min_gap=6,
     )
     t_av, l_av = _sparse_xticks(
         [t for t, lab in zip(t_all, labs_axv) if lab],
         [lab for lab in labs_axv if lab],
-        min_gap=18,
+        min_gap=22,
     )
     t_merged = sorted(set(t_ax) | set(t_av))
     lab_av_map = dict(zip(t_av, l_av))
@@ -12782,7 +12828,7 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         ymax=y_top,
         fp=_fp,
         level_dash=True,
-        min_gap=(y_top - y_bot) * (0.062 if _c9_micro else 0.055),
+        min_gap=(y_top - y_bot) * (0.078 if _c9_micro else 0.068),
         x_col=x_micro_col,
         nudge=True,
         fontsize=8.5 if _c9_micro else 9.0,
