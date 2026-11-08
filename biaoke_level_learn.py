@@ -6822,11 +6822,12 @@ def _paint_tx_now_price_rail(
     asof_ymd: str = "",
     hit: Optional[Dict[str, Any]] = None,
     near_sup: Optional[Dict[str, Any]] = None,
+    x_label: Optional[float] = None,
 ) -> None:
     """電子盤現價／收盤水平虛線：對日期＋近撐月日價。
 
-    紫虛線＝當下或收盤價一路往左；碰到舊K的日子豎虛＋「曾到」；
-    下方最近大量撐另標近撐月日價，方便看最近撐在哪。
+    紫虛線＝當下或收盤價 → 穿過末根 tip → 標籤；標籤 Y 鎖真價。
+    碰到舊K的日子豎虛＋「曾到」；近撐另畫淡青虛線。
     """
     if ax is None or fp is None:
         return
@@ -6837,9 +6838,14 @@ def _paint_tx_now_price_rail(
         return
     if y <= 0 or tip < 0:
         return
-    # 水平虛線：左緣 → 末根 tip 圈（對現價垂直距離）；不准停在圖中段
+    # 水平虛線：左緣 → 穿過末根 tip → 標籤左緣；標籤 Y＝真價（va=center）
+    try:
+        x_lab = float(x_label) if x_label is not None else float(tip) + 0.70
+    except (TypeError, ValueError):
+        x_lab = float(tip) + 0.70
+    x_dash_end = max(float(tip) + 0.35, float(x_lab) - 0.48)
     ax.plot(
-        [-0.45, float(tip) + 0.35],
+        [-0.45, x_dash_end],
         [y, y],
         color="#ea80fc",
         lw=1.25,
@@ -6847,6 +6853,7 @@ def _paint_tx_now_price_rail(
         alpha=0.92,
         zorder=9,
         solid_capstyle="butt",
+        clip_on=False,
     )
     phase = "盤中" if live else "收盤"
     md = _md(asof_ymd) if _ymd(asof_ymd) else ""
@@ -6874,7 +6881,7 @@ def _paint_tx_now_price_rail(
         try:
             sy = float(near_sup["low"])
             ax.plot(
-                [-0.45, float(tip) + 0.35],
+                [-0.45, x_dash_end],
                 [sy, sy],
                 color="#4dd0e1",
                 lw=1.05,
@@ -6882,12 +6889,12 @@ def _paint_tx_now_price_rail(
                 alpha=0.75,
                 zorder=8,
                 solid_capstyle="butt",
+                clip_on=False,
             )
         except (TypeError, ValueError):
             pass
-    # 智慧標：釘在末根 tip 圈右側（圈圈處）；不准漂到圖中左半
+    # 矛點釘末根 tip；標籤與虛線同一水平（真價）
     _spear_ring(ax, float(tip), y, color="#ea80fc", zorder=9.5, hot=True)
-    x_lab = float(tip) + 0.70
     ax.text(
         x_lab,
         y,
@@ -6897,6 +6904,7 @@ def _paint_tx_now_price_rail(
         ha="left",
         va="center",
         zorder=12,
+        clip_on=False,
         bbox=dict(
             boxstyle="round,pad=0.14",
             fc="#0b0f14",
@@ -7711,6 +7719,7 @@ def _place_live_right_labels(
                 alpha=al_d,
                 zorder=5,
                 solid_capstyle="butt",
+                clip_on=False,  # 與右欄標同可見；不准 xlim 裁掉標前虛線
             )
         # 價・日期／狀態完整可見；長標略放寬裁切，不准黏字難讀
         lab_txt = str(it["text"] or "")
@@ -7725,7 +7734,7 @@ def _place_live_right_labels(
             fontproperties=fp(float(fontsize), "normal"),
             color=color,
             ha="left",
-            va="center",
+            va="center",  # 鎖死：框中心＝真價＝虛線
             zorder=10,
             clip_on=False,
             bbox=dict(boxstyle="round,pad=0.10", fc="#0b0f14", ec=color, lw=0.5, alpha=0.96),
@@ -10510,44 +10519,12 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                     )
                 except (TypeError, ValueError):
                     pass
-            _tx_px_rail = float(tx_c[tip_i])
-            _tx_rail_live = bool(
+            # 現價虛線／右標延後到 tip 索引校完再畫（避免虛線停在舊格、末根K在右側）
+            _tx_last_repaint["rail_pending"] = True
+            _tx_last_repaint["rail_live"] = bool(
                 isinstance(_tx_live_sr, dict)
                 and float((_tx_live_sr or {}).get("close") or 0) > 0
                 and _tx_night_session_live(_tx_wall)
-            )
-            # 夜盤進行中才寫「即時」；收盤／休市改「電盤收」，不准週末還寫即時
-            _tx_rail_lab = "電盤即時" if _tx_rail_live else "電盤收"
-            _tx_right_notes.append(
-                {
-                    "x": tip_i,
-                    "y": _tx_px_rail,
-                    "text": f"{_tx_rail_lab} {_px(_tx_px_rail)}",
-                    "color": "#ea80fc",
-                }
-            )
-            # 現價水平虛線：往左對日期；近撐只認大量區低（3/6 撐＝32820，不准把區高33799當撐）
-            # 9波／改口低點區已上圖時，遠窗近撐太遠＝雜訊，不准再標
-            _tx_hit = _nearest_bar_touching_px(
-                bars, tx_h, tx_l, px=_tx_px_rail, before_i=int(tip_i)
-            )
-            _tx_near_sup = None
-            if not _c9_extension_active(pack):
-                _tx_near_sup = _nearest_vol_support_row(tx_vol_sr, px=_tx_px_rail)
-            _tx_rail_asof = ""
-            if isinstance(_tx_live_sr, dict):
-                _tx_rail_asof = _ymd(_tx_live_sr.get("date"))
-            if not _tx_rail_asof and tip_i < len(bars):
-                _tx_rail_asof = _ymd(bars[tip_i].get("date"))
-            _paint_tx_now_price_rail(
-                axt,
-                px=_tx_px_rail,
-                tip_i=int(tip_i),
-                fp=_fp,
-                live=_tx_rail_live,
-                asof_ymd=str(_tx_rail_asof or ""),
-                hit=_tx_hit,
-                near_sup=_tx_near_sup,
             )
         lo_v = min(float(tx_l[i]) for i in tx_valid)
         hi_v = max(float(tx_h[i]) for i in tx_valid)
@@ -11384,6 +11361,36 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         }
     if _tx_last_repaint:
         _prev_tx = _tx_last_repaint.get("prev")
+        # 末根索引：若校完後仍不在真夜盤集合，改釘 tx_valid 最後一根
+        try:
+            _tip_final = int(_tx_last_repaint["i"])
+        except (TypeError, ValueError):
+            _tip_final = -1
+        if tx_valid and (_tip_final < 0 or _tip_final not in _tx_valid_set):
+            _tip_final = int(tx_valid[-1])
+            _tx_last_repaint["i"] = int(_tip_final)
+            try:
+                _tx_last_repaint["o"] = float(tx_o[_tip_final])
+                _tx_last_repaint["h"] = float(tx_h[_tip_final])
+                _tx_last_repaint["l"] = float(tx_l[_tip_final])
+                _tx_last_repaint["c"] = float(tx_c[_tip_final])
+                if _tip_final < len(bars):
+                    _tx_last_repaint["asof"] = _ymd(bars[_tip_final].get("date"))
+            except (TypeError, ValueError, IndexError):
+                pass
+        # 右側還有更新的真夜盤K → 虛線／矛點跟過去（不准停在左側舊格）
+        elif tx_valid and _tip_final in _tx_valid_set and int(tx_valid[-1]) > _tip_final:
+            _tip_final = int(tx_valid[-1])
+            _tx_last_repaint["i"] = int(_tip_final)
+            try:
+                _tx_last_repaint["o"] = float(tx_o[_tip_final])
+                _tx_last_repaint["h"] = float(tx_h[_tip_final])
+                _tx_last_repaint["l"] = float(tx_l[_tip_final])
+                _tx_last_repaint["c"] = float(tx_c[_tip_final])
+                if _tip_final < len(bars):
+                    _tx_last_repaint["asof"] = _ymd(bars[_tip_final].get("date"))
+            except (TypeError, ValueError, IndexError):
+                pass
         _paint_one_live_candle(
             axt,
             int(_tx_last_repaint["i"]),
@@ -11410,6 +11417,32 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             hot=True,
             clip_on=False,
         )
+        # tip 校完才畫現價虛線：穿過末根 → 右欄標；Y＝今收
+        if _tx_last_repaint.get("rail_pending"):
+            try:
+                _rail_px = float(_tx_last_repaint["c"])
+            except (TypeError, ValueError):
+                _rail_px = 0.0
+            _rail_i = int(_tx_last_repaint["i"])
+            if _rail_px > 0 and _rail_i >= 0:
+                _rail_hit = _nearest_bar_touching_px(
+                    bars, tx_h, tx_l, px=_rail_px, before_i=int(_rail_i)
+                )
+                _rail_near = None
+                if not _c9_extension_active(pack):
+                    _rail_near = _nearest_vol_support_row(tx_vol_sr, px=_rail_px)
+                _paint_tx_now_price_rail(
+                    axt,
+                    px=_rail_px,
+                    tip_i=int(_rail_i),
+                    fp=_fp,
+                    live=bool(_tx_last_repaint.get("rail_live")),
+                    asof_ymd=str(_tx_last_repaint.get("asof") or ""),
+                    hit=_rail_hit,
+                    near_sup=_rail_near,
+                    x_label=float(x_right_col) + 0.15,
+                )
+                _tx_last_repaint["rail_pending"] = False
     if _tw_last_repaint:
         # 9波末日已有 C7／C8 細圈時，不再疊今收圈（雙圈太粗）
         if not (_c9_now and len(_c9_pivots_far) >= 3):
@@ -11433,8 +11466,14 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     _paint_axis_last_date_neon(
         axu, last_i=_last_i_tw, live=_sox_cash_session_live(_wall_neon), fp=_fp
     )
+    _tx_neon_i = _last_i_tw
+    if _tx_last_repaint:
+        try:
+            _tx_neon_i = int(_tx_last_repaint["i"])
+        except (TypeError, ValueError):
+            _tx_neon_i = _last_i_tw
     _paint_axis_last_date_neon(
-        axt, last_i=_last_i_tw, live=_tx_night_session_live(_wall_neon), fp=_fp
+        axt, last_i=int(_tx_neon_i), live=_tx_night_session_live(_wall_neon), fp=_fp
     )
     _tw_live_neon = _twii_cash_session_live(_wall_neon)
     _paint_axis_last_date_neon(ax, last_i=_last_i_tw, live=_tw_live_neon, fp=_fp)

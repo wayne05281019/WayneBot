@@ -302,6 +302,9 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "_TEACH_STAMP_EDGE_TX" in src
     assert "def _resolve_tx_after_hours_tip" in src
     assert "def _paint_tx_after_hours_tip" in src
+    # 夜盤現價虛線：tip 校完才畫，釘最後真K（不准停在左側舊格）
+    assert "rail_pending" in far_blk
+    assert "_paint_tx_now_price_rail" in far_blk
     assert "費半｜台指電子盤｜加權日盤" in far_blk
     # 大B末標假突破；近窗白底戳改主圖框內左上（跟遠窗同軸座標）
     assert "假突破" in src
@@ -3142,3 +3145,19 @@ def test_paint_left_sr_label_locks_va_center():
     assert ax.texts[0].get_va() == "center"
     assert abs(float(ax.texts[0].get_position()[1]) - 45677.0) < 1e-6
     plt.close(fig)
+
+
+def test_far_tx_now_rail_deferred_until_tip_fixed():
+    """遠窗電子盤現價虛線：tip 校完才畫；釘最後真K，水平接到標籤。"""
+    import inspect
+    from biaoke_level_learn import _paint_tx_now_price_rail, _render_twii_far_dark
+
+    far = inspect.getsource(_render_twii_far_dark)
+    rail = inspect.getsource(_paint_tx_now_price_rail)
+    assert "rail_pending" in far
+    assert far.index("rail_pending") < far.index("_paint_tx_now_price_rail(") or far.count(
+        "_paint_tx_now_price_rail"
+    ) >= 1
+    assert "x_label" in rail
+    assert "clip_on=False" in rail
+    assert "va=\"center\"" in rail or "va='center'" in rail
