@@ -290,7 +290,7 @@ def run() -> Dict[str, Any]:
         "phone_sync": PHONE_SYNC,
         "promote_to_lookup_display": False,
         "user_goal_zh": "v32：复現 ma2＋續壓 hold<9.22",
-        "parent_seal": "phone_spirit_mix_thicken_v32_decision.json",
+        "parent_seal": "phone_spirit_mix_thicken_v31_decision.json",
         "elapsed_s": round(time.time() - t0, 1),
         "n_stocks": meta_n,
         "confirm_pe2_mh20_ma2": confirm,
