@@ -10658,30 +10658,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                     "color": "#4dd0e1",
                 }
             )
-    # 他原文台指期：週五低 37837＝假跌破最佳買點；紫標現價軌不准換掉
-    _tx_have_ys = {
-        round(float(n0.get("y") or 0), 1) for n0 in _tx_right_notes if n0.get("y") is not None
-    }
-    _tx_dual_blob = " ".join(
-        str(x or "")
-        for x in (
-            (pack or {}).get("thesis"),
-            (pack or {}).get("snippet"),
-            (pack or {}).get("snippet_full"),
-            (pack or {}).get("wait_struct"),
-        )
-    )
-    if _text_has_bb_dual_path(_tx_dual_blob) or "37837" in _tx_dual_blob:
-        if round(37837.0, 1) not in _tx_have_ys:
-            _tx_right_notes.append(
-                {
-                    "x": 0,
-                    "y": 37837.0,
-                    "text": f"最佳買點／{_px(37837)}",
-                    "color": "#ffd54f",
-                }
-            )
-            _tx_have_ys.add(round(37837.0, 1))
+    # 最佳買點／37837 只掛加權日盤右欄，不准上電子盤
     _tx_valid_set = set(tx_valid)
     if len(tx_valid) >= 2:
         for i in tx_valid:
@@ -12553,8 +12530,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
             pack, n=n, lows=c_seg_lows, tip_skip=tip_skip, bars=bars
         )
     )
-    # 落在黃帶內的青標改右欄（與遠窗同一套；已有同價／預估端則不重複）
-    # 雙軌下週底當令：39,000／37,100 已有黃框底帶，不准再掛青「飆預測」右標
+    # 落在黃帶內的青標改右欄；雙軌／C9／下週底當令＝跟遠窗日盤：不准再加青撐壓擠掉買點
     have_ys = {round(float(n0["y"]), 1) for n0 in right_notes} | tip_skip
     _wb_zone = _tw_active_low_zone(pack)
     _wb_edges = (
@@ -12562,29 +12538,32 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         if _wb_zone and _wb_zone[2] == "week_bot"
         else set()
     )
-    for key, col in (("resist", "#4dd0e1"), ("support", "#4dd0e1")):
-        yv = sr_skip.get(key)
-        if yv is None:
-            continue
-        if round(float(yv), 1) in have_ys:
-            continue
-        if round(float(yv), 1) in _wb_edges:
-            continue
-        right_notes.append(
-            {
-                "x": 0,
-                "y": float(yv),
-                "text": _biaoke_pred_label(float(yv)),
-                "color": col,
-            }
-        )
-        have_ys.add(round(float(yv), 1))
+    _skip_cyan_sr = bool(_c9_near_now) or bool(_wb_edges)
+    if not _skip_cyan_sr:
+        for key, col in (("resist", "#4dd0e1"), ("support", "#4dd0e1")):
+            yv = sr_skip.get(key)
+            if yv is None:
+                continue
+            if round(float(yv), 1) in have_ys:
+                continue
+            if round(float(yv), 1) in _wb_edges:
+                continue
+            right_notes.append(
+                {
+                    "x": 0,
+                    "y": float(yv),
+                    "text": _biaoke_pred_label(float(yv)),
+                    "color": col,
+                }
+            )
+            have_ys.add(round(float(yv), 1))
     # 右欄現況：固定 gutter；尖點浪名另走 _pin_pivot_name 跟 K 移
     try:
         _tip_fx = float(tip.get("fut_x") or n)
     except (TypeError, ValueError):
         _tip_fx = float(n)
     x_near_col = _teach_right_col_x(int(n), tip_fut_x=_tip_fx)
+    # C9／雙軌：間距跟遠窗日盤同一套，標＋虛線才對得起來
     _place_live_right_labels(
         ax,
         right_notes,
@@ -12593,7 +12572,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         ymax=ymax,
         fp=_fp,
         level_dash=True,
-        min_gap=(ymax - ymin) * (0.078 if _c9_near_now else 0.068),
+        min_gap=(ymax - ymin) * (0.092 if _c9_near_now else 0.068),
         x_col=x_near_col,
         nudge=True,
         fontsize=8.5 if _c9_near_now else 9.0,
@@ -13931,24 +13910,26 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         if _wb_zone_m and _wb_zone_m[2] == "week_bot"
         else set()
     )
-    for key, col in (("resist", "#4dd0e1"), ("support", "#4dd0e1")):
-        yv = sr_skip.get(key)
-        if yv is None:
-            continue
-        if round(float(yv), 1) in have_ys:
-            continue
-        if round(float(yv), 1) in _wb_edges_m:
-            continue
-        right_notes.append(
-            {
-                "x": 0,
-                "y": float(yv),
-                "text": _biaoke_pred_label(float(yv)),
-                "color": col,
-            }
-        )
-        have_ys.add(round(float(yv), 1))
-    # 右標略往左：超近中排已給八浪／說明，右欄仍不准被裁掉；C9 跟遠窗 nudge
+    # 雙軌／C9／下週底：跟遠窗日盤，不准再加青撐壓
+    if not (bool(_c9_micro) or bool(_wb_edges_m)):
+        for key, col in (("resist", "#4dd0e1"), ("support", "#4dd0e1")):
+            yv = sr_skip.get(key)
+            if yv is None:
+                continue
+            if round(float(yv), 1) in have_ys:
+                continue
+            if round(float(yv), 1) in _wb_edges_m:
+                continue
+            right_notes.append(
+                {
+                    "x": 0,
+                    "y": float(yv),
+                    "text": _biaoke_pred_label(float(yv)),
+                    "color": col,
+                }
+            )
+            have_ys.add(round(float(yv), 1))
+    # 右標略往左：超近中排已給八浪／說明，右欄仍不准被裁掉；C9 跟遠窗日盤間距
     x_micro_col = float(n) + 1.55
     try:
         x_micro_col = max(x_micro_col, float(tip.get("fut_x") or n) + 0.35)
@@ -13962,7 +13943,7 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         ymax=y_top,
         fp=_fp,
         level_dash=True,
-        min_gap=(y_top - y_bot) * (0.078 if _c9_micro else 0.068),
+        min_gap=(y_top - y_bot) * (0.092 if _c9_micro else 0.068),
         x_col=x_micro_col,
         nudge=True,
         fontsize=8.5 if _c9_micro else 9.0,

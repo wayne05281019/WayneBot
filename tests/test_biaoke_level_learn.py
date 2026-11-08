@@ -3194,14 +3194,21 @@ def test_far_tx_now_rail_deferred_until_tip_fixed():
     assert "x_label" in rail
     assert "clip_on=False" in rail
     assert "va=\"center\"" in rail or "va='center'" in rail
-    # 紫標＝夜盤收／盤中真價；最佳買點37837 另掛，不准換掉紫標文案
+    # 紫標＝夜盤收／盤中真價；最佳買點37837 只掛日盤，不准上電盤
     assert "收盤" in rail and "盤中" in rail
-    assert "37837" in far and "最佳買點" in far
+    assert "最佳買點／" in far  # 日盤右欄文案
+    assert 'f"最佳買點／{_px(37837)}"' not in far  # 電盤不准再 append
     assert "37164" not in far  # 4/23 對照不進電盤右欄
     # 6/9 primary 右標＋虛線拿掉（不准再 append 電盤大量* 文案）
     assert "電盤大量壓" not in far and "電盤大量撐" not in far
     assert far.count("電盤下一層") >= 2  # next-layer 仍可留
-    assert "紫標現價" in far or "不准換掉" in far
+    assert "_paint_tx_now_price_rail" in far  # 紫標現價軌仍在電盤
+    # 近／超近雙軌當令跟遠窗日盤：不准再塞青撐壓
+    from biaoke_level_learn import _render_twii_live_dark, _render_twii_super_near_dark
+    near = inspect.getsource(_render_twii_live_dark)
+    micro = inspect.getsource(_render_twii_super_near_dark)
+    assert "_skip_cyan_sr" in near
+    assert "not (bool(_c9_micro) or bool(_wb_edges_m))" in micro
 
 
 def test_week_bot_zone_and_dual_pred_from_thesis():
