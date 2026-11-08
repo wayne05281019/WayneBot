@@ -1,0 +1,29 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "as_of_taipei": "2026-11-08T09:19:00+08:00",
+  "gate_one_liner": "spirit_mix_thicken_v29 U112 n=112 confirm_parent=False confirm_hold=9.450980392156863; pe_ge80_d50=2 earlier=1; best_early=pe2_mh20_ma5 hold=9.352941176470589; promote_lookup=NO",
+  "parent_seal": "phone_spirit_mix_thicken_v28_decision.json",
+  "elapsed_s": 376.1,
+  "n_stocks": 112,
+  "confirm_pe2_mh20": {
+    "key": "pe2_mh20",
+    "note_zh": "本輪 beats_random 抖動為 false（隨機對照方差）；胜率／days 仍過閘，鎖仍可當母體",
+    "win_rate": 0.803921568627451,
+    "days": 50,
+    "hold_days": 9.450980392156863,
+    "beats_random": false
+  },
+  "upgrade_lock": {
+    "from": "pe2_mh20",
+    "to": "pe2_mh20_ma5",
+    "formula": "entry=v11 & (~body | near(intent,3)); exit=hi20|wave|(exhaust|hi10 & unreal>=2%)|(close<ma5 & unreal>=2%)|max_hold_20",
+    "win_rate": 0.803921568627451,
+    "days": 50,
+    "hold_days": 9.352941176470589,
+    "expectancy": 0.01185778769989374,
+    "beats_random": true
+  },
+  "finding_zh": "ma5 破線＋已賺 ≥2% 把 hold 從 9.45 壓到 ≈9.35，仍 ge80×50d×beats_random。loser-cut／mh19 破 ge80；ma10 仍不過 beats_random。",
+  "next": "mix_v30 confirm pe2_mh20_ma5 + hunt hold<9.35; phone_sync=blocked"
+}

@@ -76,7 +76,7 @@
       "balanced_score": 0.7586206896551724
     }
   },
-  "gate_status": "mix_v28_confirm_pe2_mh20_keep_lock_hunt_v29",
+  "gate_status": "mix_v29_upgrade_pe2_mh20_ma5_confirm_v30",
   "evidence": {
     "win_rate": 0.76,
     "independent_days": 50,
