@@ -252,6 +252,12 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "_load_tx_futures_daily" in src
     assert "_ensure_paint_live_tx" in src
     assert "_apply_live_tx_to_axis" in far_blk
+    # 夜盤先行：電子盤也釘 C1…C8（與加權日盤九波分開，仍走 _paint_c9_extension_on_bars）
+    assert "夜盤先行" in far_blk or "_c9_pivots_tx" in far_blk
+    assert far_blk.count("_paint_c9_extension_on_bars(") >= 2
+    assert "math.isfinite(hi)" in inspect.getsource(
+        __import__("biaoke_level_learn", fromlist=["_c9_ext_bar_pivots"])._c9_ext_bar_pivots
+    )
     # 電子盤撐壓底色＋右標虛線＋即時K
     assert "tx_vol_sr" in far_blk
     assert "_tx_right_notes" in far_blk
@@ -273,7 +279,7 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "rotation=0" in src
     assert "clip_on=False" in src  # 左軸逐字 ax.text
     assert "labels=False" in far_blk
-    assert "0.11" in far_blk  # 電子盤右標間距
+    assert "0.13" in far_blk  # 電子盤右標間距（疏開字盒）
     assert "nudge=True" in far_blk  # 字盒疏開、虛線仍貼真價
     # 各欄各自爆大量日豎線；不准加權 10/15 貫穿費半／電子盤
     assert "_paint_vol_sr_mark_on_axis" in far_blk

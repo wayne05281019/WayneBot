@@ -4524,6 +4524,8 @@ def _c9_ext_bar_pivots(
     奇數浪＝低點、偶數浪＝反彈高。口述＝七走完、準備往八 → 60分優先讓末日落在 C7。
     tf＝60：加權日盤 60 分（超近窗）；1d＝日K。不准發明中間價。
     """
+    import math
+
     n = min(len(highs), len(lows), len(closes))
     if not (0 <= int(i_bhi) < int(i_now) < n):
         return []
@@ -4535,9 +4537,14 @@ def _c9_ext_bar_pivots(
     ranges: List[float] = []
     for i in range(ib, i_end + 1):
         try:
-            ranges.append(abs(float(highs[i]) - float(lows[i])))
+            hi_r = float(highs[i])
+            lo_r = float(lows[i])
         except (TypeError, ValueError):
             continue
+        # 缺日／對齊空格（台指夜盤稀疏軸）不准進 ATR
+        if not (math.isfinite(hi_r) and math.isfinite(lo_r)):
+            continue
+        ranges.append(abs(hi_r - lo_r))
     atr = (
         sorted(ranges)[len(ranges) // 2]
         if ranges
@@ -4554,6 +4561,9 @@ def _c9_ext_bar_pivots(
                 hi = float(highs[i])
                 lo = float(lows[i])
             except (TypeError, ValueError):
+                continue
+            # 夜盤對齊加權日軸會有 NaN 空格：跳過，不准當轉折
+            if not (math.isfinite(hi) and math.isfinite(lo)):
                 continue
             if looking_low:
                 if lo <= ext_y:
@@ -4626,6 +4636,8 @@ def _c9_ext_bar_pivots(
                     hi = float(highs[i])
                     lo = float(lows[i])
                 except (TypeError, ValueError):
+                    continue
+                if not (math.isfinite(hi) and math.isfinite(lo)):
                     continue
                 if looking_low:
                     if lo <= ext_y:
@@ -9580,6 +9592,8 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             or _ymd(bars[i].get("date") if i < len(bars) else "") in _tx_real_days
         )
     ]
+    # 夜盤九波末日預設＝最後一根真夜盤；下方 tip／即時塊會覆寫
+    tip_i = int(tx_valid[-1]) if tx_valid else -1
     tx_min_body = _candle_span_min_body(tx_h, tx_l, frac=_FAR_SOX_MIN_BODY_FRAC)
     tx_rows_for_vol: List[Dict[str, Any]] = []
     for i in range(n_tw):
@@ -9938,6 +9952,48 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         fp=_fp,
     )
     _set_upright_ylabel(axt, "台指電子盤", fp=_fp, color=_LIVE_MUTED, fontsize=10)
+    # 夜盤先行：台指電子盤也數 C1…C8（官方夜盤柱），才對得上他講的「夜盤破壞最後一組 3-5」
+    # 與加權日盤九波分開釘在 axt；缺日 NaN 已在 _c9_ext_bar_pivots 跳過
+    if _c9_extension_active(pack) and len(tx_valid) >= 8 and tip_i >= 0:
+        _win_b = [i for i in tx_valid if abs(int(i) - int(i_b_end)) <= 8]
+        if _win_b:
+            i_tx_b = max(_win_b, key=lambda i: float(tx_h[i]))
+        else:
+            _before_b = [i for i in tx_valid if int(i) <= int(i_b_end)]
+            i_tx_b = int(_before_b[-1]) if _before_b else int(tx_valid[0])
+        if int(i_tx_b) < int(tip_i):
+            _c9_pivots_tx = _c9_ext_bar_pivots(
+                tx_h, tx_l, tx_c, i_bhi=int(i_tx_b), i_now=int(tip_i)
+            )
+            if len(_c9_pivots_tx) >= 3:
+                try:
+                    _y_tx_now = float(tx_c[tip_i])
+                except (TypeError, ValueError, IndexError):
+                    _y_tx_now = float(tx_l[tip_i]) if tip_i < len(tx_l) else 0.0
+                _paint_c9_extension_on_bars(
+                    axt,
+                    pack=pack,
+                    i_now=int(tip_i),
+                    y_now=float(_y_tx_now),
+                    n=n_tw,
+                    fp=_fp,
+                    tip=None,
+                    pin_now=False,
+                    side="left",
+                    fontsize=8.0,
+                    pivots=_c9_pivots_tx,
+                )
+                _ys_tx = [
+                    float(y)
+                    for _i, y, _lab in _c9_pivots_tx
+                    if y is not None and math.isfinite(float(y))
+                ]
+                if _ys_tx and _tx_ylabel_span is not None:
+                    _lo0, _hi0 = float(_tx_ylabel_span[0]), float(_tx_ylabel_span[1])
+                    _lo1 = min(_lo0, min(_ys_tx) - 120.0)
+                    _hi1 = max(_hi0, max(_ys_tx) + 160.0)
+                    axt.set_ylim(_lo1, _hi1)
+                    _tx_ylabel_span = (_lo1, _hi1)
     # 不再貼左下長說明：會跟右標／戳／K互卡；說明改靠戳＋右欄
 
     # —— 中：加權日盤價（先畫底帶在K下一層，再畫K）——
