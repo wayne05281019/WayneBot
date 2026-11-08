@@ -5245,9 +5245,10 @@ def _tw_active_low_zone(
     return None
 
 
-# 下週底黃標／AI結束觀察標同一左緣＝齊頭（ha=left；超近更左避開末K）
-_TEACH_ZONE_LABEL_X = 0.42
-_TEACH_ZONE_LABEL_X_MICRO = 0.22
+# 下週底黃標／AI結束觀察標：同一左緣齊頭（同 pad＋ha=left；超近更左避開末K）
+_TEACH_ZONE_LABEL_X = 0.32
+_TEACH_ZONE_LABEL_X_MICRO = 0.08
+_TEACH_ZONE_LABEL_PAD = 0.45  # 兩標 bbox pad 必須相同，否則左緣會錯開
 
 
 def _paint_c9_low_zone_band(
@@ -5268,9 +5269,9 @@ def _paint_c9_low_zone_band(
         return None
     lo, hi, kind = zone
     if kind == "week_bot":
-        # 下週預計底部：顯眼黃底大框＋大字，右欄不再另掛 39,000／37,100
+        # 下週預計底部：顯眼黃底大框＋大字；pad 與 AI結束標相同才齊頭
         face, ink, tag = "#fff59d", "#fbc02d", "下週底部觀察"
-        fsz, pad, lw, alpha_span = 14.5, 0.55, 2.4, 0.28
+        fsz, pad, lw, alpha_span = 14.5, float(_TEACH_ZONE_LABEL_PAD), 2.4, 0.28
         txt_c, fc = "#1a1400", "#ffeb3b"
     elif kind == "foot2":
         face, ink, tag = "#80deea", "#80deea", "改口低點區"
@@ -5296,6 +5297,7 @@ def _paint_c9_low_zone_band(
         bbox=dict(
             boxstyle=f"round,pad={pad}", fc=fc, ec=ink, lw=lw, alpha=0.95
         ),
+        clip_on=False,
     )
     return (lo, hi)
 
@@ -5353,6 +5355,7 @@ def _paint_ai_end_zone_band(
     ax.axhspan(lo, hi, facecolor=face, alpha=0.10, zorder=0.30)
     y_lab = float(lo) + (float(hi) - float(lo)) * 0.55  # 帶內垂直置中
     x_lab = float(_TEACH_ZONE_LABEL_X if label_x is None else label_x)
+    # pad／ha／x 必須與下週底黃標相同，左緣才真齊頭
     ax.text(
         x_lab,
         y_lab,
@@ -5360,11 +5363,15 @@ def _paint_ai_end_zone_band(
         transform=ax.get_yaxis_transform(),
         fontproperties=fp(13.0, "bold"),
         color=ink,
-        ha="left",  # 與下週底黃標左緣齊頭
+        ha="left",
         va="center",
         zorder=12.0,
         bbox=dict(
-            boxstyle="round,pad=0.45", fc="#140c18", ec=ink, lw=1.8, alpha=0.96
+            boxstyle=f"round,pad={float(_TEACH_ZONE_LABEL_PAD)}",
+            fc="#140c18",
+            ec=ink,
+            lw=1.8,
+            alpha=0.96,
         ),
         clip_on=False,
     )
