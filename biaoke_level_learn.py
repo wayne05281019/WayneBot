@@ -5256,7 +5256,7 @@ def _tw_active_low_zone(
 # 超近：縮圖在中排右格，K 欄可更左；再左避末根K
 _TEACH_ZONE_LABEL_X = 0.48  # 遠窗：縮圖在左下，標在右外側
 _TEACH_ZONE_LABEL_X_NEAR = 0.34  # 近窗：右挪離開大A末／7/29 尖點，仍在縮圖左側
-_TEACH_ZONE_LABEL_X_MICRO = 0.08
+_TEACH_ZONE_LABEL_X_MICRO = 0.22  # 超近：清過左欄壓(0.01)／撐(0.13)，不准黃框蓋「下一層撐」
 _TEACH_ZONE_LABEL_PAD = 0.18  # 兩標 pad 必須相同才齊頭；大 pad 會蓋 A低／7/29
 _TEACH_ZONE_LABEL_W_AX = 0.26  # 長標約佔 axes 寬（估），用來判斷能否完全放在縮圖左側
 
@@ -5354,9 +5354,9 @@ def _paint_c9_low_zone_band(
         fsz, pad, lw, alpha_span = 7.5, 0.10, 0.45, 0.16
         txt_c, fc = ink, "#0b0f14"
     ax.axhspan(lo, hi, facecolor=face, alpha=alpha_span, zorder=0.35)
-    # 下週底標貼帶下緣內側：上緣留給大A末／7/29 尖點，不准黃框蓋轉折
+    # 下週底標貼帶更靠下緣：上緣留給大A末／7/29；zorder 低於尖點(10)，不准蓋轉折字
     if kind == "week_bot":
-        y_lab = float(lo) + (float(hi) - float(lo)) * 0.22
+        y_lab = float(lo) + (float(hi) - float(lo)) * 0.10
     else:
         y_lab = (float(lo) + float(hi)) * 0.5
     x_lab = float(_TEACH_ZONE_LABEL_X if label_x is None else label_x)
@@ -5369,7 +5369,7 @@ def _paint_c9_low_zone_band(
         color=txt_c if kind == "week_bot" else ink,
         ha="left",
         va="center",
-        zorder=11,
+        zorder=7,
         bbox=dict(
             boxstyle=f"round,pad={pad}", fc=fc, ec=ink, lw=lw, alpha=0.95
         ),
@@ -5443,7 +5443,7 @@ def _paint_ai_end_zone_band(
         color=ink,
         ha="left",
         va="center",
-        zorder=12.0,
+        zorder=7.0,  # 與下週底同層，低於尖點浪名，不准蓋 大A末／C釘
         bbox=dict(
             boxstyle=f"round,pad={float(_TEACH_ZONE_LABEL_PAD)}",
             fc="#140c18",
@@ -12474,6 +12474,32 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     )
     _reserve_avoid_zone(ax, float(n) - 24.0, 40500.0, float(n) + 5.0, 43300.0)
     _reserve_avoid_zone(ax, float(n) * 0.55, 31800.0, float(n) - 0.5, 39200.0)
+    # 下週底／AI結束大標稍後才畫，先佔禁區：尖點浪名不准坐進未來黃／紫框
+    try:
+        _wb_early = _tw_active_low_zone(pack)
+        if _wb_early and _wb_early[2] == "week_bot":
+            _elo, _ehi = float(_wb_early[0]), float(_wb_early[1])
+            _ey = _elo + (_ehi - _elo) * 0.10
+            _reserve_avoid_zone(
+                ax,
+                float(n) * 0.12,
+                _ey - max((_ehi - _elo) * 0.35, span * 0.04),
+                float(n) * 0.52,
+                _ey + max((_ehi - _elo) * 0.35, span * 0.04),
+            )
+        _ai_early = _tw_ai_end_zone(pack)
+        if _ai_early:
+            _alo, _ahi = float(_ai_early[0]), float(_ai_early[1])
+            _ay = _alo + (_ahi - _alo) * 0.28
+            _reserve_avoid_zone(
+                ax,
+                float(n) * 0.12,
+                _ay - max((_ahi - _alo) * 0.30, span * 0.035),
+                float(n) * 0.52,
+                _ay + max((_ahi - _alo) * 0.30, span * 0.035),
+            )
+    except Exception:
+        pass
     # ⑤起：尖點右上空檔（附圖二）— 九波已遷量欄，這裡只讓過首根K
     _w5_lab = f"⑤起 {_md(bars[i5s].get('date'))}"
     _w5_x = float(i5s) + 7.5
@@ -12531,13 +12557,13 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         f"大A末＝B起 {_md(bars[i_alow].get('date'))}",
         "#ff8a80",
         _fp,
-        side="left",  # 左側離開區帶黃標（區帶後畫）
-        tip="low",
+        side="left",  # 左側離開區帶黃標
+        tip="high",  # 整盒在尖點上方；tip=low 會鑽進下週底黃框
         n=n,
-        pad_x=0.85,
+        pad_x=1.05,
         fontsize=9,
         pri=12,
-        clear_dy=None,
+        clear_dy=max(span * 0.062, 380.0),
     )
     _pin_pivot_name(
         ax,
@@ -12966,8 +12992,9 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         _x0, _x1 = ax.get_xlim()
         _xspan = max(float(_x1) - float(_x0), 1e-9)
         _piv_ax = (float(i_alow) - float(_x0)) / _xspan
-        if float(_zx_n) < float(_piv_ax) + 0.17:
-            _zx_n = float(_piv_ax) + 0.20
+        # 尖點改在上方後，黃標仍須水平離開 A末 盒（長標往右長）
+        if float(_zx_n) < float(_piv_ax) + 0.22:
+            _zx_n = float(_piv_ax) + 0.26
         # 長標右緣不准撞縮圖／右欄；塞不下就退回縮圖左側可放的最大 x
         if _near_inset:
             _pos = ax.get_position()
