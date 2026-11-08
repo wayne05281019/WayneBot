@@ -912,6 +912,20 @@ def test_thesis_pred_foot2_band_supersedes_c9():
     assert any(abs(t - 37500) < 1 for t in tips)
     assert any(abs(t - 37000) < 1 for t in tips)
     assert all(abs(t - 35500) > 1 and abs(t - 37300) > 1 for t in tips)
+    # key_levels 殘留舊 35000／38000 也不准再當虛線下一錨
+    tips2 = _tw_tip_anchors(
+        {
+            **pack,
+            "key_levels": {
+                "pred_tw_38000": 38000.0,
+                "pred_tw_35000": 35000.0,
+                "pred_tw_37500": 37500.0,
+                "pred_tw_37000": 37000.0,
+            },
+        }
+    )
+    assert all(abs(t - 38000) > 1 and abs(t - 35000) > 1 for t in tips2)
+    assert any(abs(t - 37500) < 1 for t in tips2)
     br = _tw_pred_break_tag(38000.0, [45000.0], pack=pack, role="劇本一上沿")
     assert br == "已破"
     assert _biaoke_pred_label(38000.0, br) == f"飆預測{_px(38000)}已破"

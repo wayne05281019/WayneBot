@@ -2573,17 +2573,11 @@ def _latest_level_thesis(
                 post_id = post_id or _FOOT2_ORAL_POST_ID
             elif cap >= _FOOT2_ORAL_AS_OF:
                 snip = f"{foot2_real} {snip}"
-        elif (
-            cap >= _FOOT2_ORAL_AS_OF
-            and not _text_has_foot2_revision(snip)
-            and (
-                not str(snip or "").strip()
-                or _text_has_c9_extension(snip)
-                or post_id == "oral-c9-band"
-            )
-        ):
-            snip = _FOOT2_ORAL_SNIP
-            post_id = _FOOT2_ORAL_POST_ID
+        elif cap >= _FOOT2_ORAL_AS_OF and not _text_has_foot2_revision(snip):
+            # 後文改口壓前文：即使庫內最新是 C3-5 真文，仍併入 37000~37500／第二隻腳
+            # （不准只在空題旨／C9 口頭時才吃，否則話筒會停在舊 35000）
+            snip = f"{_FOOT2_ORAL_SNIP} {snip}".strip()
+            post_id = post_id or _FOOT2_ORAL_POST_ID
     except Exception:
         logger.debug("第二隻腳題旨覆寫略過", exc_info=True)
     morph_blob = snip + " " + " ".join(str(r["snippet"] or "") for r in (extra or []))
@@ -4496,17 +4490,17 @@ def _ensure_foot2_oral_thesis_snap(db_path: str, *, as_of: str = "") -> None:
         logger.debug("補第二隻腳口頭題旨 snap 略過", exc_info=True)
 
 
-# 主圖／右下九波縮圖共用色（C1…C9）；虛線 C9 用紫
+# 主圖／右下九波縮圖共用色（C1…C9）：奇數浪偏暖紅、偶數浪偏冷青／綠，C7 最醒目，虛線 C9 淡紫
 _C9_WAVE_COLORS: Dict[str, str] = {
-    "B": "#40c4ff",
-    "C1": "#ff8a80",
-    "C2": "#ffd54f",
-    "C3": "#ffab40",
-    "C4": "#69f0ae",
-    "C5": "#ea80fc",
-    "C6": "#80d8ff",
-    "C7": "#ff5252",
-    "C8": "#ffd54f",
+    "B": "#ffd54f",
+    "C1": "#ff7043",
+    "C2": "#ffca28",
+    "C3": "#ff8a65",
+    "C4": "#66bb6a",
+    "C5": "#ec407a",
+    "C6": "#29b6f6",
+    "C7": "#ff1744",
+    "C8": "#ffc107",
     "C9": "#ce93d8",
 }
 
@@ -4730,19 +4724,25 @@ def _paint_c9_ext_k_path(
     # 找到 C7／C8 索引
     i_c7 = next((j for j, r in enumerate(rows) if r[2] == "C7"), None)
     i_c8 = next((j for j, r in enumerate(rows) if r[2] == "C8"), None)
-    # 實線到 C7（或 C8 若已走出反彈高）；每段用浪色對齊右下縮圖
+    # 實線到 C7（或 C8 若已走出反彈高）；每段浪色＋外描邊，縮圖也分得清
     solid_end = i_c8 if i_c8 is not None else (i_c7 if i_c7 is not None else len(rows) - 1)
     solid_end = max(1, int(solid_end))
     for j in range(solid_end):
         x0, y0, _lab0 = rows[j]
         x1, y1, lab1 = rows[j + 1]
         col = _c9_wave_color(lab1)
-        lw = 2.75 if lab1 in {"C7", "C8"} else 2.05
+        # C7／C8 最粗；奇數下跌浪次之；偶數反彈略細但仍醒目（要比 K 影線搶眼）
+        if lab1 in {"C7", "C8"}:
+            lw = 3.85
+        elif lab1 in {"C1", "C3", "C5"}:
+            lw = 3.05
+        else:
+            lw = 2.65
         ax.plot(
             [x0, x1],
             [y0, y1],
             color="#0b0f14",
-            lw=lw + 1.15,
+            lw=lw + 1.65,
             solid_capstyle="round",
             zorder=6.3,
         )
@@ -4762,24 +4762,23 @@ def _paint_c9_ext_k_path(
         ax.scatter(
             [ii],
             [yy],
-            s=48 if is_hot else 30,
+            s=58 if is_hot else 38,
             c=col,
             zorder=8.7,
-            edgecolors="#111111",
-            linewidths=0.45,
+            edgecolors="#0b0f14",
+            linewidths=0.65,
         )
         if is_hot:
             ax.scatter(
                 [ii],
                 [yy],
-                s=78,
+                s=96,
                 facecolors="none",
                 edgecolors=col,
-                linewidths=0.95,
+                linewidths=1.25,
                 zorder=8.8,
             )
-        # 浪號要一眼對得上哪一根 K：C1…C6 細標；C7／C8 只留圓點
-        # （右欄已有「C-7轉C-8今」→ 再釘字＝多餘，且易被座位推到量欄邊）
+        # 浪號一眼對哪根 K：C1…C6 釘字；C7／C8 只留圓點（右欄已有「C-7轉C-8今」）
         if lab in {"C7", "C8"}:
             continue
         odd = lab in {"C1", "C3", "C5"}
@@ -4794,8 +4793,8 @@ def _paint_c9_ext_k_path(
             side="left" if odd else "right",
             tip=tip_side,
             n=n,
-            pad_x=0.28,
-            fontsize=max(7.5, float(fontsize) - 1.0),
+            pad_x=0.32,
+            fontsize=max(8.0, float(fontsize)),
         )
     # C9 只標在預估虛線端，不准拿已走柱冒充
     if tip is not None:
@@ -4808,18 +4807,26 @@ def _paint_c9_ext_k_path(
         ax.plot(
             [last_i, fx],
             [last_y, fy],
+            color="#0b0f14",
+            lw=3.0,
+            ls=(0, (4.0, 2.0)),
+            zorder=6.45,
+        )
+        ax.plot(
+            [last_i, fx],
+            [last_y, fy],
             color="#ce93d8",
-            lw=1.7,
-            ls=(0, (3.5, 1.8)),
+            lw=2.15,
+            ls=(0, (4.0, 2.0)),
             zorder=6.5,
         )
         ax.scatter(
             [fx],
             [fy],
-            s=52,
+            s=64,
             facecolors="none",
             edgecolors="#ce93d8",
-            linewidths=1.3,
+            linewidths=1.55,
             zorder=8.9,
         )
         _pin_pivot_name(
@@ -4833,7 +4840,7 @@ def _paint_c9_ext_k_path(
             tip="low",
             n=n,
             pad_x=0.4,
-            fontsize=max(8.0, fontsize - 0.5),
+            fontsize=max(8.5, fontsize),
         )
     return True
 
@@ -5359,8 +5366,8 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
                 continue
             if not (35000.0 <= lv <= 60000.0):
                 continue
-            # 有 C9 區：舊劇本一 35000／38000 不准再當裸抽點（38000 已上「已破」）
-            if has_c9_zone and (
+            # 有 C9／改口低點區：舊劇本一 35000／38000 不准再當裸抽點（38000 已上「已破」）
+            if (has_c9_zone or has_foot2_zone) and (
                 abs(lv - 35000.0) < 1.0 or abs(lv - 38000.0) < 1.0
             ):
                 continue
@@ -5441,12 +5448,16 @@ def _tw_tip_anchors(pack: Optional[Dict[str, Any]] = None) -> Tuple[float, ...]:
 
     只吃 pred_levels.tw 與 key_levels 的 pred_tw_*（他寫死預測錨）。
     反彈穿刺／轉震盪＝上方觀察壓，進右標、不准當下跌虛線下一錨。
-    有 C9 低點區時，舊劇本一 35000／38000 不准再當虛線下一錨（改口已破）。
+    有 C9／改口低點區時，舊劇本一 35000／38000 不准再當虛線下一錨（改口已破）。
     不准把舊 claim_* 歷史宣稱混進虛線梯，否則端點／右標會卡在舊價。
     """
     _OVERHEAD = {"反彈穿刺", "轉震盪"}
     _OLD_SCRIPT1 = {"劇本一上沿", "劇本一下沿"}
     drop_script1 = _tw_has_c9_low_zone(pack)
+
+    def _is_old_script1_px(v: float) -> bool:
+        return abs(float(v) - 38000.0) < 1.0 or abs(float(v) - 35000.0) < 1.0
+
     his: List[float] = []
     for row in ((pack or {}).get("pred_levels") or {}).get("tw") or []:
         try:
@@ -5456,7 +5467,10 @@ def _tw_tip_anchors(pack: Optional[Dict[str, Any]] = None) -> Tuple[float, ...]:
         role = str(row.get("role") or "")
         if role in _OVERHEAD:
             continue
-        if drop_script1 and role in _OLD_SCRIPT1:
+        if drop_script1 and (role in _OLD_SCRIPT1 or _is_old_script1_px(v)):
+            continue
+        # 已破錨不准再當下跌虛線下一錨（否則 C9 端點會停在舊 38000）
+        if str(row.get("tag") or "") == "已破":
             continue
         if 30000.0 <= v <= 60000.0:
             his.append(v)
@@ -5466,6 +5480,8 @@ def _tw_tip_anchors(pack: Optional[Dict[str, Any]] = None) -> Tuple[float, ...]:
         try:
             v = float(raw)
         except (TypeError, ValueError):
+            continue
+        if drop_script1 and _is_old_script1_px(v):
             continue
         # key_levels 無 role：上方壓位若已在 pred 列就略；裸數字仍收
         if abs(v - 46292.0) < 0.6 or abs(v - 45546.0) < 0.6:
@@ -6972,6 +6988,18 @@ def _pin_pivot_name(
     xx = float(mine[0]["x"])
     yy = float(mine[0]["y"])
     seats.append((xx, yy))
+    # 浪號／關鍵標：邊框跟浪色走，底略染同色，遠看也能分 C1…C9
+    fc = "#0b0f14"
+    ec_lw = 0.55
+    try:
+        from matplotlib.colors import to_rgb
+
+        r, g, b = to_rgb(color)
+        fc = (r * 0.22, g * 0.22, b * 0.22)
+        if str(lab_s).startswith("C") or "預估" in lab_s or "大B" in lab_s:
+            ec_lw = 0.85
+    except Exception:
+        pass
     ax.text(
         xx,
         yy,
@@ -6983,11 +7011,11 @@ def _pin_pivot_name(
         zorder=int(zorder),
         clip_on=False,
         bbox=dict(
-            boxstyle="round,pad=0.08",
-            fc="#0b0f14",
+            boxstyle="round,pad=0.10",
+            fc=fc,
             ec=color,
-            lw=0.45,
-            alpha=0.88,
+            lw=ec_lw,
+            alpha=0.92,
         ),
     )
 
@@ -7703,54 +7731,74 @@ def _paint_c_forecast(
     show_label: bool = True,
     keep_left_of_right: bool = False,
     anchors: Sequence[float] = (45546.0, 44210.0),
+    draw: bool = True,
 ) -> Dict[str, Any]:
     """在今之後畫預估虛線＋標；回傳 tip 方便調 xlim。
 
     keep_left_of_right＝True 時標停在右欄左側，不准跟右價標互壓。
+    draw＝False：只算 tip（9波主路徑會自己畫分色虛線，不准再疊一條粉虛線）。
     """
     tip = _c_forecast_tip(
         i_now=i_now, y_now=y_now, y_ref=y_ref, lows=lows, anchors=anchors
     )
     fut_x, fut_y = float(tip["fut_x"]), float(tip["fut_y"])
-    ax.plot(
-        [i_now, fut_x],
-        [y_now, fut_y],
-        color="#ea80fc",
-        lw=1.55,
-        ls=(0, (4, 2)),
-        alpha=0.8,
-        zorder=6,
-    )
-    ax.scatter([fut_x], [fut_y], s=28, c="#ea80fc", zorder=7, edgecolors="#fff", linewidths=0.4)
     lab_y = float(fut_y)
-    if show_label:
-        # 預估端標釘在端點同價；遠窗停右欄左側，不准壓右價標、不准漂到端點下方
-        if keep_left_of_right:
-            _pin_pivot_name(
-                ax,
-                min(float(fut_x), float(n) - 2.4),
-                lab_y,
-                str(tip["label"]),
-                "#ea80fc",
-                fp,
-                side="left",
-                n=n,
-                pad_x=0.45,
-                fontsize=9,
-            )
-        else:
-            _pin_pivot_name(
-                ax,
-                float(fut_x),
-                lab_y,
-                str(tip["label"]),
-                "#ea80fc",
-                fp,
-                side="right",
-                n=n,
-                pad_x=0.45,
-                fontsize=9,
-            )
+    if draw:
+        ax.plot(
+            [i_now, fut_x],
+            [y_now, fut_y],
+            color="#0b0f14",
+            lw=2.85,
+            ls=(0, (4.0, 2.0)),
+            alpha=0.95,
+            zorder=5.9,
+        )
+        ax.plot(
+            [i_now, fut_x],
+            [y_now, fut_y],
+            color="#ea80fc",
+            lw=1.95,
+            ls=(0, (4.0, 2.0)),
+            alpha=0.92,
+            zorder=6,
+        )
+        ax.scatter(
+            [fut_x],
+            [fut_y],
+            s=40,
+            c="#ea80fc",
+            zorder=7,
+            edgecolors="#0b0f14",
+            linewidths=0.55,
+        )
+        if show_label:
+            # 預估端標釘在端點同價；遠窗停右欄左側，不准壓右價標、不准漂到端點下方
+            if keep_left_of_right:
+                _pin_pivot_name(
+                    ax,
+                    min(float(fut_x), float(n) - 2.4),
+                    lab_y,
+                    str(tip["label"]),
+                    "#ea80fc",
+                    fp,
+                    side="left",
+                    n=n,
+                    pad_x=0.45,
+                    fontsize=9,
+                )
+            else:
+                _pin_pivot_name(
+                    ax,
+                    float(fut_x),
+                    lab_y,
+                    str(tip["label"]),
+                    "#ea80fc",
+                    fp,
+                    side="right",
+                    n=n,
+                    pad_x=0.45,
+                    fontsize=9,
+                )
     tip["xlim_right"] = max(float(n) + 1.2, fut_x + 2.2)
     tip["lab_y"] = lab_y
     return tip
@@ -8435,11 +8483,17 @@ def _paint_eight_wave_inset(
                     "C1",
                 )
                 col = _c9_wave_color(lab_b)
+                if lab_b in {"C7", "C8"}:
+                    lw_in = 1.55
+                elif lab_b in {"C1", "C3", "C5"}:
+                    lw_in = 1.25
+                else:
+                    lw_in = 1.10
                 ax.plot(
                     [flash_pts[a][0], flash_pts[b][0]],
                     [flash_pts[a][1], flash_pts[b][1]],
                     color="#0b0f14",
-                    lw=1.45,
+                    lw=lw_in + 0.55,
                     zorder=6.1,
                     solid_capstyle="round",
                 )
@@ -8447,7 +8501,7 @@ def _paint_eight_wave_inset(
                     [flash_pts[a][0], flash_pts[b][0]],
                     [flash_pts[a][1], flash_pts[b][1]],
                     color=col,
-                    lw=0.95 if lab_b not in {"C7", "C8"} else 1.25,
+                    lw=lw_in,
                     zorder=6.3,
                     solid_capstyle="round",
                 )
@@ -8462,8 +8516,16 @@ def _paint_eight_wave_inset(
                 ax.plot(
                     [flash_pts[dash_from][0], flash_pts[i9][0]],
                     [flash_pts[dash_from][1], flash_pts[i9][1]],
+                    color="#0b0f14",
+                    lw=1.55,
+                    ls=(0, (3.2, 1.6)),
+                    zorder=6.35,
+                )
+                ax.plot(
+                    [flash_pts[dash_from][0], flash_pts[i9][0]],
+                    [flash_pts[dash_from][1], flash_pts[i9][1]],
                     color=_c9_wave_color("C9"),
-                    lw=1.05,
+                    lw=1.20,
                     ls=(0, (3.2, 1.6)),
                     zorder=6.4,
                 )
@@ -9656,7 +9718,9 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             skip_label_ys=_tx_skip_lab,
             x_end=float(n_tw) + 0.12,
         )
-        if tx_sr.get("support") is not None:
+        # 9波／改口低點區已上圖：電子盤結構近撐太遠＝雜訊（如 32834），不准再進右欄
+        _tx_skip_far_sr = _c9_extension_active(pack)
+        if tx_sr.get("support") is not None and not _tx_skip_far_sr:
             _tx_right_notes.append(
                 {
                     "x": n_tw - 1,
@@ -9665,7 +9729,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                     "color": "#4dd0e1",
                 }
             )
-        if tx_sr.get("resist") is not None:
+        if tx_sr.get("resist") is not None and not _tx_skip_far_sr:
             _tx_right_notes.append(
                 {
                     "x": n_tw - 1,
@@ -9775,10 +9839,13 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 }
             )
             # 現價水平虛線：往左對日期；近撐只認大量區低（3/6 撐＝32820，不准把區高33799當撐）
+            # 9波／改口低點區已上圖時，遠窗近撐太遠＝雜訊，不准再標
             _tx_hit = _nearest_bar_touching_px(
                 bars, tx_h, tx_l, px=_tx_px_rail, before_i=int(tip_i)
             )
-            _tx_near_sup = _nearest_vol_support_row(tx_vol_sr, px=_tx_px_rail)
+            _tx_near_sup = None
+            if not _c9_extension_active(pack):
+                _tx_near_sup = _nearest_vol_support_row(tx_vol_sr, px=_tx_px_rail)
             _tx_rail_asof = ""
             if isinstance(_tx_live_sr, dict):
                 _tx_rail_asof = _ymd(_tx_live_sr.get("date"))
@@ -9900,13 +9967,24 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         zorder=7,
         solid_capstyle="round",
     )
-    # 大C：自大B末連到今（經 C 起 10/15），紫線不准在 10/6 後斷開
+    # 先算九波轉折：大C 紫線要不要淡、預估虛線要不要讓位，都看這組
+    _c9_now = _c9_extension_active(pack)
+    _c9_pivots_far = (
+        _c9_ext_bar_pivots(
+            highs, lows, closes, i_bhi=int(i_b_end), i_now=int(i_now)
+        )
+        if _c9_now
+        else []
+    )
+    # 大C：自大B末連到今（經 C 起 10/15）。有官方 C1…C8 折線時改淡底，不准搶分色浪
+    _c9_major_fade = _c9_now and len(_c9_pivots_far) >= 3
     ax.plot(
         [i_b_end, i_c, i_now],
         [y_b_end, float(closes[i_c]), y_now],
         color="#ea80fc",
-        lw=2.1,
-        zorder=7,
+        lw=1.15 if _c9_major_fade else 2.1,
+        alpha=0.28 if _c9_major_fade else 1.0,
+        zorder=5.5 if _c9_major_fade else 7,
         solid_capstyle="round",
         solid_joinstyle="round",
     )
@@ -9932,7 +10010,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     c_sub = _c_subwave_anchors_vs_biaoke60(
         highs, lows, bars, i_c=i_c, i_now=i_now
     )
-    # 遠窗：預估端點只畫點＋虛線，字改右欄（不准「飆預測」浮在K／黃線上）
+    # 遠窗：有官方 C1…C8 轉折才走分色虛線；否則仍畫粉虛線。字改右欄
     tip = _paint_c_forecast(
         ax,
         i_now=i_now,
@@ -9944,6 +10022,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         keep_left_of_right=True,
         show_label=False,
         anchors=tip_anchors,
+        draw=not (_c9_now and len(_c9_pivots_far) >= 3),
     )
     fut_x = float(tip.get("fut_x") or fut_x)
     for ii, yy, col in (
@@ -10033,14 +10112,6 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         fontsize=10,
     )
     # 遠窗：9波擴延時 K 上釘 C1…C8（官方柱）＋虛線 C9
-    _c9_now = _c9_extension_active(pack)
-    _c9_pivots_far = (
-        _c9_ext_bar_pivots(
-            highs, lows, closes, i_bhi=int(i_b_end), i_now=int(i_now)
-        )
-        if _c9_now
-        else []
-    )
     _paint_c9_extension_on_bars(
         ax,
         pack=pack,
@@ -10123,7 +10194,12 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             }
         )
         tip_skip.add(round(float(tip_anchor), 1))
-    if sr_skip.get("support") is not None and round(float(sr_skip["support"]), 1) not in tip_skip:
+    # 9波／改口低點區：右欄只留他說的錨；結構近撐太遠＝互壓雜訊
+    if (
+        not _c9_now
+        and sr_skip.get("support") is not None
+        and round(float(sr_skip["support"]), 1) not in tip_skip
+    ):
         right_notes.append(
             {
                 "x": n_axis - 1,
@@ -11043,15 +11119,25 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         zorder=7,
     )  # 大B
     c_seg_lows = list(lows[i_c : i_now + 1]) or list(lows[i_b_end:])
+    _c9_near_now = _c9_extension_active(pack)
+    _c9_pivots_near = (
+        _c9_ext_bar_pivots(
+            highs, lows, closes, i_bhi=int(i_b_end), i_now=int(i_now)
+        )
+        if _c9_near_now
+        else []
+    )
+    _c9_near_fade = _c9_near_now and len(_c9_pivots_near) >= 3
     ax.plot(
         [i_b_end, i_c, i_now],
         [y_b_end, float(closes[i_c]), y_now],
         color="#ea80fc",
-        lw=2.45,
-        zorder=7,
+        lw=1.2 if _c9_near_fade else 2.45,
+        alpha=0.28 if _c9_near_fade else 1.0,
+        zorder=5.5 if _c9_near_fade else 7,
         solid_capstyle="round",
         solid_joinstyle="round",
-    )  # 大C
+    )  # 大C（有分色折線時改淡底）
     c_sub = _c_subwave_anchors_vs_biaoke60(
         highs, lows, bars, i_c=i_c, i_now=i_now
     )
@@ -11064,10 +11150,12 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         fp=_fp,
         n=n,
         keep_left_of_right=True,
-        show_label=not bool(c_sub.get("ok")),
+        show_label=not bool(c_sub.get("ok"))
+        and not (_c9_near_now and len(_c9_pivots_near) >= 3),
         anchors=tip_anchors,
+        draw=not (_c9_near_now and len(_c9_pivots_near) >= 3),
     )
-    if c_sub.get("ok"):
+    if c_sub.get("ok") and not (_c9_near_now and len(_c9_pivots_near) >= 3):
         i4, y4 = int(c_sub["i_c4_hi"]), float(c_sub["y_c4"])
         i5c, y5c = int(c_sub["i_c5_lo"]), float(c_sub["y_c5"])
         ax.plot(
@@ -11190,14 +11278,6 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         n=n,
         pad_x=0.35,
         fontsize=9,
-    )
-    _c9_near_now = _c9_extension_active(pack)
-    _c9_pivots_near = (
-        _c9_ext_bar_pivots(
-            highs, lows, closes, i_bhi=int(i_b_end), i_now=int(i_now)
-        )
-        if _c9_near_now
-        else []
     )
     if not _paint_c9_extension_on_bars(
         ax,
@@ -12245,6 +12325,15 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     ax.axvline(i_c, color="#ea80fc", lw=0.9, ls=(0, (2, 2)), alpha=0.55, zorder=4)
     c_seg_lows = list(lows[i_c : i_now + 1]) or list(lows[i_b_peak:])
     c_sub = _c_sub_pre
+    # 細浪重畫：B＝大B末真高 →①…⑤；9波題旨改走官方柱 C1…C8（主視覺）
+    _c9_micro = _c9_extension_active(pack)
+    _c9_pivots_micro = (
+        _c9_ext_bar_pivots(
+            highs, lows, closes, i_bhi=int(i_b_peak), i_now=int(i_now)
+        )
+        if _c9_micro
+        else []
+    )
     tip = _paint_c_forecast(
         ax,
         i_now=i_now,
@@ -12256,15 +12345,7 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         keep_left_of_right=True,
         show_label=False,  # 超近：45546／c5 只走右欄，圖上不准浮
         anchors=tip_anchors,
-    )
-    # 細浪重畫：B＝大B末真高 →①…⑤；9波題旨改走官方柱 C1…C8（主視覺）
-    _c9_micro = _c9_extension_active(pack)
-    _c9_pivots_micro = (
-        _c9_ext_bar_pivots(
-            highs, lows, closes, i_bhi=int(i_b_peak), i_now=int(i_now)
-        )
-        if _c9_micro
-        else []
+        draw=not (_c9_micro and len(_c9_pivots_micro) >= 3),
     )
     flash_pivots = (
         _c9_pivots_micro
