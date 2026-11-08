@@ -289,3 +289,85 @@ def test_michael_intraday_not_confused_with_fwd3_in_votes(tmp_path, monkeypatch)
     votes = mm.load_michael_votes()
     assert "michael_gap_south_bounce" in votes
     assert "michael_gap_south_intraday_down" not in votes
+
+
+def test_michael_strong_pick_and_conf2_flags():
+    """近窗教學：強摘陷阱＋15K連2日線代理。"""
+    twii = {}
+    days = []
+    y, m, d = 2025, 3, 1
+    px = 20000.0
+    for i in range(14):
+        day = f"{y}{m:02d}{d:02d}"
+        days.append(day)
+        px = 20000 + i * 20
+        twii[day] = {
+            "open": px - 10,
+            "high": px + 30,
+            "low": px - 40,
+            "close": px,
+            "ret": 0.3,
+            "ret_ok": True,
+        }
+        d += 1
+        if d > 28:
+            d = 1
+            m += 1
+    # 昨強漲
+    prev = days[-2]
+    twii[prev]["ret"] = 2.5
+    twii[prev]["close"] = twii[prev]["open"] + 80
+    # 今弱收＝強摘陷阱
+    last = days[-1]
+    base = twii[prev]["close"]
+    twii[last] = {
+        "open": base + 10,
+        "high": base + 20,
+        "low": base - 50,
+        "close": base - 5,
+        "ret": -0.4,
+        "ret_ok": True,
+    }
+    f, _m = snapshot_michael_factors(
+        twii=twii,
+        tx_reg={},
+        tx_night={},
+        sox={},
+        tw_days=days,
+        as_of=last,
+    )
+    assert f.get("michael_strong_pick_trap") is True
+    assert f.get("michael_conf2_ma10") is False
+
+    # 另造連2收紅站均：前段低、末兩根明顯在均上收紅
+    for i, day in enumerate(days[:-2]):
+        twii[day]["close"] = 19000 + i
+        twii[day]["open"] = 19000 + i - 5
+        twii[day]["high"] = 19000 + i + 10
+        twii[day]["low"] = 19000 + i - 20
+        twii[day]["ret"] = 0.1
+    twii[days[-2]] = {
+        "open": 20000,
+        "high": 20200,
+        "low": 19950,
+        "close": 20150,
+        "ret": 0.8,
+        "ret_ok": True,
+    }
+    twii[days[-1]] = {
+        "open": 20160,
+        "high": 20350,
+        "low": 20100,
+        "close": 20300,
+        "ret": 0.7,
+        "ret_ok": True,
+    }
+    f2, _m2 = snapshot_michael_factors(
+        twii=twii,
+        tx_reg={},
+        tx_night={},
+        sox={},
+        tw_days=days,
+        as_of=days[-1],
+    )
+    assert f2.get("michael_conf2_ma10") is True

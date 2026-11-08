@@ -21,6 +21,12 @@
   - crash_bounce_tail：破位＋寬震盪＋昨跌≤-3%
   - wick_chop_rebound：寬震盪＋下影≥0.70＋昨跌≤-1.2%＋非缺口南
 - 檢測窗分軌：當日空不准套三日 fwd
+
+個股買點教學（2026-11 近十篇樓下；另軌 stock_cross；phone_sync=blocked）：
+- 確認才買：15K 連 2 站 → 日線代理＝連 2 收短均上且收紅（michael_conf2_ma10）
+- 強摘不甜／拉積盤：昨大漲今弱＝不追多（michael_strong_pick_trap）
+- 真正止跌看發哥不看 GG：2330 連 2 站均且非新低＝買窗閘（外部 stock_cross 用）
+- 與 intent／teach 交叉求穩利；hi3 過鬆改以持有末 win_end 為主判（見 michael_stock_cross_v2）
 """
 from __future__ import annotations
 
@@ -119,6 +125,20 @@ def snapshot_michael_factors(
     gap_down_after_strong = prior_strong and gap <= -0.5
     gap_south = bool(open_high_fade or gap_down_after_strong)
     factors["michael_gap_south"] = gap_south
+    # 強摘／拉積後不追多（昨大漲≥2% 且今日收弱）
+    factors["michael_strong_pick_trap"] = bool(prior_ret >= 2.0 and ret <= 0.2 and c <= o)
+    # 15K 連 2 站的日線粗代理：近 2 收在 10 日均上且連 2 收紅
+    if i >= 10:
+        closes = [float(twii[tw_days[j]]["close"]) for j in range(i - 9, i + 1)]
+        opens = [float(twii[tw_days[j]]["open"]) for j in range(i - 1, i + 1)]
+        ma10 = sum(closes) / 10.0
+        prev_c2 = float(twii[tw_days[i - 1]]["close"])
+        factors["michael_conf2_ma10"] = bool(
+            c >= ma10 and prev_c2 >= ma10 and c > o and prev_c2 > opens[0]
+        )
+    else:
+        factors["michael_conf2_ma10"] = False
+        missing.append("michael_conf2")
     # 當日空偏＝他當沖視角（驗證用）；路徑 3 日主判看下方硬閘回歸變體
     factors["michael_gap_south_intraday_down"] = bool(gap_south and c < o)
     # 語料高頻：夜盤異常後開高／向南（檢測＝夜盤涨跌＋日盤 gap_south）
