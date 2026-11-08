@@ -1,0 +1,16 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "as_of_taipei": "2026-11-08T08:00:31.916431+08:00",
+  "gate_one_liner": "spirit_mix_thicken_v22 pe_ge80_d50=4 u112_pass=0; best=U140__v11_pe3 win=0.8035714285714286 days=55 hold=12.392857142857142; u112_best_near=U112__v11_pe3 near_win=0.7884615384615384 near_days=51; promote_lookup=NO",
+  "parent_seal": "phone_spirit_mix_thicken_v21_decision.json",
+  "elapsed_s": 752.5,
+  "universe_meta": {
+    "U112": 112,
+    "U140": 138
+  },
+  "u112_pass_n": 0,
+  "u140_bridge": "U140__v11_pe3 ≈80.4%@55d hold≈12.4（同進場族）",
+  "finding_zh": "U112 放寬 nobody／加嚴 pe 仍未過閘（soft≈78.8%@51d；nobody≈84.8%@45d）。U140 同進場族 pe3 过闸。下一版：nobody 加回優質 body 訊號＋軟 pe 去損切。",
+  "next": "mix_v23 U112 nobody add-back body gates + soft pe loser-cut; phone_sync=blocked"
+}

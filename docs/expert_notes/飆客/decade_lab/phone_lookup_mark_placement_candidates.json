@@ -2,7 +2,7 @@
   "phone_sync": "blocked",
   "LOOKUP_LAB_MARKS_ENABLED": false,
   "promote_to_lookup_display": false,
-  "as_of_taipei": "2026-11-08T07:46:04.123626+08:00",
+  "as_of_taipei": "2026-11-08T08:00:31.916431+08:00",
   "candidates": {
     "early_buy_u112": {
       "key": "ei_n5_week_n3_softbody__SELL_hi20_or_wave_top",
@@ -69,7 +69,18 @@
     },
     "early_sell_u112": {
       "status": "blocked_sub80_or_days_short",
-      "near_miss": "soft pe≈78.9%@51d; nobody pe≈84.8%@45d"
+      "near_miss": "soft pe≈78.8%@51d; nobody pe≈84.8%@45d; softn/weekonly 未補 days"
+    },
+    "early_sell_same_entry_u140": {
+      "key": "U140__v11_pe3",
+      "formula": "entry=v11 softbody; exit=hi20|wave|(exhaust|hi10 & unreal>=3%)",
+      "win_rate": 0.8035714285714286,
+      "days": 55,
+      "hold_days": 12.392857142857142,
+      "universe": "U140",
+      "glyph": "REL_HIGH_SELL",
+      "status": "locked_lab_candidate_u140_bridge",
+      "note_zh": "同進場族桥接；U112 仍未過閘"
     }
   },
   "note_zh": "僅候選對照；LOOKUP_LAB_MARKS_ENABLED 仍 False；不准改 leave_zero；不上話筒"
