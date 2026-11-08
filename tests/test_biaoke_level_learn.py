@@ -1534,13 +1534,45 @@ def test_teach_stamp_edge_and_last_date_neon_helpers():
     # 費半青帶註不准再貼左上跟戳互壓（說明改走標題）
     import inspect
 
-    from biaoke_level_learn import _paint_sox_thesis_preds
+    from biaoke_level_learn import _paint_sox_thesis_preds, _render_twii_far_dark
 
     sox_src = inspect.getsource(_paint_sox_thesis_preds)
     assert "axhspan" in sox_src
     assert "0.96" not in sox_src or "band_lab" in sox_src
     assert "青＝已破" in sox_src
     assert "不准再在左上貼字" in sox_src or "_ = band_lab" in sox_src
+    # 題旨無費半點仍回費C今右標
+    empty_now = _paint_sox_thesis_preds(
+        type(
+            "A",
+            (),
+            {
+                "axhspan": lambda *a, **k: None,
+                "text": lambda *a, **k: None,
+                "axvline": lambda *a, **k: None,
+            },
+        )(),
+        bars=[],
+        sox_o=[],
+        sox_h=[],
+        sox_l=[],
+        sox_c=[],
+        pack={"pred_levels": {"sox": []}},
+        fp=lambda *a, **k: None,
+        i_now=3,
+        n=4,
+        ymin=8000,
+        ymax=16000,
+        now_y=9000.0,
+        now_lab="費C今9,000",
+        place=False,
+    )
+    assert empty_now and "費C今" in str(empty_now[0].get("text"))
+    far_src = inspect.getsource(_render_twii_far_dark)
+    assert "_sox_struct_right" in far_src
+    assert "費大量壓" in far_src
+    assert "電⑤終" in far_src and "電A低" in far_src and "電B末" in far_src
+    assert "大結構⑤／A／B" in far_src
 
 
 def test_teach_roll_from_floor_and_right_gutter():

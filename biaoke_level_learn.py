@@ -9407,8 +9407,32 @@ def _paint_sox_thesis_preds(
     import math
 
     preds = ((pack or {}).get("pred_levels") or {}).get("sox") or []
+    # 題旨沒抽出費半點仍要留「費C今」右標（對齊電盤／加權右欄有重點標）
     if not preds:
-        return []
+        right_empty: List[Dict[str, Any]] = []
+        if now_y is not None:
+            right_empty.append(
+                {
+                    "x": int(i_now) if i_now is not None else max(int(n) - 1, 0),
+                    "y": float(now_y),
+                    "text": (now_lab or f"費C今{_px(float(now_y))}")[:26],
+                    "color": "#ea80fc",
+                }
+            )
+            if place:
+                _place_live_right_labels(
+                    ax,
+                    right_empty,
+                    n=n,
+                    ymin=ymin,
+                    ymax=ymax,
+                    fp=fp,
+                    level_dash=True,
+                    min_gap=(ymax - ymin) * 0.08,
+                    x_col=x_col,
+                    x_text_min=x_text_min,
+                )
+        return right_empty
     broken_a = next((r for r in preds if str(r.get("role") or "") == "A波低"), None)
     nxt = next((r for r in preds if str(r.get("role") or "") == "次回測"), None)
     reb = next((r for r in preds if str(r.get("role") or "") == "再回測"), None)
@@ -9871,6 +9895,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     _sox_last_repaint: Optional[Dict[str, Any]] = None
     _sox_chg_tip: Optional[Dict[str, Any]] = None
     _sox_right_deferred: List[Dict[str, Any]] = []
+    _sox_struct_right: List[Dict[str, Any]] = []
     _sox_ylabel_span: Optional[Tuple[float, float]] = None
     if len(valid) >= 5:
         span_raw = max(x for x in sox_h if x == x) - min(x for x in sox_l if x == x)
@@ -9967,6 +9992,33 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 _spear_ring(
                     axu, ii, yy, color=col, zorder=8, hot=(col == "#ea80fc")
                 )
+            # 結構重點右標（對齊加權「大B末 價」；尖點浪名仍釘在柱上）
+            _sox_struct_right = [
+                {
+                    "x": int(s5e),
+                    "y": float(sy5e),
+                    "text": f"費⑤終 {_px(sy5e)}",
+                    "color": "#40c4ff",
+                },
+                {
+                    "x": int(sa),
+                    "y": float(sya),
+                    "text": f"費A低 {_px(sya)}",
+                    "color": "#ff8a80",
+                },
+                {
+                    "x": int(sb),
+                    "y": float(syb),
+                    "text": f"費B末 {_px(syb)}",
+                    "color": "#ffd54f",
+                },
+                {
+                    "x": int(sox_i_now),
+                    "y": float(sn),
+                    "text": f"費C今 {_px(float(sn))}",
+                    "color": "#ea80fc",
+                },
+            ]
             # 右標延到加權 tip 後，與加權同一 x_col（對齊「7/29低…」那欄）
             _sox_y0 = y_lo_s - span_s * 0.22
             _sox_y1 = y_hi_s + span_s * 0.32
@@ -10101,6 +10153,51 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         date_next=str((sox_vol_sr.get("next") or {}).get("date") or ""),
         fp=_fp,
     )
+    # 費半右欄補齊：題旨點＋結構⑤/A/B/C今＋大量撐壓（對齊電盤／加權右欄有重點）
+    _sox_vol_right: List[Dict[str, Any]] = []
+    if (sox_vol_sr.get("primary") or {}).get("high"):
+        _sp = sox_vol_sr["primary"]
+        _sp_md = _md(_sp.get("date"))
+        _sp_tag = f"{_sp_md} " if _sp_md else ""
+        _sox_vol_right.append(
+            {
+                "x": max(int(n_axis) - 1, 0),
+                "y": float(_sp["high"]),
+                "text": f"{_sp_tag}費大量壓 {_px(_sp['high'])}",
+                "color": "#ffe082",
+            }
+        )
+        _sox_vol_right.append(
+            {
+                "x": max(int(n_axis) - 1, 0),
+                "y": float(_sp["low"]),
+                "text": (
+                    f"{_sp_tag}費大量撐 {_px(_sp['low'])}已破"
+                    if bool(_sp.get("broke_support"))
+                    else f"{_sp_tag}費大量撐 {_px(_sp['low'])}"
+                ),
+                "color": "#ffe082",
+            }
+        )
+    _sox_right_merged: List[Dict[str, Any]] = []
+    _sox_seen_y: List[float] = []
+
+    def _sox_keep_note(note: Dict[str, Any]) -> None:
+        try:
+            yy = float(note.get("y"))
+        except (TypeError, ValueError):
+            return
+        if any(abs(yy - z) < 12.0 for z in _sox_seen_y):
+            return
+        _sox_seen_y.append(yy)
+        _sox_right_merged.append(note)
+
+    # 優先序：題旨預測 → 結構浪點／今 → 大量撐壓（同價不重複）
+    for _n0 in list(_sox_right_deferred or []) + list(_sox_struct_right or []) + list(
+        _sox_vol_right
+    ):
+        _sox_keep_note(_n0)
+    _sox_right_deferred = _sox_right_merged
     axu.text(
         0.012,
         0.04,
@@ -10493,6 +10590,108 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         fp=_fp,
     )
     _set_upright_ylabel(axt, "台指電子盤", fp=_fp, color=_LIVE_MUTED, fontsize=10)
+    # 大結構⑤／A／B：跟費半／加權同一日曆錨畫在夜盤柱上（C 段細浪仍走下方白 C1…C8）
+    if len(tx_valid) >= 8 and tip_i >= 0:
+        _tx_valid_set2 = set(int(i) for i in tx_valid)
+
+        def _tx_snap_anchor(i_prefer: int, *, prefer_high: bool) -> Optional[int]:
+            """日曆錨對到最近真夜盤日；缺柱就近找，不准畫假夜盤。"""
+            i0 = int(i_prefer)
+            if i0 in _tx_valid_set2:
+                return i0
+            # 前後各找 6 根真夜盤
+            cands = [
+                i
+                for i in tx_valid
+                if abs(int(i) - i0) <= 6
+            ]
+            if not cands:
+                cands = [i for i in tx_valid if int(i) <= i0][-1:] or [
+                    i for i in tx_valid if int(i) >= i0
+                ][:1]
+            if not cands:
+                return None
+            if prefer_high:
+                return int(max(cands, key=lambda i: float(tx_h[i])))
+            return int(min(cands, key=lambda i: float(tx_l[i])))
+
+        try:
+            _t5s = _tx_snap_anchor(int(i5s), prefer_high=False)
+            _t5e = _tx_snap_anchor(int(i5e), prefer_high=True)
+            _ta = _tx_snap_anchor(int(i_alow), prefer_high=False)
+            _tb = _tx_snap_anchor(int(i_b_end), prefer_high=True)
+        except (TypeError, ValueError, NameError):
+            _t5s = _t5e = _ta = _tb = None
+        if (
+            _t5s is not None
+            and _t5e is not None
+            and _ta is not None
+            and _tb is not None
+            and _t5s < _t5e <= _ta <= _tb
+        ):
+            _ty5s = float(tx_l[_t5s]) if tx_l[_t5s] == tx_l[_t5s] else float(tx_c[_t5s])
+            _ty5e = float(tx_h[_t5e]) if tx_h[_t5e] == tx_h[_t5e] else float(tx_c[_t5e])
+            _tya = float(tx_l[_ta]) if tx_l[_ta] == tx_l[_ta] else float(tx_c[_ta])
+            _tyb = float(tx_h[_tb]) if tx_h[_tb] == tx_h[_tb] else float(tx_c[_tb])
+            axt.plot(
+                [_t5s, _t5e], [_ty5s, _ty5e], color="#40c4ff", lw=2.0, zorder=6.8
+            )
+            axt.plot(
+                [_t5e, _ta], [_ty5e, _tya], color="#ff8a80", lw=1.85, zorder=6.8
+            )
+            axt.plot(
+                [_ta, _tb],
+                [_tya, _tyb],
+                color="#ffd54f",
+                lw=2.0,
+                ls=(0, (7, 2.2)),
+                zorder=6.8,
+            )
+            # C 粗線只連 B→今；細浪白 C1…C8 疊在上面對讀
+            try:
+                _ty_now = float(tx_c[tip_i])
+            except (TypeError, ValueError, IndexError):
+                _ty_now = float(tx_l[tip_i]) if tip_i < len(tx_l) else _tyb
+            axt.plot(
+                [_tb, int(tip_i)],
+                [_tyb, _ty_now],
+                color="#ea80fc",
+                lw=1.55,
+                alpha=0.85,
+                zorder=6.7,
+            )
+            for _ii, _yy, _lab, _col, _tipk in (
+                (_t5s, _ty5s, "電⑤起", "#40c4ff", "low"),
+                (_t5e, _ty5e, "電⑤終", "#40c4ff", "high"),
+                (_ta, _tya, "電A低", "#ff8a80", "low"),
+                (_tb, _tyb, "電B末", "#ffd54f", "high"),
+            ):
+                _pin_pivot_name(
+                    axt,
+                    int(_ii),
+                    float(_yy),
+                    _lab,
+                    _col,
+                    _fp,
+                    side="auto",
+                    tip=_tipk,
+                    n=n_tw,
+                    pad_x=0.22,
+                    fontsize=8,
+                    pri=6,
+                )
+                _spear_ring(axt, int(_ii), float(_yy), color=_col, zorder=8)
+            if _tx_ylabel_span is not None:
+                _lo0, _hi0 = float(_tx_ylabel_span[0]), float(_tx_ylabel_span[1])
+                _ys_m = [_ty5s, _ty5e, _tya, _tyb, _ty_now]
+                axt.set_ylim(
+                    min(_lo0, min(_ys_m) - 120.0),
+                    max(_hi0, max(_ys_m) + 160.0),
+                )
+                _tx_ylabel_span = (
+                    min(_lo0, min(_ys_m) - 120.0),
+                    max(_hi0, max(_ys_m) + 160.0),
+                )
     # 夜盤先行：台指電子盤也數 C1…C8（官方夜盤柱），才對得上他講的「夜盤破壞最後一組 3-5」
     # 與加權日盤九波分開釘在 axt；缺日 NaN 已在 _c9_ext_bar_pivots 跳過
     if _c9_extension_active(pack) and len(tx_valid) >= 8 and tip_i >= 0:
@@ -10882,7 +11081,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         x_right_col = max(x_right_col, float(n_axis) + 3.05)
     x_sox_col = x_right_col + 0.40
     if _sox_right_deferred and _sox_ylabel_span is not None:
-        # 費半價窗窄：間距略鬆才留得下 A低10445＋次回測9865＋費C今
+        # 費半價窗窄：間距略鬆＋字盒 nudge，才留得下結構⑤/A/B／今＋大量撐壓
         _place_live_right_labels(
             axu,
             _sox_right_deferred,
@@ -10891,8 +11090,10 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             ymax=float(_sox_ylabel_span[1]),
             fp=_fp,
             level_dash=True,
-            min_gap=(float(_sox_ylabel_span[1]) - float(_sox_ylabel_span[0])) * 0.055,
+            min_gap=(float(_sox_ylabel_span[1]) - float(_sox_ylabel_span[0])) * 0.062,
             x_col=x_sox_col,
+            nudge=True,
+            fontsize=8.5,
         )
     if _tx_right_notes and _tx_ylabel_span is not None:
         # 電子盤右標：真價虛線＋字盒 nudge 疏開，不准框貼框卡住
