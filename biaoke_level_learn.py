@@ -1830,6 +1830,87 @@ def _paint_index_last_chg_tip(
     _paint_stamp_hbox(fig, kids, x=x, y=y, ha=ha, va=va, zorder=41, ax=ax)
 
 
+def _tx_night_evening_ymd(night_ymd: str) -> str:
+    """futures_daily 夜盤 date（結束晨／下一開市標）→ 夜盤起日（15:00 那開市日）。"""
+    ymd = _ymd(night_ymd)
+    if len(ymd) != 8:
+        return ""
+    try:
+        from market_session_cards import _evening_ymd_for_night_label
+
+        eve = _ymd(_evening_ymd_for_night_label(ymd))
+        if len(eve) == 8:
+            return eve
+    except Exception:
+        pass
+    try:
+        from trading_calendar import last_open_calendar_day_on_or_before
+
+        probe = (
+            datetime.strptime(ymd, "%Y%m%d") - timedelta(days=1)
+        ).strftime("%Y%m%d")
+        return last_open_calendar_day_on_or_before(probe)
+    except Exception:
+        return ""
+
+
+def _tx_night_rows_on_evening_axis(
+    rows: Sequence[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """教具加權日軸：夜盤列改掛起日。週五夜標週一時才能對上週五末K，不准停在崩盤夜。"""
+    best: Dict[str, Dict[str, Any]] = {}
+    for raw in rows or []:
+        if not isinstance(raw, dict):
+            continue
+        label = _ymd(raw.get("date"))
+        if len(label) != 8:
+            continue
+        try:
+            c = float(raw.get("close") or 0)
+        except (TypeError, ValueError):
+            c = 0.0
+        if c <= 0:
+            continue
+        eve = _tx_night_evening_ymd(label) or label
+        prev = best.get(eve)
+        # 同一起日只留官方標籤較新的那列（週五夜週一標贏過同窗舊列）
+        if prev is not None and str(prev.get("night_label") or "") >= label:
+            continue
+        best[eve] = {
+            **raw,
+            "date": eve,
+            "night_label": label,
+        }
+    return [best[k] for k in sorted(best)]
+
+
+def _ensure_latest_tx_night_row(db_path: str) -> None:
+    """週末也要把「下一開市日」標的週五夜補進庫；缺列會讓戳／末K吃到更舊夜盤。"""
+    if not db_path:
+        return
+    try:
+        from taiwan_market import load_futures_night, sync_futures_daily
+        from trading_calendar import futures_night_date_cap
+    except Exception:
+        return
+    try:
+        cap = futures_night_date_cap()
+    except Exception:
+        return
+    if len(cap) != 8:
+        return
+    try:
+        got = load_futures_night(db_path, cap)
+    except Exception:
+        got = None
+    if isinstance(got, dict) and float(got.get("close") or 0) > 0:
+        return
+    try:
+        sync_futures_daily(db_path, dates=[cap])
+    except Exception:
+        logger.debug("補最新台指夜盤列略過 cap=%s", cap, exc_info=True)
+
+
 def _resolve_tx_after_hours_tip(
     db_path: str, pack: Optional[Dict[str, Any]] = None
 ) -> Optional[Dict[str, Any]]:
@@ -1838,6 +1919,7 @@ def _resolve_tx_after_hours_tip(
     漲跌對照＝官方 CRefPrice（參考價／日盤結算），不准用前一夜盤收當前收
    （否則會把 −4.5% 算成 −8.7%）。
     夜盤未進行（週末／白天）：不准吃 MIS 殘價；改走庫內官方夜盤收。
+    週末 cap 必含下一開市日標（週五夜）；asof 用夜盤起日對加權軸末K。
     """
     close: Optional[float] = None
     prev: Optional[float] = None
@@ -1898,7 +1980,39 @@ def _resolve_tx_after_hours_tip(
                 except (TypeError, ValueError):
                     prev = None
             asof = datetime.now(TAIPEI).strftime("%Y%m%d")
-    # 2) 庫內：現價＝夜盤收；前收＝同日／最近日盤結算（對齊官方參考），不准前一夜
+            if int(datetime.now(TAIPEI).hour) < 5:
+                asof = (datetime.now(TAIPEI) - timedelta(days=1)).strftime("%Y%m%d")
+    # 2) 庫內：現價＝最新已齊夜盤收；前收＝該夜起日日盤結算（對齊 CRefPrice）
+    if close is None and db_path:
+        try:
+            _ensure_latest_tx_night_row(db_path)
+        except Exception:
+            pass
+        try:
+            from taiwan_market import load_futures_daily, load_futures_night
+            from trading_calendar import futures_night_date_cap
+
+            wall = _query_now_from_pack(pack)
+            night = load_futures_night(
+                db_path, futures_night_date_cap(wall), now=wall
+            )
+        except Exception:
+            night = None
+        if isinstance(night, dict) and float(night.get("close") or 0) > 0:
+            close = float(night["close"])
+            label = _ymd(night.get("date"))
+            eve = _tx_night_evening_ymd(label) or label
+            asof = eve
+            if prev is None and len(eve) == 8:
+                try:
+                    reg = load_futures_daily(db_path, eve, symbol="TX") or {}
+                    settle = float(reg.get("settlement") or 0)
+                    if settle <= 0:
+                        settle = float(reg.get("close") or 0)
+                    if settle > 0:
+                        prev = settle
+                except Exception:
+                    prev = None
     fut = (pack or {}).get("_fut_snap") if isinstance(pack, dict) else None
     if not isinstance(fut, dict) or not (fut.get("levels") or {}):
         try:
@@ -1916,14 +2030,30 @@ def _resolve_tx_after_hours_tip(
             note = str((fut or {}).get("note") or "")
             m = re.search(r"大台夜(\d{8})", note)
             if m:
-                asof = m.group(1)
+                label = m.group(1)
+                asof = _tx_night_evening_ymd(label) or label
     if prev is None:
-        try:
-            dc = float(levels.get("tx_day_c") or 0)
-        except (TypeError, ValueError):
-            dc = 0.0
-        if dc > 0:
-            prev = dc
+        # 備援：勿直接用日盤收；優先結算。levels 只剩收才退。
+        eve = _ymd(asof)
+        if db_path and len(eve) == 8:
+            try:
+                from taiwan_market import load_futures_daily
+
+                reg = load_futures_daily(db_path, eve, symbol="TX") or {}
+                settle = float(reg.get("settlement") or 0)
+                if settle <= 0:
+                    settle = float(reg.get("close") or 0)
+                if settle > 0:
+                    prev = settle
+            except Exception:
+                pass
+        if prev is None:
+            try:
+                dc = float(levels.get("tx_day_c") or 0)
+            except (TypeError, ValueError):
+                dc = 0.0
+            if dc > 0:
+                prev = dc
     if close is None or close <= 0:
         return None
     return {
@@ -3650,14 +3780,17 @@ def _ensure_tx_night_for_teach(
     """遠窗電子盤：加權軸上缺的 TX 夜盤日向期交所補齊（例 20260803–06 缺柱→假重複K）。
 
     只補缺日，失敗不擋出圖；回傳嘗試補的日數。
+    另強制補 futures_night_date_cap（週末＝下一開市日標的週五夜）。
     """
     if not db_path or not tw_bars:
         return 0
     since = _ymd(tw_bars[0].get("date")) if tw_bars else ""
     have = {
         _ymd(r.get("date"))
-        for r in _load_tx_futures_daily(
-            db_path, session="night", since=since or "20260301"
+        for r in _tx_night_rows_on_evening_axis(
+            _load_tx_futures_daily(
+                db_path, session="night", since=since or "20260301"
+            )
         )
         if _ymd(r.get("date"))
     }
@@ -3666,6 +3799,15 @@ def _ensure_tx_night_for_teach(
         for r in tw_bars
         if _ymd(r.get("date")) and _ymd(r.get("date")) not in have
     ]
+    try:
+        from trading_calendar import futures_night_date_cap
+
+        cap = futures_night_date_cap()
+        if len(cap) == 8 and cap not in missing:
+            # cap 是官方晨／開市標；缺起日映射時仍要抓這列
+            missing.append(cap)
+    except Exception:
+        pass
     missing = list(dict.fromkeys(missing))
     if not missing:
         return 0
@@ -8936,12 +9078,16 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         n_tw=n_tw,
     )
     # 台指電子盤（夜盤日K）對齊加權日軸；缺日先補官方夜盤再對齊（防前收填成重複K）
+    # 夜盤列改掛起日：週五夜週一標才能對上週五末K，不准週末還停在崩盤夜
     tx_since = _ymd(bars[0].get("date")) if bars else "20260301"
     try:
+        _ensure_latest_tx_night_row(db_path)
         _ensure_tx_night_for_teach(db_path, bars)
     except Exception:
         logger.exception("遠窗電子盤缺日補齊略過")
-    tx_rows = _load_tx_futures_daily(db_path, session="night", since=tx_since or "20260301")
+    tx_rows = _tx_night_rows_on_evening_axis(
+        _load_tx_futures_daily(db_path, session="night", since=tx_since or "20260301")
+    )
     _tx_real_days = {
         _ymd(r.get("date"))
         for r in (tx_rows or [])
@@ -9372,11 +9518,13 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             if _oo > 0:
                 last["open"] = _oo
             tx_rows_for_vol[-1] = last
-    # 軸窗短；電子盤下一層另載深窗夜盤日K再併臉
+    # 軸窗短；電子盤下一層另載深窗夜盤日K再併臉（同樣掛起日）
     _tx_deep_since = "20250101"
     try:
-        tx_deep_rows = _load_tx_futures_daily(
-            db_path, session="night", since=_tx_deep_since
+        tx_deep_rows = _tx_night_rows_on_evening_axis(
+            _load_tx_futures_daily(
+                db_path, session="night", since=_tx_deep_since
+            )
         )
     except Exception:
         logger.exception("遠窗電子盤深窗量價略過")

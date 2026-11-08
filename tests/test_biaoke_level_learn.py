@@ -2581,15 +2581,19 @@ def test_merge_live_sox_skips_when_not_live_session():
 
 
 def test_weekend_tx_tip_uses_official_night_not_mis(tmp_path, monkeypatch):
-    """週日白天：台指電子盤戳走庫內夜盤收，不准 MIS 殘價／假今日 asof。
+    """週日白天：戳＝已齊週五夜（週一標 40298），昨收＝日盤結算；不准 MIS 冒充盤中。
 
-    煙霧 CI 無正式碟：用暫存 futures_daily；並塞 MIS 殘價確認不准被吃。
+    崩盤夜 38936 仍在庫內但不能蓋過更新的週五夜。煙霧 CI 用暫存庫。
     """
     import sqlite3
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
-    from biaoke_level_learn import _ensure_paint_live_tx, _resolve_tx_after_hours_tip
+    from biaoke_level_learn import (
+        _ensure_paint_live_tx,
+        _resolve_tx_after_hours_tip,
+        _tx_night_rows_on_evening_axis,
+    )
 
     db = tmp_path / "tx_tip.db"
     conn = sqlite3.connect(str(db))
@@ -2622,7 +2626,7 @@ def test_weekend_tx_tip_uses_official_night_not_mis(tmp_path, monkeypatch):
                 38799.0,
                 38936.0,
                 38936.0,
-                1,
+                89296,
                 0,
                 -7.57,
                 "taifex",
@@ -2644,35 +2648,78 @@ def test_weekend_tx_tip_uses_official_night_not_mis(tmp_path, monkeypatch):
                 "taifex",
                 "t",
             ),
+            # 週五夜官方標週一（與期交所 OpenAPI 一致）
+            (
+                "20261109",
+                "TX",
+                "night",
+                "202611",
+                39742.0,
+                40845.0,
+                39129.0,
+                40298.0,
+                40298.0,
+                69882,
+                0,
+                1.63,
+                "taifex",
+                "t",
+            ),
         ],
     )
     conn.commit()
     conn.close()
 
-    # 若誤抓 MIS，會吐出 40298／今日 asof——測試必須仍走庫內夜盤
+    # 週末仍不准把 MIS 當盤中 live；戳走庫內已齊夜盤
     import market_ticker
 
     monkeypatch.setattr(
         market_ticker,
         "fetch_tx_live",
         lambda **_k: {
-            "close": 40298.0,
+            "close": 99999.0,
             "ref": 39652.0,
-            "update_time": "04:59:58",
-            "pct_change": 1.63,
+            "update_time": "11:40:00",
+            "pct_change": 9.99,
         },
     )
 
     tz = ZoneInfo("Asia/Taipei")
-    pack = {"query_at": datetime(2026, 11, 8, 8, 53, tzinfo=tz).isoformat()}
-    assert _ensure_paint_live_tx(pack, now=datetime(2026, 11, 8, 8, 53, tzinfo=tz)) is None
+    pack = {"query_at": datetime(2026, 11, 8, 11, 40, tzinfo=tz).isoformat()}
+    assert _ensure_paint_live_tx(pack, now=datetime(2026, 11, 8, 11, 40, tzinfo=tz)) is None
     assert pack.get("live_tx") is None
     tip = _resolve_tx_after_hours_tip(str(db), pack)
     assert tip is not None
-    assert abs(float(tip["close"]) - 38936.0) < 1.0
-    assert abs(float(tip.get("prev") or 0) - 39786.0) < 1.0
-    assert str(tip.get("asof") or "").startswith("20261106")
+    assert abs(float(tip["close"]) - 40298.0) < 1.0
+    # 昨收＝日盤結算 39652（對齊話筒 CRefPrice），不是收盤 39786
+    assert abs(float(tip.get("prev") or 0) - 39652.0) < 1.0
+    # asof＝夜盤起日週五，才能對上加權軸末根
+    assert str(tip.get("asof") or "") == "20261106"
     assert not tip.get("clock")
+    # 起日映射：崩盤夜→週四；週五夜→週五
+    mapped = _tx_night_rows_on_evening_axis(
+        [
+            {
+                "date": "20261106",
+                "open": 41990.0,
+                "high": 42298.0,
+                "low": 38799.0,
+                "close": 38936.0,
+                "volume": 89296,
+            },
+            {
+                "date": "20261109",
+                "open": 39742.0,
+                "high": 40845.0,
+                "low": 39129.0,
+                "close": 40298.0,
+                "volume": 69882,
+            },
+        ]
+    )
+    by_d = {r["date"]: r["close"] for r in mapped}
+    assert by_d.get("20261105") == 38936.0
+    assert by_d.get("20261106") == 40298.0
 
 
 def test_near_micro_right_notes_follow_tip_anchors():
