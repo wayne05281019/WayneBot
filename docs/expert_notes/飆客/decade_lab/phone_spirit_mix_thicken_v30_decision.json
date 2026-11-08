@@ -1,0 +1,28 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "as_of_taipei": "2026-11-08T09:27:00+08:00",
+  "gate_one_liner": "spirit_mix_thicken_v30 U112 n=112 confirm_ma5=True confirm_hold=9.352941176470589; pe_ge80_d50=4 earlier=1; best_early=pe2_mh20_ma3 hold=9.27450980392157; promote_lookup=NO",
+  "parent_seal": "phone_spirit_mix_thicken_v29_decision.json",
+  "elapsed_s": null,
+  "n_stocks": 112,
+  "confirm_pe2_mh20_ma5": {
+    "key": "pe2_mh20_ma5",
+    "win_rate": 0.803921568627451,
+    "days": 50,
+    "hold_days": 9.352941176470589,
+    "beats_random": true
+  },
+  "upgrade_lock": {
+    "from": "pe2_mh20_ma5",
+    "to": "pe2_mh20_ma3",
+    "formula": "entry=v11 & (~body | near(intent,3)); exit=hi20|wave|(exhaust|hi10 & unreal>=2%)|(close<ma3 & unreal>=2%)|max_hold_20",
+    "win_rate": 0.803921568627451,
+    "days": 50,
+    "hold_days": 9.27450980392157,
+    "expectancy": 0.01296256030384796,
+    "beats_random": true
+  },
+  "finding_zh": "ma5 复現；ma3 破線把 hold 再壓到 ≈9.27，仍 ge80×50d×beats_random（expectancy 略優於 ma5）。",
+  "next": "mix_v31 confirm pe2_mh20_ma3 + hunt hold<9.27; phone_sync=blocked"
+}
