@@ -816,16 +816,82 @@ def _apply_live_sox_to_axis(
     return i
 
 
+def _fill_missing_twii_open_days_from_db(
+    db_path: str, bars: Sequence[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """圖軸首尾之間：開市日若庫內有官方柱卻缺席 → 插回。不准捏沒庫的假柱。
+
+    漏一根會讓黃框漲跌％／點數用錯前收（例缺 11/06 → 假 +0.21%）。
+    """
+    out = [dict(r) for r in (bars or [])]
+    if not db_path or len(out) < 2:
+        return out
+    first = _ymd(out[0].get("date"))
+    last = _ymd(out[-1].get("date"))
+    if len(first) != 8 or len(last) != 8 or first >= last:
+        return out
+    have = {_ymd(r.get("date")) for r in out if _ymd(r.get("date"))}
+    try:
+        from trading_calendar import is_tw_open_calendar_day
+
+        conn = sqlite3.connect(db_path, timeout=8.0)
+        try:
+            rows = conn.execute(
+                "SELECT date, open, high, low, close, volume FROM index_daily "
+                "WHERE (symbol='TWII' OR symbol='^TWII') AND date>? AND date<? "
+                "AND close>0 ORDER BY date",
+                (first, last),
+            ).fetchall()
+        finally:
+            conn.close()
+    except Exception:
+        return out
+    extra: List[Dict[str, Any]] = []
+    for date_s, o, h, l, c, v in rows or ():
+        d = _ymd(date_s)
+        if not d or d in have:
+            continue
+        try:
+            if not is_tw_open_calendar_day(d):
+                continue
+        except Exception:
+            pass
+        try:
+            cv = float(c or 0)
+        except (TypeError, ValueError):
+            continue
+        if cv <= 0:
+            continue
+        extra.append(
+            {
+                "date": d,
+                "open": float(o or cv),
+                "high": float(h or cv),
+                "low": float(l or cv),
+                "close": cv,
+                "volume": float(v or 0),
+            }
+        )
+        have.add(d)
+    if not extra:
+        return out
+    merged = out + extra
+    merged.sort(key=lambda r: _ymd(r.get("date")) or "")
+    return merged
+
+
 def _twii_bars_for_teach(
     db_path: str, n: int, pack: Optional[Dict[str, Any]] = None
 ) -> List[Dict[str, Any]]:
     """教具用加權柱：指數最新已收官方柱＋（盤中）MIS 顯示疊加。
 
     遠／近／超近三張都必須畫到最新交易日縮圖K；盤中查／飆大新文要立刻對得上。
+    開市日庫內有柱就不准從圖軸漏掉。
     """
     from biaoke_wave import _load_twii_bars
 
     bars = list(_load_twii_bars(db_path, n=n, teach=True) or [])
+    bars = _fill_missing_twii_open_days_from_db(db_path, bars)
     live = (pack or {}).get("live_twii") if isinstance(pack, dict) else None
     if live:
         bars = _merge_live_twii_display_bar(bars, live)
@@ -1251,9 +1317,80 @@ def _chg_paint_color(sign: int) -> str:
     return _TEACH_STAMP_META
 
 
-def _prev_bar_close(bars: Sequence[Dict[str, Any]]) -> Optional[float]:
-    """前一個交易日收（bars 倒數第二根有收才算）。"""
-    if not bars or len(bars) < 2:
+def _index_daily_close(db_path: str, symbol: str, ymd: str) -> Optional[float]:
+    """讀 index_daily 某日收；缺就空。"""
+    day = _ymd(ymd)
+    sym = str(symbol or "").strip()
+    if not db_path or not day or not sym:
+        return None
+    try:
+        conn = sqlite3.connect(db_path, timeout=8.0)
+        try:
+            row = conn.execute(
+                "SELECT close FROM index_daily WHERE symbol=? AND date=? AND close>0",
+                (sym, day),
+            ).fetchone()
+        finally:
+            conn.close()
+    except Exception:
+        return None
+    if not row:
+        return None
+    try:
+        v = float(row[0])
+    except (TypeError, ValueError):
+        return None
+    return v if v > 0 else None
+
+
+def _prev_open_ymd(ymd: str) -> str:
+    """嚴格前一個台股開市日（不含當日）。"""
+    day = _ymd(ymd)
+    if len(day) != 8:
+        return ""
+    try:
+        from trading_calendar import last_open_calendar_day_on_or_before
+
+        probe = (
+            datetime.strptime(day, "%Y%m%d") - timedelta(days=1)
+        ).strftime("%Y%m%d")
+        return last_open_calendar_day_on_or_before(probe) or ""
+    except Exception:
+        return ""
+
+
+def _prev_bar_close(
+    bars: Sequence[Dict[str, Any]],
+    *,
+    db_path: str = "",
+    symbol: str = "TWII",
+) -> Optional[float]:
+    """前一個交易日收。
+
+    圖軸若漏掉開市日（例如缺 11/06），倒數第二根會變成更早那天 → 漲跌％／點數全錯。
+    有 db 時以台股開市曆對 index_daily 補正確前收；沒庫才退回 bars 內前一根有收。
+    """
+    if not bars:
+        return None
+    last_d = _ymd((bars[-1] or {}).get("date"))
+    expect = _prev_open_ymd(last_d) if last_d else ""
+    if expect and db_path:
+        got = _index_daily_close(db_path, symbol, expect)
+        if got is not None:
+            return got
+    # bars 內找嚴格早於末日的最近一根
+    if last_d:
+        for j in range(len(bars) - 2, -1, -1):
+            d = _ymd((bars[j] or {}).get("date"))
+            if not d or d >= last_d:
+                continue
+            try:
+                v = float((bars[j] or {}).get("close") or 0)
+            except (TypeError, ValueError):
+                continue
+            if v > 0:
+                return v
+    if len(bars) < 2:
         return None
     try:
         v = float(bars[-2].get("close") or 0)
@@ -1280,6 +1417,7 @@ def _teach_stamp_line(
     pack: Optional[Dict[str, Any]] = None,
     close: Optional[float] = None,
     label_prefix: str = "",
+    db_path: str = "",
 ) -> str:
     """查詢戳一行：名稱 幾月幾號收盤|盤中 查詢當下為HH:MM →價→（漲幅％）→較前日點數。"""
     as_of = _ymd(bars[-1].get("date")) if bars else ""
@@ -1304,7 +1442,8 @@ def _teach_stamp_line(
         px_s = _px(float(px_v or 0))
     except (TypeError, ValueError):
         px_s = "—"
-    chg = _day_change_vs_prev(px_v, _prev_bar_close(bars))
+    db = str(db_path or (pack or {}).get("db_path") or "").strip()
+    chg = _day_change_vs_prev(px_v, _prev_bar_close(bars, db_path=db))
     chg_s = str(chg.get("text") or "").strip()
     if chg_s:
         return f"{meta}  {px_s}  {chg_s}"
@@ -1708,11 +1847,13 @@ def _paint_teach_query_stamp(
     va: str = "top",
     label_prefix: str = "加權",
     ax: Any = None,
+    db_path: str = "",
 ) -> None:
     """黃框白底：名稱 幾月幾號收盤|盤中 查詢當下為HH:MM →價→（漲幅％）→較前日點數。
 
     預設貼右、略離上緣，不准壓標題白字；遠窗可改右下 va=bottom。
     盤中未收疊柱才標盤中＋查詢當下；官方已收標收盤。不准把未收當收。
+    漲跌％／點數只認前一個開市日收；圖軸漏柱時用 db 官方收補，不准再出現假 +0.21%。
     """
     if fig is None or not bars:
         return
@@ -1744,7 +1885,8 @@ def _paint_teach_query_stamp(
         px_s = _px(float(px_v or 0))
     except (TypeError, ValueError):
         px_s = "—"
-    chg = _day_change_vs_prev(px_v, _prev_bar_close(bars))
+    db = str(db_path or (pack or {}).get("db_path") or "").strip()
+    chg = _day_change_vs_prev(px_v, _prev_bar_close(bars, db_path=db))
     pct_s = str(chg.get("pct_text") or "").strip()
     pts_s = str(chg.get("pts_text") or "").strip()
     chg_col = _chg_paint_color(int(chg.get("sign") or 0))
@@ -2299,10 +2441,14 @@ def _biaoke_level_snip_score(blob: str, *, is_main: bool) -> int:
         r"波浪位階|主跌段|C3-\d|(?<![0-9])3-3-\d|重新修訂|動態修正|不能去抄底|破底|"
         r"假跌破|有效穿刺|1\s*[-–]?\s*4\s*重疊|(?:今天)?走\s*3-5|"
         r"第二組下跌|落底確認|劇本|5\s*波\s*跌完|走\s*B\s*[-–]?\s*b|"
-        r"9\s*波\s*擴延|37837|底部判斷",
+        r"9\s*波\s*擴延|37837|底部判斷|41760|大盤止跌|大盤已經落底|"
+        r"確認.{0,12}(?:上)?週五.{0,8}低點",
         blob,
     ):
         score += 12
+    # 後文止跌確認／C3-5＋1 4重疊：壓較早雙軌／第二隻腳長文同分搶位
+    if _text_has_stop_low_confirm(blob):
+        score += 8
     n = len(blob)
     if n >= 120:
         score += 6
@@ -2476,7 +2622,11 @@ def _latest_biaoke_index_snip(
                     r"|[^。｜]{0,60}9\s*波\s*擴延[^。｜]{0,80}"
                     r"|[^。｜]{0,40}C\s*[-–]\s*7[^。｜]{0,48}C\s*[-–]\s*8[^。｜]{0,40}"
                     r"|[^。｜]{0,48}1\s*[-–]?\s*2\s*轉\s*1\s*[-–]?\s*3\s*[-–]?\s*1[^。｜]{0,40}"
-                    r"|[^。｜]{0,40}2\s*/\s*25\s*高點?\s*8498[^。｜]{0,40}",
+                    r"|[^。｜]{0,40}2\s*/\s*25\s*高點?\s*8498[^。｜]{0,40}"
+                    r"|[^。｜\n]{0,48}41760[^。｜\n]{0,72}"
+                    r"|[^。｜\n]{0,56}C3-5.{0,48}1\s*[-–]?\s*4\s*重疊[^。｜\n]{0,96}"
+                    r"|[^。｜\n]{0,48}確認.{0,16}(?:上)?週五.{0,20}最低[^。｜\n]{0,48}"
+                    r"|[^。｜\n]{0,40}再測.{0,16}星期五低點[^。｜\n]{0,72}",
                     flat,
                 ):
                     bit = m.group(0).strip(" ，,")
@@ -2716,7 +2866,11 @@ def _latest_level_thesis(
             post_id = post_snip_id
     # 9波擴延／35500~37300：庫內真文／snap 可壓舊 C3-x；口頭只補「尚無題旨」空窗
     # 更早 as_of／已有橫台・C3-3・C3-5 真文時，不准 oral-c9-band 蓋掉
+    # 後文止跌／週五低確認不准被較早 C9／雙軌備線整段蓋掉
     try:
+        stop_now = _text_has_stop_low_confirm(snip) or _text_has_stop_low_confirm(
+            post_snip or ""
+        )
         if cap >= _C9_ORAL_AS_OF:
             _ensure_c9_oral_thesis_snap(db_path, as_of=cap)
         c9_snip = _find_c9_extension_snip(db_path, cap, include_oral=False)
@@ -2726,29 +2880,35 @@ def _latest_level_thesis(
             and cap >= _C9_ORAL_AS_OF
         ):
             c9_snip = _C9_ORAL_SNIP
-        if c9_snip and _text_has_c9_extension(c9_snip):
+        if c9_snip and _text_has_c9_extension(c9_snip) and not stop_now:
             if not _text_has_c9_extension(snip):
                 if not str(snip or "").strip():
                     # 空題旨才用口頭／真 C9 填上
                     snip = c9_snip
                     post_id = post_id or "oral-c9-band"
                 else:
-                    # 已有真文：只准「非口頭」C9 改口壓舊
+                    # 已有真文：只准「非口頭」C9 改口壓舊（仍卡止跌後文）
                     snip = c9_snip
             elif cap >= _C9_ORAL_AS_OF:
                 snip = f"{c9_snip} {snip}"
     except Exception:
         logger.debug("C9 題旨覆寫略過", exc_info=True)
-    # 後文改口：37000~37500／第二隻腳；但若已有更新的「五波跌完走B-b／九波雙軌」真文，
-    # 不准用較早第二隻腳整段蓋掉（抓取時差也不准看 updated_at，只認 date+time 後文）。
+    # 後文改口：37000~37500／第二隻腳；但若已有更新的「五波跌完走B-b／九波雙軌」
+    # 或更後「止跌／週五低確認」真文，不准用較早第二隻腳整段蓋掉。
     try:
+        stop_now = _text_has_stop_low_confirm(snip) or _text_has_stop_low_confirm(
+            post_snip or ""
+        )
         has_bb_now = _text_has_bb_dual_path(snip) or _text_has_bb_dual_path(
             post_snip or ""
         )
         if cap >= _FOOT2_ORAL_AS_OF:
             _ensure_foot2_oral_thesis_snap(db_path, as_of=cap)
         foot2_real = _find_foot2_snip(db_path, cap, include_oral=False)
-        if has_bb_now:
+        if stop_now:
+            # 止跌確認後文已定主線：不准再併舊第二隻腳／37000 帶蓋最新盯價
+            pass
+        elif has_bb_now:
             # 雙軌後文已定主線：只補缺的 37000~37500 參考帶，不准整段置換題旨
             if foot2_real and _text_has_foot2_revision(foot2_real):
                 if not re.search(r"37000\s*[-~～到至\-]\s*37500|37000.{0,8}37500", snip):
@@ -2806,7 +2966,8 @@ def _latest_level_thesis(
     has_foot2_band = bool(
         re.search(r"37000\s*[-~～到至\-]\s*37500|37000.{0,8}37500", snip)
     )
-    # 11/8 雙軌（說話時間晚於第二隻腳）＞第二隻腳＞C9 擴延標號
+    # 11/9 止跌確認＞11/8 雙軌＞第二隻腳＞C9 擴延標號（後文壓前文）
+    has_stop_confirm = _text_has_stop_low_confirm(snip)
     has_bb_dual = _text_has_bb_dual_path(snip)
     # 9波擴延 C-7轉C-8→C-9＋低點區 35500~37300（後文改口壓舊 C3-5）
     has_c9_band = bool(
@@ -2822,8 +2983,20 @@ def _latest_level_thesis(
         )
     )
     has_c9 = bool(re.search(r"C\s*[-–]\s*9", snip))
+    has_41760 = bool(re.search(r"41760", snip))
     # 夜盤第二組落底（C3-5完成）優先於舊 C3-3 題旨；後文改口壓前文
-    if has_bb_dual:
+    if has_stop_confirm:
+        # 他最新：C3-5＋1 4重疊／確認週五低＝最低；再測・假跌破（說明用・非買訊）
+        thesis = "大A→大B→大C｜C3-5＋1 4重疊・確認上週五低＝最低（預估）"
+        wait_bits = [
+            "一定再測週五低",
+            "破＝假跌破觀察",
+        ]
+        if has_41760:
+            wait_bits.insert(0, "台指壓41760")
+        wait_bits.append("非買訊")
+        wait = "；".join(wait_bits)
+    elif has_bb_dual:
         # 主線五波跌完→B-b；備線九波擴延。未定案前雙軌並陳（說明用・非買訊）
         thesis = "大A→大B→大C｜主線五波跌完走B-b・備線九波擴延（預估）"
         wait = (
@@ -2870,14 +3043,16 @@ def _latest_level_thesis(
     elif "主跌" in snip:
         thesis = "大A→大B→大C｜C內主跌（預估）"
         wait = "細微波完整＋降軌；C走完≠新五波升；再重訂位階"
-    if morph and "楔形" in morph:
+    if morph and "楔形" in morph and not has_stop_confirm:
         wait = f"{wait}｜型態：{morph}"
-    elif morph:
+    elif morph and not has_stop_confirm:
         wait = f"{wait}｜型態觀察：{morph}"
     if _REVISE_MARK.search(snip):
-        if has_bb_dual:
-            # 雙軌題旨已帶主／備線，不准改口警語整段蓋掉
-            wait = f"{wait}｜隨時檢視" + (f"｜{morph}" if morph else "")
+        if has_stop_confirm or has_bb_dual:
+            # 止跌確認／雙軌題旨已帶主線，不准改口警語整段蓋掉
+            wait = f"{wait}｜隨時檢視" + (
+                f"｜{morph}" if morph and not has_stop_confirm else ""
+            )
         else:
             wait = "他已示警重修／動態修正・圖位＝當下預估" + (
                 f"｜{morph}" if morph else ""
@@ -4048,13 +4223,14 @@ def _ensure_paint_live_tx(
         except Exception:
             q = None
         if isinstance(q, dict) and float(q.get("close") or 0) > 0:
+            # 只有收：不准捏開＝高＝低＝收當「齊 OHLC」，否則會整根置換成一字線
             px = float(q["close"])
             live = {
                 "date": "",
                 "session": "night",
-                "open": px,
-                "high": px,
-                "low": px,
+                "open": 0.0,
+                "high": 0.0,
+                "low": 0.0,
                 "close": px,
                 "pct_change": q.get("pct_change"),
                 "update_time": q.get("update_time"),
@@ -4100,7 +4276,11 @@ def _apply_live_tx_to_axis(
     tw_bars: Sequence[Dict[str, Any]],
     live: Optional[Dict[str, Any]],
 ) -> Optional[int]:
-    """夜盤即時寫進加權日軸對齊格；回傳更新索引。"""
+    """夜盤即時寫進加權日軸對齊格；回傳更新索引。
+
+    MIS／即時列帶齊 OHLC 時整根置換：不准留庫內舊開／舊低（前收填或未齊夜盤）
+    造成假影線、缺真K。只拿到收的殘 tip 才併入既有柱。
+    """
     if not live or not tx_c or not tw_bars:
         return None
     try:
@@ -4121,12 +4301,28 @@ def _apply_live_tx_to_axis(
     if idx < 0 or idx >= len(tx_c):
         return None
     try:
-        o = float(live.get("open") or px)
-        h = float(live.get("high") or px)
-        lo = float(live.get("low") or px)
+        o = float(live.get("open") or 0)
+        h = float(live.get("high") or 0)
+        lo = float(live.get("low") or 0)
     except (TypeError, ValueError):
-        o = h = lo = px
-    # 已有庫內柱：只抬高低／改收，不准把官方開改掉
+        o = h = lo = 0.0
+    src = str(live.get("source") or "")
+    is_rt = bool(live.get("is_realtime")) or src.startswith("taifex")
+    full_live = is_rt and o > 0 and h > 0 and lo > 0
+    if full_live:
+        # 即時夜盤整根：開高低收都以 MIS 為準（仍自洽高低包開收）
+        tx_o[idx] = float(o)
+        tx_c[idx] = float(px)
+        tx_h[idx] = float(max(h, px, o))
+        tx_l[idx] = float(min(x for x in (lo, px, o) if x and x > 0))
+        return int(idx)
+    # 殘 tip 只有收：併入既有柱，不准把官方開改掉
+    if o <= 0:
+        o = px
+    if h <= 0:
+        h = px
+    if lo <= 0:
+        lo = px
     prev_c = float(tx_c[idx]) if tx_c[idx] == tx_c[idx] and tx_c[idx] else 0.0
     if prev_c > 0:
         try:
@@ -4388,36 +4584,92 @@ def _tw_has_c9_low_zone(pack: Optional[Dict[str, Any]] = None) -> bool:
     return False
 
 
+def _level_break_up_tag(level: float, highs: Sequence[float]) -> str:
+    """上方壓力破位：官方高向上觸及／穿過＝已破；不准拿下跌低點誤標。"""
+    try:
+        lv = float(level)
+    except (TypeError, ValueError):
+        return "未到"
+    if not highs:
+        return "未到"
+    try:
+        mx = max(float(x) for x in highs if x is not None)
+    except ValueError:
+        return "未到"
+    if mx > lv + 0.5:
+        return "已破"
+    return "未破" if mx >= lv * 0.98 else "未到"
+
+
 def _tw_pred_break_tag(
     level: float,
     lows: Sequence[float],
     *,
     pack: Optional[Dict[str, Any]] = None,
     role: str = "",
+    highs: Optional[Sequence[float]] = None,
 ) -> str:
-    """加權預測錨破位標：官方低觸及＝已破；有 C9 區時舊 38000 劇本一上沿改口標已破。"""
-    br = _level_break_tag(level, lows)
+    """加權預測錨破位標。
+
+    撐／低／買點：官方低觸及＝已破。
+    壓力／上方觀察壓：官方高向上穿＝已破（不准拿下跌低點誤標已破）。
+    有 C9 區時舊 38000 劇本一上沿改口標已破。
+    """
     try:
         lv = float(level)
     except (TypeError, ValueError):
-        return br
+        return "未到"
     role_s = str(role or "")
     if (
         (role_s == "劇本一上沿" or abs(lv - 38000.0) < 1.0)
         and _tw_has_c9_low_zone(pack)
     ):
         return "已破"
-    return br
+    is_press = bool(
+        role_s in {"台指壓力", "反彈穿刺", "轉震盪"}
+        or ("壓" in role_s and "撐" not in role_s and "低" not in role_s)
+    )
+    if is_press:
+        hi_vals: List[float] = []
+        if highs:
+            try:
+                hi_vals = [float(x) for x in highs if x is not None]
+            except (TypeError, ValueError):
+                hi_vals = []
+        return _level_break_up_tag(lv, hi_vals)
+    return _level_break_tag(level, lows)
 
 
 def _c9_extension_active(pack: Optional[Dict[str, Any]] = None) -> bool:
-    """題旨是否為 9波擴延 C-7走完→C-8→C-9（只認他文／pred，不准自創）。"""
-    if _tw_has_c9_low_zone(pack):
-        return True
+    """題旨是否為 9波擴延 C-7走完→C-8→C-9（只認他文／pred，不准自創）。
+
+    後文止跌確認／B-b 雙軌／第二隻腳當令時不准再畫 C1…C9／C-7轉C-8。
+    不准把「改口低點區／foot2」經 _tw_has_c9_low_zone 誤開九波標。
+    """
     thesis = str((pack or {}).get("thesis") or "")
-    snip = str((pack or {}).get("snippet") or "")
+    snip = str(
+        (pack or {}).get("snippet_full")
+        or (pack or {}).get("snippet")
+        or ""
+    )
     wait = str((pack or {}).get("wait_struct") or "")
     blob = f"{thesis} {snip} {wait}"
+    if _text_has_stop_low_confirm(blob) or "確認上週五低" in thesis or "止跌確認" in thesis:
+        return False
+    if (
+        _text_has_bb_dual_path(blob)
+        or "B-b" in thesis
+        or "五波跌完" in thesis
+        or "備線九波" in thesis
+    ):
+        return False
+    if (
+        _tw_has_foot2_low_zone(pack)
+        or "第二隻腳" in thesis
+        or "等第二隻腳" in thesis
+        or _text_has_foot2_revision(blob)
+    ):
+        return False
     if (
         "9波擴延" in blob
         or "C-7走完" in blob
@@ -4425,10 +4677,24 @@ def _c9_extension_active(pack: Optional[Dict[str, Any]] = None) -> bool:
         or "準備往八" in blob
     ):
         return True
-    return bool(
-        re.search(r"C\s*[-–]\s*7.{0,24}C\s*[-–]\s*8", blob)
-        and re.search(r"C\s*[-–]\s*9", blob)
-    )
+    if re.search(r"C\s*[-–]\s*7.{0,24}C\s*[-–]\s*8", blob) and re.search(
+        r"C\s*[-–]\s*9", blob
+    ):
+        return True
+    roles = {
+        str(r.get("role") or "")
+        for r in ((pack or {}).get("pred_levels") or {}).get("tw") or []
+    }
+    if "C9低上沿" in roles or "C9低下沿" in roles:
+        return True
+    for row in ((pack or {}).get("pred_levels") or {}).get("tw") or []:
+        try:
+            lv = float(row.get("level"))
+        except (TypeError, ValueError):
+            continue
+        if abs(lv - 37300.0) < 1.0 or abs(lv - 35500.0) < 1.0:
+            return True
+    return False
 
 
 def _c9_now_step_label() -> str:
@@ -4453,18 +4719,24 @@ def _foot2_oral_now_line() -> str:
 
 
 def _active_oral_now_line(pack: Optional[Dict[str, Any]] = None) -> str:
-    """話筒／三窗腳註：有改口低點區用第二隻腳句，否則回 C9 句。"""
-    if _tw_has_foot2_low_zone(pack):
-        return _foot2_oral_now_line()
+    """話筒／三窗腳註：後文當令優先（止跌確認＞第二隻腳＞C9）。"""
     blob = " ".join(
         str(x or "")
         for x in (
             (pack or {}).get("thesis"),
+            (pack or {}).get("snippet_full"),
             (pack or {}).get("snippet"),
             (pack or {}).get("wait_struct"),
         )
     )
-    if _text_has_foot2_revision(blob):
+    if _text_has_stop_low_confirm(blob) or "確認上週五低" in str(
+        (pack or {}).get("thesis") or ""
+    ):
+        line = "C3-5＋1 4重疊・確認上週五低＝最低；一定再測週五低，破＝假跌破觀察"
+        if "41760" in blob:
+            line = "台指壓41760；" + line
+        return line
+    if _tw_has_foot2_low_zone(pack) or _text_has_foot2_revision(blob):
         return _foot2_oral_now_line()
     return _c9_oral_now_line()
 
@@ -4510,14 +4782,52 @@ def _text_has_foot2_revision(blob: str) -> bool:
     return bool(has_band or (has_floor and has_leg) or (has_floor and has_band))
 
 
+def _text_has_stop_low_confirm(blob: str) -> bool:
+    """後文止跌／週五低確認（11/9）：壓前文 B-b 雙軌／第二隻腳／C9 低點區。
+
+    例：C3-5＋1 4重疊・確認上週五低＝最低；大盤止跌／已經落底・再測假跌破。
+    不准把 11/5「1 4重疊＋假跌破」誤當止跌確認（那時還在走 3-5／假跌破觀察）。
+    """
+    s = str(blob or "")
+    if not s.strip():
+        return False
+    has_fri_low = bool(
+        re.search(
+            r"確認.{0,16}(?:上)?週五.{0,12}低點.{0,12}就是最低|"
+            r"(?:上)?週五低點就是最低點|"
+            r"確認上週五低",
+            s,
+        )
+    )
+    has_stop = bool(re.search(r"大盤止跌|不相信我大盤止跌|大盤已經落底", s))
+    # C3-5＋1 4 必須再疊「確認…最低／週五低」才算；裸 1 4重疊＋假跌破不算
+    has_14_confirm = bool(
+        re.search(
+            r"C3-5.{0,48}1\s*[-–]?\s*4\s*重疊.{0,48}"
+            r"(?:確認.{0,24}(?:最低|週五)|週五.{0,12}低點.{0,12}就是最低)",
+            s,
+        )
+    ) or bool(
+        re.search(
+            r"1\s*[-–]?\s*4\s*重疊.{0,24}確認.{0,24}"
+            r"(?:上)?週五.{0,16}(?:低點)?(?:就是)?最低",
+            s,
+        )
+    )
+    return bool(has_fri_low or has_stop or has_14_confirm)
+
+
 def _text_has_bb_dual_path(blob: str) -> bool:
     """後文雙軌：五波跌完走 B-b（主）＋不排除九波擴延（備）。
 
     以他說話時間序為準（date+time）；後文壓前文第二隻腳當主線題旨。
     例：11/8「5波跌完走B-b／假跌破37837／9波擴延→35579→31705」。
+    若已有止跌／週五低確認後文，不算雙軌當令（後文壓前文）。
     """
     s = str(blob or "")
     if not s.strip():
+        return False
+    if _text_has_stop_low_confirm(s):
         return False
     has_bb = bool(
         re.search(
@@ -4538,9 +4848,14 @@ def _text_has_bb_dual_path(blob: str) -> bool:
 
 
 def _text_has_c9_extension(blob: str) -> bool:
-    """是否為 9波擴延／C-7→C-8／C-9／35500~37300 改口題旨。"""
+    """是否為 9波擴延／C-7→C-8／C-9／35500~37300 改口題旨。
+
+    不准把 B-b 雙軌裡「不排除走9波擴延」誤當 C9 結構題旨去蓋後文止跌確認。
+    """
     s = str(blob or "")
     if not s.strip():
+        return False
+    if _text_has_stop_low_confirm(s):
         return False
     has_band = bool(re.search(r"35500\s*[-~～到至]\s*37300|35500.{0,8}37300", s))
     has_9 = bool(re.search(r"9\s*波\s*擴延", s))
@@ -4553,8 +4868,14 @@ def _text_has_c9_extension(blob: str) -> bool:
         )
     )
     has_c9 = bool(re.search(r"C\s*[-–]\s*9", s))
-    return bool(has_9 or (has_c78 and (has_c9 or has_band)) or (has_band and (has_c78 or has_c9)))
-
+    # 雙軌備線口中的裸「9波擴延」≠ C-7→C-9 結構改口
+    if _text_has_bb_dual_path(s) and not (has_c78 or has_c9 or has_band):
+        return False
+    return bool(
+        (has_9 and (has_c78 or has_c9 or has_band))
+        or (has_c78 and (has_c9 or has_band))
+        or (has_band and (has_c78 or has_c9 or has_9))
+    )
 
 def _find_c9_extension_snip(
     db_path: str, cap_ymd: str, *, include_oral: bool = True
@@ -5495,6 +5816,45 @@ def _level_break_tag(level: float, lows: Sequence[float]) -> str:
     return "未破" if mn <= lv * 1.02 else "未到"
 
 
+def _tw_level_role(pack: Optional[Dict[str, Any]], level: float) -> str:
+    """pred_levels.tw 對該價的 role；沒有就空。"""
+    try:
+        lv = float(level)
+    except (TypeError, ValueError):
+        return ""
+    for row in ((pack or {}).get("pred_levels") or {}).get("tw") or []:
+        try:
+            if abs(float(row.get("level")) - lv) < 0.6:
+                return str(row.get("role") or "")
+        except (TypeError, ValueError):
+            continue
+    # 原文壓力位硬釘（題旨有 41760）
+    if abs(lv - 41760.0) < 0.6:
+        return "台指壓力"
+    return ""
+
+
+def _format_tw_pred_note(
+    level: float,
+    *,
+    pack: Optional[Dict[str, Any]] = None,
+    lows: Optional[Sequence[float]] = None,
+    highs: Optional[Sequence[float]] = None,
+) -> str:
+    """加權右標／tip 錨文：壓力位保留「台指壓力」，撐／低才用飆預測＋破位。"""
+    role = _tw_level_role(pack, level)
+    br = _tw_pred_break_tag(
+        float(level),
+        list(lows or []),
+        pack=pack,
+        role=role,
+        highs=list(highs or []) if highs is not None else None,
+    )
+    if role == "台指壓力" or abs(float(level) - 41760.0) < 0.6:
+        return f"台指壓力／{_px(level)}・{br}"
+    return _biaoke_pred_label(float(level), br)
+
+
 def _biaoke_pred_label(
     price: float,
     tag: str = "",
@@ -5721,17 +6081,33 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
             tag=tag,
             label=lab,
         )
+    # 11/9 台指壓力 41760（他原文；止跌確認後文優先寫）
+    if re.search(r"41760", s):
+        _add(
+            "tw",
+            level=41760.0,
+            ref_ymd="",
+            role="台指壓力",
+            tag="未到",
+            label=f"台指壓力／{_px(41760)}",
+        )
     # 11/8 雙軌點位（只認原文）：37837／37164／35579／31705
     # 右欄：最佳買點 37837＋深殺上緣 35579＋深殺端 31705；39000／37164 改走黃底帶
+    # 止跌確認後文：37837＝再測／假跌破觀察，不准還寫成舊雙軌「最佳買點」主標
     if re.search(r"37837", s):
-        tag = "最佳買點" if re.search(r"假跌破|買點", s) else "週五低"
+        if _text_has_stop_low_confirm(s):
+            tag = "再測／假跌破"
+            lab = f"再測週五低／{_px(37837)}"
+        else:
+            tag = "最佳買點" if re.search(r"假跌破|買點", s) else "週五低"
+            lab = f"最佳買點／{_px(37837)}"
         _add(
             "tw",
             level=37837.0,
             ref_ymd="20261106",
             role="五波末／週五低",
             tag=tag,
-            label=f"最佳買點／{_px(37837)}",
+            label=lab,
         )
     if re.search(r"37164", s):
         _add(
@@ -6017,7 +6393,8 @@ def _tw_tip_anchors(pack: Optional[Dict[str, Any]] = None) -> Tuple[float, ...]:
     有 C9／改口低點區時，舊劇本一 35000／38000 不准再當虛線下一錨（改口已破）。
     不准把舊 claim_* 歷史宣稱混進虛線梯，否則端點／右標會卡在舊價。
     """
-    _OVERHEAD = {"反彈穿刺", "轉震盪"}
+    # 台指壓力＝上方觀察壓，改走 _tw_pred_right_notes；不准進下跌虛線 tip 裸標成「飆預測・已破」
+    _OVERHEAD = {"反彈穿刺", "轉震盪", "台指壓力"}
     _OLD_SCRIPT1 = {"劇本一上沿", "劇本一下沿"}
     # 雙軌關鍵位改走 _tw_pred_right_notes（角色標＋分色）；不准先被裸「未破／未到」佔位
     _DUAL_PATH = {
@@ -6068,6 +6445,14 @@ def _tw_tip_anchors(pack: Optional[Dict[str, Any]] = None) -> Tuple[float, ...]:
         if str(r.get("role") or "") in _DUAL_PATH
         and r.get("level") is not None
     }
+    # 上方觀察壓／台指壓力：同樣不進 tip 裸梯（改走右欄角色標）
+    _overhead_px = {
+        round(float(r.get("level")), 1)
+        for r in ((pack or {}).get("pred_levels") or {}).get("tw") or []
+        if str(r.get("role") or "") in _OVERHEAD
+        and r.get("level") is not None
+    }
+    _overhead_px.add(round(41760.0, 1))
     # 原文常見雙軌四價：沒 role 也擋
     for _px0 in (37837.0, 37164.0, 35579.0, 31705.0):
         _dual_px.add(round(_px0, 1))
@@ -6080,7 +6465,7 @@ def _tw_tip_anchors(pack: Optional[Dict[str, Any]] = None) -> Tuple[float, ...]:
             continue
         if drop_script1 and _is_old_script1_px(v):
             continue
-        if round(v, 1) in _dual_px:
+        if round(v, 1) in _dual_px or round(v, 1) in _overhead_px:
             continue
         if any(abs(float(v) - x) < 1.0 for x in (39000.0, 37100.0, 37500.0, 37000.0)):
             continue
@@ -6115,10 +6500,17 @@ def _tw_tip_anchors(pack: Optional[Dict[str, Any]] = None) -> Tuple[float, ...]:
                 (pack or {}).get("thesis"),
                 (pack or {}).get("snippet"),
                 (pack or {}).get("snippet_full"),
+                (pack or {}).get("wait_struct"),
             )
         )
-        # 雙軌當令：空梯就空，不准退回舊 45546→44210 擠掉紅框雙軌
-        if _text_has_bb_dual_path(blob_empty) or "37837" in blob_empty:
+        # 雙軌／止跌確認當令：空梯就空，不准退回舊 45546→44210 佔右欄
+        if (
+            _text_has_bb_dual_path(blob_empty)
+            or "37837" in blob_empty
+            or _text_has_stop_low_confirm(blob_empty)
+            or "止跌確認" in blob_empty
+            or "41760" in blob_empty
+        ):
             return tuple()
         return (45546.0, 44210.0)
     # 他點過的價高→低；1 點內視為同錨（避免 39384／39384.9 雙標）
@@ -6518,7 +6910,31 @@ def _build_live_pack(
     wait = str(thesis_pack.get("wait_struct") or "")
     if intent:
         wait = f"{wait}｜量價故事：{intent}"
-    if fut.get("note"):
+    # 夜盤進行中：wait 注用 MIS 即時 OHLC，不准還寫庫內未收完舊夜盤收
+    live_tx = _ensure_paint_live_tx(thesis_pack, now=dt)
+    if (
+        isinstance(live_tx, dict)
+        and float(live_tx.get("close") or 0) > 0
+        and _tx_night_session_live(dt)
+    ):
+        try:
+            _lc = float(live_tx["close"])
+            _lh = float(live_tx.get("high") or 0)
+            _ll = float(live_tx.get("low") or 0)
+            _ld = _ymd(live_tx.get("date")) or dt.strftime("%Y%m%d")
+            levels["tx_night_c"] = _lc
+            if _lh > 0:
+                levels["tx_night_h"] = _lh
+            if _ll > 0:
+                levels["tx_night_l"] = _ll
+            _live_note = f"大台夜{_ld}盤中{_px(_lc)}"
+            if _lh > 0 and _ll > 0:
+                _live_note += f"（高{_px(_lh)}低{_px(_ll)}）"
+            wait = f"{wait}｜{_live_note}"
+        except (TypeError, ValueError):
+            if fut.get("note"):
+                wait = f"{wait}｜{fut['note']}"
+    elif fut.get("note"):
         wait = f"{wait}｜{fut['note']}"
     if claims.get("note"):
         wait = f"{wait}｜{claims['note']}"
@@ -6561,6 +6977,7 @@ def _build_live_pack(
         "chart_as_of": chart_as_of,
         "thesis_as_of": thesis_cap,
         "query_at": dt.isoformat(),
+        "db_path": db_path,
     }
 
 
@@ -8258,8 +8675,11 @@ def _his_micro_degree(blob: str) -> Dict[str, str]:
         degree = "C3"
     elif re.search(r"(現在在C|下降ABC.*C|主跌段)", s):
         degree = "C"
+    # 止跌／週五低確認（後文壓雙軌／第二隻腳／C9）
+    if _text_has_stop_low_confirm(s):
+        degree = "止跌確認"
     # 改口第二隻腳（後文壓 9波／C9 低點區）
-    if _text_has_foot2_revision(s):
+    elif _text_has_foot2_revision(s):
         degree = "第二隻腳"
     # 9波擴延 C-7／C-8／C-9（必帶連字號，不准誤吃 C3-7）
     elif re.search(
@@ -8294,6 +8714,8 @@ def _his_micro_degree(blob: str) -> Dict[str, str]:
         chain = "五波→ABC→C→9波擴延→C-7→C-8→C-9"
     if degree == "第二隻腳":
         chain = "五波→ABC→C→等第二隻腳"
+    if degree == "止跌確認":
+        chain = "五波→ABC→C→C3-5＋1 4重疊→止跌確認"
     return {"degree": degree, "chain": chain, "raw": s[:160]}
 
 
@@ -8831,11 +9253,23 @@ def _wave_now_ladder(pack: Optional[Dict[str, Any]] = None, *, blob: str = "") -
     thesis = str(pack.get("thesis") or text)
     # 大結構跟他鎖的：A底→B反彈→C；不准寫成「五波升完再ABC」讓人把7/29→四萬九當上升⑤
     steps: List[str] = ["大A底7/29", "大B反彈", "大C進行中"]
-    # 後文雙軌（B-b／九波）壓第二隻腳／C9 標號
-    has_bb_ladder = _text_has_bb_dual_path(text) or (
-        "B-b" in thesis or "五波跌完" in thesis or "備線九波" in thesis
+    # 後文止跌確認壓雙軌／第二隻腳／C9；雙軌壓第二隻腳／C9
+    has_stop_ladder = (
+        deg == "止跌確認"
+        or _text_has_stop_low_confirm(text)
+        or "確認上週五低" in thesis
+        or "1 4重疊" in thesis
+        or "止跌確認" in thesis
     )
-    if has_bb_ladder:
+    has_bb_ladder = (not has_stop_ladder) and (
+        _text_has_bb_dual_path(text)
+        or "B-b" in thesis
+        or "五波跌完" in thesis
+        or "備線九波" in thesis
+    )
+    if has_stop_ladder:
+        steps.append("止跌確認・再測週五低")
+    elif has_bb_ladder:
         steps.append("主B-b／備九波")
     elif (
         deg == "第二隻腳"
@@ -8887,8 +9321,28 @@ def _wave_now_ladder(pack: Optional[Dict[str, Any]] = None, *, blob: str = "") -
     else:
         day_zh = ""
         day_bit = ""
-    # 雙軌／改口第二隻腳／9波擴延：話筒／超近說明用人話，不准只丟代號
-    if "主B-b／備九波" in steps or has_bb_ladder:
+    # 止跌確認／雙軌／改口第二隻腳／9波擴延：話筒／超近說明用人話，不准只丟代號
+    if "止跌確認・再測週五低" in steps or has_stop_ladder:
+        oral_now = (
+            "C3-5＋1 4重疊・確認上週五低＝最低；"
+            "一定再測週五低，破＝假跌破觀察"
+        )
+        if "41760" in text:
+            oral_now = "台指壓41760；" + oral_now
+        one_line = "現在：止跌確認・再測週五低（預估）"
+        now_line = (
+            oral_now
+            + (f"・{day_bit}" if day_bit else "")
+            + "・預估會改・非買訊"
+        )
+        teach_box = (
+            "現在走到（大→小）\n"
+            f"{chain}\n"
+            f"{oral_now}"
+            + (f"・{day_bit}" if day_bit else "")
+            + "\n預估會改・非買訊"
+        )
+    elif "主B-b／備九波" in steps or has_bb_ladder:
         oral_now = "主線五波跌完走B-b（假跌破37837觀察）；備線九波→35579→31705"
         one_line = "現在：主B-b／備九波雙軌（預估）"
         now_line = (
@@ -10092,11 +10546,17 @@ def _tw_pred_right_notes(
             continue
         if tag in {"未到", "未破", "已破"}:
             br = (
-                _tw_pred_break_tag(lv, lows, pack=pack, role=role)
+                _tw_pred_break_tag(
+                    lv, lows, pack=pack, role=role, highs=hi_vals
+                )
                 if tag == "未到"
                 else tag
             )
-            text = _biaoke_pred_label(lv, br)
+            if role == "台指壓力":
+                # 壓力位保留原文角色，不准改寫成「飆預測・已破」（低點誤破）
+                text = f"台指壓力／{_px(lv)}・{br}"
+            else:
+                text = _biaoke_pred_label(lv, br)
         else:
             text = str(row.get("label") or _biaoke_pred_label(lv))
         # 周一破台指／反彈穿刺／轉震盪：狀態跟官方柱
@@ -10295,7 +10755,8 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         _ld = _ymd(live_tx.get("date"))
         if _ld:
             _tx_real_days.add(_ld)
-    tx_a = _align_us_to_twii_dates(tx_rows, bars)
+    # 電子盤缺日不准前收灌假K（例：11/09 被灌成 11/06 夜的 39129 下影）
+    tx_a = _align_us_to_twii_dates(tx_rows, bars, fill_missing=False)
     tx_o = list(tx_a["open"])
     tx_h = list(tx_a["high"])
     tx_l = list(tx_a["low"])
@@ -11468,16 +11929,17 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 }
             )
     tip_anchor = tip.get("anchor_y")
+    _c_seg_highs = list(highs[i_c : i_now + 1]) if highs else []
     if tip_anchor is not None:
         right_notes.append(
             {
                 "x": n_axis - 1,
                 "y": float(tip_anchor),
-                "text": _biaoke_pred_label(
+                "text": _format_tw_pred_note(
                     float(tip_anchor),
-                    _tw_pred_break_tag(
-                        float(tip_anchor), c_seg_lows, pack=pack
-                    ),
+                    pack=pack,
+                    lows=c_seg_lows,
+                    highs=_c_seg_highs or highs,
                 ),
                 "color": "#ea80fc",
             }
@@ -11505,9 +11967,11 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             {
                 "x": n_axis - 1,
                 "y": float(anch),
-                "text": _biaoke_pred_label(
+                "text": _format_tw_pred_note(
                     float(anch),
-                    _tw_pred_break_tag(float(anch), c_seg_lows, pack=pack),
+                    pack=pack,
+                    lows=c_seg_lows,
+                    highs=_c_seg_highs or highs,
                 ),
                 "color": "#82b1ff",
             }
@@ -11515,7 +11979,12 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         tip_skip.add(round(float(anch), 1))
     right_notes.extend(
         _tw_pred_right_notes(
-            pack, n=n_axis, lows=c_seg_lows, tip_skip=tip_skip, bars=bars
+            pack,
+            n=n_axis,
+            lows=c_seg_lows,
+            tip_skip=tip_skip,
+            bars=bars,
+            highs=_c_seg_highs or highs,
         )
     )
     # 右標在末日右側；拉開欄位，不准蓋住 K 上 C7／C8 圓點
@@ -12088,6 +12557,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         va="top",
         label_prefix="加權",
         ax=ax,
+        db_path=db_path,
     )
     # 腳註多行：thesis＋預測點按｜分行；壓在 x 軸日期下方，不准互疊、不准裁半截
     foot_main = str(
@@ -12797,14 +13267,17 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
                 }
             )
     # 圖上若沒浮預估標（有 c4／c5 時 show_label=False）→ 端點錨改上右欄
+    _near_highs = list(highs[i_c : i_now + 1]) if highs else []
     if tip_anchor is not None and bool(c_sub.get("ok")):
         right_notes.append(
             {
                 "x": 0,
                 "y": float(tip_anchor),
-                "text": _biaoke_pred_label(
+                "text": _format_tw_pred_note(
                     float(tip_anchor),
-                    _tw_pred_break_tag(float(tip_anchor), c_seg_lows, pack=pack),
+                    pack=pack,
+                    lows=c_seg_lows,
+                    highs=_near_highs or highs,
                 ),
                 "color": "#ea80fc",
             }
@@ -12820,9 +13293,11 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
             {
                 "x": 0,
                 "y": float(anch),
-                "text": _biaoke_pred_label(
+                "text": _format_tw_pred_note(
                     float(anch),
-                    _tw_pred_break_tag(float(anch), c_seg_lows, pack=pack),
+                    pack=pack,
+                    lows=c_seg_lows,
+                    highs=_near_highs or highs,
                 ),
                 "color": "#82b1ff",
             }
@@ -12830,7 +13305,12 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         tip_skip.add(round(float(anch), 1))
     right_notes.extend(
         _tw_pred_right_notes(
-            pack, n=n, lows=c_seg_lows, tip_skip=tip_skip, bars=bars
+            pack,
+            n=n,
+            lows=c_seg_lows,
+            tip_skip=tip_skip,
+            bars=bars,
+            highs=_near_highs or highs,
         )
     )
     # 落在黃帶內的青標改右欄；雙軌／C9／下週底當令＝跟遠窗日盤：不准再加青撐壓擠掉買點
@@ -13032,6 +13512,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         ha="left",
         va="top",
         ax=ax,
+        db_path=db_path,
     )
     # 單行腳：不准雙行疊字蓋數字
     intent_foot = str(pack.get("intent_note") or pack.get("vol_note") or "")
@@ -13487,9 +13968,11 @@ def _render_twii_super_near_c9_60m(
             {
                 "x": n - 1,
                 "y": float(tip_anchor),
-                "text": _biaoke_pred_label(
+                "text": _format_tw_pred_note(
                     float(tip_anchor),
-                    _tw_pred_break_tag(float(tip_anchor), lows, pack=pack),
+                    pack=pack,
+                    lows=lows,
+                    highs=highs,
                 ),
                 "color": "#ea80fc",
             }
@@ -13502,16 +13985,20 @@ def _render_twii_super_near_c9_60m(
             {
                 "x": n - 1,
                 "y": float(anch),
-                "text": _biaoke_pred_label(
+                "text": _format_tw_pred_note(
                     float(anch),
-                    _tw_pred_break_tag(float(anch), lows, pack=pack),
+                    pack=pack,
+                    lows=lows,
+                    highs=highs,
                 ),
                 "color": "#82b1ff",
             }
         )
         tip_skip.add(round(float(anch), 1))
     right_notes.extend(
-        _tw_pred_right_notes(pack, n=n, lows=lows, tip_skip=tip_skip, bars=rows)
+        _tw_pred_right_notes(
+            pack, n=n, lows=lows, tip_skip=tip_skip, bars=rows, highs=highs
+        )
     )
     y_bot, y_top = float(ymin), float(ymax)
     ax.set_ylim(y_bot, y_top)
@@ -13612,7 +14099,14 @@ def _render_twii_super_near_c9_60m(
             except (TypeError, ValueError):
                 stamp_close = closes[-1]
     _paint_teach_query_stamp(
-        fig, stamp_bars, pack=pack, close=stamp_close, fp=_fp, x=0.995, y=0.855
+        fig,
+        stamp_bars,
+        pack=pack,
+        close=stamp_close,
+        fp=_fp,
+        x=0.995,
+        y=0.855,
+        db_path=db_path,
     )
 
     labs_line = " ".join(
@@ -14185,14 +14679,17 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
             },
         ]
     # 超近圖上不准浮預估標 → 端點錨改上右欄（跟遠窗同一套）
+    _micro_highs = list(highs[i_c : i_now + 1]) if highs else []
     if tip_anchor is not None:
         right_notes.append(
             {
                 "x": 0,
                 "y": float(tip_anchor),
-                "text": _biaoke_pred_label(
+                "text": _format_tw_pred_note(
                     float(tip_anchor),
-                    _tw_pred_break_tag(float(tip_anchor), c_seg_lows, pack=pack),
+                    pack=pack,
+                    lows=c_seg_lows,
+                    highs=_micro_highs or highs,
                 ),
                 "color": "#ea80fc",
             }
@@ -14206,9 +14703,11 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
             {
                 "x": 0,
                 "y": float(anch),
-                "text": _biaoke_pred_label(
+                "text": _format_tw_pred_note(
                     float(anch),
-                    _tw_pred_break_tag(float(anch), c_seg_lows, pack=pack),
+                    pack=pack,
+                    lows=c_seg_lows,
+                    highs=_micro_highs or highs,
                 ),
                 "color": "#82b1ff",
             }
@@ -14233,7 +14732,12 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         )
     right_notes.extend(
         _tw_pred_right_notes(
-            pack, n=n, lows=c_seg_lows, tip_skip=tip_skip, bars=bars
+            pack,
+            n=n,
+            lows=c_seg_lows,
+            tip_skip=tip_skip,
+            bars=bars,
+            highs=_micro_highs or highs,
         )
     )
     have_ys = {round(float(n0["y"]), 1) for n0 in right_notes} | tip_skip
@@ -14372,7 +14876,14 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     # 上K／中說明＋八浪／下量：頁邊留給標題與量軸
     fig.subplots_adjust(left=0.05, right=0.98, top=0.90, bottom=0.06)
     _paint_teach_query_stamp(
-        fig, bars, pack=pack, close=closes[-1], fp=_fp, x=0.995, y=0.855
+        fig,
+        bars,
+        pack=pack,
+        close=closes[-1],
+        fp=_fp,
+        x=0.995,
+        y=0.855,
+        db_path=db_path,
     )
     foot_m = str(ladder.get("now_line") or (pack.get("thesis") or ""))
     if _foot2_micro or "第二隻腳" in foot_m or "37000" in foot_m:
@@ -14419,9 +14930,16 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
 
 
 def _align_us_to_twii_dates(
-    us_rows: Sequence[Dict[str, Any]], bars: Sequence[Dict[str, Any]]
+    us_rows: Sequence[Dict[str, Any]],
+    bars: Sequence[Dict[str, Any]],
+    *,
+    fill_missing: bool = True,
 ) -> Dict[str, List[float]]:
-    """美股日K對齊加權交易日索引；缺日 OHLC 用前值填；量只計有真柱的日（缺日量＝0）。"""
+    """對齊加權交易日索引。
+
+    fill_missing=True（美股預設）：缺日 OHLC 用前值填，量只計有真柱的日。
+    fill_missing=False（台指電子盤）：缺日 OHLC＝nan，不准前收灌成假重複K。
+    """
     by = {_ymd(r.get("date")): r for r in us_rows}
     opens: List[float] = []
     highs: List[float] = []
@@ -14435,10 +14953,14 @@ def _align_us_to_twii_dates(
         if hit and float(hit.get("close") or 0) > 0:
             last = hit
             volumes.append(float(hit.get("volume") or 0))
-        else:
+            opens.append(float(hit.get("open") or hit.get("close") or 0))
+            highs.append(float(hit.get("high") or hit.get("close") or 0))
+            lows.append(float(hit.get("low") or hit.get("close") or 0))
+            closes.append(float(hit.get("close") or 0))
+            continue
+        volumes.append(0.0)
+        if fill_missing and last:
             # 美股休／缺日：價可延前收對齊軸，量不准假灌
-            volumes.append(0.0)
-        if last:
             opens.append(float(last.get("open") or last.get("close") or 0))
             highs.append(float(last.get("high") or last.get("close") or 0))
             lows.append(float(last.get("low") or last.get("close") or 0))

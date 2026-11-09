@@ -236,6 +236,9 @@ def test_gap_line_while_official_volume_still_running():
 
         return _inner
 
+    def _struct_paint(*_a, **_k):
+        return (_png(td, "s.png"), "結構圖（非買訊）")
+
     def _sync_paint(fn, /, *args, **kwargs):
         # 單 worker mpl 佇列在 CI 會跟 ensure 互相拖；同步跑完，測的是等待句不是佇列。
         fut = Future()
@@ -302,7 +305,7 @@ def test_gap_line_while_official_volume_still_running():
             "wayne_navigator.render_decision_card_png", side_effect=_png_fn("c.png")
         ), patch(
             "three_in_one_chart.render_lookup_structure_result",
-            side_effect=lambda *_a, **_k: (_png(td, "s.png"), "結構圖（非買訊）"),
+            side_effect=_struct_paint,
         ), patch(
             "vol_zone_chart.render_lookup_vol_result",
             side_effect=lambda *_a, **_k: (_png(td, "v.png"), "大量撐壓圖（非買訊）"),

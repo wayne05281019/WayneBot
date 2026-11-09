@@ -152,6 +152,8 @@ def test_weekend_sox_live_bar_is_official_close_not_extended(monkeypatch):
     live = uo.fetch_live_sox_display_bar(sunday, force=True)
     assert live is not None
     assert int(live.get("live_session") or 0) == 0
+    # as_of=11/8 週末 → 上一美股開市日 11/06；不准拿到之後的 11/09 柱／盤後殘
+    assert str(live.get("date") or "") == "20261106"
     assert abs(float(live["close"]) - cash_close) < 1e-9
     assert abs(float(live["close"]) - extended_px) > 1.0
 
