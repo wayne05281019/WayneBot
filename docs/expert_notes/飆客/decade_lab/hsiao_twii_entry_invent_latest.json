@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-11-10T04:27:42+0800",
+  "as_of": "2026-11-10T05:42:42+0800",
   "tz": "Asia/Taipei",
   "track": "market_tw",
   "pot": "hsiao_twii_entry_invent",
@@ -10,10 +10,10 @@
   "purpose_zh": "蕭氏大盤 decade：A0–A6 進場矩陣；A6 質量中軌靜默；不上話筒",
   "data": {
     "symbol": "TWII",
-    "n": 5097,
-    "years": 20.8433,
+    "n": 5098,
+    "years": 20.8515,
     "start": "2006-01-02",
-    "end": "2026-11-06",
+    "end": "2026-11-09",
     "decade_start": "20060102",
     "honesty_zh": "decade 窗自 2006-01-02；本機 index_daily 深史可含 Yahoo 補洞，近窗官方量優先；不准謊稱無補洞的二十年官方績效"
   },
@@ -25,7 +25,7 @@
       "entry_days": [],
       "total_return": 0.0,
       "max_drawdown": 0.0,
-      "n_bars": 5097,
+      "n_bars": 5098,
       "has_entries": false
     },
     {
@@ -35,7 +35,7 @@
       "entry_days": [],
       "total_return": 0.0,
       "max_drawdown": 0.0,
-      "n_bars": 5097,
+      "n_bars": 5098,
       "has_entries": false
     },
     {
@@ -45,7 +45,7 @@
       "entry_days": [],
       "total_return": 0.0,
       "max_drawdown": 0.0,
-      "n_bars": 5097,
+      "n_bars": 5098,
       "has_entries": false
     },
     {
@@ -55,7 +55,7 @@
       "entry_days": [],
       "total_return": 0.0,
       "max_drawdown": 0.0,
-      "n_bars": 5097,
+      "n_bars": 5098,
       "has_entries": false
     },
     {
@@ -67,7 +67,7 @@
       ],
       "total_return": 0.00019552489534757633,
       "max_drawdown": -0.0010695194300770483,
-      "n_bars": 5097,
+      "n_bars": 5098,
       "has_entries": true
     },
     {
@@ -84,20 +84,19 @@
       ],
       "total_return": 0.03404549704958315,
       "max_drawdown": -0.0180274894204997,
-      "n_bars": 5097,
+      "n_bars": 5098,
       "has_entries": true
     },
     {
       "entry_preset": "A6_index_quality",
-      "n_trades": 4,
-      "n_entry_days": 2,
+      "n_trades": 2,
+      "n_entry_days": 1,
       "entry_days": [
-        "20061103",
-        "20250610"
+        "20061103"
       ],
-      "total_return": 0.00919877465560437,
+      "total_return": 0.009001489744916658,
       "max_drawdown": -0.004012979778793779,
-      "n_bars": 5097,
+      "n_bars": 5098,
       "has_entries": true
     }
   ],
@@ -115,7 +114,7 @@
     ],
     "total_return": 0.03404549704958315,
     "max_drawdown": -0.0180274894204997,
-    "n_bars": 5097,
+    "n_bars": 5098,
     "has_entries": true
   },
   "a4_vs_a0": {
@@ -161,9 +160,9 @@
       "total_return": 0.0
     },
     "A6_index_quality": {
-      "n_entry_days": 2,
-      "n_trades": 4,
-      "total_return": 0.00919877465560437,
+      "n_entry_days": 1,
+      "n_trades": 2,
+      "total_return": 0.009001489744916658,
       "gate_n20": false,
       "beat_a0": true
     },
@@ -174,9 +173,9 @@
   },
   "cand_vs_a0": {
     "entry_preset": "A6_index_quality",
-    "n_entry_days": 2,
-    "n_trades": 4,
-    "total_return": 0.00919877465560437,
+    "n_entry_days": 1,
+    "n_trades": 2,
+    "total_return": 0.009001489744916658,
     "gate_n20": false,
     "beat_a0": true,
     "years_ok": true,
