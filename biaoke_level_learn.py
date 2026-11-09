@@ -926,7 +926,7 @@ def _finish_last_twii_candle(
         _candle_span_min_body(highs, lows, frac=_LIVE_CANDLE_MIN_BODY_FRAC),
         span * 0.02,
     )
-    prev_c = float(closes[i_now - 1]) if i_now > 0 else None
+    prev_c = _prev_valid_close(closes, int(i_now), opens=opens)
     _paint_one_live_candle(
         ax,
         int(i_now),
@@ -1162,9 +1162,9 @@ def _teach_query_clock(
 _TEACH_STAMP_EDGE = "#ffff00"  # 加權／費半盤中螢光黃（相容舊讀）
 _TEACH_STAMP_EDGE_LIVE = "#ffff00"
 _TEACH_STAMP_EDGE_CLOSED = "#111111"
-# 遠窗台指電子盤：盤中螢光紅；收盤黑邊
-_TEACH_STAMP_EDGE_TX = "#ff1744"
-_TEACH_STAMP_EDGE_TX_LIVE = "#ff1744"
+# 遠窗台指電子盤：盤中也螢光黃（與加權／費半點字盤同規：白底＋螢光黃框）；收盤黑邊
+_TEACH_STAMP_EDGE_TX = "#ffff00"
+_TEACH_STAMP_EDGE_TX_LIVE = "#ffff00"
 # 三欄縮圖K底「末日」刻度：盤中螢光黃綠；收盤／盤前＝一般白字
 _TEACH_LAST_DATE_NEON = "#ccff00"
 # 右欄智慧席：新飆大點位可進；超過軟上限丟低優先，不准一次擠爆
@@ -1645,9 +1645,12 @@ def _paint_stamp_hbox(
     zorder: float = 40,
     edgecolor: Optional[str] = None,
     ax: Any = None,
+    live: Optional[bool] = None,
+    kind: str = "tw",
 ) -> None:
-    """白底圓角框（開盤螢光邊；收盤黑邊；共用框高與線寬）。
+    """白底圓角框（盤中螢光黃邊；收盤黑邊；共用框高與線寬）。
 
+    點字盤硬規：面永遠白底；盤中／開盤＝螢光黃框（加權／費半），不准紅框紅底。
     ax 有給＝用該軸 axes fraction（鎖在主圖框內上緣下方）；否則 figure fraction。
     """
     from matplotlib.offsetbox import AnnotationBbox, HPacker
@@ -1660,6 +1663,15 @@ def _paint_stamp_hbox(
     else:
         xycoords = "figure fraction"
         host = fig
+    if edgecolor is None and live is not None:
+        edge = _teach_stamp_edge(live=bool(live), kind=kind)
+    else:
+        edge = str(edgecolor or _TEACH_STAMP_EDGE_CLOSED)
+    # 加權／費半盤中若誤傳紅邊 → 強制螢光黃（紅框只留給台指電子盤 kind=tx）
+    k = str(kind or "tw").lower()
+    if bool(live) and k not in {"tx", "te", "electronics", "夜盤"}:
+        if str(edge).lower() in {"#ff1744", "#ff5252", "#e53935", "#f44336", "red"}:
+            edge = str(_TEACH_STAMP_EDGE_LIVE or _TEACH_STAMP_EDGE)
     ab = AnnotationBbox(
         HPacker(children=kids, align="center", pad=0, sep=0),
         (float(x), float(y)),
@@ -1669,8 +1681,8 @@ def _paint_stamp_hbox(
         frameon=True,
         bboxprops=dict(
             boxstyle=f"round,pad={_TEACH_STAMP_BOX_PAD}",
-            facecolor=_TEACH_STAMP_FACE,
-            edgecolor=str(edgecolor or _TEACH_STAMP_EDGE_CLOSED),
+            facecolor=_TEACH_STAMP_FACE,  # 永遠白底；盤中也不准紅／紫實心
+            edgecolor=edge,
             linewidth=_TEACH_STAMP_BOX_LW,
         ),
         zorder=float(zorder),
@@ -1781,7 +1793,8 @@ def _paint_teach_query_stamp(
         ha=ha,
         va=va,
         zorder=40,
-        edgecolor=_teach_stamp_edge(live=live, kind="tw"),
+        live=live,
+        kind="tw",
         ax=ax,
     )
 
@@ -1920,7 +1933,8 @@ def _paint_index_last_chg_tip(
         ha=ha,
         va=va,
         zorder=41,
-        edgecolor=_teach_stamp_edge(live=live, kind="sox"),
+        live=live,
+        kind="sox",
         ax=ax,
     )
 
@@ -2177,8 +2191,9 @@ def _paint_tx_after_hours_tip(
     pack: Optional[Dict[str, Any]] = None,
     ax: Any = None,
 ) -> None:
-    """遠窗紅框白底：台指電子盤 幾月幾號收盤|盤中 查詢當下為HH:MM →價→（漲幅％）→較前日點數。
+    """遠窗白底點字盤：台指電子盤 幾月幾號收盤|盤中 查詢當下為HH:MM →價→（漲幅％）→較前日點數。
 
+    盤中＝白底螢光黃框（與加權／費半同規）；收盤＝白底黑框。
     夜盤進行中才標盤中；MIS 末筆 CTime 不准當「查詢當下」。貼電子盤欄右下。
     """
     if fig is None or fp is None:
@@ -2245,7 +2260,8 @@ def _paint_tx_after_hours_tip(
         ha=ha,
         va=va,
         zorder=42,
-        edgecolor=_teach_stamp_edge(live=live, kind="tx"),
+        live=live,
+        kind="tx",
         ax=ax,
     )
 
@@ -5005,8 +5021,9 @@ def _paint_c9_ext_k_path(
             solid_capstyle="round",
             zorder=6.4,
         )
-    # 浪號：只釘 C1／C3／C5／C6（偶數反彈只留 C6），避免 C2／C4 跟鄰標互壓
-    pin_labs = {"C1", "C3", "C5", "C6"}
+    # 浪號：釘 C1／C3／C5／C6／C7（C7＝七走完低點必顯）；C2／C4 省略避互壓；
+    # C8 只留細圈（右欄已有「C-7轉C-8今」），不准跟 C7 字標疊成雙標。
+    pin_labs = {"C1", "C3", "C5", "C6", "C7"}
     for j, (ii, yy, lab) in enumerate(rows):
         if lab == "B":
             continue
@@ -5028,10 +5045,10 @@ def _paint_c9_ext_k_path(
                 edgecolors="#0b0f14",
                 linewidths=0.35,
             )
-        # C7／C8 只留細圈（右欄已有「C-7轉C-8今」）；其餘僅 pin_labs
-        if lab in {"C7", "C8"} or lab not in pin_labs:
+        # C8 只留細圈；C1…C7 字標釘在對應高低尖（貼浪點，不准飄遠）
+        if lab == "C8" or lab not in pin_labs:
             continue
-        odd = lab in {"C1", "C3", "C5"}
+        odd = lab in {"C1", "C3", "C5", "C7"}
         tip_side = "low" if odd else "high"
         try:
             _ylo, _yhi = ax.get_ylim()
@@ -5048,10 +5065,14 @@ def _paint_c9_ext_k_path(
             side="left" if odd else "right",
             tip=tip_side,
             n=n,
-            pad_x=0.95,  # 離浪線／K 遠一點，C1～C6 不准互壓
-            fontsize=max(7.5, float(fontsize) - 0.5),
-            pri=8,
-            clear_dy=max(_cspan * 0.07, 220.0),
+            # 貼尖點：水平微讓、垂直只留 bbox 呼吸（絕對點數上限，遠窗大價窗不准再漂幾百點）
+            pad_x=0.38 if lab == "C7" else 0.48,
+            fontsize=max(7.5, float(fontsize) - (0.0 if lab == "C7" else 0.5)),
+            pri=10 if lab == "C7" else 8,
+            clear_dy=min(
+                max(_cspan * (0.012 if lab == "C7" else 0.018), 55.0),
+                160.0 if lab == "C7" else 220.0,
+            ),
         )
     # C9 只標在預估虛線端，不准拿已走柱冒充
     if tip is not None:
@@ -6819,7 +6840,16 @@ def _paint_one_live_candle(
     """單根日K；給遠窗末根蓋回紫點／右標用（z 高於 tip scatter）。"""
     import matplotlib.pyplot as plt
 
-    up = candle_up(close, prev_c, open_)
+    # 末根蓋回也只認昨收；prev_c 缺／0／NaN 時不准默默改比開收翻色
+    pc = prev_c
+    try:
+        if pc is not None:
+            pc_f = float(pc)
+            if not (pc_f == pc_f and pc_f > 0):
+                pc = None
+    except (TypeError, ValueError):
+        pc = None
+    up = candle_up(close, pc, open_)
     color = _LIVE_UP if up else _LIVE_DOWN
     ec = edgecolor or color
     wick = ax.vlines(
@@ -6907,11 +6937,36 @@ def _style_live_ax(ax, axv) -> None:
         a.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color=_LIVE_GRID)
 
 
+def _prev_valid_close(
+    closes: Sequence[float], i: int, *, opens: Optional[Sequence[float]] = None
+) -> Optional[float]:
+    """前一根有效收（>0、有限）；給三窗 K／量同色，不准缺昨收就退回開收變色。
+
+    遠窗費半／電子盤對齊軸可有空格；加權日K一般連續，仍統一走這條。
+    opens 參數保留相容（呼叫端可傳），不拿開盤冒充昨收。
+    """
+    import math
+
+    _ = opens  # 相容保留；昨收只認 close
+    for j in range(int(i) - 1, -1, -1):
+        try:
+            c = float(closes[j])
+        except (TypeError, ValueError, IndexError):
+            continue
+        if c == c and math.isfinite(c) and c > 0:
+            return c
+    return None
+
+
 def _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_up) -> None:
+    """三窗共用日K＋量：漲跌色只認昨收（candle_up_taiwan）；K／量同根同色。
+
+    不准一根用昨收、量柱改比開收；也不准缺昨收就整窗翻色。
+    """
     n = len(closes)
     min_body = _candle_span_min_body(highs, lows, frac=_LIVE_CANDLE_MIN_BODY_FRAC)
     for i in range(n):
-        prev_c = closes[i - 1] if i else None
+        prev_c = _prev_valid_close(closes, i, opens=opens)
         up = candle_up(closes[i], prev_c, opens[i])
         color = _LIVE_UP if up else _LIVE_DOWN
         # wick/body z 高於底帶、低於空心 tip；末根另蓋回
@@ -6987,8 +7042,9 @@ def _paint_vol_bars_max_yellow(
     vals = [float(v or 0) for v in vols]
     i_max = max(range(n), key=lambda i: vals[i]) if any(v > 0 for v in vals) else None
     for i in range(n):
-        prev_c = closes[i - 1] if i else None
-        up = candle_up(closes[i], prev_c, opens[i] if i < len(opens) else closes[i])
+        prev_c = _prev_valid_close(closes, i, opens=opens)
+        o_i = opens[i] if i < len(opens) else closes[i]
+        up = candle_up(closes[i], prev_c, o_i)
         color = "#ffeb3b" if i_max is not None and i == i_max else (_LIVE_UP if up else _LIVE_DOWN)
         axv.bar(i, vals[i], color=color, width=0.68, zorder=3, alpha=0.95 if color == "#ffeb3b" else 0.88)
     if i_max is not None and vals[i_max] > 0:
@@ -7061,10 +7117,17 @@ def _paint_vol_sr_mark_on_axis(
     date_primary: str = "",
     date_next: str = "",
     fp: Any = None,
+    candle_up: Any = None,
 ) -> None:
-    """單欄：當前大量日金K＋黃豎線；下一層日亮桃K＋桃豎線。"""
+    """單欄：當前大量日金K＋黃豎線；下一層＝桃豎線＋桃描邊（K 本體仍紅漲綠跌）。
+
+    不准把下一層日整根洗成亮桃色：遠窗曾把 11/6 下一層洗桃，近／超近同日仍綠，
+    話筒三窗同一加權日看起來像翻色。最大量日仍金K（三窗一致）。
+    """
     if ax is None:
         return
+    import matplotlib.pyplot as plt
+
     n = min(len(opens), len(highs), len(lows), len(closes))
 
     def _ok(i: Optional[int]) -> bool:
@@ -7072,17 +7135,36 @@ def _paint_vol_sr_mark_on_axis(
 
     if _ok(i_next):
         ii = int(i_next)
-        _paint_special_candle(
-            ax,
+        # 桃描邊鎖在已畫好的漲跌色 K 上；本體色跟近／超近同一套昨收規則
+        try:
+            from decision_card_signals import candle_up_taiwan as _cup
+        except Exception:
+            _cup = candle_up
+        cup = candle_up or _cup
+        prev_c = _prev_valid_close(closes, ii, opens=opens)
+        up = bool(cup(float(closes[ii]), prev_c, float(opens[ii]))) if cup else True
+        body = _LIVE_UP if up else _LIVE_DOWN
+        ax.vlines(
             ii,
-            open_=float(opens[ii]),
-            high=float(highs[ii]),
-            low=float(lows[ii]),
-            close=float(closes[ii]),
-            color=_VOL_SR_CANDLE_NEXT,
-            date_lab=date_next,
-            fp=fp,
+            float(lows[ii]),
+            float(highs[ii]),
+            color=body,
+            linewidth=1.55,
+            zorder=6,
         )
+        y0, y1 = sorted((float(opens[ii]), float(closes[ii])))
+        ax.add_patch(
+            plt.Rectangle(
+                (ii - 0.36, y0),
+                0.72,
+                max(y1 - y0, 8),
+                facecolor=body,
+                edgecolor=_VOL_SR_CANDLE_NEXT,
+                linewidth=1.35,
+                zorder=7,
+            )
+        )
+        _ = (date_next, fp)
     if _ok(i_primary):
         ii = int(i_primary)
         _paint_special_candle(
@@ -7269,23 +7351,25 @@ def _paint_tx_now_price_rail(
         except (TypeError, ValueError):
             pass
     # 矛點釘末根 tip；標籤與虛線同一水平（真價）
+    # 點字盤：盤中＝白底＋螢光黃框；收盤＝白底＋黑框（與三窗查詢戳同規）
     _spear_ring(ax, float(tip), y, color="#ea80fc", zorder=9.5, hot=True)
+    stamp_live = bool(live)
     ax.text(
         x_lab,
         y,
         "｜".join(bits),
         fontproperties=fp(8, "bold"),
-        color="#f3e5f5",
+        color=_TEACH_STAMP_META,
         ha="left",
         va="center",
         zorder=12,
         clip_on=False,
         bbox=dict(
             boxstyle="round,pad=0.14",
-            fc="#0b0f14",
-            ec="#ea80fc",
-            lw=0.7,
-            alpha=0.92,
+            fc=_TEACH_STAMP_FACE,
+            ec=_teach_stamp_edge(live=stamp_live, kind="tw"),
+            lw=max(1.15, float(_TEACH_STAMP_BOX_LW) * 0.55),
+            alpha=0.98,
         ),
     )
 
@@ -7772,50 +7856,61 @@ def _pin_pivot_name(
         ax._wayne_stamp_zone_reserved = True
     xx, yy, ha = _clear_teach_stamp_pin_xy(ax, xx, yy, ha=ha)
     avoid = list(getattr(ax, "_wayne_avoid_zones", None) or [])
-    prior = [
-        {
-            "x": float(sx),
-            "y": float(sy),
-            "text": f"__seat{i}",
-            "pri": 100,
-            "min_dx": 1.35,
-        }
-        for i, (sx, sy) in enumerate(seats)
-    ]
     lab_s = str(lab)
-    # 落在戳區時改向下微挪（向上會更深進戳）
-    try:
-        _ax_yf = (float(yy) - float(y_lo)) / max(span, 1e-9)
-        _nudge = (
-            "down"
-            if _ax_yf > float(_TEACH_STAMP_AX_Y_MIN)
-            else ("up" if tip_k == "high" else "down")
-        )
-    except Exception:
-        _nudge = "up" if tip_k == "high" else "down"
-    seated = _seat_onchart_labels(
-        prior
-        + [
+    # C1…C7 短浪號：鎖在對應高低尖，不准被智慧座位整排垂直拉開變「字柱」
+    _sticky_c = bool(re.fullmatch(r"C[1-9]", lab_s))
+    if _sticky_c:
+        # 只避同點重疊：微水平錯開，Y 仍貼 tip（已含 clear_dy）
+        for sx, sy in seats:
+            if abs(float(xx) - float(sx)) < 0.85 and abs(float(yy) - float(sy)) < max(
+                span * 0.012, 60.0
+            ):
+                xx = float(xx) + (0.55 if ha == "left" else -0.55)
+                break
+    else:
+        prior = [
             {
-                "x": float(xx),
-                "y": float(yy),
-                "text": lab_s,
-                "pri": int(pri),
-                "nudge": _nudge,
-                "min_dx": 1.85 if len(lab_s) <= 3 else 1.55,
+                "x": float(sx),
+                "y": float(sy),
+                "text": f"__seat{i}",
+                "pri": 100,
+                "min_dx": 1.35,
             }
-        ],
-        ymin=float(y_lo),
-        ymax=float(y_hi),
-        min_gap=span * 0.068,
-        avoid_zones=avoid,
-    )
-    mine = [r for r in seated if str(r.get("text")) == lab_s]
-    if not mine:
-        return
-    xx = float(mine[0]["x"])
-    yy = float(mine[0]["y"])
-    xx, yy, ha = _clear_teach_stamp_pin_xy(ax, xx, yy, ha=ha)
+            for i, (sx, sy) in enumerate(seats)
+        ]
+        # 落在戳區時改向下微挪（向上會更深進戳）
+        try:
+            _ax_yf = (float(yy) - float(y_lo)) / max(span, 1e-9)
+            _nudge = (
+                "down"
+                if _ax_yf > float(_TEACH_STAMP_AX_Y_MIN)
+                else ("up" if tip_k == "high" else "down")
+            )
+        except Exception:
+            _nudge = "up" if tip_k == "high" else "down"
+        seated = _seat_onchart_labels(
+            prior
+            + [
+                {
+                    "x": float(xx),
+                    "y": float(yy),
+                    "text": lab_s,
+                    "pri": int(pri),
+                    "nudge": _nudge,
+                    "min_dx": 1.85 if len(lab_s) <= 3 else 1.55,
+                }
+            ],
+            ymin=float(y_lo),
+            ymax=float(y_hi),
+            min_gap=span * 0.068,
+            avoid_zones=avoid,
+        )
+        mine = [r for r in seated if str(r.get("text")) == lab_s]
+        if not mine:
+            return
+        xx = float(mine[0]["x"])
+        yy = float(mine[0]["y"])
+        xx, yy, ha = _clear_teach_stamp_pin_xy(ax, xx, yy, ha=ha)
     seats.append((xx, yy))
     # 浪號／關鍵標：邊框跟浪色走，底略染同色，遠看也能分 C1…C9
     fc = "#0b0f14"
@@ -11247,7 +11342,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         "h": float(highs[i_now]),
         "l": float(lows[i_now]),
         "c": float(closes[i_now]),
-        "prev_c": float(closes[i_now - 1]) if i_now > 0 else None,
+        "prev_c": _prev_valid_close(closes, int(i_now), opens=opens),
         "min_body": float(_tw_min_body),
     }
     # 先定 ylim 再釘浪名：lift／字級才對最終軸距，整盒不准蓋K
@@ -13111,7 +13206,9 @@ def _paint_c9_daily_thumb(
     n = len(daily)
     for i in range(n):
         o, h, l, c = opens[i], highs[i], lows[i], closes[i]
-        up = bool(candle_up(o, c))
+        # 與主圖同規：candle_up_taiwan(close, prev_close, open_)；不准 (o,c) 參數顛倒翻色
+        prev_c = _prev_valid_close(closes, i, opens=opens)
+        up = bool(candle_up(c, prev_c, o))
         col = _LIVE_UP if up else _LIVE_DOWN
         ax.plot([i, i], [l, h], color=col, lw=0.95, solid_capstyle="round", zorder=2)
         body_lo, body_hi = (o, c) if c >= o else (c, o)

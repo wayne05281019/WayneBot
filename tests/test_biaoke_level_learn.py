@@ -3069,11 +3069,12 @@ def test_near_micro_follow_far_c9_twii_presentation():
     assert "width) * 0.55" in near  # 九波靠右，區帶兩標靠左齊頭
     assert "35500.0" in near
     assert "_near_major_date_labs" in near
-    # C7／C8 字標多餘（右欄已有 C-7轉C-8今）；圓點仍留
+    # C7 字標必釘浪點；C8 只留細圈（右欄已有 C-7轉C-8今）
     path_src = inspect.getsource(
         __import__("biaoke_level_learn", fromlist=["_paint_c9_ext_k_path"])._paint_c9_ext_k_path
     )
-    assert 'lab in {"C7", "C8"}' in path_src or "lab in {'C7', 'C8'}" in path_src
+    assert 'pin_labs = {"C1", "C3", "C5", "C6", "C7"}' in path_src or "C7" in path_src
+    assert 'lab == "C8"' in path_src or "lab == 'C8'" in path_src
     # 超近改回日K；60 分函式仍留著但不當主路
     assert "_render_twii_super_near_c9_60m" not in micro
     assert "_c9_now_step_label()" in micro
@@ -3211,15 +3212,18 @@ def test_far_tx_now_rail_deferred_until_tip_fixed():
     assert "x_label" in rail
     assert "clip_on=False" in rail
     assert "va=\"center\"" in rail or "va='center'" in rail
-    # 紫標＝夜盤收／盤中真價；最佳買點37837 只掛日盤，不准上電盤
+    # 點字盤＝夜盤收／盤中真價；盤中白底螢光黃框（不准紫／紅實心）
     assert "收盤" in rail and "盤中" in rail
+    assert "_TEACH_STAMP_FACE" in rail
+    assert "_teach_stamp_edge" in rail
+    assert 'fc="#0b0f14"' not in rail or "_TEACH_STAMP_FACE" in rail
     assert "最佳買點／" in far  # 日盤右欄文案
     assert 'f"最佳買點／{_px(37837)}"' not in far  # 電盤不准再 append
     assert "37164" not in far  # 4/23 對照不進電盤右欄
     # 6/9 primary 右標＋虛線拿掉（不准再 append 電盤大量* 文案）
     assert "電盤大量壓" not in far and "電盤大量撐" not in far
     assert far.count("電盤下一層") >= 2  # next-layer 仍可留
-    assert "_paint_tx_now_price_rail" in far  # 紫標現價軌仍在電盤
+    assert "_paint_tx_now_price_rail" in far  # 現價軌仍在電盤
     # 近／超近雙軌當令跟遠窗日盤：不准再塞青撐壓
     from biaoke_level_learn import _render_twii_live_dark, _render_twii_super_near_dark
     near = inspect.getsource(_render_twii_live_dark)
@@ -3286,3 +3290,88 @@ def test_week_bot_zone_and_dual_pred_from_thesis():
     # 空 pack 也能補
     slim = _ensure_teach_pack_preds("data/wayne_market.db", {"thesis": "B-b"})
     assert ((slim.get("pred_levels") or {}).get("tw") or [])
+
+
+def test_prev_valid_close_and_friday_color_vs_prev():
+    """倒數第二根（周五）漲跌色只認昨收；K／量同色；缺昨收不准改比開收翻紅。"""
+    from decision_card_signals import candle_up_taiwan
+    from biaoke_level_learn import _LIVE_DOWN, _LIVE_UP, _prev_valid_close
+
+    closes = [41574.72, 39701.64, 41661.7]
+    opens = [42666.13, 38915.76, 40347.28]
+    # 周五＝index 1：相對周四收下跌 → 綠
+    prev = _prev_valid_close(closes, 1, opens=opens)
+    assert prev == 41574.72
+    assert candle_up_taiwan(closes[1], prev, opens[1]) is False
+    assert (_LIVE_UP if candle_up_taiwan(closes[1], prev, opens[1]) else _LIVE_DOWN) == _LIVE_DOWN
+    # 周一相對周五上漲 → 紅
+    prev_m = _prev_valid_close(closes, 2, opens=opens)
+    assert candle_up_taiwan(closes[2], prev_m, opens[2]) is True
+    # 中間插 NaN／0 空格仍跳到上一有效收
+    closes_gap = [41574.72, float("nan"), 0.0, 39701.64]
+    assert _prev_valid_close(closes_gap, 3, opens=[1, 1, 1, 1]) == 41574.72
+
+
+def test_c9_path_pins_c7_near_swing():
+    """C7 字標必進 pin_labs；貼尖點（小 pad／clear_dy）；C8 仍只留圈。"""
+    import inspect
+
+    from biaoke_level_learn import _paint_c9_ext_k_path
+
+    src = inspect.getsource(_paint_c9_ext_k_path)
+    assert "C7" in src
+    assert 'pin_labs = {"C1", "C3", "C5", "C6", "C7"}' in src
+    assert 'lab == "C8"' in src
+    assert "pad_x=0.38 if lab == \"C7\"" in src or "pad_x=0.38" in src
+    assert "160.0 if lab == \"C7\"" in src  # C7 垂直上限，遠窗不准漂幾百點
+
+
+def test_paint_tx_now_rail_mid_session_white_neon():
+    """電盤現價點字盤：盤中白底＋螢光黃框；收盤白底黑框。"""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    from biaoke_level_learn import (
+        _TEACH_STAMP_EDGE_CLOSED,
+        _TEACH_STAMP_EDGE_LIVE,
+        _TEACH_STAMP_FACE,
+        _paint_tx_now_price_rail,
+    )
+    from wayne_navigator import _fp
+
+    fig, ax = plt.subplots()
+    ax.set_xlim(0, 10)
+    ax.set_ylim(40000, 42000)
+    _paint_tx_now_price_rail(
+        ax, px=41076.0, tip_i=8, fp=_fp, live=True, asof_ymd="20261109"
+    )
+    assert ax.texts, "rail should paint stamp text"
+    bb = ax.texts[0].get_bbox_patch()
+    assert bb is not None
+    assert str(bb.get_facecolor()[:3])  # exists
+    # facecolor white-ish
+    fc = bb.get_facecolor()
+    assert fc[0] > 0.9 and fc[1] > 0.9 and fc[2] > 0.9
+    ec = bb.get_edgecolor()
+    # fluorescent yellow edge
+    assert abs(ec[0] - 1.0) < 0.05 and abs(ec[1] - 1.0) < 0.05 and ec[2] < 0.15
+    plt.close(fig)
+
+    fig2, ax2 = plt.subplots()
+    ax2.set_xlim(0, 10)
+    ax2.set_ylim(40000, 42000)
+    _paint_tx_now_price_rail(
+        ax2, px=41662.0, tip_i=8, fp=_fp, live=False, asof_ymd="20261109"
+    )
+    bb2 = ax2.texts[0].get_bbox_patch()
+    fc2 = bb2.get_facecolor()
+    assert fc2[0] > 0.9 and fc2[1] > 0.9 and fc2[2] > 0.9
+    ec2 = bb2.get_edgecolor()
+    # closed = dark/black edge
+    assert ec2[0] < 0.2 and ec2[1] < 0.2 and ec2[2] < 0.2
+    plt.close(fig2)
+    assert _TEACH_STAMP_FACE.lower() in ("#ffffff", "#fff", "white")
+    assert _TEACH_STAMP_EDGE_LIVE.lower() in ("#ffff00", "#ff0", "yellow")
+    assert _TEACH_STAMP_EDGE_CLOSED.startswith("#")
