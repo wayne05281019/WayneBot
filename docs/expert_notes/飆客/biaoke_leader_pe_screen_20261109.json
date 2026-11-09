@@ -6,6 +6,7 @@
   "buy_signal": false,
   "leave_zero_unchanged": true,
   "golden_buy_unchanged": true,
+  "no_invent_wave_5_9": true,
   "source_post": {
     "id": "188138405",
     "date": "2026-11-09",
@@ -18,16 +19,15 @@
     "date": "2026-11-09",
     "time": "18:53",
     "text": "我是看修正型態是完整的abc型態完成，且回到臨界價區， 1 4 不重疊附近，在加上 本益比在龍頭股明顯低估。",
-    "reply_to_snip": "感謝分享 ！飆大之前挑到的股票跟波浪大師一樣…",
+    "reply_to_snip": "感謝分享 ！飆大之前挑到的股票跟波浪大師一樣，果然都是高手看法相同",
     "legs": ["abc_done", "critical_zone", "near_14_no_overlap", "pe_undervalued_leader"],
-    "marking_rule": "verified=他有對該檔寫過該腿；unknown=沒點名該檔或官方柱無法不發明浪級去證；fail=他後續改口／明文排除，或官方柱明顯不在他寫過的價區。不准發明 5／9 段號。",
-    "no_invent_wave_59": true
+    "mark_rule": "verified=他有對該檔寫過該腿；unknown=沒點名該檔／官方柱無法在不發明浪級下確認；fail=他自己後續否決或官方柱明顯偏離他寫的價區。不准發明 5／9。"
   },
   "attribution_only_his_words": true,
   "friday_bar_date": "20261106",
   "today_bar_date": "20261109",
   "friday_rule": "last TW open Friday on/before post day (Asia/Taipei)",
-  "verdict": "6442 對 stack 最齊（他寫過臨界＋14不重疊＋本益最低估；abc 在光聖討論串有寫）；2383 僅本益低估＋龍頭確認，臨界／14／abc 未用同一套字點名且他仍說買點沒到；其餘候選波腿全 unknown。非買訊。",
+  "verdict": "6442 四腿最齊（他寫過 abc／臨界／14不重疊／本益最低估；今天低 1035 落在他曾寫 1000~1100）。2383 只穩 pe_undervalued_leader；臨界／14 他寫的是次級四浪＋3900~4000 且自回買點沒到，官方低點低於該盒→critical_zone fail、abc／14 unknown。其餘候選波段三腿全 unknown；2330 pe 腿 fail（他說不是台積電）。非買訊。",
   "stack_table": [
     {
       "stock_id": "6442",
@@ -39,9 +39,10 @@
       "today_low": 1035.0,
       "friday_low": 963.0,
       "notes": [
-        "11-05 光聖串：走完整組 abc修正（c已跌到5＝他原文，非我們發明段號）",
-        "11-04：光聖回測波浪一，1 4不重疊臨界價區買點；1000~1100；官方今低1035落在區內",
-        "11-05：本益比最被低估就是光聖"
+        "11-05 光聖串：走完整組 abc修正（c已跌到5—只記他所寫，不另發明浪級）",
+        "11-04：光聖回測波浪一，1 4不重疊臨界價區買點；可於1000~1100介入",
+        "11-05：本益比最被低估就是光聖",
+        "官方 20261109 low 1035 落在 1000~1100；週五 low 963 略低於該盒仍近"
       ]
     },
     {
@@ -54,9 +55,10 @@
       "today_low": 3785.0,
       "friday_low": 3690.0,
       "notes": [
-        "未寫台光電 abc 完成",
-        "11-04 寫回測次級四浪／長期支撐，非『1 4不重疊』；11-05 買點更正3900~4000後又說買點還沒到；官方今低3785／週五低3690皆低於該區 → critical_zone=fail",
-        "11-05：台光電也很低（本益），但買點沒到"
+        "未對台光電寫 abc 完成",
+        "11-04 寫回測次級四浪買點／與光聖打到長期支撐—不是『1 4不重疊』原句→near_14 unknown",
+        "11-05 買點更正 3900~4000；之後自回買點還沒到；官方 today/fri 低 3785／3690 低於該盒→critical_zone fail（相對他寫的介入價區）",
+        "11-05：台光電本益也很低（pe_undervalued_leader verified）但買點沒到"
       ]
     },
     {
@@ -68,7 +70,7 @@
       "pe_undervalued_leader": "fail",
       "today_low": 2190.0,
       "friday_low": 2020.0,
-      "notes": ["11-05：不是台積電／台積電沒超額利潤"]
+      "notes": ["11-05 自回：不是台積電／台積電沒超額利潤"]
     },
     {
       "stock_id": "3017",
@@ -79,7 +81,7 @@
       "pe_undervalued_leader": "unknown",
       "today_low": 2310.0,
       "friday_low": 2310.0,
-      "notes": ["本波 stack／本益低估句未點名"]
+      "notes": ["本波四腿未點名；僅龍頭標＋官方本益對照"]
     },
     {
       "stock_id": "2308",
@@ -90,7 +92,7 @@
       "pe_undervalued_leader": "unknown",
       "today_low": 1105.0,
       "friday_low": 1020.0,
-      "notes": ["本波 stack／本益低估句未點名"]
+      "notes": ["本波四腿未點名"]
     },
     {
       "stock_id": "2408",
@@ -101,7 +103,7 @@
       "pe_undervalued_leader": "unknown",
       "today_low": 354.5,
       "friday_low": 324.0,
-      "notes": ["本波未點名"]
+      "notes": ["本波四腿未點名"]
     },
     {
       "stock_id": "2382",
@@ -112,14 +114,14 @@
       "pe_undervalued_leader": "unknown",
       "today_low": 290.0,
       "friday_low": 272.0,
-      "notes": ["本波未點名"]
+      "notes": ["本波四腿未點名"]
     }
   ],
   "named_fit": [
     {
       "stock_id": "6442",
       "name": "光聖",
-      "fit": "yes_by_his_words_stack_most_complete",
+      "fit": "yes_stack_mostly_verified",
       "his_words": [
         {
           "id": "187684179:c187684179-243-10",
@@ -137,8 +139,13 @@
           "id": "187684179:c187684179-267-1",
           "date": "2026-11-05",
           "time": "12:48",
-          "text": "不是完全用波浪理論看的 走完整組 abc修正，c已經跌到5，並且和長線波浪 1 4重疊附近",
-          "context": "reply_to 點名光聖打釘子／前波低點1000"
+          "text": "不是完全用波浪理論看的 走完整組 abc修正，c已經跌到5，並且和長線波浪 1 4重疊附近"
+        },
+        {
+          "id": "187638311:c187638311-191",
+          "date": "2026-11-04",
+          "time": "14:54",
+          "text": "光聖如果配合大盤三日低點不破，可於1000~1100之間介入"
         }
       ],
       "waynebot_leader_tag": {
@@ -168,7 +175,7 @@
     {
       "stock_id": "2383",
       "name": "台光電",
-      "fit": "partial_pe_leader_buy_point_not_yet",
+      "fit": "pe_only_verified_buy_zone_not_yet",
       "his_words": [
         {
           "id": "187684179:c187684179-243-10",
@@ -183,16 +190,16 @@
           "text": "台光電買點還沒到要說幾次"
         },
         {
-          "id": "187684179:c187684179-223",
-          "date": "2026-11-05",
-          "time": "09:41",
-          "text": "台光電買點更正3900~4000，現在還不能介入"
-        },
-        {
           "id": "187684179:c187684179-116-1",
           "date": "2026-11-04",
           "time": "21:19",
           "text": "台光電是回測次級四浪買點"
+        },
+        {
+          "id": "187684179:c187684179-223",
+          "date": "2026-11-05",
+          "time": "09:41",
+          "text": "台光電買點更正3900~4000，現在還不能介入"
         }
       ],
       "waynebot_leader_tag": {

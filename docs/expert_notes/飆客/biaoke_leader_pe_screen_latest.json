@@ -8,6 +8,6 @@
   "source_post_id": "188138405",
   "stack_supplement_id": "188138405:c188138405-85-1",
   "priority_named": ["6442", "2383"],
-  "verdict": "6442 stack 最齊；2383 僅 pe_undervalued_leader=verified，critical_zone=fail（買點沒到／低於3900~4000）；非買訊",
+  "verdict_one_liner": "6442 stack mostly verified；2383 pe only／critical fail vs 3900~4000；非買訊",
   "disclaimer": "非買訊；切入仍看高低卡黃金買點"
 }
