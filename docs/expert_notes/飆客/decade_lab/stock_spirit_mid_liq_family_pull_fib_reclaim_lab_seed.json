@@ -1,0 +1,17 @@
+{
+  "version": "stock_spirit_mid_liq_family_pull_fib_reclaim_lab_v1",
+  "tz": "Asia/Taipei",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "promote_lookup": false,
+  "gate_passed": false,
+  "keep": "v106",
+  "entry": "SPIRIT_pull_fib",
+  "parents": [
+    "stock_spirit_soft_leader_pull_fib_reclaim_lab_decision.json",
+    "stock_spirit_soft_leader_strict_reclaim_lab_decision.json"
+  ],
+  "hypothesis_zh": "soft_leader×reclaim OOS≈0.825距early 0.827；hard×reclaim wr≈0.89但n=17；mid_liq_family＝硬龍頭＋族內高流動跟漲，目標 n≥20 且贏 sealed keep",
+  "sell": "hi20_or_desync",
+  "next": "實作後跑 OOS；n≥20 且贏 keep 才談替換"
+}

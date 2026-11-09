@@ -1,0 +1,339 @@
+{
+  "version": "stock_spirit_soft_leader_fib618_loose_lab_v1",
+  "as_of": "2026-11-10T03:51:01+08:00",
+  "tz": "Asia/Taipei",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "promote_lookup": false,
+  "status": "plain_delta_only_keep_v106",
+  "gate_passed": false,
+  "keep": "v106",
+  "keep_detail": "compare vs sealed early ei_n2_lu5／fast lu5_vol_next；sell hi20_or_desync",
+  "entry": "SPIRIT_fib618_loose",
+  "entry_note_zh": "present-data 替代核；≠sealed keep；≠leave_zero／黃金買訊",
+  "sell": "hi20_or_desync",
+  "variant_tested_zh": "fib618_loose × soft_leader×reclaim／pe",
+  "n_stocks": 204,
+  "entry_hits": 10110,
+  "soft_leader_n": 31,
+  "hard_leader_n": 11,
+  "smoke": false,
+  "best_candidate": {
+    "leg": "spirit_soft_leader_fib618_loose_confirm",
+    "entry": "SPIRIT_fib618_loose",
+    "variant": "reclaim_ma20",
+    "kind": "vs_plain",
+    "oos_wr": 0.75,
+    "oos_d": 141,
+    "plain_oos_wr": 0.7092288242730721,
+    "plain_oos_d": 228,
+    "delta_oos_wr": 0.0407711757269279,
+    "beats_v106_early_keep_oos": false,
+    "beats_v106_fast_keep_oos": false
+  },
+  "shared_vs_keep": [],
+  "beats_v106_early_keep": [],
+  "beats_v106_fast_keep": [],
+  "tracks": {
+    "spirit_soft_leader_fib618_loose": {
+      "entry": "SPIRIT_fib618_loose",
+      "sell": "hi20_or_desync",
+      "plain": {
+        "full": {
+          "n_trades": 1842,
+          "n_unique_entry_days": 449,
+          "win_rate": 0.6997828447339848,
+          "expectancy": 0.03163569081965327,
+          "avg_hold": 17.46796959826276,
+          "exit_reason_counts": {
+            "first_hi20": 1710,
+            "max_hold_60": 132
+          },
+          "gate_n20": true
+        },
+        "is": {
+          "n_trades": 1051,
+          "n_unique_entry_days": 221,
+          "win_rate": 0.69267364414843,
+          "expectancy": 0.035811259640292935,
+          "avg_hold": 18.61845861084681,
+          "exit_reason_counts": {
+            "first_hi20": 1002,
+            "max_hold_60": 49
+          },
+          "gate_n20": true
+        },
+        "oos": {
+          "n_trades": 791,
+          "n_unique_entry_days": 228,
+          "win_rate": 0.7092288242730721,
+          "expectancy": 0.026087621501711056,
+          "avg_hold": 15.939317319848293,
+          "exit_reason_counts": {
+            "first_hi20": 708,
+            "max_hold_60": 83
+          },
+          "gate_n20": true
+        }
+      },
+      "variants": {
+        "soft_leader_and_reclaim": {
+          "full": {
+            "n_trades": 59,
+            "n_unique_entry_days": 45,
+            "win_rate": 0.864406779661017,
+            "expectancy": 0.08284604970242974,
+            "avg_hold": 10.508474576271187,
+            "exit_reason_counts": {
+              "first_hi20": 58,
+              "max_hold_60": 1
+            },
+            "gate_n20": true
+          },
+          "is": {
+            "n_trades": 41,
+            "n_unique_entry_days": 28,
+            "win_rate": 0.8048780487804879,
+            "expectancy": 0.08007022600425467,
+            "avg_hold": 11.658536585365853,
+            "exit_reason_counts": {
+              "first_hi20": 40,
+              "max_hold_60": 1
+            },
+            "gate_n20": true
+          },
+          "oos": {
+            "n_trades": 18,
+            "n_unique_entry_days": 17,
+            "win_rate": 1.0,
+            "expectancy": 0.08916875923716192,
+            "avg_hold": 7.888888888888889,
+            "exit_reason_counts": {
+              "first_hi20": 18
+            },
+            "gate_n20": false
+          },
+          "beats_plain_oos": false,
+          "beats_v106_early_keep_oos": false,
+          "beats_v106_fast_keep_oos": false,
+          "delta_oos_wr": 0.2907711757269279,
+          "delta_vs_v106_early_wr": 0.17307692307692313,
+          "delta_vs_v106_fast_wr": 0.1454545454545455
+        },
+        "soft_leader_reclaim_bias_lt8": {
+          "full": {
+            "n_trades": 58,
+            "n_unique_entry_days": 44,
+            "win_rate": 0.8620689655172413,
+            "expectancy": 0.08347862729032085,
+            "avg_hold": 10.39655172413793,
+            "exit_reason_counts": {
+              "first_hi20": 57,
+              "max_hold_60": 1
+            },
+            "gate_n20": true
+          },
+          "is": {
+            "n_trades": 40,
+            "n_unique_entry_days": 27,
+            "win_rate": 0.8,
+            "expectancy": 0.08149291188691918,
+            "avg_hold": 11.475,
+            "exit_reason_counts": {
+              "first_hi20": 39,
+              "max_hold_60": 1
+            },
+            "gate_n20": true
+          },
+          "oos": {
+            "n_trades": 18,
+            "n_unique_entry_days": 17,
+            "win_rate": 1.0,
+            "expectancy": 0.08789132818676904,
+            "avg_hold": 8.0,
+            "exit_reason_counts": {
+              "first_hi20": 18
+            },
+            "gate_n20": false
+          },
+          "beats_plain_oos": false,
+          "beats_v106_early_keep_oos": false,
+          "beats_v106_fast_keep_oos": false,
+          "delta_oos_wr": 0.2907711757269279,
+          "delta_vs_v106_early_wr": 0.17307692307692313,
+          "delta_vs_v106_fast_wr": 0.1454545454545455
+        },
+        "soft_leader_reclaim_pe10": {
+          "full": {
+            "n_trades": 0,
+            "n_unique_entry_days": 0,
+            "win_rate": null,
+            "expectancy": NaN,
+            "avg_hold": NaN,
+            "exit_reason_counts": {},
+            "gate_n20": false
+          },
+          "is": {
+            "n_trades": 0,
+            "n_unique_entry_days": 0,
+            "win_rate": null,
+            "expectancy": NaN,
+            "avg_hold": NaN,
+            "exit_reason_counts": {},
+            "gate_n20": false
+          },
+          "oos": {
+            "n_trades": 0,
+            "n_unique_entry_days": 0,
+            "win_rate": null,
+            "expectancy": NaN,
+            "avg_hold": NaN,
+            "exit_reason_counts": {},
+            "gate_n20": false
+          },
+          "beats_plain_oos": false,
+          "beats_v106_early_keep_oos": false,
+          "beats_v106_fast_keep_oos": false,
+          "delta_oos_wr": null,
+          "delta_vs_v106_early_wr": null,
+          "delta_vs_v106_fast_wr": null
+        },
+        "reclaim_ma20": {
+          "full": {
+            "n_trades": 580,
+            "n_unique_entry_days": 281,
+            "win_rate": 0.7413793103448276,
+            "expectancy": 0.03459847871866492,
+            "avg_hold": 13.45,
+            "exit_reason_counts": {
+              "first_hi20": 564,
+              "max_hold_60": 16
+            },
+            "gate_n20": true
+          },
+          "is": {
+            "n_trades": 340,
+            "n_unique_entry_days": 140,
+            "win_rate": 0.7352941176470589,
+            "expectancy": 0.038480447504804706,
+            "avg_hold": 13.429411764705883,
+            "exit_reason_counts": {
+              "first_hi20": 333,
+              "max_hold_60": 7
+            },
+            "gate_n20": true
+          },
+          "oos": {
+            "n_trades": 240,
+            "n_unique_entry_days": 141,
+            "win_rate": 0.75,
+            "expectancy": 0.029099022938300228,
+            "avg_hold": 13.479166666666666,
+            "exit_reason_counts": {
+              "first_hi20": 231,
+              "max_hold_60": 9
+            },
+            "gate_n20": true
+          },
+          "beats_plain_oos": true,
+          "beats_v106_early_keep_oos": false,
+          "beats_v106_fast_keep_oos": false,
+          "delta_oos_wr": 0.0407711757269279,
+          "delta_vs_v106_early_wr": -0.07692307692307687,
+          "delta_vs_v106_fast_wr": -0.1045454545454545
+        },
+        "hard_leader_and_reclaim": {
+          "full": {
+            "n_trades": 21,
+            "n_unique_entry_days": 18,
+            "win_rate": 0.8571428571428571,
+            "expectancy": 0.04925271118327378,
+            "avg_hold": 8.285714285714286,
+            "exit_reason_counts": {
+              "first_hi20": 21
+            },
+            "gate_n20": false
+          },
+          "is": {
+            "n_trades": 14,
+            "n_unique_entry_days": 11,
+            "win_rate": 0.7857142857142857,
+            "expectancy": 0.02074519091215134,
+            "avg_hold": 9.142857142857142,
+            "exit_reason_counts": {
+              "first_hi20": 14
+            },
+            "gate_n20": false
+          },
+          "oos": {
+            "n_trades": 7,
+            "n_unique_entry_days": 7,
+            "win_rate": 1.0,
+            "expectancy": 0.10626775172551865,
+            "avg_hold": 6.571428571428571,
+            "exit_reason_counts": {
+              "first_hi20": 7
+            },
+            "gate_n20": false
+          },
+          "beats_plain_oos": false,
+          "beats_v106_early_keep_oos": false,
+          "beats_v106_fast_keep_oos": false,
+          "delta_oos_wr": 0.2907711757269279,
+          "delta_vs_v106_early_wr": 0.17307692307692313,
+          "delta_vs_v106_fast_wr": 0.1454545454545455
+        }
+      },
+      "v106_ref": {
+        "early": {
+          "wr": 0.8269230769230769,
+          "d": 51,
+          "bars": 16.54901960784314
+        },
+        "fast": {
+          "wr": 0.8545454545454545,
+          "d": 54,
+          "bars": 15.296296296296296
+        }
+      }
+    }
+  },
+  "oos_vs_v106_keep": {
+    "plain_oos": {
+      "n_trades": 791,
+      "n_unique_entry_days": 228,
+      "win_rate": 0.7092288242730721,
+      "expectancy": 0.026087621501711056,
+      "avg_hold": 15.939317319848293,
+      "exit_reason_counts": {
+        "first_hi20": 708,
+        "max_hold_60": 83
+      },
+      "gate_n20": true
+    },
+    "v106_ref": {
+      "early": {
+        "wr": 0.8269230769230769,
+        "d": 51,
+        "bars": 16.54901960784314
+      },
+      "fast": {
+        "wr": 0.8545454545454545,
+        "d": 54,
+        "bars": 15.296296296296296
+      }
+    }
+  },
+  "gate_one_liner": "stock_spirit_soft_leader_fib618_loose n=204 hits=10110 smoke=0; best={'leg': 'spirit_soft_leader_fib618_loose_confirm', 'entry': 'SPIRIT_fib618_loose', 'variant': 'reclaim_ma20', 'kind': 'vs_plain', 'oos_wr': 0.75, 'oos_d': 141, 'plain_oos_wr': 0.7092288242730721, 'plain_oos_d': 228, 'delta_oos_wr': 0.0407711757269279, 'beats_v106_early_keep_oos': False, 'beats_v106_fast_keep_oos': False}; shared=[]; promote=False",
+  "finding_zh": "fib618_loose×soft_leader×reclaim：最佳={'leg': 'spirit_soft_leader_fib618_loose_confirm', 'entry': 'SPIRIT_fib618_loose', 'variant': 'reclaim_ma20', 'kind': 'vs_plain', 'oos_wr': 0.75, 'oos_d': 141, 'plain_oos_wr': 0.7092288242730721, 'plain_oos_d': 228, 'delta_oos_wr': 0.0407711757269279, 'beats_v106_early_keep_oos': False, 'beats_v106_fast_keep_oos': False}；未同時贏 sealed v106 keep → keep v106。不准改話筒。",
+  "parent_keep": "phone_spirit_mix_dual_track_v106_decision.json",
+  "prev_failed": [
+    "stock_spirit_soft_leader_fib618_reclaim_lab_decision.json",
+    "stock_spirit_soft_leader_pull_fib_reclaim_lab_decision.json",
+    "stock_spirit_soft_leader_pull_fib_pe_lab_decision.json"
+  ],
+  "next": "若 gate 真過→同件再生下一鍵；否則下一刀 soft_leader×strict×reclaim 或 mid_liq_family；不准混浪形、不准改話筒",
+  "elapsed_s": 62.86,
+  "errors_sample": [],
+  "db_path": "data/wayne_market.db"
+}
