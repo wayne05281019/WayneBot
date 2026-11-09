@@ -11364,6 +11364,20 @@ class WayneTelegramBot:
             # 高低卡已出：若還在補官方量就明示，不准長沉默只跳秒
             if not ensure_task.done():
                 await _bump_progress("volfill")
+                # 第1張後就先寫結構等待句；CI／單 worker 排隊時 glance 可能拖到
+                # struct 已完，後面那窗會錯過 reply_text。
+                if _gap_box.get("msg") is None and not struct_task.done():
+                    try:
+                        gap_msg = await message.reply_text(
+                            self._struct_gap_line(
+                                str(_struct_phase.get("phase") or "volfill")
+                            )
+                        )
+                        _gap_box["msg"] = gap_msg
+                    except Exception:
+                        logger.exception(
+                            "查股結構等待句（第1張後）失敗 code=%s", code
+                        )
             else:
                 await _bump_progress("glance")
             await asyncio.sleep(0)
@@ -11398,7 +11412,11 @@ class WayneTelegramBot:
                 await _bump_progress("struct")
             await asyncio.sleep(0)
             # 介紹已在送／進度在上：再補一句，不准空白乾等第 3 張
-            if glance_item and not struct_task.done():
+            if (
+                glance_item
+                and not struct_task.done()
+                and _gap_box.get("msg") is None
+            ):
                 try:
                     gap_msg = await message.reply_text(
                         self._struct_gap_line(str(_struct_phase.get("phase") or ""))

@@ -239,6 +239,12 @@ def test_gap_line_while_official_volume_still_running():
 
         return _inner
 
+    def _struct_paint(*_a, **_k):
+        # CI 單 paint worker 排隊時，glance 可能拖過 ensure；結構 paint 再撐一段，
+        # 讓 gap 檢查時 struct_task 仍未 done，等待句才寫得出。
+        time.sleep(6.0)
+        return (_png(td, "s.png"), "結構圖（非買訊）")
+
     message = MagicMock()
     message.from_user = SimpleNamespace(id=111, first_name="u")
     message.chat_id = 999
@@ -257,7 +263,7 @@ def test_gap_line_while_official_volume_still_running():
             "wayne_navigator.render_decision_card_png", side_effect=_png_fn("c.png")
         ), patch(
             "three_in_one_chart.render_lookup_structure_result",
-            side_effect=lambda *_a, **_k: (_png(td, "s.png"), "結構圖（非買訊）"),
+            side_effect=_struct_paint,
         ), patch(
             "vol_zone_chart.render_lookup_vol_result",
             side_effect=lambda *_a, **_k: (_png(td, "v.png"), "大量撐壓圖（非買訊）"),
