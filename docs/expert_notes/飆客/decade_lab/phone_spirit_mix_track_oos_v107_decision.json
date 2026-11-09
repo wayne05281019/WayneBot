@@ -1,0 +1,12 @@
+{
+  "version": "spirit_mix_track_oos_v107",
+  "as_of": "2026-11-09T11:46:33+08:00",
+  "phone_sync": "blocked",
+  "status": "oos_core_rebuild_too_loose_keep_v106",
+  "gate_one_liner": "track_oos_v107 U250 n=200; early_oos_wr≈0.706 d=2333; fast≈0.705; both≈0.706; promote_lookup=NO",
+  "finding_zh": "日期切半本身有切到；但 v107 自重建核過鬆（全日數數千、oos wr≈0.70），不是 v106 冠军核。分軌 keep 仍以 v106 early/fast 為準；不升級。",
+  "keep": "phone_spirit_mix_dual_track_v106_decision.json",
+  "promote_lookup": false,
+  "buy_signal": false,
+  "next": "買端停在 v106 keep；主線改每日波浪推論驗證（段號必標）"
+}
