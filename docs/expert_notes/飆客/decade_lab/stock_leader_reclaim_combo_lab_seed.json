@@ -1,6 +1,6 @@
 {
   "version": "stock_leader_reclaim_combo_lab_v1",
-  "status": "blocked_missing_spirit_stack",
+  "status": "plain_delta_only_keep_v106",
   "tz": "Asia/Taipei",
   "phone_sync": "blocked",
   "buy_signal": false,
@@ -22,7 +22,7 @@
     "leader_reclaim_and_vol_1p5"
   ],
   "sell": "hi20_or_desync",
-  "next": "跑 scripts/decade_lab_stock_leader_reclaim_combo_lab.py；n≥20 且贏 keep 才談替換",
-  "as_of": "2026-11-09T23:25:22+08:00",
+  "next": "已開 present-data 下一刀 stock_spirit_core_leader_reclaim_lab_v1；本軌 keep 核樣本偏稀、確認層未贏 plain／sealed keep → keep v106",
+  "as_of": "2026-11-10T02:22:11+08:00",
   "best_candidate": null
 }

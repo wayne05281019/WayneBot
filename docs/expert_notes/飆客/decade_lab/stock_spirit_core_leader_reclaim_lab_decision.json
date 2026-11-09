@@ -1,0 +1,73 @@
+{
+  "version": "stock_spirit_core_leader_reclaim_lab_v1",
+  "as_of": "2026-11-10T02:23:11+08:00",
+  "tz": "Asia/Taipei",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "promote_lookup": false,
+  "status": "plain_delta_only_keep_v106",
+  "gate_passed": false,
+  "keep": "v106",
+  "keep_detail": "compare vs sealed early ei_n2_lu5／fast lu5_vol_next；sell hi20_or_desync",
+  "entry": "SPIRIT_core",
+  "entry_note_zh": "present-data 替代核；≠sealed keep；≠leave_zero／黃金買訊",
+  "sell": "hi20_or_desync",
+  "variant_tested_zh": "SPIRIT_core × leader_tag×reclaim_ma20×vol/bias 交叉",
+  "n_stocks": 180,
+  "entry_hits": 9996,
+  "smoke": false,
+  "best_candidate": {
+    "leg": "spirit_core_confirm",
+    "entry": "SPIRIT_core",
+    "variant": "reclaim_ma20",
+    "kind": "vs_plain",
+    "oos_wr": 0.7384428223844283,
+    "oos_d": 352,
+    "plain_oos_wr": 0.7227848101265822,
+    "plain_oos_d": 526,
+    "delta_oos_wr": 0.01565801225784602,
+    "beats_v106_early_keep_oos": false,
+    "beats_v106_fast_keep_oos": false
+  },
+  "shared_vs_keep": [],
+  "beats_v106_early_keep": [],
+  "beats_v106_fast_keep": [],
+  "oos_vs_v106_keep": {
+    "plain_oos": {
+      "n_trades": 2370,
+      "n_unique_entry_days": 526,
+      "win_rate": 0.7227848101265822,
+      "expectancy": 0.027024305864071296,
+      "avg_hold": 15.307594936708862,
+      "exit_reason_counts": {
+        "first_hi20": 2225,
+        "max_hold_60": 145
+      },
+      "gate_n20": true
+    },
+    "v106_ref": {
+      "early": {
+        "wr": 0.8269230769230769,
+        "d": 51,
+        "bars": 16.54901960784314
+      },
+      "fast": {
+        "wr": 0.8545454545454545,
+        "d": 54,
+        "bars": 15.296296296296296
+      }
+    }
+  },
+  "gate_one_liner": "stock_spirit_core_leader_reclaim n=180 hits=9996 smoke=0; best={'leg': 'spirit_core_confirm', 'entry': 'SPIRIT_core', 'variant': 'reclaim_ma20', 'kind': 'vs_plain', 'oos_wr': 0.7384428223844283, 'oos_d': 352, 'plain_oos_wr': 0.7227848101265822, 'plain_oos_d': 526, 'delta_oos_wr': 0.01565801225784602, 'beats_v106_early_keep_oos': False, 'beats_v106_fast_keep_oos': False}; shared=[]; promote=False",
+  "finding_zh": "SPIRIT_core×leader/reclaim present-data：最佳={'leg': 'spirit_core_confirm', 'entry': 'SPIRIT_core', 'variant': 'reclaim_ma20', 'kind': 'vs_plain', 'oos_wr': 0.7384428223844283, 'oos_d': 352, 'plain_oos_wr': 0.7227848101265822, 'plain_oos_d': 526, 'delta_oos_wr': 0.01565801225784602, 'beats_v106_early_keep_oos': False, 'beats_v106_fast_keep_oos': False}；未同時贏 sealed v106 keep → keep v106。不准改話筒。",
+  "parent_keep": "phone_spirit_mix_dual_track_v106_decision.json",
+  "prev_failed": [
+    "stock_inst_filter_lab_decision.json",
+    "stock_tech_confirm_lab_decision.json",
+    "stock_pair_exit_leg_confirm_lab_decision.json",
+    "stock_leader_reclaim_combo_lab_decision.json"
+  ],
+  "next": "keep v106；下一 present-data 候選 stock_spirit_pull_fib_leader_bias_lab_v1（SPIRIT_pull_fib×leader×bias_lt8）；不准混浪形、不准改話筒",
+  "elapsed_s": 57.44,
+  "db_path": "/agent/repos/WayneBot/data/wayne_market.db"
+}
