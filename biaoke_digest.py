@@ -688,6 +688,8 @@ def _plain_wave_now_phrase(now: str) -> str:
         return "夜盤跌完居多；低點最多 37000~37500；等反彈後拉回 1-2轉1-3-1 第二隻腳"
     if n in ("主B-b／備九波", "B-b雙軌", "主B-b"):
         return "主線五波跌完走 B-b（假跌破 37837 觀察）；備線若九波擴延 → 35579→31705"
+    if n in ("止跌確認・再測週五低", "止跌確認"):
+        return "C3-5＋1 4重疊・確認上週五低＝最低；接下來再測週五低／假跌破觀察"
     return n
 
 
@@ -695,7 +697,8 @@ def format_teach_brief(db_path: str = "") -> str:
     """波浪位階開場敘述：現在走到哪／怎麼看／盯著的價。給人讀，不准術語叠句。
 
     只服務「波浪位階」鍵。飆大空白鍵走 format_focus_oral。
-    非買訊；失敗回空，不准擋主摘要。不准寫英文 as_of。
+    重點＝他最新講的走勢與點位（後文壓前文）；非買訊。
+    失敗回空，不准擋主摘要。不准寫英文 as_of。
     """
     if not db_path:
         return ""
@@ -720,22 +723,42 @@ def format_teach_brief(db_path: str = "") -> str:
     now = str(ladder.get("now") or "").strip()
     day_zh = str(ladder.get("day_zh") or "").strip()
     lines.append("<b>現在</b>")
-    # 一條路＋目前落在哪；不准再叠「大A→大B→…→落在」兩段重複
-    lines.append(html_escape("大盤：大A底（7/29）→ 大B反彈 → 大C下跌中。"))
-    _bb_dual = (
+    _stop_confirm = (
+        "確認上週五低" in thesis
+        or "1 4重疊" in thesis
+        or "止跌確認" in thesis
+        or "止跌確認" in now
+        or "再測週五" in now
+        or "台指壓41760" in wait
+        or "一定再測週五低" in wait
+    )
+    _bb_dual = (not _stop_confirm) and (
         "B-b" in thesis
         or "五波跌完" in thesis
         or "備線九波" in thesis
         or "假跌破37837" in wait
         or "35579→31705" in wait
     )
-    _foot2_brief = (
+    _foot2_brief = (not _stop_confirm) and (
         "第二隻腳" in thesis
         or "等第二隻腳" in thesis
         or "37000~37500" in wait
         or "37000-37500" in wait
         or "看不到37000" in wait
     )
+    # 一條路＋目前落在哪；不准再叠「大A→大B→…→落在」兩段重複
+    if _stop_confirm:
+        lines.append(
+            html_escape("大盤：大A底（7/29）→ 大B反彈 → 大C進行中（他已講止跌確認）。")
+        )
+        lines.append(
+            html_escape(
+                "他最新：C3-5＋1 4重疊，確認上週五低＝最低；"
+                "一定再測週五低，破＝假跌破觀察（非買訊）。"
+            )
+        )
+    else:
+        lines.append(html_escape("大盤：大A底（7/29）→ 大B反彈 → 大C下跌中。"))
     if _bb_dual:
         lines.append(
             html_escape(
@@ -750,7 +773,7 @@ def format_teach_brief(db_path: str = "") -> str:
                 "低點最多 37000~37500；等反彈後拉回 1-2轉1-3-1 第二隻腳（他口語路徑・非買訊）。"
             )
         )
-    elif (
+    elif (not _stop_confirm) and (
         "9波擴延" in thesis
         or "C-7轉C-8" in thesis
         or "C-7走完" in thesis
@@ -770,16 +793,18 @@ def format_teach_brief(db_path: str = "") -> str:
     elif thesis:
         lines.append(html_escape(thesis))
     struct_bits: List[str] = []
-    if fib:
-        # 去掉「黃金切割反彈壓」叠字；直接講反彈壓
+    if fib and not _stop_confirm:
+        # 止跌確認當令時，反彈壓舊句不准蓋最新點位
         fib_s = re.sub(r"^黃金切割反彈壓\s*", "", fib).strip() or fib
         struct_bits.append(f"· 反彈壓：{fib_s}")
-    if morph:
+    elif fib and _stop_confirm:
+        pass
+    if morph and not _stop_confirm:
         morph_s = morph.replace("；", "；").strip()
         struct_bits.append(f"· 型態：{morph_s}")
     if intent:
         one = intent.split("；")[0].strip()
-        if one:
+        if one and "還不清楚" not in one:
             struct_bits.append(f"· 量：{one}")
     if wait:
         one_w = re.split(r"[；。]", wait)[0].strip()
@@ -793,6 +818,8 @@ def format_teach_brief(db_path: str = "") -> str:
                 one_w = "低點約會落在 35500~37300；C-9 跌完＝這段下殺完"
             elif re.search(r"C-7(?:轉|走完).{0,8}C-8→C-9|C-7走完→C-8→C-9", one_w):
                 one_w = "七走完≠整段完；八先上、再九最後下；九跌完＝這段下殺完"
+            elif re.search(r"台指壓\s*41760|一定再測週五低", one_w):
+                one_w = "台指壓 41760；一定再測週五低；破＝假跌破觀察"
             struct_bits.append(f"· 下一步：{one_w}")
     if struct_bits:
         lines.append("")
@@ -826,6 +853,9 @@ def format_teach_brief(db_path: str = "") -> str:
             c9_hi = lv
         elif role == "C9低下沿" or abs(lv - 35500.0) < 1.0:
             c9_lo = lv
+    if _stop_confirm:
+        # 止跌確認當令：不准再用舊改口／C9 區間句蓋最新盯價
+        foot_lo = foot_hi = c9_lo = c9_hi = None
     if foot_lo is not None and foot_hi is not None:
         c9_lo = c9_hi = None  # 改口壓 C9 區間句
     zone_lo, zone_hi = (
@@ -852,11 +882,16 @@ def format_teach_brief(db_path: str = "") -> str:
             # 舊劇本一 38000 上沿：有修訂低點區時改寫成已破
             if zone_lo is not None and re.search(r"38000.*劇本一上沿|38000$", bit):
                 bit = "38000已破"
-            if re.search(r"改口低|37000|37500", bit) and foot_lo is not None:
+            if re.search(r"改口低|37000|37500", bit) and (
+                foot_lo is not None or _stop_confirm
+            ):
                 continue
             if re.search(r"C9低|35500|37300", bit) and (
-                foot_lo is not None or c9_lo is not None
+                foot_lo is not None or c9_lo is not None or _stop_confirm
             ):
+                continue
+            # 止跌確認當令：舊雙軌深殺備線不准蓋最新盯價
+            if _stop_confirm and re.search(r"35579|31705|AI結束", bit):
                 continue
             if bit and bit not in bits:
                 bits.append(bit)

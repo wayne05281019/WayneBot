@@ -2299,10 +2299,14 @@ def _biaoke_level_snip_score(blob: str, *, is_main: bool) -> int:
         r"波浪位階|主跌段|C3-\d|(?<![0-9])3-3-\d|重新修訂|動態修正|不能去抄底|破底|"
         r"假跌破|有效穿刺|1\s*[-–]?\s*4\s*重疊|(?:今天)?走\s*3-5|"
         r"第二組下跌|落底確認|劇本|5\s*波\s*跌完|走\s*B\s*[-–]?\s*b|"
-        r"9\s*波\s*擴延|37837|底部判斷",
+        r"9\s*波\s*擴延|37837|底部判斷|41760|大盤止跌|大盤已經落底|"
+        r"確認.{0,12}(?:上)?週五.{0,8}低點",
         blob,
     ):
         score += 12
+    # 後文止跌確認／C3-5＋1 4重疊：壓較早雙軌／第二隻腳長文同分搶位
+    if _text_has_stop_low_confirm(blob):
+        score += 8
     n = len(blob)
     if n >= 120:
         score += 6
@@ -2476,7 +2480,11 @@ def _latest_biaoke_index_snip(
                     r"|[^。｜]{0,60}9\s*波\s*擴延[^。｜]{0,80}"
                     r"|[^。｜]{0,40}C\s*[-–]\s*7[^。｜]{0,48}C\s*[-–]\s*8[^。｜]{0,40}"
                     r"|[^。｜]{0,48}1\s*[-–]?\s*2\s*轉\s*1\s*[-–]?\s*3\s*[-–]?\s*1[^。｜]{0,40}"
-                    r"|[^。｜]{0,40}2\s*/\s*25\s*高點?\s*8498[^。｜]{0,40}",
+                    r"|[^。｜]{0,40}2\s*/\s*25\s*高點?\s*8498[^。｜]{0,40}"
+                    r"|[^。｜\n]{0,48}41760[^。｜\n]{0,72}"
+                    r"|[^。｜\n]{0,56}C3-5.{0,48}1\s*[-–]?\s*4\s*重疊[^。｜\n]{0,96}"
+                    r"|[^。｜\n]{0,48}確認.{0,16}(?:上)?週五.{0,20}最低[^。｜\n]{0,48}"
+                    r"|[^。｜\n]{0,40}再測.{0,16}星期五低點[^。｜\n]{0,72}",
                     flat,
                 ):
                     bit = m.group(0).strip(" ，,")
@@ -2716,7 +2724,11 @@ def _latest_level_thesis(
             post_id = post_snip_id
     # 9波擴延／35500~37300：庫內真文／snap 可壓舊 C3-x；口頭只補「尚無題旨」空窗
     # 更早 as_of／已有橫台・C3-3・C3-5 真文時，不准 oral-c9-band 蓋掉
+    # 後文止跌／週五低確認不准被較早 C9／雙軌備線整段蓋掉
     try:
+        stop_now = _text_has_stop_low_confirm(snip) or _text_has_stop_low_confirm(
+            post_snip or ""
+        )
         if cap >= _C9_ORAL_AS_OF:
             _ensure_c9_oral_thesis_snap(db_path, as_of=cap)
         c9_snip = _find_c9_extension_snip(db_path, cap, include_oral=False)
@@ -2726,29 +2738,35 @@ def _latest_level_thesis(
             and cap >= _C9_ORAL_AS_OF
         ):
             c9_snip = _C9_ORAL_SNIP
-        if c9_snip and _text_has_c9_extension(c9_snip):
+        if c9_snip and _text_has_c9_extension(c9_snip) and not stop_now:
             if not _text_has_c9_extension(snip):
                 if not str(snip or "").strip():
                     # 空題旨才用口頭／真 C9 填上
                     snip = c9_snip
                     post_id = post_id or "oral-c9-band"
                 else:
-                    # 已有真文：只准「非口頭」C9 改口壓舊
+                    # 已有真文：只准「非口頭」C9 改口壓舊（仍卡止跌後文）
                     snip = c9_snip
             elif cap >= _C9_ORAL_AS_OF:
                 snip = f"{c9_snip} {snip}"
     except Exception:
         logger.debug("C9 題旨覆寫略過", exc_info=True)
-    # 後文改口：37000~37500／第二隻腳；但若已有更新的「五波跌完走B-b／九波雙軌」真文，
-    # 不准用較早第二隻腳整段蓋掉（抓取時差也不准看 updated_at，只認 date+time 後文）。
+    # 後文改口：37000~37500／第二隻腳；但若已有更新的「五波跌完走B-b／九波雙軌」
+    # 或更後「止跌／週五低確認」真文，不准用較早第二隻腳整段蓋掉。
     try:
+        stop_now = _text_has_stop_low_confirm(snip) or _text_has_stop_low_confirm(
+            post_snip or ""
+        )
         has_bb_now = _text_has_bb_dual_path(snip) or _text_has_bb_dual_path(
             post_snip or ""
         )
         if cap >= _FOOT2_ORAL_AS_OF:
             _ensure_foot2_oral_thesis_snap(db_path, as_of=cap)
         foot2_real = _find_foot2_snip(db_path, cap, include_oral=False)
-        if has_bb_now:
+        if stop_now:
+            # 止跌確認後文已定主線：不准再併舊第二隻腳／37000 帶蓋最新盯價
+            pass
+        elif has_bb_now:
             # 雙軌後文已定主線：只補缺的 37000~37500 參考帶，不准整段置換題旨
             if foot2_real and _text_has_foot2_revision(foot2_real):
                 if not re.search(r"37000\s*[-~～到至\-]\s*37500|37000.{0,8}37500", snip):
@@ -2806,7 +2824,8 @@ def _latest_level_thesis(
     has_foot2_band = bool(
         re.search(r"37000\s*[-~～到至\-]\s*37500|37000.{0,8}37500", snip)
     )
-    # 11/8 雙軌（說話時間晚於第二隻腳）＞第二隻腳＞C9 擴延標號
+    # 11/9 止跌確認＞11/8 雙軌＞第二隻腳＞C9 擴延標號（後文壓前文）
+    has_stop_confirm = _text_has_stop_low_confirm(snip)
     has_bb_dual = _text_has_bb_dual_path(snip)
     # 9波擴延 C-7轉C-8→C-9＋低點區 35500~37300（後文改口壓舊 C3-5）
     has_c9_band = bool(
@@ -2822,8 +2841,20 @@ def _latest_level_thesis(
         )
     )
     has_c9 = bool(re.search(r"C\s*[-–]\s*9", snip))
+    has_41760 = bool(re.search(r"41760", snip))
     # 夜盤第二組落底（C3-5完成）優先於舊 C3-3 題旨；後文改口壓前文
-    if has_bb_dual:
+    if has_stop_confirm:
+        # 他最新：C3-5＋1 4重疊／確認週五低＝最低；再測・假跌破（說明用・非買訊）
+        thesis = "大A→大B→大C｜C3-5＋1 4重疊・確認上週五低＝最低（預估）"
+        wait_bits = [
+            "一定再測週五低",
+            "破＝假跌破觀察",
+        ]
+        if has_41760:
+            wait_bits.insert(0, "台指壓41760")
+        wait_bits.append("非買訊")
+        wait = "；".join(wait_bits)
+    elif has_bb_dual:
         # 主線五波跌完→B-b；備線九波擴延。未定案前雙軌並陳（說明用・非買訊）
         thesis = "大A→大B→大C｜主線五波跌完走B-b・備線九波擴延（預估）"
         wait = (
@@ -2870,14 +2901,16 @@ def _latest_level_thesis(
     elif "主跌" in snip:
         thesis = "大A→大B→大C｜C內主跌（預估）"
         wait = "細微波完整＋降軌；C走完≠新五波升；再重訂位階"
-    if morph and "楔形" in morph:
+    if morph and "楔形" in morph and not has_stop_confirm:
         wait = f"{wait}｜型態：{morph}"
-    elif morph:
+    elif morph and not has_stop_confirm:
         wait = f"{wait}｜型態觀察：{morph}"
     if _REVISE_MARK.search(snip):
-        if has_bb_dual:
-            # 雙軌題旨已帶主／備線，不准改口警語整段蓋掉
-            wait = f"{wait}｜隨時檢視" + (f"｜{morph}" if morph else "")
+        if has_stop_confirm or has_bb_dual:
+            # 止跌確認／雙軌題旨已帶主線，不准改口警語整段蓋掉
+            wait = f"{wait}｜隨時檢視" + (
+                f"｜{morph}" if morph and not has_stop_confirm else ""
+            )
         else:
             wait = "他已示警重修／動態修正・圖位＝當下預估" + (
                 f"｜{morph}" if morph else ""
@@ -4510,14 +4543,44 @@ def _text_has_foot2_revision(blob: str) -> bool:
     return bool(has_band or (has_floor and has_leg) or (has_floor and has_band))
 
 
+def _text_has_stop_low_confirm(blob: str) -> bool:
+    """後文止跌／週五低確認（11/9）：壓前文 B-b 雙軌／第二隻腳／C9 低點區。
+
+    例：C3-5＋1 4重疊・確認上週五低＝最低；大盤止跌／已經落底・再測假跌破。
+    """
+    s = str(blob or "")
+    if not s.strip():
+        return False
+    has_14 = bool(
+        re.search(
+            r"C3-5.{0,48}1\s*[-–]?\s*4\s*重疊|"
+            r"1\s*[-–]?\s*4\s*重疊.{0,40}(?:最低點|確認|假跌破)",
+            s,
+        )
+    )
+    has_fri_low = bool(
+        re.search(
+            r"確認.{0,16}(?:上)?週五.{0,12}低點.{0,12}就是最低|"
+            r"(?:上)?週五低點就是最低點|"
+            r"確認上週五低",
+            s,
+        )
+    )
+    has_stop = bool(re.search(r"大盤止跌|大盤已經落底|已經落底", s))
+    return bool(has_14 or has_fri_low or has_stop)
+
+
 def _text_has_bb_dual_path(blob: str) -> bool:
     """後文雙軌：五波跌完走 B-b（主）＋不排除九波擴延（備）。
 
     以他說話時間序為準（date+time）；後文壓前文第二隻腳當主線題旨。
     例：11/8「5波跌完走B-b／假跌破37837／9波擴延→35579→31705」。
+    若已有止跌／週五低確認後文，不算雙軌當令（後文壓前文）。
     """
     s = str(blob or "")
     if not s.strip():
+        return False
+    if _text_has_stop_low_confirm(s):
         return False
     has_bb = bool(
         re.search(
@@ -4538,9 +4601,14 @@ def _text_has_bb_dual_path(blob: str) -> bool:
 
 
 def _text_has_c9_extension(blob: str) -> bool:
-    """是否為 9波擴延／C-7→C-8／C-9／35500~37300 改口題旨。"""
+    """是否為 9波擴延／C-7→C-8／C-9／35500~37300 改口題旨。
+
+    不准把 B-b 雙軌裡「不排除走9波擴延」誤當 C9 結構題旨去蓋後文止跌確認。
+    """
     s = str(blob or "")
     if not s.strip():
+        return False
+    if _text_has_stop_low_confirm(s):
         return False
     has_band = bool(re.search(r"35500\s*[-~～到至]\s*37300|35500.{0,8}37300", s))
     has_9 = bool(re.search(r"9\s*波\s*擴延", s))
@@ -4553,8 +4621,14 @@ def _text_has_c9_extension(blob: str) -> bool:
         )
     )
     has_c9 = bool(re.search(r"C\s*[-–]\s*9", s))
-    return bool(has_9 or (has_c78 and (has_c9 or has_band)) or (has_band and (has_c78 or has_c9)))
-
+    # 雙軌備線口中的裸「9波擴延」≠ C-7→C-9 結構改口
+    if _text_has_bb_dual_path(s) and not (has_c78 or has_c9 or has_band):
+        return False
+    return bool(
+        (has_9 and (has_c78 or has_c9 or has_band))
+        or (has_c78 and (has_c9 or has_band))
+        or (has_band and (has_c78 or has_c9 or has_9))
+    )
 
 def _find_c9_extension_snip(
     db_path: str, cap_ymd: str, *, include_oral: bool = True
@@ -5721,17 +5795,33 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
             tag=tag,
             label=lab,
         )
+    # 11/9 台指壓力 41760（他原文；止跌確認後文優先寫）
+    if re.search(r"41760", s):
+        _add(
+            "tw",
+            level=41760.0,
+            ref_ymd="",
+            role="台指壓力",
+            tag="未到",
+            label=f"台指壓力／{_px(41760)}",
+        )
     # 11/8 雙軌點位（只認原文）：37837／37164／35579／31705
     # 右欄：最佳買點 37837＋深殺上緣 35579＋深殺端 31705；39000／37164 改走黃底帶
+    # 止跌確認後文：37837＝再測／假跌破觀察，不准還寫成舊雙軌「最佳買點」主標
     if re.search(r"37837", s):
-        tag = "最佳買點" if re.search(r"假跌破|買點", s) else "週五低"
+        if _text_has_stop_low_confirm(s):
+            tag = "再測／假跌破"
+            lab = f"再測週五低／{_px(37837)}"
+        else:
+            tag = "最佳買點" if re.search(r"假跌破|買點", s) else "週五低"
+            lab = f"最佳買點／{_px(37837)}"
         _add(
             "tw",
             level=37837.0,
             ref_ymd="20261106",
             role="五波末／週五低",
             tag=tag,
-            label=f"最佳買點／{_px(37837)}",
+            label=lab,
         )
     if re.search(r"37164", s):
         _add(
@@ -8258,8 +8348,11 @@ def _his_micro_degree(blob: str) -> Dict[str, str]:
         degree = "C3"
     elif re.search(r"(現在在C|下降ABC.*C|主跌段)", s):
         degree = "C"
+    # 止跌／週五低確認（後文壓雙軌／第二隻腳／C9）
+    if _text_has_stop_low_confirm(s):
+        degree = "止跌確認"
     # 改口第二隻腳（後文壓 9波／C9 低點區）
-    if _text_has_foot2_revision(s):
+    elif _text_has_foot2_revision(s):
         degree = "第二隻腳"
     # 9波擴延 C-7／C-8／C-9（必帶連字號，不准誤吃 C3-7）
     elif re.search(
@@ -8294,6 +8387,8 @@ def _his_micro_degree(blob: str) -> Dict[str, str]:
         chain = "五波→ABC→C→9波擴延→C-7→C-8→C-9"
     if degree == "第二隻腳":
         chain = "五波→ABC→C→等第二隻腳"
+    if degree == "止跌確認":
+        chain = "五波→ABC→C→C3-5＋1 4重疊→止跌確認"
     return {"degree": degree, "chain": chain, "raw": s[:160]}
 
 
@@ -8831,11 +8926,23 @@ def _wave_now_ladder(pack: Optional[Dict[str, Any]] = None, *, blob: str = "") -
     thesis = str(pack.get("thesis") or text)
     # 大結構跟他鎖的：A底→B反彈→C；不准寫成「五波升完再ABC」讓人把7/29→四萬九當上升⑤
     steps: List[str] = ["大A底7/29", "大B反彈", "大C進行中"]
-    # 後文雙軌（B-b／九波）壓第二隻腳／C9 標號
-    has_bb_ladder = _text_has_bb_dual_path(text) or (
-        "B-b" in thesis or "五波跌完" in thesis or "備線九波" in thesis
+    # 後文止跌確認壓雙軌／第二隻腳／C9；雙軌壓第二隻腳／C9
+    has_stop_ladder = (
+        deg == "止跌確認"
+        or _text_has_stop_low_confirm(text)
+        or "確認上週五低" in thesis
+        or "1 4重疊" in thesis
+        or "止跌確認" in thesis
     )
-    if has_bb_ladder:
+    has_bb_ladder = (not has_stop_ladder) and (
+        _text_has_bb_dual_path(text)
+        or "B-b" in thesis
+        or "五波跌完" in thesis
+        or "備線九波" in thesis
+    )
+    if has_stop_ladder:
+        steps.append("止跌確認・再測週五低")
+    elif has_bb_ladder:
         steps.append("主B-b／備九波")
     elif (
         deg == "第二隻腳"
@@ -8887,8 +8994,28 @@ def _wave_now_ladder(pack: Optional[Dict[str, Any]] = None, *, blob: str = "") -
     else:
         day_zh = ""
         day_bit = ""
-    # 雙軌／改口第二隻腳／9波擴延：話筒／超近說明用人話，不准只丟代號
-    if "主B-b／備九波" in steps or has_bb_ladder:
+    # 止跌確認／雙軌／改口第二隻腳／9波擴延：話筒／超近說明用人話，不准只丟代號
+    if "止跌確認・再測週五低" in steps or has_stop_ladder:
+        oral_now = (
+            "C3-5＋1 4重疊・確認上週五低＝最低；"
+            "一定再測週五低，破＝假跌破觀察"
+        )
+        if "41760" in text:
+            oral_now = "台指壓41760；" + oral_now
+        one_line = "現在：止跌確認・再測週五低（預估）"
+        now_line = (
+            oral_now
+            + (f"・{day_bit}" if day_bit else "")
+            + "・預估會改・非買訊"
+        )
+        teach_box = (
+            "現在走到（大→小）\n"
+            f"{chain}\n"
+            f"{oral_now}"
+            + (f"・{day_bit}" if day_bit else "")
+            + "\n預估會改・非買訊"
+        )
+    elif "主B-b／備九波" in steps or has_bb_ladder:
         oral_now = "主線五波跌完走B-b（假跌破37837觀察）；備線九波→35579→31705"
         one_line = "現在：主B-b／備九波雙軌（預估）"
         now_line = (

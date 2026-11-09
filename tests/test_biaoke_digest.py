@@ -1204,6 +1204,55 @@ def test_format_teach_brief_bb_dual_path_beats_foot2(monkeypatch):
     assert "B-b" in one or "雙軌" in one or "37837" in one
 
 
+def test_format_teach_brief_stop_confirm_latest_levels(monkeypatch):
+    """波浪位階鈕：重點＝他最新止跌確認／41760／再測週五低；不准舊 B-b／C9 當令。"""
+    from biaoke_digest import format_teach_brief, format_wave_level_one_liner
+
+    def _fake(_db):
+        return {
+            "thesis": "大A→大B→大C｜C3-5＋1 4重疊・確認上週五低＝最低（預估）",
+            "snippet": (
+                "台指期第一道壓力區41760。已經和最後一組下跌脈動C3-5 1 4重疊，"
+                "確認上週五低點就是最低點。大盤止跌，頂多再測一次假跌破。"
+            ),
+            "wait_struct": "台指壓41760；一定再測週五低；破＝假跌破觀察；非買訊",
+            "chart_as_of": "20261109",
+            "thesis_as_of": "20261109",
+            "pred_levels": {
+                "tw": [
+                    {
+                        "level": 41760.0,
+                        "role": "台指壓力",
+                        "tag": "未到",
+                        "label": "台指壓力／41,760",
+                    },
+                    {
+                        "level": 37837.0,
+                        "role": "五波末／週五低",
+                        "tag": "再測／假跌破",
+                        "label": "再測週五低／37,837",
+                    },
+                ],
+                "sox": [],
+            },
+            "pred_note": "台指壓力／41,760｜再測週五低／37,837",
+        }
+
+    monkeypatch.setattr("biaoke_level_learn._build_live_pack", _fake)
+    out = format_teach_brief("x.db")
+    assert "他最新" in out
+    assert "確認上週五低" in out or "1 4重疊" in out
+    assert "41760" in out
+    assert "再測週五低" in out or "假跌破" in out
+    assert "B-b" not in out
+    assert "35579" not in out
+    assert "第二隻腳" not in out
+    assert "35500~37300" not in out.replace(" ", "")
+    assert "非買訊" in out
+    one = format_wave_level_one_liner("x.db")
+    assert "止跌確認" in one or "再測週五" in one or "上週五低" in one
+
+
 def test_focus_oral_blank_uses_one_liner_not_full_wave_brief(monkeypatch):
     """飆大空白鍵：口語為主；不准整段波浪位階敘述塞進來。"""
     from biaoke_digest import format_focus_oral

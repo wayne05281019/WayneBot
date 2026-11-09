@@ -1304,6 +1304,85 @@ def test_bb_dual_path_thesis_beats_earlier_foot2(tmp_path):
     assert got and __import__("os").path.isfile(got)
 
 
+def test_stop_low_confirm_thesis_beats_older_bb_dual_and_c9(tmp_path):
+    """11/9 止跌／C3-5＋1 4確認壓 11/8 雙軌；不准舊 9波備線整段蓋最新題旨。"""
+    import sqlite3
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_level_learn import (
+        _latest_level_thesis,
+        _text_has_bb_dual_path,
+        _text_has_c9_extension,
+        _text_has_stop_low_confirm,
+        _thesis_pred_levels,
+        _wave_now_ladder,
+        ensure_tables,
+    )
+
+    db = str(tmp_path / "stop.db")
+    ensure_tables(db)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS biaoke_posts("
+        "id TEXT PRIMARY KEY, date TEXT, time TEXT, kind TEXT, text TEXT)"
+    )
+    bb = (
+        "大盤底部判斷訊號。由台指期來看大盤，星期五夜盤已經破壞最後一組3-5下跌脈動。"
+        "星期五最低點位37837。這也是波浪理論5波跌完走B-b，也有可能會破37837，但是假跌破買點。"
+        "因為第二組下跌是走5波，當然不排除走9波擴延，非常有可能有效跌破"
+        "2/26第一波高點35579，則殺到3/31低點31705。"
+    )
+    morning = (
+        "用台指期看大盤，台指期第一道壓力區41760是基本的。"
+        "已經和最後一組下跌脈動C3-5 1 4重疊，確認上週五低點就是最低點，"
+        "接下來還會再去測星期五低點一次，破不破，跌破上星期五低點是假跌破，都是上車點。"
+    )
+    evening = (
+        "這周大盤一定會有2000~3000點大震盪，今天立刻達標。"
+        "不相信我大盤止跌，頂多在測一次低破星期五低點假跌破我都已經說的非常清楚。"
+    )
+    conn.execute(
+        "INSERT INTO biaoke_posts(id, date, time, kind, text) VALUES (?,?,?,?,?)",
+        ("188039214", "2026-11-08", "12:01", "post", bb),
+    )
+    conn.execute(
+        "INSERT INTO biaoke_posts(id, date, time, kind, text) VALUES (?,?,?,?,?)",
+        ("188048401", "2026-11-09", "09:09", "post", morning),
+    )
+    conn.execute(
+        "INSERT INTO biaoke_posts(id, date, time, kind, text) VALUES (?,?,?,?,?)",
+        ("188138405", "2026-11-09", "18:20", "post", evening),
+    )
+    conn.commit()
+    conn.close()
+    assert _text_has_bb_dual_path(bb)
+    assert not _text_has_c9_extension(bb)
+    assert _text_has_stop_low_confirm(morning)
+    assert _text_has_stop_low_confirm(evening)
+    tz = ZoneInfo("Asia/Taipei")
+    th = _latest_level_thesis(
+        db, as_of="20261109", now=datetime(2026, 11, 9, 22, 0, tzinfo=tz)
+    )
+    thesis = th.get("thesis") or ""
+    wait = th.get("wait_struct") or ""
+    snip = th.get("snippet_full") or th.get("snippet") or ""
+    assert "確認上週五低" in thesis or "1 4重疊" in thesis
+    assert "B-b" not in thesis
+    assert "九波" not in thesis
+    assert "第二隻腳" not in thesis
+    assert "41760" in wait or "41760" in snip
+    assert "再測週五低" in wait or "假跌破" in wait
+    assert "35579" not in snip
+    pred = _thesis_pred_levels(snip, db)
+    roles = {str(r.get("role")): float(r["level"]) for r in (pred.get("tw") or [])}
+    assert abs(roles.get("台指壓力", 0) - 41760) < 1
+    assert "九波備線破位" not in roles
+    ladder = _wave_now_ladder(th)
+    assert "止跌確認" in (ladder.get("now") or "")
+    assert "B-b" not in (ladder.get("now") or "")
+
+
 def test_oral_dual_path_uses_bundled_cjk_font():
     """口述雙軌圖必須走打包 NotoSansTC；系統 CJK 缺／TTC 選錯＝話筒豆腐「字」。"""
     import inspect
