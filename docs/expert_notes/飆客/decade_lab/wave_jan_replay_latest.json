@@ -1,0 +1,205 @@
+{
+  "written_at": "2026-11-09T16:07:36+0800",
+  "tz": "Asia/Taipei",
+  "pot": "wave_jan_replay",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "start": "20260101",
+  "end": "20261109",
+  "open_days_n": 206,
+  "rows_n": 206,
+  "n_decided": 203,
+  "hit": 79,
+  "miss": 124,
+  "hit_rate": 0.3891625615763547,
+  "gate_n20": true,
+  "degree_end": "PROVISIONAL_IN_PROGRESS",
+  "checkpoints": [
+    {
+      "checkpoint": 20,
+      "n_rows": 20,
+      "n_decided": 19,
+      "hit": 4,
+      "miss": 15,
+      "hit_rate": 0.21052631578947367,
+      "degree_unknown_n": 1,
+      "degree_provisional_n": 19,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_low"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 40,
+      "n_rows": 20,
+      "n_decided": 20,
+      "hit": 7,
+      "miss": 13,
+      "hit_rate": 0.35,
+      "degree_unknown_n": 0,
+      "degree_provisional_n": 20,
+      "segment_errors": 0,
+      "drift_flags": [],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 60,
+      "n_rows": 20,
+      "n_decided": 20,
+      "hit": 11,
+      "miss": 9,
+      "hit_rate": 0.55,
+      "degree_unknown_n": 0,
+      "degree_provisional_n": 20,
+      "segment_errors": 0,
+      "drift_flags": [],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 80,
+      "n_rows": 20,
+      "n_decided": 20,
+      "hit": 5,
+      "miss": 15,
+      "hit_rate": 0.25,
+      "degree_unknown_n": 0,
+      "degree_provisional_n": 20,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_low"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 100,
+      "n_rows": 20,
+      "n_decided": 20,
+      "hit": 3,
+      "miss": 17,
+      "hit_rate": 0.15,
+      "degree_unknown_n": 0,
+      "degree_provisional_n": 20,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_low"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 120,
+      "n_rows": 20,
+      "n_decided": 20,
+      "hit": 8,
+      "miss": 12,
+      "hit_rate": 0.4,
+      "degree_unknown_n": 0,
+      "degree_provisional_n": 20,
+      "segment_errors": 0,
+      "drift_flags": [],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 140,
+      "n_rows": 20,
+      "n_decided": 19,
+      "hit": 6,
+      "miss": 13,
+      "hit_rate": 0.3157894736842105,
+      "degree_unknown_n": 0,
+      "degree_provisional_n": 20,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_low"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 160,
+      "n_rows": 20,
+      "n_decided": 20,
+      "hit": 5,
+      "miss": 15,
+      "hit_rate": 0.25,
+      "degree_unknown_n": 0,
+      "degree_provisional_n": 20,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_low"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 180,
+      "n_rows": 20,
+      "n_decided": 20,
+      "hit": 16,
+      "miss": 4,
+      "hit_rate": 0.8,
+      "degree_unknown_n": 0,
+      "degree_provisional_n": 20,
+      "segment_errors": 0,
+      "drift_flags": [],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 200,
+      "n_rows": 20,
+      "n_decided": 19,
+      "hit": 14,
+      "miss": 5,
+      "hit_rate": 0.7368421052631579,
+      "degree_unknown_n": 0,
+      "degree_provisional_n": 20,
+      "segment_errors": 0,
+      "drift_flags": [],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 206,
+      "n_rows": 20,
+      "n_decided": 19,
+      "hit": 8,
+      "miss": 11,
+      "hit_rate": 0.42105263157894735,
+      "degree_unknown_n": 0,
+      "degree_provisional_n": 20,
+      "segment_errors": 0,
+      "drift_flags": [],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    }
+  ],
+  "isolation_zh": "專鍋；不混海選／黃金買點／洞燭／AI倉／個股",
+  "not_buy_signal": true,
+  "WAVE_NEURONS_MATCH": false,
+  "note_zh": "冷啟動重播完成至最新開市日；段號暫定；主分＝自推對日盤。不上話筒。",
+  "self_review_rounds": [
+    {
+      "round": 1,
+      "issue": "hit_rate=1.0 過鬆：個股價當指數＋l<=floor誤判",
+      "fix": "指數窗過濾＋真觸價／近距"
+    },
+    {
+      "round": 2,
+      "issue": "hit_rate≈0.015 過嚴：把今日高低當明日必測",
+      "fix": "改他點＋先前窗擺盪；觸價寬限2%"
+    },
+    {
+      "round": 3,
+      "status": "rerun_to_latest",
+      "end": "20261109",
+      "hit_rate": 0.3891625615763547
+    }
+  ]
+}
