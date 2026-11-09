@@ -4,6 +4,8 @@
   "seal_id": "biaoke_crash_week_select_and_tail_end_playbook",
   "phone_sync": "blocked",
   "buy_signal": false,
+  "timeline_seal": "biaoke_crash_warning_to_tail_timeline_202611.json",
+  "timeline_seal_note_zh": "示警→路徑改口→急跌兌現→止跌候選／確認→確認前選股語，見 timeline_seal（Asia/Taipei；非買訊）。",
   "purpose_zh": "使用者鎖：以後大盤若再出現類似本週急跌／回測大跌，要記得怎麼選股；以及怎麼像飆大判斷跌勢已到尾聲。可提醒／給指引，不准自動當買訊改話筒。",
   "source_posts": [
     {
