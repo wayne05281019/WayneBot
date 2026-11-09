@@ -1,0 +1,64 @@
+{
+  "as_of": "2026-11-09T23:23:40+0800",
+  "tz": "Asia/Taipei",
+  "track": "market_tw",
+  "pot": "wave_teach_aid_deepen",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "WAVE_NEURONS_MATCH": false,
+  "invent_key": "phrase_focus",
+  "parent_keep": "wave_decade_replay baseline score_mode",
+  "replace": false,
+  "gate": {
+    "n_decided": 226,
+    "gate_n20": true,
+    "score_mode": "phrase_focus",
+    "drop_in_for_loose_baseline": false,
+    "baseline_hit_rate": 0.393646408839779,
+    "labeled_hit_rate": 0.42035398230088494,
+    "delta_hit_rate": 0.026708,
+    "matched_day": {
+      "n_matched_decided": 226,
+      "labeled_hit": 95,
+      "loose_hit": 94,
+      "labeled_hit_rate": 0.42035398230088494,
+      "loose_hit_rate": 0.415929203539823,
+      "delta_hit_rate_matched": 0.004425,
+      "note_zh": "同日對照：headline 高於 loose 全窗若只因放棄難日＝不誠實換閘"
+    },
+    "min_delta_clear": 0.02,
+    "clearly_better": true,
+    "matched_clearly_better": false,
+    "honest_flags": [
+      "matched_day_not_clearly_better"
+    ],
+    "gate_flags": [
+      "matched_day_not_clearly_better",
+      "cross_score_mode_not_drop_in_for_loose_baseline"
+    ],
+    "replace": false,
+    "keep": "wave_decade_replay baseline score_mode",
+    "decision_zh": "phrase_focus＝只評有假跌破／有效穿刺／1-4／壓轉撐等硬用語日；教具對照，不換 loose"
+  },
+  "labeled_with_his": {
+    "rows": 749,
+    "n_decided": 226,
+    "hit": 95,
+    "miss": 131,
+    "hit_rate": 0.42035398230088494,
+    "n_with_named": 447,
+    "n_night_touched": 256
+  },
+  "matched_day_vs_loose": {
+    "n_matched_decided": 226,
+    "labeled_hit": 95,
+    "loose_hit": 94,
+    "labeled_hit_rate": 0.42035398230088494,
+    "loose_hit_rate": 0.415929203539823,
+    "delta_hit_rate_matched": 0.004425,
+    "note_zh": "同日對照：headline 高於 loose 全窗若只因放棄難日＝不誠實換閘"
+  },
+  "next_long_window_zh": "with_his 20231204→最新開市日；phrase_focus 續收；另備 crash-phase 子窗",
+  "not_buy_signal": true,
+  "no_invent_wave_5_9": true
+}

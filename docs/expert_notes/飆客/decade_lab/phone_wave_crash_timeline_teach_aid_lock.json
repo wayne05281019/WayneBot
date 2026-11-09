@@ -1,0 +1,22 @@
+{
+  "as_of": "2026-11-09T20:46:00+08:00",
+  "tz": "Asia/Taipei",
+  "track": "market_tw",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "WAVE_NEURONS_MATCH": false,
+  "source_user_zh": "使用者確認：警示→大跌→止跌時間線可當大盤波浪研究教具",
+  "teach_aid": {
+    "id": "biaoke_crash_warning_to_tail_timeline_202611",
+    "file": "biaoke_crash_warning_to_tail_timeline_202611.json",
+    "playbook": "biaoke_crash_week_select_and_tail_end_playbook.json",
+    "use_zh": [
+      "冷啟動／十年重播對質時，用他真實改口鏈當標註樣本（warn→guidance→crash→candidate→confirm）",
+      "練習：夜盤領先句 vs 翌日日盤官方柱是否兌現他點過的位",
+      "練習：有效 1 4／假跌破／止跌確認句何時升級，不准提前當成已確認",
+      "個股四腿選股只當同週對照教材，不准寫回黃金買點／海選"
+    ]
+  },
+  "isolation_zh": "只讀教具；勝率分鍋；不准發明 5／9；不上話筒定論直到 WAVE_NEURONS_MATCH",
+  "not_buy_signal": true
+}
