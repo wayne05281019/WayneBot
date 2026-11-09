@@ -6,6 +6,7 @@ import asyncio
 import inspect
 import os
 import tempfile
+import threading
 import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -208,10 +209,12 @@ def test_gap_line_while_official_volume_still_running():
     """第 2 張送出時官方量還沒齊：話筒要寫在等成交量，不准空白。"""
     td = tempfile.mkdtemp()
     bot = _bot(td)
+    # CI 負載下 card／glance 常 >3s；固定 sleep 會讓 ensure 先完、gap 句被跳過。
+    # 用 Event：等看到結構等待句才放行 ensure（逾時仍放，讓後面 assert 紅）。
+    gap_gate = threading.Event()
 
     def _ensure(*_a, **_k):
-        # 要比介紹圖 paint＋送圖路徑長，才卡在 volfill 相位讓等待句寫出「等官方成交量」
-        time.sleep(3.0)
+        gap_gate.wait(timeout=60.0)
         return {"sid": "2330", "confirmed_absent": [], "still_missing": [], "filled": []}
 
     def _bars(*_a, **_k):
@@ -239,11 +242,24 @@ def test_gap_line_while_official_volume_still_running():
 
         return _inner
 
+    def _is_struct_gap(text: str) -> bool:
+        return (
+            ("結構圖在等官方成交量" in text)
+            or ("結構圖在整理官方日K" in text)
+            or ("結構圖繪製中" in text)
+        )
+
+    async def _reply_text(*args, **_kwargs):
+        text = str(args[0]) if args else ""
+        if _is_struct_gap(text):
+            gap_gate.set()
+        return MagicMock(delete=AsyncMock(), edit_text=AsyncMock())
+
     message = MagicMock()
     message.from_user = SimpleNamespace(id=111, first_name="u")
     message.chat_id = 999
     message.reply_html = AsyncMock(return_value=MagicMock())
-    message.reply_text = AsyncMock(return_value=MagicMock(delete=AsyncMock()))
+    message.reply_text = AsyncMock(side_effect=_reply_text)
     message.reply_photo = AsyncMock()
 
     async def _run():
@@ -299,12 +315,7 @@ def test_gap_line_while_official_volume_still_running():
         asyncio.run(_run())
     texts = [str(c.args[0]) for c in message.reply_text.await_args_list if c.args]
     # 官方量還在補時必出等待句；CI 負載下相位可能已進 bars／paint，三種都算有補句
-    assert any(
-        ("結構圖在等官方成交量" in t)
-        or ("結構圖在整理官方日K" in t)
-        or ("結構圖繪製中" in t)
-        for t in texts
-    ), texts
+    assert any(_is_struct_gap(t) for t in texts), texts
     # 第 3 張仍有送出
     caps = [
         str(c.kwargs.get("caption") or "")
