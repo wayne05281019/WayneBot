@@ -3,7 +3,7 @@
   "buy_signal": false,
   "certainty": false,
   "segment_numbers": "REQUIRED",
-  "as_of_taipei": "2026-11-09T11:39:01",
+  "as_of_taipei": "2026-11-09T17:01:11+0800",
   "event": {
     "source": "user_paste_biaoke_2026-11-09_09:09",
     "post_in_local_db": false,
@@ -291,5 +291,42 @@
   "accuracy_gate": {
     "promote_to_phone": false,
     "note_zh": "正確率升高前只練習；不上話筒定論"
+  },
+  "eod_filled": true,
+  "official_eod": {
+    "twii": {
+      "o": 40347.28125,
+      "h": 42349.359375,
+      "l": 40347.28125,
+      "c": 41661.7,
+      "v": 12127385.0
+    },
+    "tx_regular": {
+      "o": 40099.0,
+      "h": 42317.0,
+      "l": 39996.0,
+      "c": 41423.0,
+      "v": 94766
+    }
+  },
+  "miss_analysis": {
+    "expected_segments": [
+      "C3-5",
+      "B-a挑戰41760",
+      "B-b回測週五低"
+    ],
+    "actual_path": "B-a強彈刺穿41760後收回；未走B-b",
+    "unexpected_level": "台指高見42317（超過41760）；未見到週五低區",
+    "which_segment_broke": "B-b（今日未啟動）；B-a_cap「不過壓」同日敘事偏弱（有刺穿）",
+    "rule_patch": "條件句『不過41760→很快再測週五低』：盤中刺穿但收未站穩時，回測時序可遞延，不准當日強制計B-b必發生",
+    "two_diff": {
+      "vs_biaoke_zh": "他：不過壓轉撐→再測週五低。今：台指盤中過41760、收未站穩，且未測週五低＝『很快再測』同日未兌現。",
+      "vs_official_zh": "官方台指 O40099/H42317/L39996/C41423；加權 O40347/H42349/L40347/C41662。"
+    }
+  },
+  "path_eod_verdicts": {
+    "P1_must_retest_friday": "未完／失效於今日未發生",
+    "P2_41760_still_cap": "偏不合／台指盤中刺穿收未站穩",
+    "P3_fake_break_board_zone": "未觸發"
   }
 }

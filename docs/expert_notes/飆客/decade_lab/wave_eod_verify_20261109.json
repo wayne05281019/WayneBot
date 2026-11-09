@@ -1,20 +1,39 @@
 {
   "as_of": "20261109",
-  "as_of_taipei": "2026-11-09T14:06:29+0800",
+  "as_of_taipei": "2026-11-09T17:01:11+0800",
   "phone_sync": "blocked",
   "buy_signal": false,
   "certainty": false,
   "segment_numbers": "REQUIRED",
   "bar_status": {
     "twii_daily": "in_db",
-    "twii_1m": "ephemeral_ok",
-    "tx_regular": "missing_taifex_not_published_yet",
-    "tx_night": "in_db"
+    "tx_regular": "in_db",
+    "tx_night": "in_db",
+    "twii_1m": "ephemeral_ok"
+  },
+  "official": {
+    "twii": {
+      "o": 40347.28125,
+      "h": 42349.359375,
+      "l": 40347.28125,
+      "c": 41661.7,
+      "v": 12127385.0
+    },
+    "tx_regular": {
+      "o": 40099.0,
+      "h": 42317.0,
+      "l": 39996.0,
+      "c": 41423.0,
+      "v": 94766
+    },
+    "friday_low_twii": 37837.05,
+    "friday_low_tx": 37694.0,
+    "pressure_41760": 41760.0
   },
   "paths": [
     {
       "id": "P1_must_retest_friday",
-      "verdict": "未完",
+      "verdict": "未完／失效於今日未發生",
       "segments_provisional": [
         {
           "label": "C3-5",
@@ -23,30 +42,30 @@
         },
         {
           "label": "B-a",
-          "role": "今日強彈段",
-          "note": "09:00低40347→10:34高42349"
+          "role": "今日強彈",
+          "note": "TX H42317／TWII H42349"
         },
         {
           "label": "B-b",
-          "role": "回測週五低＝尚未發生",
+          "role": "回測週五低未發生",
           "level": 37837.05
         }
       ],
-      "evidence_zh": "加權1分最低40347＠09:00，距37837仍+2510；今日未回測。",
-      "next_zh": "主事件遞延：明天～本週前半仍盯再測37837。"
+      "evidence_zh": "TWII L40347／TX L39996 皆遠高於週五低37837／37694；今日未回測。",
+      "next_zh": "回測事件遞延至後續開市日（見 forward 11/10）。"
     },
     {
       "id": "P2_41760_still_cap",
-      "verdict": "偏不合／部分刺穿",
+      "verdict": "偏不合／台指盤中刺穿收未站穩",
       "segments_provisional": [
         {
           "label": "B-a_cap",
-          "role": "41760盤中被刺、收盤未站穩",
+          "role": "41760台指盤中刺穿、收盤未壓轉撐",
           "level": 41760.0
         }
       ],
-      "evidence_zh": "加權1分約09:51觸及≥41760；高42349＠10:34；收41662仍<41760。壓轉撐未成立（收未站穩）。台指日盤缺柱＝本體待補。",
-      "invalidate_progress_zh": "收盤站穩41760尚未發生；盤中刺穿已發生（加權對照）。"
+      "evidence_zh": "台指日盤 H42317≥41760，C41423<41760；壓轉撐未成立。加權對照 H42349 C41662。",
+      "invalidate_progress_zh": "盤中刺穿已發生；收盤站穩41760尚未發生。"
     },
     {
       "id": "P3_fake_break_board_zone",
@@ -61,12 +80,24 @@
           "role": "無"
         }
       ],
-      "evidence_zh": "未破37837，假跌破劇本今日不計分。"
+      "evidence_zh": "未破週五低，假跌破不計分。"
     }
   ],
-  "two_diff": {
-    "vs_biaoke_zh": "他：不過41760壓轉撐→很快再測週五低。今：加權盤中過數字但收未站穩，且未測週五低＝「很快再測」同日未兌現；差異＝強彈先刺壓、回測遞延。",
-    "vs_official_zh": "官方加權 O40347/H42349/L40347/C41662；1分路徑已對。台指日盤缺。"
+  "miss_analysis": {
+    "expected_segments": [
+      "C3-5",
+      "B-a挑戰41760",
+      "B-b回測週五低"
+    ],
+    "actual_path": "B-a強彈刺穿41760後收回；未走B-b",
+    "unexpected_level": "台指高見42317（超過41760）；未見到週五低區",
+    "which_segment_broke": "B-b（今日未啟動）；B-a_cap「不過壓」同日敘事偏弱（有刺穿）",
+    "rule_patch": "條件句『不過41760→很快再測週五低』：盤中刺穿但收未站穩時，回測時序可遞延，不准當日強制計B-b必發生",
+    "two_diff": {
+      "vs_biaoke_zh": "他：不過壓轉撐→再測週五低。今：台指盤中過41760、收未站穩，且未測週五低＝『很快再測』同日未兌現。",
+      "vs_official_zh": "官方台指 O40099/H42317/L39996/C41423；加權 O40347/H42349/L40347/C41662。"
+    }
   },
-  "cycle8_miss_note_zh": "暫定B-b今日未走；B-a幅度大於「不過第一壓就回頭」的同日預期。不改鐵律；記條件句時序可拉長。"
+  "cycle8_review_zh": "暫定仍在大C後反彈B-a；C3-5底候選未在今日被再測。不准升新五波1。",
+  "not_buy_signal": true
 }
