@@ -1,0 +1,65 @@
+{
+  "version": "spirit_mix_dual_track_v106",
+  "as_of": "2026-11-09T11:05:17+08:00",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "promote_lookup": false,
+  "status": "dual_tracks_sealed_keep",
+  "finding_zh": "分軌封口：early＝U220 冠军 ei_n2_lu5／eg_bridge（wr0.827／d51／bars16.55）；fast＝U250 lu5_vol_next（wr0.855／d54／bars15.3）。兩軌勝率不准混、都不上話筒。v105 麥可過濾日數過稀（d3~5）不升級。",
+  "early_track": {
+    "universe": "U220",
+    "criterion": "wr>=0.80 & d>=50 & bars>16.26（進得早）",
+    "keep": {
+      "ei_n2_lu5": {
+        "wr": 0.8269230769230769,
+        "d": 51,
+        "bars": 16.54901960784314,
+        "exp": 0.028565295790897727,
+        "early_gate": true,
+        "fast_gate": false
+      },
+      "eg_bridge": {
+        "wr": 0.8269230769230769,
+        "d": 51,
+        "bars": 16.54901960784314,
+        "exp": 0.028565295790897727,
+        "early_gate": true,
+        "fast_gate": false
+      },
+      "ei_n2_sb": {
+        "wr": 0.8113207547169812,
+        "d": 52,
+        "bars": 17.057692307692307,
+        "exp": 0.027420172972348097,
+        "early_gate": true,
+        "fast_gate": false
+      }
+    }
+  },
+  "fast_track": {
+    "universe": "U250",
+    "criterion": "wr>=0.84 & d>=50 & bars<=16.26（賺得快；與 early 分軌不混）",
+    "keep": {
+      "lu5_vol_next": {
+        "wr": 0.8545454545454545,
+        "d": 54,
+        "bars": 15.296296296296296,
+        "exp": 0.03405337250572369,
+        "early_gate": false,
+        "fast_gate": true
+      },
+      "eg_vol_next": {
+        "wr": 0.8545454545454545,
+        "d": 54,
+        "bars": 15.296296296296296,
+        "exp": 0.03405337250572369,
+        "early_gate": false,
+        "fast_gate": true
+      }
+    },
+    "note_zh": "U250 上 lu5_vol_next wr≈0.855／d54／bars≈15.3；不過 early 閘，故另軌保留"
+  },
+  "sell_keep": "hi20_or_desync",
+  "michael_v105": "too_sparse_no_upgrade",
+  "next": "下一刀可測：fast 軌 OOS 穩定性；或 early×fast 同日共振才進（仍 blocked）"
+}
