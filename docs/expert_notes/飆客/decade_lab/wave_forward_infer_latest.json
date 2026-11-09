@@ -1,125 +1,81 @@
 {
-  "as_of_taipei": "2026-11-09T13:40:57+08:00",
+  "as_of_taipei": "2026-11-09T14:06:29+0800",
   "as_of_day": "20261109",
-  "today_job": "forward_must_happen_infer_FIRST",
-  "today_job_done": true,
+  "infer_for": "20261110",
+  "today_job": "post_close_next_session_infer",
   "phone_sync": "blocked",
   "buy_signal": false,
   "certainty": false,
   "segment_numbers": "REQUIRED",
-  "official_snapshot": {
-    "tx_night_20261109": {
-      "o": 39742.0,
-      "h": 40845.0,
-      "l": 39129.0,
-      "c": 40298.0,
-      "v": 69882
-    },
-    "tx_regular_20261109": null,
-    "twii_20261109": null,
-    "friday_low_twii": 37837.05078125,
-    "friday_low_tx": 37694.0,
-    "note_zh": "13:39 本機尚無今日加權／台指日盤收；先以週五低＋週日／週一夜盤為底。日盤進庫後補驗。"
-  },
-  "primary_judgment_zh": "下一次必經：再測上週五「盤中低」——加權≈37837（他口述），台指期日盤對照≈37694；不是收盤價。上蓋41760未過不當多。",
+  "from_eod_zh": "今日強彈刺41760數字、收未站穩、未測週五低→下一次必經仍偏再測週五低，除非日盤有效站穩41760壓轉撐。",
   "paths": [
     {
-      "id": "P1_must_retest_friday",
+      "id": "N1_still_retest_friday",
       "priority": 1,
       "status": "推論／未定案",
-      "horizon_zh": "明天～本週前半（下一次必經事件）",
-      "must_happen_zh": "台指／加權會再靠近或戳測上週五低（約37837／台指約37694）一次",
-      "why_zh": "結構：他已鎖 C3-5＋1 4→底在週五低，但反彈未見41760壓轉撐；夜盤高40845仍在41760下。未過第一壓的反彈，下一次必經＝回測已確認底。不是猜方向爽感，是條件句：壓不過→測底。",
+      "must_happen_zh": "若41760（台指）未收穩壓轉撐，近窗仍會再靠近／戳測週五低37837（TX≈37694）",
       "segments_provisional": [
         {
-          "label": "C3-5",
-          "role": "已完成候選＝上週五低",
-          "level": 37837.05078125
-        },
-        {
           "label": "B-a",
-          "role": "反彈挑戰41760中／偏失敗",
-          "note": "夜高40845未及41760"
+          "role": "今日反彈已走／未壓轉撐",
+          "note": "收41662"
         },
         {
           "label": "B-b",
           "role": "下一次必經＝回測C3-5低",
-          "level": 37837.05078125
+          "level": 37837.05
         }
       ],
       "levels": {
         "pressure": 41760.0,
-        "retest": 37837.05078125,
+        "retest": 37837.05,
         "retest_tx": 37694.0
       },
-      "invalidate_zh": "日盤有效站穩41760上方且不再回測週五低（壓轉撐成立）",
-      "not_buy_signal": true
+      "invalidate_zh": "台指／加權有效收穩41760上方且不再回測週五低"
     },
     {
-      "id": "P2_41760_still_cap",
+      "id": "N2_hold_above_first_cap",
       "priority": 2,
       "status": "推論／未定案",
-      "horizon_zh": "同窗並行觀察",
-      "must_happen_zh": "在完成週五低回測之前，41760仍是上方第一蓋（未過不當追多）",
-      "why_zh": "他今天教學第1點；與P1同一條件樹的上蓋",
+      "must_happen_zh": "若站穩41760壓轉撐，則P1回測時序延後／降權，改觀察更高結構",
       "segments_provisional": [
         {
-          "label": "B-a_cap",
-          "role": "41760＝B-a天花板",
+          "label": "B-a_hold",
+          "role": "壓轉撐候選",
           "level": 41760.0
+        },
+        {
+          "label": "post_hold",
+          "role": "站穩後續暫不升新五波1",
+          "note": "未驗證不准升"
         }
       ],
       "levels": {
         "pressure": 41760.0
       },
-      "invalidate_zh": "收盤站上41760並站穩",
-      "not_buy_signal": true
+      "invalidate_zh": "再度跌回41760下且加快測週五低"
     },
     {
-      "id": "P3_fake_break_board_zone",
+      "id": "N3_fake_break_if_retest",
       "priority": 3,
       "status": "推論／未定案",
-      "horizon_zh": "回測當下～隨後1～3根",
-      "must_happen_zh": "若戳破週五低後快速抽回，他定義為假跌破上車區（這是他的劇本，非正式買訊）",
-      "why_zh": "他今天第2點；接在P1回測之後的條件結果",
+      "must_happen_zh": "若回測戳破37837後快速抽回＝他的假跌破上車區（只對質）",
       "segments_provisional": [
         {
           "label": "B-b_spike",
-          "role": "戳破C3-5低",
-          "level": 37837.05078125
+          "role": "戳破",
+          "level": 37837.05
         },
         {
           "label": "B-b_reclaim",
-          "role": "抽回＝假跌破候選",
-          "note": "他說上車點；我們只記對質"
+          "role": "抽回"
         }
       ],
       "levels": {
-        "friday_low": 37837.05078125
+        "friday_low": 37837.05
       },
-      "invalidate_zh": "破低後無法抽回、續殺向35579備線",
-      "not_buy_signal": true
+      "invalidate_zh": "破低不回→備線35579→31705"
     }
   ],
-  "vs_biaoke_today": {
-    "aligned_zh": "與他三點同向：等回測、41760蓋、假跌破上車是他的定義",
-    "my_priority_zh": "先鎖 P1 回測為必經，再掛 P2／P3 條件枝"
-  },
-  "next_after_today_ready": [
-    "日盤收進庫→驗證今日判斷進度",
-    "明天驗證 P1／P2／P3",
-    "今天這份就緒後，才開始 2026-01→最新 鏈式拆解點位準則"
-  ],
-  "jan_backfill_status": "BLOCKED_until_today_forward_infer_ready",
-  "friday_low_definition": {
-    "primary_level": 37837.05,
-    "primary_name_zh": "加權盤中低 37837",
-    "tx_proxy_level": 37694.0,
-    "tx_proxy_name_zh": "台指期日盤低 37694（他看台指期時用這條對照，但口述37837＝加權）",
-    "not_zh": [
-      "不是週五收盤39701",
-      "不是週五夜盤低38799",
-      "不是4/23的37164（那是他拿來比接近度的參考）"
-    ]
-  }
+  "not_buy_signal": true
 }

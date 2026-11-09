@@ -1,0 +1,65 @@
+{
+  "as_of": "20261109",
+  "as_of_taipei": "2026-11-09T14:06:29+0800",
+  "tz": "Asia/Taipei",
+  "track": "market_tw",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "storage_policy_zh": "對質用當日1分路徑（暫存摘要JSON）；主庫維持15／60。不准為默默記存PNG。近窗數字可留，不灌永久1分進minute_bars。",
+  "fetch_rule_zh": "開市日約13:40即可抓加權日盤走勢（含1分細節）；不必等16:30盤後融合。",
+  "official_daily": {
+    "twii": {
+      "o": 40347.28125,
+      "h": 42349.359375,
+      "l": 40347.28125,
+      "c": 41661.7,
+      "v": 0.0
+    },
+    "tx_regular": null,
+    "tx_night": {
+      "o": 39742.0,
+      "h": 40845.0,
+      "l": 39129.0,
+      "c": 40298.0,
+      "v": 69882
+    },
+    "twii_15m_bars_in_db": 19
+  },
+  "twii_1m_path": {
+    "n": 271,
+    "source": "yahoo_^TWII_1m_ephemeral",
+    "day_low": {
+      "price": 40347.28,
+      "hm": "09:00"
+    },
+    "day_high": {
+      "price": 42349.36,
+      "hm": "10:34"
+    },
+    "close": {
+      "price": 41661.7,
+      "hm": "13:30"
+    },
+    "first_touch_ge_41760": {
+      "hm": "09:51",
+      "high": 41788.15,
+      "close": 41788.15
+    },
+    "last_bar_high_ge_41760": {
+      "hm": "13:10",
+      "high": 41763.47,
+      "close": 41674.03
+    },
+    "first_close_below_41760_after_touch": {
+      "hm": "13:07",
+      "close": 41749.19
+    },
+    "vs_friday_low": {
+      "friday_low_twii": 37837.05,
+      "today_low": 40347.28,
+      "delta": 2510.23,
+      "retested": false
+    }
+  },
+  "note_41760_zh": "41760是台指期點位；加權1分觸及同數字僅對照。台指日盤官方柱進庫後再核本體。"
+}

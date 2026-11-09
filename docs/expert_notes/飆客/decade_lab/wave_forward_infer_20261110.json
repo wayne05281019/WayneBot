@@ -1,0 +1,81 @@
+{
+  "as_of_taipei": "2026-11-09T14:06:29+0800",
+  "as_of_day": "20261109",
+  "infer_for": "20261110",
+  "today_job": "post_close_next_session_infer",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "certainty": false,
+  "segment_numbers": "REQUIRED",
+  "from_eod_zh": "今日強彈刺41760數字、收未站穩、未測週五低→下一次必經仍偏再測週五低，除非日盤有效站穩41760壓轉撐。",
+  "paths": [
+    {
+      "id": "N1_still_retest_friday",
+      "priority": 1,
+      "status": "推論／未定案",
+      "must_happen_zh": "若41760（台指）未收穩壓轉撐，近窗仍會再靠近／戳測週五低37837（TX≈37694）",
+      "segments_provisional": [
+        {
+          "label": "B-a",
+          "role": "今日反彈已走／未壓轉撐",
+          "note": "收41662"
+        },
+        {
+          "label": "B-b",
+          "role": "下一次必經＝回測C3-5低",
+          "level": 37837.05
+        }
+      ],
+      "levels": {
+        "pressure": 41760.0,
+        "retest": 37837.05,
+        "retest_tx": 37694.0
+      },
+      "invalidate_zh": "台指／加權有效收穩41760上方且不再回測週五低"
+    },
+    {
+      "id": "N2_hold_above_first_cap",
+      "priority": 2,
+      "status": "推論／未定案",
+      "must_happen_zh": "若站穩41760壓轉撐，則P1回測時序延後／降權，改觀察更高結構",
+      "segments_provisional": [
+        {
+          "label": "B-a_hold",
+          "role": "壓轉撐候選",
+          "level": 41760.0
+        },
+        {
+          "label": "post_hold",
+          "role": "站穩後續暫不升新五波1",
+          "note": "未驗證不准升"
+        }
+      ],
+      "levels": {
+        "pressure": 41760.0
+      },
+      "invalidate_zh": "再度跌回41760下且加快測週五低"
+    },
+    {
+      "id": "N3_fake_break_if_retest",
+      "priority": 3,
+      "status": "推論／未定案",
+      "must_happen_zh": "若回測戳破37837後快速抽回＝他的假跌破上車區（只對質）",
+      "segments_provisional": [
+        {
+          "label": "B-b_spike",
+          "role": "戳破",
+          "level": 37837.05
+        },
+        {
+          "label": "B-b_reclaim",
+          "role": "抽回"
+        }
+      ],
+      "levels": {
+        "friday_low": 37837.05
+      },
+      "invalidate_zh": "破低不回→備線35579→31705"
+    }
+  ],
+  "not_buy_signal": true
+}
