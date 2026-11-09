@@ -1,0 +1,41 @@
+{
+  "version": "stock_spirit_pull_fib_reclaim_bias_lab_v1",
+  "tz": "Asia/Taipei",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "promote_lookup": false,
+  "gate_passed": false,
+  "keep": "v106",
+  "entry": "SPIRIT_pull_fib",
+  "parents": [
+    "stock_spirit_pull_fib_leader_bias_lab_decision.json",
+    "stock_spirit_core_leader_reclaim_lab_decision.json"
+  ],
+  "hypothesis_zh": "pull_fib×leader 對 plain +Δ未贏 keep；core 軌 reclaim 微正Δ → 併 reclaim×bias 到 pull_fib 核",
+  "confirm_variants": [
+    "plain",
+    "reclaim_ma20",
+    "leader_and_reclaim_ma20",
+    "reclaim_and_bias_lt8",
+    "leader_reclaim_and_bias_lt8",
+    "leader_reclaim_and_vol_1p5_bias_lt8"
+  ],
+  "sell": "hi20_or_desync",
+  "next": "done OOS; leader×reclaim OOS wr高但n<20; next fib618 / keep v106",
+  "status": "plain_delta_only_keep_v106",
+  "as_of": "2026-11-10T02:35:03+08:00",
+  "best_candidate": {
+    "leg": "spirit_pull_fib_reclaim_confirm",
+    "entry": "SPIRIT_pull_fib",
+    "variant": "reclaim_ma20",
+    "kind": "vs_plain",
+    "oos_wr": 0.7840290381125227,
+    "oos_d": 200,
+    "plain_oos_wr": 0.7200902934537246,
+    "plain_oos_d": 250,
+    "delta_oos_wr": 0.06393874465879812,
+    "beats_v106_early_keep_oos": false,
+    "beats_v106_fast_keep_oos": false
+  },
+  "shared_vs_keep": []
+}
