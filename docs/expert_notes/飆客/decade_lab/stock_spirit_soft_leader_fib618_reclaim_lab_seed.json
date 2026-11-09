@@ -1,0 +1,33 @@
+{
+  "version": "stock_spirit_soft_leader_fib618_reclaim_lab_v1",
+  "tz": "Asia/Taipei",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "promote_lookup": false,
+  "gate_passed": false,
+  "keep": "v106",
+  "entry": "SPIRIT_pull_fib618",
+  "parents": [
+    "stock_spirit_soft_leader_pull_fib_reclaim_lab_decision.json",
+    "stock_spirit_soft_leader_intent_pull_reclaim_lab_decision.json"
+  ],
+  "hypothesis_zh": "soft_leader×pull_fib×reclaim OOS≈0.825距 early 0.827；intent_soft 掉 wr；改 fib618 進場＋soft_leader×reclaim／pe_near 看能否跨 sealed keep",
+  "sell": "hi20_or_desync",
+  "next": "實作後跑 OOS；n≥20 且贏 keep 才談替換",
+  "status": "plain_delta_only_keep_v106",
+  "as_of": "2026-11-10T03:46:54+08:00",
+  "best_candidate": {
+    "leg": "spirit_soft_leader_fib618_confirm",
+    "entry": "SPIRIT_pull_fib618",
+    "variant": "reclaim_ma20",
+    "kind": "vs_plain",
+    "oos_wr": 0.7531380753138075,
+    "oos_d": 140,
+    "plain_oos_wr": 0.7332361516034985,
+    "plain_oos_d": 223,
+    "delta_oos_wr": 0.019901923710308966,
+    "beats_v106_early_keep_oos": false,
+    "beats_v106_fast_keep_oos": false
+  },
+  "shared_vs_keep": []
+}
