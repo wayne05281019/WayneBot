@@ -145,3 +145,16 @@ def test_pipeline_smoke(tmp_path):
     assert out["phone_sync"] == "blocked"
     assert out["not_buy_signal"] is True
     assert (tmp_path / "hsiao_pipeline_SMOKE_latest.json").exists()
+
+
+def test_a4_index_soft_preset_is_lab_only():
+    from scripts.decade_lab_hsiao_wave_engine import ENTRY_PRESETS, ElliottHsiaoEngine
+
+    assert "A4_index_soft" in ENTRY_PRESETS
+    eng = ElliottHsiaoEngine(entry_preset="A4_index_soft")
+    assert eng.entry_preset == "A4_index_soft"
+    # 合成窗至少能跑完且隔離旗標仍關
+    df = _synth(n=360)
+    bt = run_single_backtest(df, symbol="IDX", entry_preset="A4_index_soft")
+    assert bt.summary["phone_sync"] == "blocked"
+    assert bt.summary.get("not_buy_signal") is True

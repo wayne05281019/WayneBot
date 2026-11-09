@@ -62,7 +62,8 @@ def _log_len(a: float, b: float) -> float:
 
 
 # 實驗室進場预设（不上話筒）
-ENTRY_PRESETS = ("A0_strict", "A1_score", "A2_hammer_kd", "A3_squeeze")
+# A4_index_soft：大盤指數 decade 窗專用；放寬量能／週線硬閘，仍 phone_sync=blocked
+ENTRY_PRESETS = ("A0_strict", "A1_score", "A2_hammer_kd", "A3_squeeze", "A4_index_soft")
 
 
 @dataclass
@@ -427,6 +428,23 @@ class ElliottHsiaoEngine:
                 cur_low = self.cand_low.price if np.isfinite(self.cand_low.price) else close
                 retrace = _log_retrace(self.P1, self.P0, cur_low)
                 days_w2 = t - self.t_P1 if self.t_P1 >= 0 else 0
+                # A4：指數 decade 防 W2 淺回卡死（曾見近千根不進 W3）
+                if self.entry_preset == "A4_index_soft" and days_w2 >= 60:
+                    shallow = (not np.isfinite(retrace)) or retrace < 0.20
+                    if shallow and np.isfinite(self.P1) and close > self.P1:
+                        # 淺回後再創高＝W1 延伸，重標 P1，繼續等真 W2
+                        self.P1 = float(row["High"]) if np.isfinite(row.get("High", np.nan)) else close
+                        self.t_P1 = t
+                        self.log_W1 = _log_len(self.P1, self.P0)
+                        self.had_trough_since_p1 = False
+                        self.sum_vol_w2_down = 0.0
+                        self.cand_low = SwingCandidate(t, float(row["Low"]), vol_ma5, angle10)
+                        self._emit(t, "LAB_W1_EXTEND_SHALLOW_W2", P1=self.P1, days_w2=days_w2)
+                        return self._snap("LAB_W1_EXTEND_SHALLOW_W2", "flat", base_score)
+                    if shallow and days_w2 >= 120:
+                        self.reset_structure()
+                        self._emit(t, "LAB_W2_TIMEOUT_SHALLOW", days_w2=days_w2, retrace=retrace)
+                        return self._snap("LAB_W2_TIMEOUT_SHALLOW", "flat", base_score)
                 prior_high5 = float(row.get("prior_high_5", np.nan))
                 if not np.isfinite(prior_high5):
                     prior_high5 = self.P1
@@ -511,13 +529,42 @@ class ElliottHsiaoEngine:
                         or kd_buy
                         or (eff_score >= self.score_threshold and swing_ok)
                     )
-                else:  # A3_squeeze
+                elif preset == "A3_squeeze":
                     hard = mtf_ok and price_ok and np.isfinite(ma20_safe) and ma20_safe >= 0 and swing_ok
                     soft = vol_ok or kd_buy or hammer_confirm or eff_score >= self.score_threshold
                     if squeeze:
                         enter = hard and soft
                     else:
                         enter = hard and soft and eff_score >= self.score_threshold
+                else:  # A4_index_soft — 指數 decade 對質用，不准上話筒
+                    vol_soft = self.had_trough_since_p1 and (
+                        (np.isfinite(attack) and attack >= 1.2) or bool(row.get("is_attack_vol"))
+                    )
+                    ang_soft = (np.isfinite(angle5) and angle5 >= 25.0 and turn) or kd_buy or hammer_confirm
+                    above_ma = (np.isfinite(ma60) and close > ma60) or (
+                        np.isfinite(ma20) and close > ma20
+                    )
+                    price_soft = (
+                        np.isfinite(retrace) and 0.15 <= retrace <= 0.886 and above_ma
+                    )
+                    weekly_soft = weekly_bull or (
+                        above_ma
+                        and np.isfinite(ma60_safe)
+                        and ma60_safe >= -0.25
+                    )
+                    mtf_soft = weekly_soft and (not overext_block) and (not block_entry) and turnover_ok
+                    structure_turn = swing_ok or turn or kd_buy or hammer_confirm
+                    hard = (
+                        mtf_soft
+                        and price_soft
+                        and np.isfinite(ma20_safe)
+                        and ma20_safe >= -0.5
+                        and structure_turn
+                    )
+                    soft = vol_soft or kd_buy or hammer_confirm or ang_soft or (
+                        eff_score >= max(45.0, float(self.score_threshold) - 10.0)
+                    )
+                    enter = hard and soft
                 if enter:
                     self._apply_breakaway_gap(t, row, True)
                     self.P2 = self.cand_low.price
