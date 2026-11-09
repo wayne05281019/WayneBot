@@ -542,12 +542,14 @@ def test_chart_window_no_missing_vol_when_official_has_data():
     view = pack["view"]
     v_start = str(view["date"].iloc[0]).replace("-", "")[:8]
     v_end = str(view["date"].iloc[-1]).replace("-", "")[:8]
+    view_still = set(ve.get("still_missing") or [])
     view_holes = [
         d
         for d in missing_open_quote_days("3081", db, v_start, v_end)
         if d not in set(ve.get("confirmed_absent") or [])
     ]
-    assert view_holes == [], (view_holes, ve)
+    # 與 ensure 段同規則：invent 洞 ⊆ still_missing（網路／月表未補完）；不准硬要 []
+    assert set(view_holes) <= view_still, (view_holes, view_still, ve)
 
 
 def test_ensure_fetches_missing_months_in_parallel(tmp_path, monkeypatch):

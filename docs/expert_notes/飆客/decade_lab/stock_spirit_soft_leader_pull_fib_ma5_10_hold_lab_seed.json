@@ -1,0 +1,31 @@
+{
+  "version": "stock_spirit_soft_leader_pull_fib_ma5_10_hold_lab_v1",
+  "tz": "Asia/Taipei",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "promote_lookup": false,
+  "gate_passed": false,
+  "keep": "v106",
+  "entry": "SPIRIT_pull_fib",
+  "hypothesis_zh": "ma60_hold 未過閘；改 ma5_10_hold＝收＞MA5∩MA10 × soft×reclaim",
+  "sell": "hi20_or_desync",
+  "status": "shared_beats_keep_but_phone_blocked",
+  "as_of": "2026-11-10T05:12:00+08:00",
+  "best_candidate": {
+    "leg": "spirit_soft_leader_pull_fib_ma5_10_hold_confirm",
+    "entry": "SPIRIT_pull_fib",
+    "variant": "soft_leader_reclaim_ma5_10_hold_bias_lt5",
+    "kind": "vs_plain",
+    "oos_wr": 0.8695652173913043,
+    "oos_d": 40,
+    "plain_oos_wr": 0.7199705232129698,
+    "plain_oos_d": 250,
+    "delta_oos_wr": 0.1495946941783345,
+    "beats_v106_early_keep_oos": true,
+    "beats_v106_fast_keep_oos": true
+  },
+  "shared_vs_keep": [
+    "soft_leader_reclaim_ma5_10_hold_bias_lt5"
+  ],
+  "next": "理論過閘但 phone blocked／replace=false；下一刀 soft_leader×fib618×vol_expand 再生；不准改話筒"
+}

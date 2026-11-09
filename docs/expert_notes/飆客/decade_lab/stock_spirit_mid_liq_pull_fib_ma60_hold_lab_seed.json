@@ -1,0 +1,33 @@
+{
+  "version": "stock_spirit_mid_liq_pull_fib_ma60_hold_lab_v1",
+  "tz": "Asia/Taipei",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "promote_lookup": false,
+  "gate_passed": false,
+  "keep": "v106",
+  "entry": "SPIRIT_pull_fib",
+  "parents": [
+    "stock_spirit_mid_liq_family_pull_fib_reclaim_lab_decision.json",
+    "stock_spirit_soft_leader_pull_fib_ma60_hold_lab_decision.json"
+  ],
+  "hypothesis_zh": "mid_liq×reclaim 仍短 keep；加 ma60_hold 看能否擴品質並贏 sealed v106",
+  "sell": "hi20_or_desync",
+  "next": "OOS；未過閘→sell_desync_ma60 或 intent×ma60_hold",
+  "status": "plain_delta_only_keep_v106",
+  "as_of": "2026-11-10T05:08:36+08:00",
+  "best_candidate": {
+    "leg": "spirit_mid_liq_pull_fib_ma60_hold_confirm",
+    "entry": "SPIRIT_pull_fib",
+    "variant": "reclaim_and_ma60_hold",
+    "kind": "vs_plain",
+    "oos_wr": 0.7698630136986301,
+    "oos_d": 177,
+    "plain_oos_wr": 0.7200902934537246,
+    "plain_oos_d": 250,
+    "delta_oos_wr": 0.04977272024490553,
+    "beats_v106_early_keep_oos": false,
+    "beats_v106_fast_keep_oos": false
+  },
+  "shared_vs_keep": []
+}
