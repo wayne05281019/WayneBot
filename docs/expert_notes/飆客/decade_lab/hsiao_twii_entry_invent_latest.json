@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-11-09T23:38:16+0800",
+  "as_of": "2026-11-10T01:42:30+0800",
   "tz": "Asia/Taipei",
   "track": "market_tw",
   "pot": "hsiao_twii_entry_invent",
@@ -10,61 +10,93 @@
   "purpose_zh": "蕭氏大盤 decade：A0–A4 進場矩陣；修 TWII 0 成交；不上話筒",
   "data": {
     "symbol": "TWII",
-    "n": 1247,
-    "years": 5.1417,
-    "start": "2021-09-15",
+    "n": 5097,
+    "years": 20.8433,
+    "start": "2006-01-02",
     "end": "2026-11-06",
-    "honesty_zh": "本機 index_daily 若短於≈20年＝只對可得窗；不准謊稱二十年績效"
+    "honesty_zh": "本機 index_daily 若短於≈20年＝只對可得窗；不准謊稱二十年績效；深史可含 Yahoo 補洞，近窗官方量優先"
   },
   "presets": [
     {
       "entry_preset": "A0_strict",
       "n_trades": 0,
+      "n_entry_days": 0,
+      "entry_days": [],
       "total_return": 0.0,
       "max_drawdown": 0.0,
-      "n_bars": 1247,
+      "n_bars": 5097,
       "has_entries": false
     },
     {
       "entry_preset": "A1_score",
       "n_trades": 0,
+      "n_entry_days": 0,
+      "entry_days": [],
       "total_return": 0.0,
       "max_drawdown": 0.0,
-      "n_bars": 1247,
+      "n_bars": 5097,
       "has_entries": false
     },
     {
       "entry_preset": "A2_hammer_kd",
       "n_trades": 0,
+      "n_entry_days": 0,
+      "entry_days": [],
       "total_return": 0.0,
       "max_drawdown": 0.0,
-      "n_bars": 1247,
+      "n_bars": 5097,
       "has_entries": false
     },
     {
       "entry_preset": "A3_squeeze",
       "n_trades": 0,
+      "n_entry_days": 0,
+      "entry_days": [],
       "total_return": 0.0,
       "max_drawdown": 0.0,
-      "n_bars": 1247,
+      "n_bars": 5097,
       "has_entries": false
     },
     {
       "entry_preset": "A4_index_soft",
       "n_trades": 2,
-      "total_return": 3.748007886206217e-05,
-      "max_drawdown": -0.0010580067757200995,
-      "n_bars": 1247,
+      "n_entry_days": 1,
+      "entry_days": [
+        "20250610"
+      ],
+      "total_return": 0.00019552489534757633,
+      "max_drawdown": -0.0010695194300770483,
+      "n_bars": 5097,
       "has_entries": true
     }
   ],
   "pick_lab_only": {
     "entry_preset": "A4_index_soft",
     "n_trades": 2,
-    "total_return": 3.748007886206217e-05,
-    "max_drawdown": -0.0010580067757200995,
-    "n_bars": 1247,
+    "n_entry_days": 1,
+    "entry_days": [
+      "20250610"
+    ],
+    "total_return": 0.00019552489534757633,
+    "max_drawdown": -0.0010695194300770483,
+    "n_bars": 5097,
     "has_entries": true
+  },
+  "a4_vs_a0": {
+    "A0_strict": {
+      "n_entry_days": 0,
+      "n_trades": 0,
+      "total_return": 0.0
+    },
+    "A4_index_soft": {
+      "n_entry_days": 1,
+      "n_trades": 2,
+      "total_return": 0.00019552489534757633
+    },
+    "years_ok": true,
+    "gate_n20": false,
+    "beat_a0": true,
+    "replace": false
   },
   "replace": false,
   "keep": "hsiao_v7 A0_strict lab isolation",
@@ -72,8 +104,8 @@
     "phone_sync_blocked",
     "not_buy_signal",
     "no_stock_spirit_mix_in_this_invent",
-    "n_lt_20y_window"
+    "n_entry_days_lt_20"
   ],
-  "next_long_window_zh": "補齊 TWII≈20y 真柱後重跑 A4_index_soft vs A0；獨立開市日 n≥20 且贏現況才談換（仍非買訊）",
+  "next_long_window_zh": "A4 vs A0：獨立進場開市日 n≥20 且清贏 A0 才談換（仍非買訊）；目前續收／續調進場密度",
   "no_invent_wave_5_9_on_stocks": true
 }
