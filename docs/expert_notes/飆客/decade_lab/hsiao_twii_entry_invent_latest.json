@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-11-10T05:42:42+0800",
+  "as_of": "2026-11-10T06:03:00+0800",
   "tz": "Asia/Taipei",
   "track": "market_tw",
   "pot": "hsiao_twii_entry_invent",
@@ -10,7 +10,7 @@
   "purpose_zh": "蕭氏大盤 decade：A0–A6 進場矩陣；A6 質量中軌靜默；不上話筒",
   "data": {
     "symbol": "TWII",
-    "n": 5098,
+    "n": 5210,
     "years": 20.8515,
     "start": "2006-01-02",
     "end": "2026-11-09",
@@ -20,164 +20,215 @@
   "presets": [
     {
       "entry_preset": "A0_strict",
-      "n_trades": 0,
-      "n_entry_days": 0,
-      "entry_days": [],
-      "total_return": 0.0,
-      "max_drawdown": 0.0,
-      "n_bars": 5098,
-      "has_entries": false
+      "n_trades": 3,
+      "n_entry_days": 1,
+      "entry_days": [
+        "20061013"
+      ],
+      "total_return": -0.0008737679200931936,
+      "max_drawdown": -0.008704341901199286,
+      "n_bars": 5210,
+      "has_entries": true
     },
     {
       "entry_preset": "A1_score",
-      "n_trades": 0,
-      "n_entry_days": 0,
-      "entry_days": [],
-      "total_return": 0.0,
-      "max_drawdown": 0.0,
-      "n_bars": 5098,
-      "has_entries": false
+      "n_trades": 4,
+      "n_entry_days": 2,
+      "entry_days": [
+        "20060504",
+        "20160301"
+      ],
+      "total_return": -0.005327319866214708,
+      "max_drawdown": -0.012454959412057764,
+      "n_bars": 5210,
+      "has_entries": true
     },
     {
       "entry_preset": "A2_hammer_kd",
-      "n_trades": 0,
-      "n_entry_days": 0,
-      "entry_days": [],
-      "total_return": 0.0,
-      "max_drawdown": 0.0,
-      "n_bars": 5098,
-      "has_entries": false
+      "n_trades": 4,
+      "n_entry_days": 2,
+      "entry_days": [
+        "20060504",
+        "20160301"
+      ],
+      "total_return": -0.005327319866214708,
+      "max_drawdown": -0.012454959412057764,
+      "n_bars": 5210,
+      "has_entries": true
     },
     {
       "entry_preset": "A3_squeeze",
-      "n_trades": 0,
-      "n_entry_days": 0,
-      "entry_days": [],
-      "total_return": 0.0,
-      "max_drawdown": 0.0,
-      "n_bars": 5098,
-      "has_entries": false
+      "n_trades": 4,
+      "n_entry_days": 2,
+      "entry_days": [
+        "20060504",
+        "20160301"
+      ],
+      "total_return": -0.005327319866214708,
+      "max_drawdown": -0.012454959412057764,
+      "n_bars": 5210,
+      "has_entries": true
     },
     {
       "entry_preset": "A4_index_soft",
-      "n_trades": 2,
-      "n_entry_days": 1,
+      "n_trades": 7,
+      "n_entry_days": 3,
       "entry_days": [
-        "20250610"
+        "20060504",
+        "20141204",
+        "20250611"
       ],
-      "total_return": 0.00019552489534757633,
-      "max_drawdown": -0.0010695194300770483,
-      "n_bars": 5098,
+      "total_return": -0.0297266591875901,
+      "max_drawdown": -0.03154979769179245,
+      "n_bars": 5210,
       "has_entries": true
     },
     {
       "entry_preset": "A5_index_dense",
-      "n_trades": 13,
-      "n_entry_days": 6,
+      "n_trades": 50,
+      "n_entry_days": 21,
       "entry_days": [
+        "20060220",
+        "20060504",
         "20060831",
-        "20120504",
-        "20120629",
-        "20170316",
-        "20230109",
-        "20250218"
+        "20081230",
+        "20120704",
+        "20140825",
+        "20141110",
+        "20151002",
+        "20161020",
+        "20170209",
+        "20171012",
+        "20180604",
+        "20200623",
+        "20201105",
+        "20210507",
+        "20210715",
+        "20230101",
+        "20230726",
+        "20241011",
+        "20251222",
+        "20260612"
       ],
-      "total_return": 0.03404549704958315,
-      "max_drawdown": -0.0180274894204997,
-      "n_bars": 5098,
+      "total_return": -0.007242563366938737,
+      "max_drawdown": -0.04917690246720141,
+      "n_bars": 5210,
       "has_entries": true
     },
     {
       "entry_preset": "A6_index_quality",
-      "n_trades": 2,
-      "n_entry_days": 1,
+      "n_trades": 24,
+      "n_entry_days": 9,
       "entry_days": [
-        "20061103"
+        "20060504",
+        "20061013",
+        "20100426",
+        "20120207",
+        "20140526",
+        "20180103",
+        "20191211",
+        "20230101",
+        "20260112"
       ],
-      "total_return": 0.009001489744916658,
-      "max_drawdown": -0.004012979778793779,
-      "n_bars": 5098,
+      "total_return": -0.042279283196747786,
+      "max_drawdown": -0.06124188798865915,
+      "n_bars": 5210,
       "has_entries": true
     }
   ],
   "pick_lab_only": {
     "entry_preset": "A5_index_dense",
-    "n_trades": 13,
-    "n_entry_days": 6,
+    "n_trades": 50,
+    "n_entry_days": 21,
     "entry_days": [
+      "20060220",
+      "20060504",
       "20060831",
-      "20120504",
-      "20120629",
-      "20170316",
-      "20230109",
-      "20250218"
+      "20081230",
+      "20120704",
+      "20140825",
+      "20141110",
+      "20151002",
+      "20161020",
+      "20170209",
+      "20171012",
+      "20180604",
+      "20200623",
+      "20201105",
+      "20210507",
+      "20210715",
+      "20230101",
+      "20230726",
+      "20241011",
+      "20251222",
+      "20260612"
     ],
-    "total_return": 0.03404549704958315,
-    "max_drawdown": -0.0180274894204997,
-    "n_bars": 5098,
+    "total_return": -0.007242563366938737,
+    "max_drawdown": -0.04917690246720141,
+    "n_bars": 5210,
     "has_entries": true
   },
   "a4_vs_a0": {
     "A0_strict": {
-      "n_entry_days": 0,
-      "n_trades": 0,
-      "total_return": 0.0
+      "n_entry_days": 1,
+      "n_trades": 3,
+      "total_return": -0.0008737679200931936
     },
     "A4_index_soft": {
-      "n_entry_days": 1,
-      "n_trades": 2,
-      "total_return": 0.00019552489534757633,
+      "n_entry_days": 3,
+      "n_trades": 7,
+      "total_return": -0.0297266591875901,
       "gate_n20": false,
-      "beat_a0": true
+      "beat_a0": false
     },
     "years_ok": true,
     "gate_n20": false,
-    "beat_a0": true,
+    "beat_a0": false,
     "replace": false
   },
   "a5_vs_a0": {
     "A0_strict": {
-      "n_entry_days": 0,
-      "n_trades": 0,
-      "total_return": 0.0
+      "n_entry_days": 1,
+      "n_trades": 3,
+      "total_return": -0.0008737679200931936
     },
     "A5_index_dense": {
-      "n_entry_days": 6,
-      "n_trades": 13,
-      "total_return": 0.03404549704958315,
-      "gate_n20": false,
-      "beat_a0": true
+      "n_entry_days": 21,
+      "n_trades": 50,
+      "total_return": -0.007242563366938737,
+      "gate_n20": true,
+      "beat_a0": false
     },
     "years_ok": true,
-    "gate_n20": false,
-    "beat_a0": true,
+    "gate_n20": true,
+    "beat_a0": false,
     "replace": false
   },
   "a6_vs_a0": {
     "A0_strict": {
-      "n_entry_days": 0,
-      "n_trades": 0,
-      "total_return": 0.0
+      "n_entry_days": 1,
+      "n_trades": 3,
+      "total_return": -0.0008737679200931936
     },
     "A6_index_quality": {
-      "n_entry_days": 1,
-      "n_trades": 2,
-      "total_return": 0.009001489744916658,
+      "n_entry_days": 9,
+      "n_trades": 24,
+      "total_return": -0.042279283196747786,
       "gate_n20": false,
-      "beat_a0": true
+      "beat_a0": false
     },
     "years_ok": true,
     "gate_n20": false,
-    "beat_a0": true,
+    "beat_a0": false,
     "replace": false
   },
   "cand_vs_a0": {
     "entry_preset": "A6_index_quality",
-    "n_entry_days": 1,
-    "n_trades": 2,
-    "total_return": 0.009001489744916658,
+    "n_entry_days": 9,
+    "n_trades": 24,
+    "total_return": -0.042279283196747786,
     "gate_n20": false,
-    "beat_a0": true,
+    "beat_a0": false,
     "years_ok": true,
     "replace": false
   },
@@ -188,7 +239,9 @@
     "not_buy_signal",
     "no_stock_spirit_mix_in_this_invent",
     "n_entry_days_lt_20",
-    "a4_n_entry_days_lt_20"
+    "not_clear_win_vs_A0",
+    "a4_n_entry_days_lt_20",
+    "a5_n_ok_but_not_clear_win_vs_A0"
   ],
   "next_long_window_zh": "A6_index_quality vs A0：獨立進場開市日 n≥20 且清贏 A0 才談換（仍非買訊）；A4／A5 續收、A6 質量中軌同軌靜默對質",
   "invent_next_zh": "A6_index_quality＝A5 denser 未清贏後再生；未過閘不換、不上話筒",

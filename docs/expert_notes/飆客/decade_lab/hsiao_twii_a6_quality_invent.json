@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-11-10T05:42:42+0800",
+  "as_of": "2026-11-10T06:03:00+0800",
   "tz": "Asia/Taipei",
   "track": "market_tw",
   "pot": "hsiao_twii_entry_invent",
@@ -12,56 +12,56 @@
   "replace": false,
   "a4_vs_a0": {
     "A0_strict": {
-      "n_entry_days": 0,
-      "n_trades": 0,
-      "total_return": 0.0
+      "n_entry_days": 1,
+      "n_trades": 3,
+      "total_return": -0.0008737679200931936
     },
     "A4_index_soft": {
-      "n_entry_days": 1,
-      "n_trades": 2,
-      "total_return": 0.00019552489534757633,
+      "n_entry_days": 3,
+      "n_trades": 7,
+      "total_return": -0.0297266591875901,
       "gate_n20": false,
-      "beat_a0": true
+      "beat_a0": false
     },
     "years_ok": true,
     "gate_n20": false,
-    "beat_a0": true,
+    "beat_a0": false,
     "replace": false
   },
   "a5_vs_a0": {
     "A0_strict": {
-      "n_entry_days": 0,
-      "n_trades": 0,
-      "total_return": 0.0
+      "n_entry_days": 1,
+      "n_trades": 3,
+      "total_return": -0.0008737679200931936
     },
     "A5_index_dense": {
-      "n_entry_days": 6,
-      "n_trades": 13,
-      "total_return": 0.03404549704958315,
-      "gate_n20": false,
-      "beat_a0": true
+      "n_entry_days": 21,
+      "n_trades": 50,
+      "total_return": -0.007242563366938737,
+      "gate_n20": true,
+      "beat_a0": false
     },
     "years_ok": true,
-    "gate_n20": false,
-    "beat_a0": true,
+    "gate_n20": true,
+    "beat_a0": false,
     "replace": false
   },
   "a6_vs_a0": {
     "A0_strict": {
-      "n_entry_days": 0,
-      "n_trades": 0,
-      "total_return": 0.0
+      "n_entry_days": 1,
+      "n_trades": 3,
+      "total_return": -0.0008737679200931936
     },
     "A6_index_quality": {
-      "n_entry_days": 1,
-      "n_trades": 2,
-      "total_return": 0.009001489744916658,
+      "n_entry_days": 9,
+      "n_trades": 24,
+      "total_return": -0.042279283196747786,
       "gate_n20": false,
-      "beat_a0": true
+      "beat_a0": false
     },
     "years_ok": true,
     "gate_n20": false,
-    "beat_a0": true,
+    "beat_a0": false,
     "replace": false
   },
   "gate_flags": [
@@ -69,7 +69,9 @@
     "not_buy_signal",
     "no_stock_spirit_mix_in_this_invent",
     "n_entry_days_lt_20",
-    "a4_n_entry_days_lt_20"
+    "not_clear_win_vs_A0",
+    "a4_n_entry_days_lt_20",
+    "a5_n_ok_but_not_clear_win_vs_A0"
   ],
   "next_long_window_zh": "A6_index_quality vs A0：獨立進場開市日 n≥20 且清贏 A0 才談換（仍非買訊）；A4／A5 續收、A6 質量中軌同軌靜默對質",
   "no_invent_wave_5_9_on_stocks": true

@@ -100,7 +100,10 @@ CRASH_PHASE_TAGS = frozenset(
     {"warn", "guidance", "crash", "candidate", "confirm"}
 )
 # 續收墊：急跌相位 end 往後延 N 個開市日（仍止於下一相位 start 前；抬 n→≥20）
-CRASH_PAD_OPEN_DAYS = 3
+# 2026-11-10：3→7，confirm 後近窗硬用語日續收（10/23 Yahoo close 空＝缺柱不捏）
+CRASH_PAD_OPEN_DAYS = 7
+# crash 子窗近窗加寬：本機急跌窗文偏稀，用較寬 near 讓硬用語跨開市日銜接（仍非 drop-in）
+CRASH_NEAR_OPEN_DAYS = 7
 SCORE_MODES = ("baseline", "tight", "phrase_focus", "phrase_focus_crash")
 
 
@@ -632,6 +635,9 @@ def run(
     mode = (score_mode or "baseline").strip().lower() or "baseline"
     if mode not in SCORE_MODES:
         mode = "baseline"
+    # crash 子窗預設加寬 near（呼叫端顯式傳 near 則尊重）
+    if mode == "phrase_focus_crash" and near == NEAR_OPEN_DAYS:
+        near = CRASH_NEAR_OPEN_DAYS
     # phrase_focus／phrase_focus_crash 底下用 baseline 觸及裁判；另以硬用語（＋相位）閘過濾
     verify_mode = "baseline" if mode in {"phrase_focus", "phrase_focus_crash"} else mode
 
@@ -938,12 +944,17 @@ def run(
             "matched_day_vs_loose": matched,
             "crash_phase_tags": sorted(CRASH_PHASE_TAGS),
             "crash_pad_open_days": CRASH_PAD_OPEN_DAYS,
+            "crash_near_open_days": near,
             "next_long_window_zh": (
-                "phrase_focus 全窗續收；phrase_focus_crash 急跌相位＋開市日墊續收；"
+                "phrase_focus 全窗續收；phrase_focus_crash 急跌相位＋開市日墊＋近窗加寬續收；"
                 "n≥20 且同日對照贏 loose 才談換（仍非 drop-in）"
             ),
             "not_buy_signal": True,
             "no_invent_wave_5_9": True,
+            "collect_note_zh": (
+                "本機急跌窗以公開主文 HTML 補齊；10/23 缺收盤柱不捏；"
+                "pad/near 加寬續收；未過閘不換"
+            ),
         }
         invent_text = json.dumps(invent, ensure_ascii=False, indent=2)
         (OUT_DIR / "wave_teach_aid_phrase_focus_crash_invent.json").write_text(

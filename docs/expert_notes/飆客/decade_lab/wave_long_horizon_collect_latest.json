@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-11-10T05:43:01+0800",
+  "as_of": "2026-11-10T06:03:54+0800",
   "tz": "Asia/Taipei",
   "track": "market_tw",
   "pot": "wave_long_horizon_collect",
@@ -10,17 +10,18 @@
   "no_invent_wave_5_9": true,
   "gates": {
     "phrase_focus": {
-      "n_decided": 221,
+      "n_decided": 207,
       "delta_hit_rate_matched": 0.0,
       "replace": false,
       "flag": "matched_day_not_clearly_better"
     },
     "phrase_focus_crash": {
-      "n_decided": 17,
-      "delta_hit_rate_matched": -0.058824,
+      "n_decided": 18,
+      "delta_hit_rate_matched": 0.055556,
       "replace": false,
       "flag": "n_lt_20_and_not_clear_win",
-      "crash_pad_open_days": 3
+      "crash_pad_open_days": 7,
+      "crash_near_open_days": 7
     },
     "decade": {
       "with_his_n_decided": 724,
@@ -29,22 +30,22 @@
       "keep": "wave_decade_replay baseline score_mode"
     },
     "hsiao_a4": {
-      "n_entry_days": 1,
-      "beat_a0": true,
+      "n_entry_days": 3,
+      "beat_a0": false,
       "replace": false,
       "flag": "a4_n_entry_days_lt_20"
     },
     "hsiao_a5": {
-      "n_entry_days": 6,
-      "gate_n20": false,
-      "beat_a0": true,
+      "n_entry_days": 21,
+      "gate_n20": true,
+      "beat_a0": false,
       "replace": false,
-      "flag": "a5_n_entry_days_lt_20"
+      "flag": "a5_not_clear_win_vs_a0"
     },
     "hsiao_a6": {
-      "n_entry_days": 1,
+      "n_entry_days": 9,
       "gate_n20": false,
-      "beat_a0": true,
+      "beat_a0": false,
       "replace": false,
       "flag": "a6_n_entry_days_lt_20",
       "invent_key": "A6_index_quality"
