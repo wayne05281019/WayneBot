@@ -1237,6 +1237,86 @@ def test_apply_live_tx_replaces_full_ohlc_not_stale_wick():
     assert tx_l[0] > 40000  # 舊低 39129 不准留下
 
 
+def test_tx_align_no_ffill_fake_duplicate_candle():
+    """電子盤缺日不准前收灌假K（11/09 不准複製 11/06 夜的 39129 下影）。"""
+    import math
+
+    from biaoke_level_learn import _align_us_to_twii_dates
+
+    bars = [{"date": "20261105"}, {"date": "20261106"}, {"date": "20261109"}]
+    rows = [
+        {
+            "date": "20261105",
+            "open": 41990.0,
+            "high": 42298.0,
+            "low": 38799.0,
+            "close": 38936.0,
+            "volume": 1,
+        },
+        {
+            "date": "20261106",
+            "open": 39742.0,
+            "high": 40845.0,
+            "low": 39129.0,
+            "close": 40298.0,
+            "volume": 1,
+        },
+    ]
+    a = _align_us_to_twii_dates(rows, bars, fill_missing=False)
+    assert abs(a["low"][0] - 38799.0) < 1e-6
+    assert abs(a["low"][1] - 39129.0) < 1e-6
+    assert math.isnan(a["close"][2])
+    assert math.isnan(a["low"][2])
+
+
+def test_press_level_break_uses_high_not_crash_low():
+    """台指壓力破位看高點向上穿；不准因急跌低點就標已破。"""
+    from biaoke_level_learn import _tw_pred_break_tag, _tw_pred_right_notes
+
+    lows = [45000.0, 40000.0, 37837.0, 40347.0]
+    # 全程高點都低於 41760 → 壓力未破（不准因急跌低點變已破）
+    highs = [41000.0, 40500.0, 40435.0, 41600.0]
+    assert _tw_pred_break_tag(41760.0, lows, role="台指壓力", highs=highs) in {
+        "未到",
+        "未破",
+    }
+    # 若誤用低點破位邏輯會變已破——這裡必須不是
+    assert _tw_pred_break_tag(41760.0, lows, role="台指壓力", highs=highs) != "已破"
+    # 今日高穿壓 → 已破
+    assert (
+        _tw_pred_break_tag(
+            41760.0, lows, role="台指壓力", highs=[41000.0, 42349.0]
+        )
+        == "已破"
+    )
+    notes = _tw_pred_right_notes(
+        {
+            "pred_levels": {
+                "tw": [
+                    {
+                        "level": 41760.0,
+                        "role": "台指壓力",
+                        "tag": "未到",
+                        "label": "台指壓力／41,760",
+                    }
+                ]
+            }
+        },
+        n=10,
+        lows=lows,
+        highs=highs,
+        bars=[
+            {"date": "20261106", "high": 40435.0, "low": 37837.0, "close": 39701.0},
+            {"date": "20261109", "high": 41600.0, "low": 40347.0, "close": 41661.0},
+        ],
+    )
+    blob = " ".join(str(x.get("text") or "") for x in notes)
+    assert "台指壓力" in blob
+    assert "飆預測" not in blob
+    assert "已破" not in blob
+    assert ("未到" in blob) or ("未破" in blob)
+
+
 def test_c9_extension_inactive_on_stop_confirm():
     """止跌確認當令：不准再開九波 C1…C9／C-7轉C-8 標。"""
     from biaoke_level_learn import _c9_extension_active

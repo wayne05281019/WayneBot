@@ -4223,13 +4223,14 @@ def _ensure_paint_live_tx(
         except Exception:
             q = None
         if isinstance(q, dict) and float(q.get("close") or 0) > 0:
+            # 只有收：不准捏開＝高＝低＝收當「齊 OHLC」，否則會整根置換成一字線
             px = float(q["close"])
             live = {
                 "date": "",
                 "session": "night",
-                "open": px,
-                "high": px,
-                "low": px,
+                "open": 0.0,
+                "high": 0.0,
+                "low": 0.0,
                 "close": px,
                 "pct_change": q.get("pct_change"),
                 "update_time": q.get("update_time"),
@@ -4583,26 +4584,60 @@ def _tw_has_c9_low_zone(pack: Optional[Dict[str, Any]] = None) -> bool:
     return False
 
 
+def _level_break_up_tag(level: float, highs: Sequence[float]) -> str:
+    """上方壓力破位：官方高向上觸及／穿過＝已破；不准拿下跌低點誤標。"""
+    try:
+        lv = float(level)
+    except (TypeError, ValueError):
+        return "未到"
+    if not highs:
+        return "未到"
+    try:
+        mx = max(float(x) for x in highs if x is not None)
+    except ValueError:
+        return "未到"
+    if mx > lv + 0.5:
+        return "已破"
+    return "未破" if mx >= lv * 0.98 else "未到"
+
+
 def _tw_pred_break_tag(
     level: float,
     lows: Sequence[float],
     *,
     pack: Optional[Dict[str, Any]] = None,
     role: str = "",
+    highs: Optional[Sequence[float]] = None,
 ) -> str:
-    """加權預測錨破位標：官方低觸及＝已破；有 C9 區時舊 38000 劇本一上沿改口標已破。"""
-    br = _level_break_tag(level, lows)
+    """加權預測錨破位標。
+
+    撐／低／買點：官方低觸及＝已破。
+    壓力／上方觀察壓：官方高向上穿＝已破（不准拿下跌低點誤標已破）。
+    有 C9 區時舊 38000 劇本一上沿改口標已破。
+    """
     try:
         lv = float(level)
     except (TypeError, ValueError):
-        return br
+        return "未到"
     role_s = str(role or "")
     if (
         (role_s == "劇本一上沿" or abs(lv - 38000.0) < 1.0)
         and _tw_has_c9_low_zone(pack)
     ):
         return "已破"
-    return br
+    is_press = bool(
+        role_s in {"台指壓力", "反彈穿刺", "轉震盪"}
+        or ("壓" in role_s and "撐" not in role_s and "低" not in role_s)
+    )
+    if is_press:
+        hi_vals: List[float] = []
+        if highs:
+            try:
+                hi_vals = [float(x) for x in highs if x is not None]
+            except (TypeError, ValueError):
+                hi_vals = []
+        return _level_break_up_tag(lv, hi_vals)
+    return _level_break_tag(level, lows)
 
 
 def _c9_extension_active(pack: Optional[Dict[str, Any]] = None) -> bool:
@@ -10432,11 +10467,17 @@ def _tw_pred_right_notes(
             continue
         if tag in {"未到", "未破", "已破"}:
             br = (
-                _tw_pred_break_tag(lv, lows, pack=pack, role=role)
+                _tw_pred_break_tag(
+                    lv, lows, pack=pack, role=role, highs=hi_vals
+                )
                 if tag == "未到"
                 else tag
             )
-            text = _biaoke_pred_label(lv, br)
+            if role == "台指壓力":
+                # 壓力位保留原文角色，不准改寫成「飆預測・已破」（低點誤破）
+                text = f"台指壓力／{_px(lv)}・{br}"
+            else:
+                text = _biaoke_pred_label(lv, br)
         else:
             text = str(row.get("label") or _biaoke_pred_label(lv))
         # 周一破台指／反彈穿刺／轉震盪：狀態跟官方柱
@@ -10635,7 +10676,8 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         _ld = _ymd(live_tx.get("date"))
         if _ld:
             _tx_real_days.add(_ld)
-    tx_a = _align_us_to_twii_dates(tx_rows, bars)
+    # 電子盤缺日不准前收灌假K（例：11/09 被灌成 11/06 夜的 39129 下影）
+    tx_a = _align_us_to_twii_dates(tx_rows, bars, fill_missing=False)
     tx_o = list(tx_a["open"])
     tx_h = list(tx_a["high"])
     tx_l = list(tx_a["low"])
@@ -14775,9 +14817,16 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
 
 
 def _align_us_to_twii_dates(
-    us_rows: Sequence[Dict[str, Any]], bars: Sequence[Dict[str, Any]]
+    us_rows: Sequence[Dict[str, Any]],
+    bars: Sequence[Dict[str, Any]],
+    *,
+    fill_missing: bool = True,
 ) -> Dict[str, List[float]]:
-    """美股日K對齊加權交易日索引；缺日 OHLC 用前值填；量只計有真柱的日（缺日量＝0）。"""
+    """對齊加權交易日索引。
+
+    fill_missing=True（美股預設）：缺日 OHLC 用前值填，量只計有真柱的日。
+    fill_missing=False（台指電子盤）：缺日 OHLC＝nan，不准前收灌成假重複K。
+    """
     by = {_ymd(r.get("date")): r for r in us_rows}
     opens: List[float] = []
     highs: List[float] = []
@@ -14791,10 +14840,14 @@ def _align_us_to_twii_dates(
         if hit and float(hit.get("close") or 0) > 0:
             last = hit
             volumes.append(float(hit.get("volume") or 0))
-        else:
+            opens.append(float(hit.get("open") or hit.get("close") or 0))
+            highs.append(float(hit.get("high") or hit.get("close") or 0))
+            lows.append(float(hit.get("low") or hit.get("close") or 0))
+            closes.append(float(hit.get("close") or 0))
+            continue
+        volumes.append(0.0)
+        if fill_missing and last:
             # 美股休／缺日：價可延前收對齊軸，量不准假灌
-            volumes.append(0.0)
-        if last:
             opens.append(float(last.get("open") or last.get("close") or 0))
             highs.append(float(last.get("high") or last.get("close") or 0))
             lows.append(float(last.get("low") or last.get("close") or 0))
