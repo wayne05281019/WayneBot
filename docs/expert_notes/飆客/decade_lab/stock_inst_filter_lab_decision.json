@@ -1,0 +1,67 @@
+{
+  "version": "stock_inst_filter_lab_v1",
+  "as_of": "2026-11-09T19:30:40+08:00",
+  "tz": "Asia/Taipei",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "promote_lookup": false,
+  "status": "plain_delta_only_keep_v106",
+  "gate_passed": false,
+  "keep": "v106",
+  "keep_detail": "early ei_n2_lu5／eg_bridge；fast lu5_vol_next；sell hi20_or_desync",
+  "sell": "hi20_or_desync",
+  "variant_tested_zh": "v106 進場核（ei_n2_lu5／lu5_vol_next）× 訊號日收盤後法人條件（隔日開進場）",
+  "filters": [
+    "stock_three_gt0",
+    "stock_foreign_gt0",
+    "stock_ft_both_gt0",
+    "mkt_three_gt0",
+    "mkt_foreign_gt0",
+    "mkt_ft_both_gt0",
+    "stock_three_x_mkt_three"
+  ],
+  "data_sources": {
+    "stock_share_nets": "daily_quotes.foreign_net/trust_net/dealer_net（股數淨額，非成本）",
+    "market_amount_nets": "market_inst_bfi_daily TWSE BFI82U（億，非成本）"
+  },
+  "sample": {
+    "n_stocks": 185,
+    "bfi_days": 559,
+    "stock_inst_bars": 103505,
+    "oos_split": "entry_date calendar half",
+    "elapsed_s": 540.0
+  },
+  "oos_vs_plain": {
+    "early_plain": {
+      "wr": 0.7123009678426475,
+      "d": 2327
+    },
+    "fast_plain": {
+      "wr": 0.7118736809192527,
+      "d": 2329
+    },
+    "best_filter": "mkt_ft_both_gt0",
+    "best_fast": {
+      "wr": 0.7315091919623771,
+      "d": 159,
+      "delta_wr": 0.019635511043124332
+    },
+    "best_early": {
+      "wr": 0.731686541737649,
+      "d": 159,
+      "delta_wr": 0.019385573895001507
+    }
+  },
+  "oos_vs_v106_keep": {
+    "early_keep_wr": 0.8269230769230769,
+    "fast_keep_wr": 0.8545454545454545,
+    "best_delta_vs_early_keep": -0.09523653518542785,
+    "best_delta_vs_fast_keep": -0.12303626258307743,
+    "any_beats_keep": false
+  },
+  "gate_one_liner": "stock_inst_filter n=185; best mkt_ft_both_gt0 OOS wr≈0.732 d=159 Δplain≈+0.020; vs v106 keep Δ≈-0.10/−0.12; promote=NO keep=v106",
+  "finding_zh": "市場外資＋投信同日買超（BFI 金額淨額）當後置濾，對同跑重建 plain 有約 +2pp OOS 勝率，但全日數變稀（d≈159）且遠低於 sealed v106 keep（early≈0.827／fast≈0.855）。個股三大股數濾也有微幅 Δplain，同樣未過 keep 閘。不准換 keep、不上話筒、非買訊。",
+  "latest": "stock_inst_filter_lab_latest.json",
+  "parent_keep": "phone_spirit_mix_dual_track_v106_decision.json",
+  "next": "keep v106；法人濾可當後續候選素材，補歷史 T86 覆蓋後再測；不准混浪形軌"
+}
