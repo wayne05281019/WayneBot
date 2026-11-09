@@ -1,0 +1,483 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "as_of_taipei": "2026-11-08T00:32:18.054539+08:00",
+  "five_proxies_version": "post_strengthen_f6cdf4a",
+  "gate_one_liner": "spirit_split_mix TRACK_HSIAO:9w/0ge80 | TRACK_BAREK_VP:6w/2ge80 | TRACK_WAVE_FIB:5w/0ge80 | TRACK_FIVE:6w/1ge80 | TRACK_CHAMP:17w/2ge80 | TRACK_MIX:12w/3ge80; promote_lookup=NO",
+  "n_stocks": 100,
+  "elapsed_s": 482.9,
+  "tracks": {
+    "TRACK_HSIAO": {
+      "gate_one_liner": "TRACK_HSIAO winners=9/21; ge80=0; best_win=E_bal__H_macd_kd__SELL_hi20_or_wave_top win=0.7941176470588235 days=34; promote_lookup=NO",
+      "winners_n": 9,
+      "ge80_n": 0,
+      "best_win": {
+        "key": "E_bal__H_macd_kd__SELL_hi20_or_wave_top",
+        "n_trades": 34,
+        "n_unique_entry_days": 34,
+        "win_rate": 0.7941176470588235,
+        "expectancy": 0.037416317888136076,
+        "beats_random": true,
+        "balanced_score": 0.54,
+        "win_ge80": false,
+        "win_ge85": false
+      },
+      "best_bal": {
+        "key": "E_w3u__H_V_or_S55__SELL_hi20_or_wave_top",
+        "n_trades": 50,
+        "n_unique_entry_days": 50,
+        "win_rate": 0.74,
+        "expectancy": 0.0160548432883322,
+        "beats_random": true,
+        "balanced_score": 0.74,
+        "win_ge80": false,
+        "win_ge85": false
+      },
+      "ge80": []
+    },
+    "TRACK_BAREK_VP": {
+      "gate_one_liner": "TRACK_BAREK_VP winners=6/18; ge80=2; best_win=E_w3__B_intent_soft__SELL_hi20_or_wave_top win=0.896551724137931 days=29; promote_lookup=NO",
+      "winners_n": 6,
+      "ge80_n": 2,
+      "best_win": {
+        "key": "E_w3__B_intent_soft__SELL_hi20_or_wave_top",
+        "n_trades": 29,
+        "n_unique_entry_days": 29,
+        "win_rate": 0.896551724137931,
+        "expectancy": 0.052827371539775125,
+        "beats_random": true,
+        "balanced_score": 0.52,
+        "win_ge80": true,
+        "win_ge85": true
+      },
+      "best_bal": {
+        "key": "E_w3u__B_not_avoid__SELL_hi20_or_wave_top",
+        "n_trades": 62,
+        "n_unique_entry_days": 60,
+        "win_rate": 0.7258064516129032,
+        "expectancy": 0.002861089746754036,
+        "beats_random": true,
+        "balanced_score": 0.7258064516129032,
+        "win_ge80": false,
+        "win_ge85": false
+      },
+      "ge80": [
+        {
+          "key": "E_w3__B_intent_soft__SELL_hi20_or_wave_top",
+          "n_trades": 29,
+          "n_unique_entry_days": 29,
+          "win_rate": 0.896551724137931,
+          "expectancy": 0.052827371539775125,
+          "beats_random": true,
+          "balanced_score": 0.52,
+          "win_ge80": true,
+          "win_ge85": true
+        },
+        {
+          "key": "E_bal__B_intent_soft__SELL_hi20_or_wave_top",
+          "n_trades": 27,
+          "n_unique_entry_days": 27,
+          "win_rate": 0.8518518518518519,
+          "expectancy": 0.04874719809443687,
+          "beats_random": true,
+          "balanced_score": 0.46,
+          "win_ge80": true,
+          "win_ge85": true
+        }
+      ]
+    },
+    "TRACK_WAVE_FIB": {
+      "gate_one_liner": "TRACK_WAVE_FIB winners=5/21; ge80=0; best_win=E_w3u__F_near_any__SELL_hi20_or_wave_top win=0.7804878048780488 days=41; promote_lookup=NO",
+      "winners_n": 5,
+      "ge80_n": 0,
+      "best_win": {
+        "key": "E_w3u__F_near_any__SELL_hi20_or_wave_top",
+        "n_trades": 41,
+        "n_unique_entry_days": 41,
+        "win_rate": 0.7804878048780488,
+        "expectancy": 0.008764411214263986,
+        "beats_random": true,
+        "balanced_score": 0.64,
+        "win_ge80": false,
+        "win_ge85": false
+      },
+      "best_bal": {
+        "key": "E_w3__W_w3_zone__SELL_hi20_or_wave_top",
+        "n_trades": 58,
+        "n_unique_entry_days": 57,
+        "win_rate": 0.7413793103448276,
+        "expectancy": -0.0009146288987634542,
+        "beats_random": true,
+        "balanced_score": 0.7413793103448276,
+        "win_ge80": false,
+        "win_ge85": false
+      },
+      "ge80": []
+    },
+    "TRACK_FIVE": {
+      "gate_one_liner": "TRACK_FIVE winners=6/21; ge80=1; best_win=E_w3u__FIVE_cross3__SELL_hi20_or_wave_top win=0.8095238095238095 days=21; promote_lookup=NO",
+      "winners_n": 6,
+      "ge80_n": 1,
+      "best_win": {
+        "key": "E_w3u__FIVE_cross3__SELL_hi20_or_wave_top",
+        "n_trades": 21,
+        "n_unique_entry_days": 21,
+        "win_rate": 0.8095238095238095,
+        "expectancy": 0.027423378358251475,
+        "beats_random": true,
+        "balanced_score": 0.33999999999999997,
+        "win_ge80": true,
+        "win_ge85": false
+      },
+      "best_bal": {
+        "key": "E_w3__FIVE_cross2__SELL_hi20_or_wave_top",
+        "n_trades": 43,
+        "n_unique_entry_days": 43,
+        "win_rate": 0.7441860465116279,
+        "expectancy": 0.0028964406364305312,
+        "beats_random": true,
+        "balanced_score": 0.64,
+        "win_ge80": false,
+        "win_ge85": false
+      },
+      "ge80": [
+        {
+          "key": "E_w3u__FIVE_cross3__SELL_hi20_or_wave_top",
+          "n_trades": 21,
+          "n_unique_entry_days": 21,
+          "win_rate": 0.8095238095238095,
+          "expectancy": 0.027423378358251475,
+          "beats_random": true,
+          "balanced_score": 0.33999999999999997,
+          "win_ge80": true,
+          "win_ge85": false
+        }
+      ]
+    },
+    "TRACK_CHAMP": {
+      "gate_one_liner": "TRACK_CHAMP winners=17/27; ge80=2; best_win=E_bal__CH_feat_t60__SELL_hi20_or_wave_top win=0.8260869565217391 days=23; promote_lookup=NO",
+      "winners_n": 17,
+      "ge80_n": 2,
+      "best_win": {
+        "key": "E_bal__CH_feat_t60__SELL_hi20_or_wave_top",
+        "n_trades": 23,
+        "n_unique_entry_days": 23,
+        "win_rate": 0.8260869565217391,
+        "expectancy": 0.032525934052649495,
+        "beats_random": true,
+        "balanced_score": 0.38,
+        "win_ge80": true,
+        "win_ge85": false
+      },
+      "best_bal": {
+        "key": "E_w3u__CH_V_or_S55__SELL_hi20_or_wave_top",
+        "n_trades": 50,
+        "n_unique_entry_days": 50,
+        "win_rate": 0.74,
+        "expectancy": 0.0160548432883322,
+        "beats_random": true,
+        "balanced_score": 0.74,
+        "win_ge80": false,
+        "win_ge85": false
+      },
+      "ge80": [
+        {
+          "key": "E_bal__CH_feat_t60__SELL_hi20_or_wave_top",
+          "n_trades": 23,
+          "n_unique_entry_days": 23,
+          "win_rate": 0.8260869565217391,
+          "expectancy": 0.032525934052649495,
+          "beats_random": true,
+          "balanced_score": 0.38,
+          "win_ge80": true,
+          "win_ge85": false
+        },
+        {
+          "key": "E_bal__CH_turn_barek__SELL_hi20_or_wave_top",
+          "n_trades": 31,
+          "n_unique_entry_days": 31,
+          "win_rate": 0.8064516129032258,
+          "expectancy": 0.04476773536570325,
+          "beats_random": true,
+          "balanced_score": 0.49999999999999994,
+          "win_ge80": true,
+          "win_ge85": false
+        }
+      ]
+    },
+    "TRACK_MIX": {
+      "gate_one_liner": "TRACK_MIX winners=12/30; ge80=3; best_win=E_w3__MIX_spirit_core__SELL_hi20_or_wave_top win=0.896551724137931 days=29; promote_lookup=NO",
+      "winners_n": 12,
+      "ge80_n": 3,
+      "best_win": {
+        "key": "E_w3__MIX_spirit_core__SELL_hi20_or_wave_top",
+        "n_trades": 29,
+        "n_unique_entry_days": 29,
+        "win_rate": 0.896551724137931,
+        "expectancy": 0.052827371539775125,
+        "beats_random": true,
+        "balanced_score": 0.52,
+        "win_ge80": true,
+        "win_ge85": true
+      },
+      "best_bal": {
+        "key": "E_w3u__MIX_turn_fib__SELL_hi20_or_wave_top",
+        "n_trades": 47,
+        "n_unique_entry_days": 46,
+        "win_rate": 0.7446808510638298,
+        "expectancy": 0.010897679245378069,
+        "beats_random": true,
+        "balanced_score": 0.6851063829787234,
+        "win_ge80": false,
+        "win_ge85": false
+      },
+      "ge80": [
+        {
+          "key": "E_w3__MIX_spirit_core__SELL_hi20_or_wave_top",
+          "n_trades": 29,
+          "n_unique_entry_days": 29,
+          "win_rate": 0.896551724137931,
+          "expectancy": 0.052827371539775125,
+          "beats_random": true,
+          "balanced_score": 0.52,
+          "win_ge80": true,
+          "win_ge85": true
+        },
+        {
+          "key": "E_bal__MIX_spirit_core__SELL_hi20_or_wave_top",
+          "n_trades": 27,
+          "n_unique_entry_days": 27,
+          "win_rate": 0.8518518518518519,
+          "expectancy": 0.04874719809443687,
+          "beats_random": true,
+          "balanced_score": 0.46,
+          "win_ge80": true,
+          "win_ge85": true
+        },
+        {
+          "key": "E_bal__MIX_turn_fib__SELL_hi20_or_wave_top",
+          "n_trades": 31,
+          "n_unique_entry_days": 31,
+          "win_rate": 0.8064516129032258,
+          "expectancy": 0.04476773536570325,
+          "beats_random": true,
+          "balanced_score": 0.49999999999999994,
+          "win_ge80": true,
+          "win_ge85": false
+        }
+      ]
+    }
+  },
+  "useful_ge80_limbs": [
+    {
+      "track": "TRACK_BAREK_VP",
+      "key": "E_w3__B_intent_soft__SELL_hi20_or_wave_top",
+      "win_rate": 0.896551724137931,
+      "n_unique_entry_days": 29,
+      "expectancy": 0.052827371539775125,
+      "beats_random": true,
+      "balanced_score": 0.52
+    },
+    {
+      "track": "TRACK_MIX",
+      "key": "E_w3__MIX_spirit_core__SELL_hi20_or_wave_top",
+      "win_rate": 0.896551724137931,
+      "n_unique_entry_days": 29,
+      "expectancy": 0.052827371539775125,
+      "beats_random": true,
+      "balanced_score": 0.52
+    },
+    {
+      "track": "TRACK_BAREK_VP",
+      "key": "E_bal__B_intent_soft__SELL_hi20_or_wave_top",
+      "win_rate": 0.8518518518518519,
+      "n_unique_entry_days": 27,
+      "expectancy": 0.04874719809443687,
+      "beats_random": true,
+      "balanced_score": 0.46
+    },
+    {
+      "track": "TRACK_MIX",
+      "key": "E_bal__MIX_spirit_core__SELL_hi20_or_wave_top",
+      "win_rate": 0.8518518518518519,
+      "n_unique_entry_days": 27,
+      "expectancy": 0.04874719809443687,
+      "beats_random": true,
+      "balanced_score": 0.46
+    },
+    {
+      "track": "TRACK_CHAMP",
+      "key": "E_bal__CH_feat_t60__SELL_hi20_or_wave_top",
+      "win_rate": 0.8260869565217391,
+      "n_unique_entry_days": 23,
+      "expectancy": 0.032525934052649495,
+      "beats_random": true,
+      "balanced_score": 0.38
+    },
+    {
+      "track": "TRACK_FIVE",
+      "key": "E_w3u__FIVE_cross3__SELL_hi20_or_wave_top",
+      "win_rate": 0.8095238095238095,
+      "n_unique_entry_days": 21,
+      "expectancy": 0.027423378358251475,
+      "beats_random": true,
+      "balanced_score": 0.33999999999999997
+    },
+    {
+      "track": "TRACK_CHAMP",
+      "key": "E_bal__CH_turn_barek__SELL_hi20_or_wave_top",
+      "win_rate": 0.8064516129032258,
+      "n_unique_entry_days": 31,
+      "expectancy": 0.04476773536570325,
+      "beats_random": true,
+      "balanced_score": 0.49999999999999994
+    },
+    {
+      "track": "TRACK_MIX",
+      "key": "E_bal__MIX_turn_fib__SELL_hi20_or_wave_top",
+      "win_rate": 0.8064516129032258,
+      "n_unique_entry_days": 31,
+      "expectancy": 0.04476773536570325,
+      "beats_random": true,
+      "balanced_score": 0.49999999999999994
+    }
+  ],
+  "useful_cross_list": [
+    {
+      "track": "TRACK_HSIAO",
+      "key": "E_bal__H_macd_kd__SELL_hi20_or_wave_top",
+      "n_trades": 34,
+      "n_unique_entry_days": 34,
+      "win_rate": 0.7941176470588235,
+      "expectancy": 0.037416317888136076,
+      "beats_random": true,
+      "balanced_score": 0.54,
+      "win_ge80": false,
+      "win_ge85": false,
+      "note": "ge75_backup"
+    },
+    {
+      "track": "TRACK_BAREK_VP",
+      "key": "E_w3__B_intent_soft__SELL_hi20_or_wave_top",
+      "n_trades": 29,
+      "n_unique_entry_days": 29,
+      "win_rate": 0.896551724137931,
+      "expectancy": 0.052827371539775125,
+      "beats_random": true,
+      "balanced_score": 0.52,
+      "win_ge80": true,
+      "win_ge85": true
+    },
+    {
+      "track": "TRACK_BAREK_VP",
+      "key": "E_bal__B_intent_soft__SELL_hi20_or_wave_top",
+      "n_trades": 27,
+      "n_unique_entry_days": 27,
+      "win_rate": 0.8518518518518519,
+      "expectancy": 0.04874719809443687,
+      "beats_random": true,
+      "balanced_score": 0.46,
+      "win_ge80": true,
+      "win_ge85": true
+    },
+    {
+      "track": "TRACK_WAVE_FIB",
+      "key": "E_w3u__F_near_any__SELL_hi20_or_wave_top",
+      "n_trades": 41,
+      "n_unique_entry_days": 41,
+      "win_rate": 0.7804878048780488,
+      "expectancy": 0.008764411214263986,
+      "beats_random": true,
+      "balanced_score": 0.64,
+      "win_ge80": false,
+      "win_ge85": false,
+      "note": "ge75_backup"
+    },
+    {
+      "track": "TRACK_FIVE",
+      "key": "E_w3u__FIVE_cross3__SELL_hi20_or_wave_top",
+      "n_trades": 21,
+      "n_unique_entry_days": 21,
+      "win_rate": 0.8095238095238095,
+      "expectancy": 0.027423378358251475,
+      "beats_random": true,
+      "balanced_score": 0.33999999999999997,
+      "win_ge80": true,
+      "win_ge85": false
+    },
+    {
+      "track": "TRACK_CHAMP",
+      "key": "E_bal__CH_feat_t60__SELL_hi20_or_wave_top",
+      "n_trades": 23,
+      "n_unique_entry_days": 23,
+      "win_rate": 0.8260869565217391,
+      "expectancy": 0.032525934052649495,
+      "beats_random": true,
+      "balanced_score": 0.38,
+      "win_ge80": true,
+      "win_ge85": false
+    },
+    {
+      "track": "TRACK_CHAMP",
+      "key": "E_bal__CH_turn_barek__SELL_hi20_or_wave_top",
+      "n_trades": 31,
+      "n_unique_entry_days": 31,
+      "win_rate": 0.8064516129032258,
+      "expectancy": 0.04476773536570325,
+      "beats_random": true,
+      "balanced_score": 0.49999999999999994,
+      "win_ge80": true,
+      "win_ge85": false
+    },
+    {
+      "track": "TRACK_MIX",
+      "key": "E_w3__MIX_spirit_core__SELL_hi20_or_wave_top",
+      "n_trades": 29,
+      "n_unique_entry_days": 29,
+      "win_rate": 0.896551724137931,
+      "expectancy": 0.052827371539775125,
+      "beats_random": true,
+      "balanced_score": 0.52,
+      "win_ge80": true,
+      "win_ge85": true
+    },
+    {
+      "track": "TRACK_MIX",
+      "key": "E_bal__MIX_spirit_core__SELL_hi20_or_wave_top",
+      "n_trades": 27,
+      "n_unique_entry_days": 27,
+      "win_rate": 0.8518518518518519,
+      "expectancy": 0.04874719809443687,
+      "beats_random": true,
+      "balanced_score": 0.46,
+      "win_ge80": true,
+      "win_ge85": true
+    },
+    {
+      "track": "TRACK_MIX",
+      "key": "E_bal__MIX_turn_fib__SELL_hi20_or_wave_top",
+      "n_trades": 31,
+      "n_unique_entry_days": 31,
+      "win_rate": 0.8064516129032258,
+      "expectancy": 0.04476773536570325,
+      "beats_random": true,
+      "balanced_score": 0.49999999999999994,
+      "win_ge80": true,
+      "win_ge85": false
+    }
+  ],
+  "vs_pre_strengthen_zh": [
+    "新五件：FIVE ge80 2→1（改 cross3≈81%@21；舊 vol/cross2 薄樣未再現）",
+    "MIX ge80 7→3；BAREK 仍≈90%@29；CHAMP 仍有 feat_t60／turn_barek",
+    "分軌不混勝率；仍 promote=NO；繼續 mix_thicken＋early"
+  ],
+  "read_zh": [
+    "spirit_v2（新五件）封口：有用 ge80 肢見 useful_ge80_limbs",
+    "phone_sync=blocked"
+  ],
+  "next_lab": [
+    "spirit_mix_thicken",
+    "thicken2_rerun",
+    "early_marks_free_follow"
+  ]
+}

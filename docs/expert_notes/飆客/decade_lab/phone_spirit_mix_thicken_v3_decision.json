@@ -1,0 +1,138 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "as_of_taipei": "2026-11-08T01:23:58.935350+08:00",
+  "gate_one_liner": "spirit_mix_thicken_v3 ge80=23 ge80_d30=9 ge80_d50=0; best_win=E_w3__B_intent_or_turn_n3__Q_intent__SELL_hi20_or_wave_top win=0.896551724137931 days=29; best_d50=None; near80_d50=E_w3u__B_turn_n3__Q_t60__SELL_hi20_or_wave_top; promote_lookup=NO",
+  "n_stocks": 100,
+  "elapsed_s": 573.0,
+  "ge80_n": 23,
+  "ge80_d30_n": 9,
+  "ge80_d50_n": 0,
+  "best_win": {
+    "key": "E_w3__B_intent_or_turn_n3__Q_intent__SELL_hi20_or_wave_top",
+    "n_trades": 29,
+    "n_unique_entry_days": 29,
+    "win_rate": 0.896551724137931,
+    "expectancy": 0.052827371539775125,
+    "beats_random": true,
+    "balanced_score": 0.52,
+    "win_ge80": true,
+    "days_ge30": false,
+    "days_ge40": false,
+    "days_ge50": false
+  },
+  "best_days_ge80": {
+    "key": "E_w3__B_turn_n3__Q0__SELL_hi20_or_wave_top",
+    "n_trades": 50,
+    "n_unique_entry_days": 49,
+    "win_rate": 0.8,
+    "expectancy": 0.01928118266677266,
+    "beats_random": true,
+    "balanced_score": 0.784,
+    "win_ge80": true,
+    "days_ge30": true,
+    "days_ge40": true,
+    "days_ge50": false
+  },
+  "best_near80_d50": {
+    "key": "E_w3u__B_turn_n3__Q_t60__SELL_hi20_or_wave_top",
+    "n_trades": 68,
+    "n_unique_entry_days": 67,
+    "win_rate": 0.7941176470588235,
+    "expectancy": 0.021068912851222824,
+    "beats_random": true,
+    "balanced_score": 0.7941176470588235,
+    "win_ge80": false,
+    "days_ge30": true,
+    "days_ge40": true,
+    "days_ge50": true
+  },
+  "top_near80_d50": [
+    {
+      "key": "E_w3u__B_turn_n3__Q_t60__SELL_hi20_or_wave_top",
+      "n_trades": 68,
+      "n_unique_entry_days": 67,
+      "win_rate": 0.7941176470588235,
+      "expectancy": 0.021068912851222824,
+      "beats_random": true,
+      "balanced_score": 0.7941176470588235,
+      "win_ge80": false,
+      "days_ge30": true,
+      "days_ge40": true,
+      "days_ge50": true
+    },
+    {
+      "key": "E_w3__B_turn_or_fib_n3__Q0__SELL_hi20_or_wave_top",
+      "n_trades": 52,
+      "n_unique_entry_days": 51,
+      "win_rate": 0.7884615384615384,
+      "expectancy": 0.014188615164947934,
+      "beats_random": true,
+      "balanced_score": 0.7884615384615384,
+      "win_ge80": false,
+      "days_ge30": true,
+      "days_ge40": true,
+      "days_ge50": true
+    },
+    {
+      "key": "E_w3u__B_turn_or_fib_n3__Q_t60_or_S55__SELL_hi20_or_wave_top",
+      "n_trades": 75,
+      "n_unique_entry_days": 73,
+      "win_rate": 0.7866666666666666,
+      "expectancy": 0.018536833497983813,
+      "beats_random": true,
+      "balanced_score": 0.7866666666666666,
+      "win_ge80": false,
+      "days_ge30": true,
+      "days_ge40": true,
+      "days_ge50": true
+    },
+    {
+      "key": "E_w3u__B_intent_or_turn_n3__Q_t60_or_S55__SELL_hi20_or_wave_top",
+      "n_trades": 75,
+      "n_unique_entry_days": 73,
+      "win_rate": 0.7866666666666666,
+      "expectancy": 0.019166372893836013,
+      "beats_random": true,
+      "balanced_score": 0.7866666666666666,
+      "win_ge80": false,
+      "days_ge30": true,
+      "days_ge40": true,
+      "days_ge50": true
+    },
+    {
+      "key": "E_w3u__B_turn_or_fib_n3__Q_t60__SELL_hi20_or_wave_top",
+      "n_trades": 74,
+      "n_unique_entry_days": 72,
+      "win_rate": 0.7837837837837838,
+      "expectancy": 0.017416823183022578,
+      "beats_random": true,
+      "balanced_score": 0.7837837837837838,
+      "win_ge80": false,
+      "days_ge30": true,
+      "days_ge40": true,
+      "days_ge50": true
+    },
+    {
+      "key": "E_w3u__B_intent_or_turn_n3__Q_t60__SELL_hi20_or_wave_top",
+      "n_trades": 74,
+      "n_unique_entry_days": 72,
+      "win_rate": 0.7837837837837838,
+      "expectancy": 0.018054869868007917,
+      "beats_random": true,
+      "balanced_score": 0.7837837837837838,
+      "win_ge80": false,
+      "days_ge30": true,
+      "days_ge40": true,
+      "days_ge50": true
+    }
+  ],
+  "read_zh": [
+    "mix_v3 封口：ge80=23 d50=0；近80厚樣 best≈0.7941176470588235@67d",
+    "下一輪 mix_v4：對 near80 冠軍微調品質閘（去虧單）抬過 0.80 且保住 days≥50"
+  ],
+  "next_lab": [
+    "spirit_mix_thicken_v4"
+  ],
+  "never_quit": true
+}

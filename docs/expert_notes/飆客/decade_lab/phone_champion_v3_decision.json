@@ -1,0 +1,260 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "NOT_BUY_SIGNAL": true,
+  "as_of_taipei": "2026-11-07T23:44:16.124307+08:00",
+  "gate_one_liner": "v3 winners=10/110; lift=8; best_bal=B_bal__M0__X0__SELL_hi20_or_wave_top win=0.74 days=50; ge50=B_bal__M0__X0__SELL_hi20_or_wave_top; promote_lookup=NO",
+  "n_stocks": 100,
+  "elapsed_s": 441.2,
+  "baseline_M0_X0": {
+    "key": "B_bal__M0__X0__SELL_hi20_or_wave_top",
+    "n_trades": 50,
+    "n_unique_entry_days": 50,
+    "win_rate": 0.74,
+    "expectancy": 0.0160548432883322,
+    "avg_hold": 17.04,
+    "exit_reason_counts": {
+      "first_hi20": 44,
+      "max_hold_60": 4,
+      "wave_rel_high": 2
+    },
+    "random_win_rate": 0.6808510638297872,
+    "random_expectancy": -0.009670978769605276,
+    "beats_random": true,
+    "lifts_bal_baseline": false,
+    "balanced_score": 0.74,
+    "days_ge40": true,
+    "days_ge50": true
+  },
+  "winners_beat_random_n": 10,
+  "winners_lift_bal_n": 8,
+  "by_balanced_top": [
+    {
+      "key": "B_bal__M0__X0__SELL_hi20_or_wave_top",
+      "n_trades": 50,
+      "n_unique_entry_days": 50,
+      "win_rate": 0.74,
+      "expectancy": 0.0160548432883322,
+      "avg_hold": 17.04,
+      "exit_reason_counts": {
+        "first_hi20": 44,
+        "max_hold_60": 4,
+        "wave_rel_high": 2
+      },
+      "random_win_rate": 0.6808510638297872,
+      "random_expectancy": -0.009670978769605276,
+      "beats_random": true,
+      "lifts_bal_baseline": false,
+      "balanced_score": 0.74,
+      "days_ge40": true,
+      "days_ge50": true
+    },
+    {
+      "key": "B_bal__M0__XG_no_kd_hot__SELL_hi20_or_wave_top",
+      "n_trades": 49,
+      "n_unique_entry_days": 49,
+      "win_rate": 0.7346938775510204,
+      "expectancy": 0.015357350195209672,
+      "avg_hold": 17.346938775510203,
+      "exit_reason_counts": {
+        "first_hi20": 43,
+        "max_hold_60": 4,
+        "wave_rel_high": 2
+      },
+      "random_win_rate": 0.717391304347826,
+      "random_expectancy": -0.015711280137928562,
+      "beats_random": true,
+      "lifts_bal_baseline": false,
+      "balanced_score": 0.72,
+      "days_ge40": true,
+      "days_ge50": false
+    },
+    {
+      "key": "B_bal__M0__V3_barek_ok__SELL_hi20_or_wave_top",
+      "n_trades": 39,
+      "n_unique_entry_days": 39,
+      "win_rate": 0.7692307692307693,
+      "expectancy": 0.02455688661316703,
+      "avg_hold": 16.641025641025642,
+      "exit_reason_counts": {
+        "first_hi20": 34,
+        "max_hold_60": 3,
+        "wave_rel_high": 2
+      },
+      "random_win_rate": 0.7222222222222222,
+      "random_expectancy": 0.007884471483017162,
+      "beats_random": true,
+      "lifts_bal_baseline": true,
+      "balanced_score": 0.6000000000000001,
+      "days_ge40": false,
+      "days_ge50": false
+    },
+    {
+      "key": "B_bal__M0__V3_time_align__SELL_hi20_or_wave_top",
+      "n_trades": 37,
+      "n_unique_entry_days": 37,
+      "win_rate": 0.7567567567567568,
+      "expectancy": 0.023580273275415772,
+      "avg_hold": 16.054054054054053,
+      "exit_reason_counts": {
+        "first_hi20": 33,
+        "max_hold_60": 2,
+        "wave_rel_high": 2
+      },
+      "random_win_rate": 0.65625,
+      "random_expectancy": -0.009421961858470537,
+      "beats_random": true,
+      "lifts_bal_baseline": true,
+      "balanced_score": 0.56,
+      "days_ge40": false,
+      "days_ge50": false
+    },
+    {
+      "key": "B_bal__M0__V3_macd_or_kd__SELL_hi20_or_wave_top",
+      "n_trades": 34,
+      "n_unique_entry_days": 34,
+      "win_rate": 0.7941176470588235,
+      "expectancy": 0.037416317888136076,
+      "avg_hold": 14.794117647058824,
+      "exit_reason_counts": {
+        "first_hi20": 32,
+        "wave_rel_high": 2
+      },
+      "random_win_rate": 0.6551724137931034,
+      "random_expectancy": 0.005573704297785418,
+      "beats_random": true,
+      "lifts_bal_baseline": true,
+      "balanced_score": 0.54,
+      "days_ge40": false,
+      "days_ge50": false
+    },
+    {
+      "key": "B_bal__M0__V3_turn_barek__SELL_hi20_or_wave_top",
+      "n_trades": 31,
+      "n_unique_entry_days": 31,
+      "win_rate": 0.8064516129032258,
+      "expectancy": 0.04476773536570325,
+      "avg_hold": 13.838709677419354,
+      "exit_reason_counts": {
+        "first_hi20": 29,
+        "wave_rel_high": 2
+      },
+      "random_win_rate": 0.5185185185185185,
+      "random_expectancy": -0.024104510615157563,
+      "beats_random": true,
+      "lifts_bal_baseline": true,
+      "balanced_score": 0.49999999999999994,
+      "days_ge40": false,
+      "days_ge50": false
+    },
+    {
+      "key": "B_bal__M_feat_ok__X0__SELL_hi20_or_wave_top",
+      "n_trades": 24,
+      "n_unique_entry_days": 24,
+      "win_rate": 0.7916666666666666,
+      "expectancy": 0.02912260575202515,
+      "avg_hold": 17.958333333333332,
+      "exit_reason_counts": {
+        "first_hi20": 21,
+        "max_hold_60": 2,
+        "wave_rel_high": 1
+      },
+      "random_win_rate": 0.7619047619047619,
+      "random_expectancy": 0.023691621401345536,
+      "beats_random": true,
+      "lifts_bal_baseline": true,
+      "balanced_score": 0.37999999999999995,
+      "days_ge40": false,
+      "days_ge50": false
+    },
+    {
+      "key": "B_bal__M_feat_ok__XG_no_lightning__SELL_hi20_or_wave_top",
+      "n_trades": 24,
+      "n_unique_entry_days": 24,
+      "win_rate": 0.7916666666666666,
+      "expectancy": 0.02912260575202515,
+      "avg_hold": 17.958333333333332,
+      "exit_reason_counts": {
+        "first_hi20": 21,
+        "max_hold_60": 2,
+        "wave_rel_high": 1
+      },
+      "random_win_rate": 0.6666666666666666,
+      "random_expectancy": -0.017271409070287316,
+      "beats_random": true,
+      "lifts_bal_baseline": true,
+      "balanced_score": 0.37999999999999995,
+      "days_ge40": false,
+      "days_ge50": false
+    },
+    {
+      "key": "B_bal__M_feat_ok__XG_no_kd_hot__SELL_hi20_or_wave_top",
+      "n_trades": 24,
+      "n_unique_entry_days": 24,
+      "win_rate": 0.7916666666666666,
+      "expectancy": 0.02912260575202515,
+      "avg_hold": 17.958333333333332,
+      "exit_reason_counts": {
+        "first_hi20": 21,
+        "max_hold_60": 2,
+        "wave_rel_high": 1
+      },
+      "random_win_rate": 0.6666666666666666,
+      "random_expectancy": 0.0036582579559384745,
+      "beats_random": true,
+      "lifts_bal_baseline": true,
+      "balanced_score": 0.37999999999999995,
+      "days_ge40": false,
+      "days_ge50": false
+    },
+    {
+      "key": "B_bal__M_feat_ok__V3_clean_not_hot__SELL_hi20_or_wave_top",
+      "n_trades": 22,
+      "n_unique_entry_days": 22,
+      "win_rate": 0.7727272727272727,
+      "expectancy": 0.025325493373511764,
+      "avg_hold": 18.863636363636363,
+      "exit_reason_counts": {
+        "first_hi20": 19,
+        "max_hold_60": 2,
+        "wave_rel_high": 1
+      },
+      "random_win_rate": 0.631578947368421,
+      "random_expectancy": -0.02787602593247335,
+      "beats_random": true,
+      "lifts_bal_baseline": true,
+      "balanced_score": 0.33999999999999997,
+      "days_ge40": false,
+      "days_ge50": false
+    }
+  ],
+  "best_ge50": [
+    {
+      "key": "B_bal__M0__X0__SELL_hi20_or_wave_top",
+      "n_trades": 50,
+      "n_unique_entry_days": 50,
+      "win_rate": 0.74,
+      "expectancy": 0.0160548432883322,
+      "avg_hold": 17.04,
+      "exit_reason_counts": {
+        "first_hi20": 44,
+        "max_hold_60": 4,
+        "wave_rel_high": 2
+      },
+      "random_win_rate": 0.6808510638297872,
+      "random_expectancy": -0.009670978769605276,
+      "beats_random": true,
+      "lifts_bal_baseline": false,
+      "balanced_score": 0.74,
+      "days_ge40": true,
+      "days_ge50": true
+    }
+  ],
+  "lifts_bal_baseline": true,
+  "read_zh": [
+    "v3 winners=10/110; lift=8; best_bal=B_bal__M0__X0__SELL_hi20_or_wave_top win=0.74 days=50; ge50=B_bal__M0__X0__SELL_hi20_or_wave_top; promote_lookup=NO",
+    "promote 預設 false；須 n≥20 且抬 B_bal__M0__X0 才進下一版候選",
+    "厚樣 ge50 冠軍仍是 M0×X0 基線 B=0.74@50d；薄肢抬勝率但日<40 → 未過查股閘",
+    "已再生 V4 並啟動 champion_v4"
+  ]
+}

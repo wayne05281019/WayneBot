@@ -1,0 +1,23 @@
+{
+  "phone_sync": "blocked",
+  "as_of_taipei": "2026-11-07",
+  "method": "entry+exit full trade (first_hi20 / desync cut / giveback8 / max60)",
+  "leave_zero": {
+    "days": 2428,
+    "win": 0.4946,
+    "E": -0.00097
+  },
+  "ma60_lower": {
+    "days": 1609,
+    "win": 0.5376,
+    "E": 0.00268,
+    "beats_leave_zero": true
+  },
+  "random_also_beats_leave_zero": true,
+  "promote_to_lookup_display": false,
+  "symbol_candidates_lab": [
+    "出場◇ first_hi20",
+    "減碼◆ sell_desync"
+  ],
+  "reason_zh": "進出場符號方向對；ma60 贏 leave_zero 但隨機也贏 → 查股暫不改，先鎖出場符號對質"
+}

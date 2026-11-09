@@ -1,0 +1,12 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "as_of_taipei": "2026-11-08T06:22:31.573394+08:00",
+  "gate_one_liner": "spirit_mix_thicken_v17 U112 n=112 profit_sell_ge80_d50=0; best=None win=None days=None hold=None base_hold=15.176470588235293; near=v11_softbody__SELL_profit_early_2 near_win=0.7884615384615384; promote_lookup=NO",
+  "parent_seal": "phone_spirit_mix_thicken_v16_decision.json",
+  "elapsed_s": 363.7,
+  "n_stocks": 112,
+  "profit_sell_ge80_d50_n": 0,
+  "finding_zh": "U112 soft pe 仍 78.9%@51d；nobody 软化无效。下一版 pe3 特徵去損＋AND 觸發／minhold2。",
+  "next": "mix_v18 pe3 cut + stricter early trigger; phone_sync=blocked"
+}

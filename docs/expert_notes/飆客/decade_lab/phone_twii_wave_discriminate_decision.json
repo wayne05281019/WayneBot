@@ -1,0 +1,35 @@
+{
+  "phone_sync": "blocked",
+  "best": {
+    "preset": "A0_strict",
+    "score_threshold": 40.0,
+    "n_bars": 5426,
+    "state_counts": {
+      "BASE_BOTTOM": 4303,
+      "WAVE_2_PULLBACK": 1102,
+      "WAVE_1_UP": 21
+    },
+    "state_frac": {
+      "BASE_BOTTOM": 0.793033542204202,
+      "WAVE_2_PULLBACK": 0.20309620346479912,
+      "WAVE_1_UP": 0.003870254330998894
+    },
+    "entropy": 0.5291441172003486,
+    "diversity": 0.20696645779579803,
+    "crash_pct": 0.0,
+    "impulse_pct": 0.003870254330998894,
+    "pull_pct": 0.9961297456690011,
+    "n_w3_start": 0,
+    "n_w1_start": 1,
+    "n_w3_top": 0,
+    "has_contrast": false,
+    "disc_score": 1.806592694408069
+  },
+  "read_zh": [
+    "所有 preset×門檻下 TWII 仍幾乎無 W3、推動佔比極低",
+    "單靠 ElliottHsiao 狀態機當大盤閘本期不夠；改用蕭特徵位階（週線／安全／推力）同步",
+    "相對高點賣點已使用者鎖死"
+  ],
+  "next_zh": "market_sync 加重 mkt_feat_*；並行 relhigh_sell 對質 20高 vs 浪頂賣",
+  "gate_one_liner": "best=A0_strict@40.0 disc=1.806592694408069 impulse=0.003870254330998894 w3=0; promote_lookup=NO"
+}

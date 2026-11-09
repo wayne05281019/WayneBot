@@ -1,0 +1,33 @@
+{
+  "as_of": "2026-11-09T12:58:59+08:00",
+  "source": "user_lock_2026-11-09",
+  "phone_sync": "blocked_until_accuracy_gate",
+  "buy_signal": false,
+  "certainty": false,
+  "segment_numbers": "REQUIRED",
+  "segment_mark_zh": "暫定段號必標（推論／未定案）；不標＝無法對質＝沒做完",
+  "loop_zh": [
+    "每次先推論（可多路），每路必標暫定段號",
+    "官方柱驗證：走到哪、碰到哪、段號是否成立",
+    "若未照推論：記實際路徑＋未推到的數＋錯在哪一段",
+    "回頭對八循環細部拆解，修邏輯寫回庫",
+    "正確率升高前不當成一定發生、不上買訊"
+  ],
+  "internalize_zh": "飆大不一定永遠在→全部已知內化成自有資料庫＋每日推論驗證",
+  "priority_infer_first": true,
+  "two_diff_chances": true,
+  "order_zh": [
+    "① 先自己多路推論（段號必標）——不等飆大有沒有文",
+    "② 若他有發文：對「我 vs 他」差異（他為何這樣看、怎麼切段／點位）",
+    "③ 官方柱驗證：對「推論 vs 實際」差異（走到沒推到的數、哪段失效）",
+    "④ 收盤後推論隔日走勢（段號必標）→ 隔日再驗"
+  ],
+  "if_no_post_zh": "他還沒發／當天沒發＝仍先自己推；日後有文再補②",
+  "must_clear_when_unclear": true,
+  "must_clear_rule_zh": "飆大說法一時看不懂→必拆到原文鏈＋官方數對得上；寫回 wave8_* 概念鎖；不准含糊帶過",
+  "concept_lock_files": [
+    "wave8_cycle_concept_lock.json",
+    "wave8_14_overlap_resolved.json",
+    "wave8_extension_rules_lock.json"
+  ]
+}

@@ -1,0 +1,1092 @@
+{
+  "written_at": "2026-11-09T17:17:30+0800",
+  "tz": "Asia/Taipei",
+  "pot": "wave_decade_replay",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "start": "20161109",
+  "end": "20261109",
+  "his_posts_from": "20231204",
+  "phase_split_zh": "有文前只自推對官方；2023-12-04起才有飆大文可對我vs他",
+  "phase_pre_his": {
+    "rows": 1843,
+    "n_decided": 1756,
+    "hit": 445,
+    "miss": 1311,
+    "hit_rate": 0.25341685649202733
+  },
+  "phase_with_his": {
+    "rows": 749,
+    "n_decided": 724,
+    "hit": 285,
+    "miss": 439,
+    "hit_rate": 0.393646408839779
+  },
+  "open_days_n": 2592,
+  "rows_n": 2592,
+  "n_decided": 2480,
+  "hit": 730,
+  "miss": 1750,
+  "hit_rate": 0.29435483870967744,
+  "gate_n20": true,
+  "degree_end": "PROVISIONAL_IN_PROGRESS",
+  "checkpoints": [
+    {
+      "checkpoint": 40,
+      "n_rows": 40,
+      "n_decided": 39,
+      "hit": 7,
+      "miss": 32,
+      "hit_rate": 0.1794871794871795,
+      "degree_unknown_n": 40,
+      "degree_provisional_n": 0,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_low",
+        "still_all_unknown_after_window"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 80,
+      "n_rows": 40,
+      "n_decided": 34,
+      "hit": 11,
+      "miss": 23,
+      "hit_rate": 0.3235294117647059,
+      "degree_unknown_n": 40,
+      "degree_provisional_n": 0,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_low",
+        "still_all_unknown_after_window"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 120,
+      "n_rows": 40,
+      "n_decided": 39,
+      "hit": 27,
+      "miss": 12,
+      "hit_rate": 0.6923076923076923,
+      "degree_unknown_n": 40,
+      "degree_provisional_n": 0,
+      "segment_errors": 0,
+      "drift_flags": [
+        "still_all_unknown_after_window"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 160,
+      "n_rows": 40,
+      "n_decided": 39,
+      "hit": 20,
+      "miss": 19,
+      "hit_rate": 0.5128205128205128,
+      "degree_unknown_n": 40,
+      "degree_provisional_n": 0,
+      "segment_errors": 0,
+      "drift_flags": [
+        "still_all_unknown_after_window"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 200,
+      "n_rows": 40,
+      "n_decided": 40,
+      "hit": 26,
+      "miss": 14,
+      "hit_rate": 0.65,
+      "degree_unknown_n": 40,
+      "degree_provisional_n": 0,
+      "segment_errors": 0,
+      "drift_flags": [
+        "still_all_unknown_after_window"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 240,
+      "n_rows": 40,
+      "n_decided": 39,
+      "hit": 17,
+      "miss": 22,
+      "hit_rate": 0.4358974358974359,
+      "degree_unknown_n": 40,
+      "degree_provisional_n": 0,
+      "segment_errors": 0,
+      "drift_flags": [
+        "still_all_unknown_after_window"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 280,
+      "n_rows": 40,
+      "n_decided": 40,
+      "hit": 26,
+      "miss": 14,
+      "hit_rate": 0.65,
+      "degree_unknown_n": 40,
+      "degree_provisional_n": 0,
+      "segment_errors": 0,
+      "drift_flags": [
+        "still_all_unknown_after_window"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 320,
+      "n_rows": 40,
+      "n_decided": 40,
+      "hit": 11,
+      "miss": 29,
+      "hit_rate": 0.275,
+      "degree_unknown_n": 40,
+      "degree_provisional_n": 0,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_low",
+        "still_all_unknown_after_window"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 360,
+      "n_rows": 40,
+      "n_decided": 35,
+      "hit": 3,
+      "miss": 32,
+      "hit_rate": 0.08571428571428572,
+      "degree_unknown_n": 40,
+      "degree_provisional_n": 0,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_low",
+        "still_all_unknown_after_window"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 400,
+      "n_rows": 40,
+      "n_decided": 37,
+      "hit": 14,
+      "miss": 23,
+      "hit_rate": 0.3783783783783784,
+      "degree_unknown_n": 40,
+      "degree_provisional_n": 0,
+      "segment_errors": 0,
+      "drift_flags": [
+        "still_all_unknown_after_window"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 440,
+      "n_rows": 40,
+      "n_decided": 40,
+      "hit": 11,
+      "miss": 29,
+      "hit_rate": 0.275,
+      "degree_unknown_n": 40,
+      "degree_provisional_n": 0,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_low",
+        "still_all_unknown_after_window"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 480,
+      "n_rows": 40,
+      "n_decided": 40,
+      "hit": 9,
+      "miss": 31,
+      "hit_rate": 0.225,
+      "degree_unknown_n": 40,
+      "degree_provisional_n": 0,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_low",
+        "still_all_unknown_after_window"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 520,
+      "n_rows": 40,
+      "n_decided": 40,
+      "hit": 9,
+      "miss": 31,
+      "hit_rate": 0.225,
+      "degree_unknown_n": 40,
+      "degree_provisional_n": 0,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_low",
+        "still_all_unknown_after_window"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 560,
+      "n_rows": 40,
+      "n_decided": 39,
+      "hit": 7,
+      "miss": 32,
+      "hit_rate": 0.1794871794871795,
+      "degree_unknown_n": 40,
+      "degree_provisional_n": 0,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_low",
+        "still_all_unknown_after_window"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 600,
+      "n_rows": 40,
+      "n_decided": 33,
+      "hit": 2,
+      "miss": 31,
+      "hit_rate": 0.06060606060606061,
+      "degree_unknown_n": 40,
+      "degree_provisional_n": 0,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_low",
+        "still_all_unknown_after_window"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 640,
+      "n_rows": 40,
+      "n_decided": 36,
+      "hit": 8,
+      "miss": 28,
+      "hit_rate": 0.2222222222222222,
+      "degree_unknown_n": 40,
+      "degree_provisional_n": 0,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_low",
+        "still_all_unknown_after_window"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 680,
+      "n_rows": 40,
+      "n_decided": 39,
+      "hit": 14,
+      "miss": 25,
+      "hit_rate": 0.358974358974359,
+      "degree_unknown_n": 40,
+      "degree_provisional_n": 0,
+      "segment_errors": 0,
+      "drift_flags": [
+        "still_all_unknown_after_window"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 720,
+      "n_rows": 40,
+      "n_decided": 39,
+      "hit": 18,
+      "miss": 21,
+      "hit_rate": 0.46153846153846156,
+      "degree_unknown_n": 40,
+      "degree_provisional_n": 0,
+      "segment_errors": 0,
+      "drift_flags": [
+        "still_all_unknown_after_window"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 760,
+      "n_rows": 40,
+      "n_decided": 39,
+      "hit": 15,
+      "miss": 24,
+      "hit_rate": 0.38461538461538464,
+      "degree_unknown_n": 40,
+      "degree_provisional_n": 0,
+      "segment_errors": 0,
+      "drift_flags": [
+        "still_all_unknown_after_window"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 800,
+      "n_rows": 40,
+      "n_decided": 38,
+      "hit": 18,
+      "miss": 20,
+      "hit_rate": 0.47368421052631576,
+      "degree_unknown_n": 40,
+      "degree_provisional_n": 0,
+      "segment_errors": 0,
+      "drift_flags": [
+        "still_all_unknown_after_window"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 840,
+      "n_rows": 40,
+      "n_decided": 34,
+      "hit": 15,
+      "miss": 19,
+      "hit_rate": 0.4411764705882353,
+      "degree_unknown_n": 40,
+      "degree_provisional_n": 0,
+      "segment_errors": 0,
+      "drift_flags": [
+        "still_all_unknown_after_window"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 880,
+      "n_rows": 40,
+      "n_decided": 39,
+      "hit": 2,
+      "miss": 37,
+      "hit_rate": 0.05128205128205128,
+      "degree_unknown_n": 40,
+      "degree_provisional_n": 0,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_low",
+        "still_all_unknown_after_window"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 920,
+      "n_rows": 40,
+      "n_decided": 37,
+      "hit": 8,
+      "miss": 29,
+      "hit_rate": 0.21621621621621623,
+      "degree_unknown_n": 40,
+      "degree_provisional_n": 0,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_low",
+        "still_all_unknown_after_window"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 960,
+      "n_rows": 40,
+      "n_decided": 38,
+      "hit": 6,
+      "miss": 32,
+      "hit_rate": 0.15789473684210525,
+      "degree_unknown_n": 40,
+      "degree_provisional_n": 0,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_low",
+        "still_all_unknown_after_window"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 1000,
+      "n_rows": 40,
+      "n_decided": 40,
+      "hit": 5,
+      "miss": 35,
+      "hit_rate": 0.125,
+      "degree_unknown_n": 40,
+      "degree_provisional_n": 0,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_low",
+        "still_all_unknown_after_window"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 1040,
+      "n_rows": 40,
+      "n_decided": 37,
+      "hit": 7,
+      "miss": 30,
+      "hit_rate": 0.1891891891891892,
+      "degree_unknown_n": 40,
+      "degree_provisional_n": 0,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_low",
+        "still_all_unknown_after_window"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 1080,
+      "n_rows": 40,
+      "n_decided": 40,
+      "hit": 5,
+      "miss": 35,
+      "hit_rate": 0.125,
+      "degree_unknown_n": 40,
+      "degree_provisional_n": 0,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_low",
+        "still_all_unknown_after_window"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 1120,
+      "n_rows": 40,
+      "n_decided": 33,
+      "hit": 0,
+      "miss": 33,
+      "hit_rate": 0.0,
+      "degree_unknown_n": 40,
+      "degree_provisional_n": 0,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_low",
+        "still_all_unknown_after_window"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 1160,
+      "n_rows": 40,
+      "n_decided": 38,
+      "hit": 4,
+      "miss": 34,
+      "hit_rate": 0.10526315789473684,
+      "degree_unknown_n": 40,
+      "degree_provisional_n": 0,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_low",
+        "still_all_unknown_after_window"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 1200,
+      "n_rows": 40,
+      "n_decided": 39,
+      "hit": 3,
+      "miss": 36,
+      "hit_rate": 0.07692307692307693,
+      "degree_unknown_n": 40,
+      "degree_provisional_n": 0,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_low",
+        "still_all_unknown_after_window"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 1240,
+      "n_rows": 40,
+      "n_decided": 40,
+      "hit": 9,
+      "miss": 31,
+      "hit_rate": 0.225,
+      "degree_unknown_n": 40,
+      "degree_provisional_n": 0,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_low",
+        "still_all_unknown_after_window"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 1280,
+      "n_rows": 40,
+      "n_decided": 39,
+      "hit": 6,
+      "miss": 33,
+      "hit_rate": 0.15384615384615385,
+      "degree_unknown_n": 40,
+      "degree_provisional_n": 0,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_low",
+        "still_all_unknown_after_window"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 1320,
+      "n_rows": 40,
+      "n_decided": 40,
+      "hit": 5,
+      "miss": 35,
+      "hit_rate": 0.125,
+      "degree_unknown_n": 40,
+      "degree_provisional_n": 0,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_low",
+        "still_all_unknown_after_window"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 1360,
+      "n_rows": 40,
+      "n_decided": 39,
+      "hit": 11,
+      "miss": 28,
+      "hit_rate": 0.28205128205128205,
+      "degree_unknown_n": 40,
+      "degree_provisional_n": 0,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_low",
+        "still_all_unknown_after_window"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 1400,
+      "n_rows": 40,
+      "n_decided": 33,
+      "hit": 3,
+      "miss": 30,
+      "hit_rate": 0.09090909090909091,
+      "degree_unknown_n": 40,
+      "degree_provisional_n": 0,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_low",
+        "still_all_unknown_after_window"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 1440,
+      "n_rows": 40,
+      "n_decided": 39,
+      "hit": 4,
+      "miss": 35,
+      "hit_rate": 0.10256410256410256,
+      "degree_unknown_n": 40,
+      "degree_provisional_n": 0,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_low",
+        "still_all_unknown_after_window"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 1480,
+      "n_rows": 40,
+      "n_decided": 39,
+      "hit": 3,
+      "miss": 36,
+      "hit_rate": 0.07692307692307693,
+      "degree_unknown_n": 40,
+      "degree_provisional_n": 0,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_low",
+        "still_all_unknown_after_window"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 1520,
+      "n_rows": 40,
+      "n_decided": 40,
+      "hit": 9,
+      "miss": 31,
+      "hit_rate": 0.225,
+      "degree_unknown_n": 40,
+      "degree_provisional_n": 0,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_low",
+        "still_all_unknown_after_window"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 1560,
+      "n_rows": 40,
+      "n_decided": 39,
+      "hit": 2,
+      "miss": 37,
+      "hit_rate": 0.05128205128205128,
+      "degree_unknown_n": 40,
+      "degree_provisional_n": 0,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_low",
+        "still_all_unknown_after_window"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 1600,
+      "n_rows": 40,
+      "n_decided": 40,
+      "hit": 5,
+      "miss": 35,
+      "hit_rate": 0.125,
+      "degree_unknown_n": 40,
+      "degree_provisional_n": 0,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_low",
+        "still_all_unknown_after_window"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 1640,
+      "n_rows": 40,
+      "n_decided": 32,
+      "hit": 6,
+      "miss": 26,
+      "hit_rate": 0.1875,
+      "degree_unknown_n": 40,
+      "degree_provisional_n": 0,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_low",
+        "still_all_unknown_after_window"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 1680,
+      "n_rows": 40,
+      "n_decided": 37,
+      "hit": 15,
+      "miss": 22,
+      "hit_rate": 0.40540540540540543,
+      "degree_unknown_n": 40,
+      "degree_provisional_n": 0,
+      "segment_errors": 0,
+      "drift_flags": [
+        "still_all_unknown_after_window"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 1720,
+      "n_rows": 40,
+      "n_decided": 40,
+      "hit": 10,
+      "miss": 30,
+      "hit_rate": 0.25,
+      "degree_unknown_n": 40,
+      "degree_provisional_n": 0,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_low",
+        "still_all_unknown_after_window"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 1760,
+      "n_rows": 40,
+      "n_decided": 38,
+      "hit": 14,
+      "miss": 24,
+      "hit_rate": 0.3684210526315789,
+      "degree_unknown_n": 40,
+      "degree_provisional_n": 0,
+      "segment_errors": 0,
+      "drift_flags": [
+        "still_all_unknown_after_window"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 1800,
+      "n_rows": 40,
+      "n_decided": 39,
+      "hit": 12,
+      "miss": 27,
+      "hit_rate": 0.3076923076923077,
+      "degree_unknown_n": 40,
+      "degree_provisional_n": 0,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_low",
+        "still_all_unknown_after_window"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 1840,
+      "n_rows": 40,
+      "n_decided": 39,
+      "hit": 2,
+      "miss": 37,
+      "hit_rate": 0.05128205128205128,
+      "degree_unknown_n": 40,
+      "degree_provisional_n": 0,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_low",
+        "still_all_unknown_after_window"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 1880,
+      "n_rows": 40,
+      "n_decided": 40,
+      "hit": 10,
+      "miss": 30,
+      "hit_rate": 0.25,
+      "degree_unknown_n": 3,
+      "degree_provisional_n": 37,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_low"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 1920,
+      "n_rows": 40,
+      "n_decided": 34,
+      "hit": 15,
+      "miss": 19,
+      "hit_rate": 0.4411764705882353,
+      "degree_unknown_n": 0,
+      "degree_provisional_n": 40,
+      "segment_errors": 0,
+      "drift_flags": [],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 1960,
+      "n_rows": 40,
+      "n_decided": 38,
+      "hit": 35,
+      "miss": 3,
+      "hit_rate": 0.9210526315789473,
+      "degree_unknown_n": 0,
+      "degree_provisional_n": 40,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_suspiciously_high"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 2000,
+      "n_rows": 40,
+      "n_decided": 40,
+      "hit": 27,
+      "miss": 13,
+      "hit_rate": 0.675,
+      "degree_unknown_n": 0,
+      "degree_provisional_n": 40,
+      "segment_errors": 0,
+      "drift_flags": [],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 2040,
+      "n_rows": 40,
+      "n_decided": 39,
+      "hit": 1,
+      "miss": 38,
+      "hit_rate": 0.02564102564102564,
+      "degree_unknown_n": 0,
+      "degree_provisional_n": 40,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_low"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 2080,
+      "n_rows": 40,
+      "n_decided": 39,
+      "hit": 5,
+      "miss": 34,
+      "hit_rate": 0.1282051282051282,
+      "degree_unknown_n": 0,
+      "degree_provisional_n": 40,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_low"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 2120,
+      "n_rows": 40,
+      "n_decided": 40,
+      "hit": 2,
+      "miss": 38,
+      "hit_rate": 0.05,
+      "degree_unknown_n": 0,
+      "degree_provisional_n": 40,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_low"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 2160,
+      "n_rows": 40,
+      "n_decided": 33,
+      "hit": 1,
+      "miss": 32,
+      "hit_rate": 0.030303030303030304,
+      "degree_unknown_n": 0,
+      "degree_provisional_n": 40,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_low"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 2200,
+      "n_rows": 40,
+      "n_decided": 37,
+      "hit": 0,
+      "miss": 37,
+      "hit_rate": 0.0,
+      "degree_unknown_n": 0,
+      "degree_provisional_n": 40,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_low"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 2240,
+      "n_rows": 40,
+      "n_decided": 39,
+      "hit": 10,
+      "miss": 29,
+      "hit_rate": 0.2564102564102564,
+      "degree_unknown_n": 0,
+      "degree_provisional_n": 40,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_low"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 2280,
+      "n_rows": 40,
+      "n_decided": 40,
+      "hit": 19,
+      "miss": 21,
+      "hit_rate": 0.475,
+      "degree_unknown_n": 0,
+      "degree_provisional_n": 40,
+      "segment_errors": 0,
+      "drift_flags": [],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 2320,
+      "n_rows": 40,
+      "n_decided": 40,
+      "hit": 31,
+      "miss": 9,
+      "hit_rate": 0.775,
+      "degree_unknown_n": 0,
+      "degree_provisional_n": 40,
+      "segment_errors": 0,
+      "drift_flags": [],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 2360,
+      "n_rows": 40,
+      "n_decided": 38,
+      "hit": 24,
+      "miss": 14,
+      "hit_rate": 0.631578947368421,
+      "degree_unknown_n": 0,
+      "degree_provisional_n": 40,
+      "segment_errors": 0,
+      "drift_flags": [],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 2400,
+      "n_rows": 40,
+      "n_decided": 40,
+      "hit": 30,
+      "miss": 10,
+      "hit_rate": 0.75,
+      "degree_unknown_n": 0,
+      "degree_provisional_n": 40,
+      "segment_errors": 0,
+      "drift_flags": [],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 2440,
+      "n_rows": 40,
+      "n_decided": 40,
+      "hit": 15,
+      "miss": 25,
+      "hit_rate": 0.375,
+      "degree_unknown_n": 0,
+      "degree_provisional_n": 40,
+      "segment_errors": 0,
+      "drift_flags": [],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 2480,
+      "n_rows": 40,
+      "n_decided": 40,
+      "hit": 12,
+      "miss": 28,
+      "hit_rate": 0.3,
+      "degree_unknown_n": 0,
+      "degree_provisional_n": 40,
+      "segment_errors": 0,
+      "drift_flags": [
+        "hit_rate_low"
+      ],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 2520,
+      "n_rows": 40,
+      "n_decided": 39,
+      "hit": 14,
+      "miss": 25,
+      "hit_rate": 0.358974358974359,
+      "degree_unknown_n": 0,
+      "degree_provisional_n": 40,
+      "segment_errors": 0,
+      "drift_flags": [],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 2560,
+      "n_rows": 40,
+      "n_decided": 40,
+      "hit": 15,
+      "miss": 25,
+      "hit_rate": 0.375,
+      "degree_unknown_n": 0,
+      "degree_provisional_n": 40,
+      "segment_errors": 0,
+      "drift_flags": [],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    },
+    {
+      "checkpoint": 2592,
+      "n_rows": 40,
+      "n_decided": 39,
+      "hit": 24,
+      "miss": 15,
+      "hit_rate": 0.6153846153846154,
+      "degree_unknown_n": 0,
+      "degree_provisional_n": 40,
+      "segment_errors": 0,
+      "drift_flags": [],
+      "ok_to_continue": true,
+      "note_zh": "自檢：段號必在；命中過低／過高都記；全未知過長則檢討吸收規則"
+    }
+  ],
+  "isolation_zh": "專鍋；不混海選／黃金買點／洞燭／AI倉／個股",
+  "not_buy_signal": true,
+  "WAVE_NEURONS_MATCH": false,
+  "note_zh": "冷啟動重播完成至最新開市日；段號暫定；主分＝自推對日盤。不上話筒。"
+}

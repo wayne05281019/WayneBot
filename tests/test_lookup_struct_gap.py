@@ -209,11 +209,6 @@ def test_gap_line_while_official_volume_still_running():
     td = tempfile.mkdtemp()
     bot = _bot(td)
 
-    def _ensure(*_a, **_k):
-        # 要比介紹圖 paint＋送圖路徑長，才卡在 volfill 相位讓等待句寫出「等官方成交量」
-        time.sleep(3.0)
-        return {"sid": "2330", "confirmed_absent": [], "still_missing": [], "filled": []}
-
     def _bars(*_a, **_k):
         return {
             "sid": "2330",
@@ -240,19 +235,48 @@ def test_gap_line_while_official_volume_still_running():
         return _inner
 
     def _struct_paint(*_a, **_k):
-        # CI 單 paint worker 排隊時，glance 可能拖過 ensure；結構 paint 再撐一段，
-        # 讓 gap 檢查時 struct_task 仍未 done，等待句才寫得出。
-        time.sleep(6.0)
         return (_png(td, "s.png"), "結構圖（非買訊）")
+
+    def _is_struct_gap(text: str) -> bool:
+        return (
+            ("結構圖在等官方成交量" in text)
+            or ("結構圖在整理官方日K" in text)
+            or ("結構圖繪製中" in text)
+        )
 
     message = MagicMock()
     message.from_user = SimpleNamespace(id=111, first_name="u")
     message.chat_id = 999
     message.reply_html = AsyncMock(return_value=MagicMock())
-    message.reply_text = AsyncMock(return_value=MagicMock(delete=AsyncMock()))
     message.reply_photo = AsyncMock()
 
     async def _run():
+        # 不准用 threading.Event 卡 to_thread：會占滿 worker，CI 下 glance 出不來、gap 永不送。
+        # 改傳 async ensure_task：等 gap 句（或逾時）才完成，不占 thread pool。
+        gap_gate = asyncio.Event()
+
+        async def _reply_text(*args, **_kwargs):
+            text = str(args[0]) if args else ""
+            if _is_struct_gap(text):
+                gap_gate.set()
+            return MagicMock(delete=AsyncMock(), edit_text=AsyncMock())
+
+        message.reply_text = AsyncMock(side_effect=_reply_text)
+
+        async def _async_ensure():
+            try:
+                await asyncio.wait_for(gap_gate.wait(), timeout=60.0)
+            except asyncio.TimeoutError:
+                pass
+            return {
+                "sid": "2330",
+                "confirmed_absent": [],
+                "still_missing": [],
+                "filled": [],
+            }
+
+        ensure_task = asyncio.create_task(_async_ensure())
+
         with patch("wayne_navigator.NavigatorEngine", _Engine), patch(
             "chip_tape.build_tape", return_value={}
         ), patch(
@@ -267,8 +291,6 @@ def test_gap_line_while_official_volume_still_running():
         ), patch(
             "vol_zone_chart.render_lookup_vol_result",
             side_effect=lambda *_a, **_k: (_png(td, "v.png"), "大量撐壓圖（非買訊）"),
-        ), patch(
-            "vol_zone_chart.ensure_official_volume_window", side_effect=_ensure
         ), patch(
             "vol_zone_chart.prepare_lookup_structure_bars", side_effect=_bars
         ), patch.object(
@@ -296,6 +318,7 @@ def test_gap_line_while_official_volume_still_running():
                 "111",
                 "999:111",
                 [{"stock_id": "2330", "stock_name": "台積電", "close": 100}],
+                ensure_task=ensure_task,
             )
 
     with patch(
@@ -305,12 +328,7 @@ def test_gap_line_while_official_volume_still_running():
         asyncio.run(_run())
     texts = [str(c.args[0]) for c in message.reply_text.await_args_list if c.args]
     # 官方量還在補時必出等待句；CI 負載下相位可能已進 bars／paint，三種都算有補句
-    assert any(
-        ("結構圖在等官方成交量" in t)
-        or ("結構圖在整理官方日K" in t)
-        or ("結構圖繪製中" in t)
-        for t in texts
-    ), texts
+    assert any(_is_struct_gap(t) for t in texts), texts
     # 第 3 張仍有送出
     caps = [
         str(c.kwargs.get("caption") or "")

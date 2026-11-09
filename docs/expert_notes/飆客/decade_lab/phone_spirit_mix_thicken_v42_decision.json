@@ -1,0 +1,37 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "as_of_taipei": "2026-11-08T12:00:35.244389+08:00",
+  "gate_one_liner": "spirit_mix_thicken_v42 U112 n=112 confirm_parent=True confirm_bars=15.94; buy_ge80_d50=1 earlier=0; best_early=None bars=None; sell_lock=pe2_mh20_vdry_gb15 hold=8.901960784313726; promote_lookup=NO",
+  "parent_seal": "phone_spirit_mix_thicken_v41_decision.json",
+  "n_stocks": 112,
+  "confirm_v11_buy": {
+    "key": "ei_n6_and_room__SELL_hi20_or_wave_top",
+    "n_trades": 52,
+    "n_unique_entry_days": 51,
+    "win_rate": 0.8076923076923077,
+    "expectancy": 0.024182177829618248,
+    "beats_random": true,
+    "balanced_score": 0.8076923076923077,
+    "win_ge80": true,
+    "days_ge50": true,
+    "mean_bars_before_hi20": 15.94,
+    "earlier_than_parent": false
+  },
+  "upgrade_lock": null,
+  "keep_lock": {
+    "key": "ei_n6_and_room__SELL_hi20_or_wave_top",
+    "bars_before_hi20": 15.94,
+    "win_rate": 0.8076923076923077,
+    "days": 51,
+    "expectancy": 0.024182177829618248,
+    "beats_random": true,
+    "reason_zh": "v42 品質閘未把 body_n5_room 近失族抬到 ge80（仍≈79.2%／bars≈16.27）；維持買鎖"
+  },
+  "sell_lock_unchanged": {
+    "key": "pe2_mh20_vdry_gb15",
+    "hold_days": 8.901960784313726
+  },
+  "finding_zh": "v42 keep。下一輪微切敗筆救 79.2→80＋，保 bars>15.94。",
+  "next": "mix_v43 micro loser-cut on b5r ge80×50d×beats bars>15.94; phone_sync=blocked"
+}

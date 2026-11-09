@@ -3507,6 +3507,7 @@ def render_lookup_structure_result(
 
     pack：查股可先給官方柱（prepare_lookup_structure_bars）。有柱就不再 ensure／
     不再選大量區，現價用決策卡或已抓到的 live_quote，不准在畫布裡再打一輪網路。
+    LAB-ONLY 記號掛在 biaoke_chart.render_biaoke_structure_png 尾端（旗標預設關）。
     """
     sid = str(stock_id or "").strip()
     name = str(stock_name or sid).strip() or sid

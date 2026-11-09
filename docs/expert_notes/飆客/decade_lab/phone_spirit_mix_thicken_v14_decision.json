@@ -1,0 +1,14 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "as_of_taipei": "2026-11-08T04:51:44.450755+08:00",
+  "gate_one_liner": "spirit_mix_thicken_v14 ge80=2 ge80_d50=2 earlier_d50=1 beat_v11_bars=0 cut_pass=0; best_early_d50=body_n4__SELL_hi20_or_wave_top win=0.803921568627451 bars=15.857142857142858; best_cut=None cut_win=None; best_profit_sell=None hold=None; v11_bars=15.857; promote_lookup=NO",
+  "parent_seal": "phone_spirit_mix_thicken_v13_decision.json",
+  "elapsed_s": 331.2,
+  "n_stocks": 112,
+  "cut_pass_n": 0,
+  "finding_zh": "cut_pass=0；profit_early≈78.9% hold≈13（比 v11 hold≈15.2 早離）；body==false 82%@44d。母體卡 112。下一版放寬流動性加厚。",
+  "near_miss_profit_sell": "v11 profit_early_3/5 ≈78.9% hold≈13.0–13.6",
+  "near_miss_cut": "body==false 82.2%@44d",
+  "next": "mix_v15 expand universe + nobody + profit sell; phone_sync=blocked"
+}

@@ -1,0 +1,92 @@
+{
+  "phone_sync": "blocked",
+  "LOOKUP_LAB_MARKS_ENABLED": false,
+  "promote_to_lookup_display": false,
+  "as_of_taipei": "2026-11-08T12:08:44.948833+08:00",
+  "candidates": {
+    "early_buy_u112": {
+      "key": "ei_n6_and_room__SELL_hi20_or_wave_top",
+      "formula": "w3u & near(turn,3) & t60 & near(intent,6) & risk & (near(week,3)|near(body,3)) & room",
+      "win_rate": 0.8076923076923077,
+      "days": 51,
+      "bars_before_hi20": 15.94,
+      "universe": "U112",
+      "glyph": "LAB_BUY_W3_START",
+      "status": "locked_lab_candidate",
+      "note_zh": "v43 keep ei_n6_and_room bars15.94；旗標仍關；v44 結構切+U180",
+      "parent_bars": 15.854166666666666
+    },
+    "early_sell_u112": {
+      "key": "pe2_mh20_vdry_gb15",
+      "formula": "entry=v11; exit=hi20|wave|(vdry|exhaust) & unreal>=2% | giveback>=1.5% from peak & unreal>=2% | ma2 break | max_hold_20",
+      "win_rate": 0.803921568627451,
+      "days": 50,
+      "hold_days": 8.901960784313726,
+      "expectancy": 0.01022218017433631,
+      "parent_vdry_hold": 9.03921568627451,
+      "universe": "U112",
+      "glyph": "REL_HIGH_SELL",
+      "status": "locked_lab_candidate",
+      "note_zh": "v37–v40 卖锁 gb15 维持；旗標仍關",
+      "beats_seed_votes": "4/4"
+    },
+    "early_sell_u112_ma5_backup": {
+      "key": "pe2_mh20_ma5",
+      "win_rate": 0.8039,
+      "days": 50,
+      "hold_days": 9.35,
+      "status": "confirmed_backup"
+    },
+    "early_sell_u112_mh20_backup": {
+      "key": "pe2_mh20",
+      "win_rate": 0.8039,
+      "days": 50,
+      "hold_days": 9.45,
+      "status": "confirmed_backup"
+    },
+    "early_sell_u112_pe3_backup": {
+      "key": "add_i3_pe3",
+      "win_rate": 0.8039,
+      "days": 50,
+      "hold_days": 13.196,
+      "status": "confirmed_backup"
+    },
+    "early_sell_u112_pe2_backup": {
+      "key": "add_i3_pe2",
+      "win_rate": 0.8039,
+      "days": 50,
+      "hold_days": 13.06,
+      "status": "confirmed_backup"
+    },
+    "early_sell_u112_mh30_backup": {
+      "key": "pe2_mh30",
+      "win_rate": 0.8039,
+      "days": 50,
+      "hold_days": 11.02,
+      "status": "confirmed_backup"
+    },
+    "early_sell_u112_ma3_backup": {
+      "key": "pe2_mh20_ma3",
+      "win_rate": 0.8039,
+      "days": 50,
+      "hold_days": 9.27,
+      "status": "confirmed_backup"
+    },
+    "early_sell_u112_ma2_backup": {
+      "key": "pe2_mh20_ma2",
+      "win_rate": 0.8039,
+      "days": 50,
+      "hold_days": 9.216,
+      "status": "confirmed_backup"
+    },
+    "early_sell_u112_vdry_backup": {
+      "key": "pe2_mh20_ma2_vdry",
+      "win_rate": 0.8039,
+      "days": 50,
+      "hold_days": 9.039,
+      "status": "confirmed_backup"
+    }
+  },
+  "note_zh": "U112 買＋賣皆鎖；LOOKUP 仍 False；不准改 leave_zero；不上話筒",
+  "user_goal_zh": "查股：有持有→能不能抱／哪天哪價先賣／怎麼抱；沒持有→能不能買／哪天哪價／本金幾成。未過閘不上話筒。"
+}

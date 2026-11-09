@@ -1,0 +1,17 @@
+{
+  "as_of": "2026-11-09T14:06:29+0800",
+  "tz": "Asia/Taipei",
+  "source": "user_lock_2026-11-09",
+  "rule_zh": "開市日約13:40即可抓加權當日走勢（日K＋1分／15分路徑）；不必等16:30盤後融合。16:30融合仍管法人／產業等重活。",
+  "ready_after": {
+    "hour": 13,
+    "minute": 40
+  },
+  "cash_official_bar_after": {
+    "hour": 13,
+    "minute": 30
+  },
+  "detail_zh": "走勢細節＝幾點幾分碰到哪個價（1分優先；庫內15／60常駐）。",
+  "storage_zh": "摘要JSON＋近窗；主庫15／60；不准默默存PNG。",
+  "related_calendar": "tw_post_cash_pre_fuse（13:30–16:30）可收行情；抓加權對質鎖13:40起做。"
+}

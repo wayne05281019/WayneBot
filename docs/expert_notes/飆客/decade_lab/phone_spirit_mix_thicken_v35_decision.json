@@ -1,0 +1,30 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "as_of_taipei": "2026-11-08T10:28:51+08:00",
+  "gate_one_liner": "spirit_mix_thicken_v35 U112 n=112 confirm_vdry=False confirm_hold=9.03921568627451; pe_ge80_d50=3 earlier=0; best_early=None hold=None; promote_lookup=NO",
+  "parent_seal": "phone_spirit_mix_thicken_v34_decision.json",
+  "n_stocks": 112,
+  "confirm_pe2_mh20_ma2_vdry": {
+    "key": "pe2_mh20_ma2_vdry",
+    "n_trades": 51,
+    "n_unique_entry_days": 50,
+    "win_rate": 0.803921568627451,
+    "expectancy": 0.00959532789977581,
+    "beats_random": false,
+    "balanced_score": 0.803921568627451,
+    "win_ge80": true,
+    "days_ge50": true,
+    "mean_bars_before_hi20": 15.854166666666666,
+    "mean_hold_days": 9.03921568627451,
+    "earlier_than_parent": false
+  },
+  "upgrade_lock": null,
+  "keep_lock": {
+    "key": "pe2_mh20_ma2_vdry",
+    "hold_days": 9.03921568627451,
+    "reason_zh": "回吐／結構軸無 earlier×beats；vdry 胜率／days 仍在（beats 本輪抖）"
+  },
+  "finding_zh": "v35 無升級。鎖維持 vdry。下一輪換買側提早或另賣軸。",
+  "next": "mix_v36 reconfirm vdry + buy-side earlier bars OR sell trail hybrid; phone_sync=blocked"
+}

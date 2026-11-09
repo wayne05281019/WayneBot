@@ -1,0 +1,51 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "as_of_taipei": "2026-11-08T12:39:22.434489+08:00",
+  "gate_one_liner": "spirit_mix_thicken_v45 U180 n=112 confirm_parent=True confirm_bars=15.94; buy_ge80_d50=8 earlier=0; best_early=None bars=None; sell_lock=pe2_mh20_vdry_gb15 hold=8.901960784313726; promote_lookup=NO",
+  "parent_seal": "phone_spirit_mix_thicken_v44_decision.json",
+  "n_stocks": 112,
+  "confirm_v11_buy": {
+    "key": "ei_n6_and_room__SELL_hi20_or_wave_top",
+    "n_trades": 52,
+    "n_unique_entry_days": 51,
+    "win_rate": 0.8076923076923077,
+    "expectancy": 0.024182177829618248,
+    "beats_random": true,
+    "balanced_score": 0.8076923076923077,
+    "win_ge80": true,
+    "days_ge50": true,
+    "mean_bars_before_hi20": 15.94,
+    "earlier_than_parent": false
+  },
+  "upgrade_lock": null,
+  "keep_lock": {
+    "key": "ei_n6_and_room__SELL_hi20_or_wave_top",
+    "bars_before_hi20": 15.94,
+    "win_rate": 0.8076923076923077,
+    "days": 51,
+    "expectancy": 0.024182177829618248,
+    "beats_random": true,
+    "reason_zh": "v45 intent_n7／room-soft 未過 earlier×ge80；近失 ei_n7_body_n5≈78.6%/16.22 與 ei_n6_body_n5≈79.2%/16.27；維持買鎖"
+  },
+  "near_miss": [
+    {
+      "key": "ei_n7_body_n5_room",
+      "win_rate": 0.7857,
+      "bars": 16.22,
+      "note": "earlier 但未 ge80"
+    },
+    {
+      "key": "ei_n6_body_n5_room",
+      "win_rate": 0.7925,
+      "bars": 16.27,
+      "note": "earlier 但未 ge80"
+    }
+  ],
+  "sell_lock_unchanged": {
+    "key": "pe2_mh20_vdry_gb15",
+    "hold_days": 8.901960784313726
+  },
+  "finding_zh": "v45 keep。下一輪對近失族做 loser-cut／nofake／hold_yl 救 ge80，並保留 earlier。",
+  "next": "mix_v46 recover ge80 on n7_b5／n6_b5 earlier near-miss + U180; phone_sync=blocked"
+}

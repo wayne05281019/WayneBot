@@ -1,0 +1,20 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "as_of_taipei": "2026-11-08T08:11:49.222496+08:00",
+  "gate_one_liner": "spirit_mix_thicken_v23 U112 n=112 pe_ge80_d50=1 cut_pass=0; best=add_intent_pe3 win=0.803921568627451 days=50 hold=13.196078431372548; near=v11_hi20 near_win=0.803921568627451 near_days=50; promote_lookup=NO",
+  "parent_seal": "phone_spirit_mix_thicken_v22_decision.json",
+  "elapsed_s": 348.4,
+  "n_stocks": 112,
+  "u112_early_sell_locked": {
+    "key": "add_intent_pe3",
+    "formula": "entry=v11 & (~body | near(intent,3)); exit=hi20|wave|(exhaust|hi10 & unreal>=3%)",
+    "win_rate": 0.803921568627451,
+    "days": 50,
+    "hold_days": 13.196078431372548,
+    "base_hold_hi20": 15.176470588235293,
+    "beats_random": true
+  },
+  "finding_zh": "U112 提早賣首度過閘：add_intent_pe3≈80.4%@50d hold≈13.2（相對 hi20≈15.2）。cut_pass=0。旗標仍關；下一版复現並再生更早賣候選。",
+  "next": "mix_v24 confirm add_intent_pe3 + invent earlier-hold variants; phone_sync=blocked"
+}

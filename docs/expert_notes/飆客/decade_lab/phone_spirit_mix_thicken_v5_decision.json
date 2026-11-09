@@ -1,0 +1,117 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "as_of_taipei": "2026-11-08T02:08:08.305329+08:00",
+  "gate_one_liner": "spirit_mix_thicken_v5 ge80=18 ge80_d30=15 ge80_d50=5; best_win=U100__E_w3__turn_n3_t60__intent__SELL_hi20_or_wave_top win=0.88 days=25; best_d50=U150__E_w3u__turn_n3_t60__intent_n3__SELL_hi20_or_wave_top; near80_d50=U150__E_w3u__turn_n3_t60__intent_n3__SELL_hi20_or_wave_top; promote_lookup=NO",
+  "universe_meta": {
+    "n100": 100,
+    "n150": 112
+  },
+  "elapsed_s": 681.8,
+  "ge80_n": 18,
+  "ge80_d30_n": 15,
+  "ge80_d50_n": 5,
+  "best_win": {
+    "key": "U100__E_w3__turn_n3_t60__intent__SELL_hi20_or_wave_top",
+    "n_trades": 25,
+    "n_unique_entry_days": 25,
+    "win_rate": 0.88,
+    "expectancy": 0.052822708995749555,
+    "beats_random": true,
+    "balanced_score": 0.44,
+    "win_ge80": true,
+    "days_ge30": false,
+    "days_ge40": false,
+    "days_ge50": false
+  },
+  "best_ge80_d50": {
+    "key": "U150__E_w3u__turn_n3_t60__intent_n3__SELL_hi20_or_wave_top",
+    "n_trades": 50,
+    "n_unique_entry_days": 50,
+    "win_rate": 0.84,
+    "expectancy": 0.03230693275418365,
+    "beats_random": true,
+    "balanced_score": 0.84,
+    "win_ge80": true,
+    "days_ge30": true,
+    "days_ge40": true,
+    "days_ge50": true
+  },
+  "top_ge80_d50": [
+    {
+      "key": "U150__E_w3u__turn_n3_t60__intent_n3__SELL_hi20_or_wave_top",
+      "n_trades": 50,
+      "n_unique_entry_days": 50,
+      "win_rate": 0.84,
+      "expectancy": 0.03230693275418365,
+      "beats_random": true,
+      "balanced_score": 0.84,
+      "win_ge80": true,
+      "days_ge30": true,
+      "days_ge40": true,
+      "days_ge50": true
+    },
+    {
+      "key": "U100__E_w3u__turn_n3_t60__intent_n3_or_bull__SELL_hi20_or_wave_top",
+      "n_trades": 57,
+      "n_unique_entry_days": 57,
+      "win_rate": 0.8245614035087719,
+      "expectancy": 0.02423867994682303,
+      "beats_random": true,
+      "balanced_score": 0.8245614035087719,
+      "win_ge80": true,
+      "days_ge30": true,
+      "days_ge40": true,
+      "days_ge50": true
+    },
+    {
+      "key": "U150__E_w3u__turn_n3_t60__intent_n3_or_bull__SELL_hi20_or_wave_top",
+      "n_trades": 59,
+      "n_unique_entry_days": 59,
+      "win_rate": 0.8135593220338984,
+      "expectancy": 0.02183898362860849,
+      "beats_random": true,
+      "balanced_score": 0.8135593220338984,
+      "win_ge80": true,
+      "days_ge30": true,
+      "days_ge40": true,
+      "days_ge50": true
+    },
+    {
+      "key": "U100__E_w3u__turn_n3_t60__intent_n5__SELL_hi20_or_wave_top",
+      "n_trades": 52,
+      "n_unique_entry_days": 51,
+      "win_rate": 0.8076923076923077,
+      "expectancy": 0.028582368896892304,
+      "beats_random": true,
+      "balanced_score": 0.8076923076923077,
+      "win_ge80": true,
+      "days_ge30": true,
+      "days_ge40": true,
+      "days_ge50": true
+    },
+    {
+      "key": "U100__E_w3u__turn_n3_t60__intent_n5_or_S55_bull__SELL_hi20_or_wave_top",
+      "n_trades": 57,
+      "n_unique_entry_days": 56,
+      "win_rate": 0.8070175438596491,
+      "expectancy": 0.027974805332036293,
+      "beats_random": true,
+      "balanced_score": 0.8070175438596491,
+      "win_ge80": true,
+      "days_ge30": true,
+      "days_ge40": true,
+      "days_ge50": true
+    }
+  ],
+  "breakthrough_zh": "首次 ge80×days≥50：U150×E_w3u×turn_n3×t60×intent_n3 ≈84%@50d",
+  "read_zh": [
+    "mix_v5 封口：ge80_d50=5；最佳 U150__E_w3u__turn_n3_t60__intent_n3__SELL_hi20_or_wave_top win=0.84 days=50",
+    "phone_sync 仍 blocked：先當查股五張圖標記候選，要過顯示閘／placement 才上話筒",
+    "同件再生下一版：mix_v6 早賣／提早量約束繼續收"
+  ],
+  "next_lab": [
+    "spirit_mix_thicken_v6_early_exit"
+  ],
+  "never_quit": true
+}

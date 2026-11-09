@@ -1,0 +1,40 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "as_of_taipei": "2026-11-08T03:44:33.301475+08:00",
+  "gate_one_liner": "spirit_mix_thicken_v10 ge80=4 ge80_d50=1 earlier_d50=0; best_early_d50=champ_n3__SELL_hi20_or_wave_top win=0.84 bars=15.270833333333334; near80_early=ei_n5_not_chase__SELL_hi20_or_wave_top near_win=0.7962962962962963 near_bars=15.923076923076923; baseline_bars=15.27; promote_lookup=NO",
+  "parent_seal": "phone_spirit_mix_thicken_v9_decision.json",
+  "elapsed_s": 363.9,
+  "n_stocks": 112,
+  "ge80_n": 4,
+  "ge80_d50_n": 1,
+  "earlier_d50_n": 0,
+  "best_ge80_d50": {
+    "key": "champ_n3__SELL_hi20_or_wave_top",
+    "n_trades": 50,
+    "n_unique_entry_days": 50,
+    "win_rate": 0.84,
+    "expectancy": 0.03230693275418365,
+    "beats_random": true,
+    "balanced_score": 0.84,
+    "win_ge80": true,
+    "days_ge50": true,
+    "mean_bars_before_hi20": 15.270833333333334,
+    "earlier_than_baseline": false
+  },
+  "near80_earlier": {
+    "key": "ei_n5_not_chase__SELL_hi20_or_wave_top",
+    "n_trades": 54,
+    "n_unique_entry_days": 53,
+    "win_rate": 0.7962962962962963,
+    "expectancy": 0.025799601106618296,
+    "beats_random": true,
+    "balanced_score": 0.7962962962962963,
+    "win_ge80": false,
+    "days_ge50": true,
+    "mean_bars_before_hi20": 15.923076923076923,
+    "earlier_than_baseline": true
+  },
+  "finding_zh": "intent 主訊號 bars↑ 但 win≈70–76%；room/chase 幾乎無差；ei_n5 仍 79.6%；week_n3 80.4%@45d。下一版對 ei_n5 做特徵去損搜尋。",
+  "next": "mix_v11 ei_n5 loser-cut scan + week thicken; phone_sync=blocked"
+}

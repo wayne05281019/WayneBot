@@ -1,0 +1,13 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "as_of_taipei": "2026-11-08T04:34:45.062812+08:00",
+  "gate_one_liner": "spirit_mix_thicken_v13 ge80=2 ge80_d50=2 earlier_d50=1 beat_v11_bars=0; best_early_d50=v11_softbody__SELL_hi20_or_wave_top win=0.803921568627451 bars=15.857142857142858; best_early_sell=v11_softbody__SELL_hi20_or_wave_top hold=nan sell_win=0.803921568627451; v11_bars=15.857; promote_lookup=NO",
+  "parent_seal": "phone_spirit_mix_thicken_v12_decision.json",
+  "elapsed_s": 356.2,
+  "n_stocks": 112,
+  "earlier_d50_n": 1,
+  "beat_v11_bars_n": 0,
+  "finding_zh": "無條件提早賣 win 掉到 54–69%；body_n5 仍 78.9%@51d bars≈16.2。鎖定 v11 買點；下一版 body_n5 去損＋有利潤才提早賣。",
+  "next": "mix_v14 body_n5 cut + profit-gated early sell; phone_sync=blocked"
+}

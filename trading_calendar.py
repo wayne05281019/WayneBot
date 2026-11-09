@@ -307,6 +307,20 @@ def tw_post_cash_pre_fuse(now=None) -> bool:
     return dt_time(13, 30) <= t < dt_time(16, 30)
 
 
+def tw_cash_bars_fetch_ready(now=None) -> bool:
+    """開市日約 13:40 起可抓加權當日走勢（日K／分時），不必等 16:30 融合。
+
+    現貨 13:30 收；給資料源約 10 分落地。16:30 仍管法人／產業等重融合。
+    """
+    from config import taipei_now
+
+    now = now or taipei_now()
+    ymd = now.strftime("%Y%m%d")
+    if not is_tw_open_calendar_day(ymd):
+        return False
+    return now.time() >= dt_time(13, 40)
+
+
 def speak_when_for_press(now=None) -> str:
     """話筒用詞時段：pre／open／after／weekend（依按下台北時；現貨窗對齊 tw_cash_session_open）。"""
     from config import taipei_now
