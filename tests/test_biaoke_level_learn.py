@@ -1163,6 +1163,186 @@ def test_day_change_vs_prev_trading_day():
     assert i_px < i_pct < i_pts
 
 
+def test_prev_bar_close_db_fills_missing_open_day(tmp_path):
+    """圖軸漏開市日時，黃框漲跌仍對庫內前一開市收；不准假 +0.21%。"""
+    import sqlite3
+
+    from biaoke_level_learn import (
+        _day_change_vs_prev,
+        _prev_bar_close,
+        _teach_stamp_line,
+    )
+
+    db = str(tmp_path / "twii_prev.db")
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE index_daily("
+        "date TEXT, symbol TEXT, open REAL, high REAL, low REAL, close REAL, "
+        "volume REAL, PRIMARY KEY(date, symbol))"
+    )
+    conn.executemany(
+        "INSERT INTO index_daily(date,symbol,open,high,low,close,volume) "
+        "VALUES (?,?,?,?,?,?,?)",
+        [
+            ("20261105", "TWII", 42666, 42874, 41514, 41574.72, 1),
+            ("20261106", "TWII", 38916, 40436, 37837, 39701.64, 1),
+            ("20261109", "TWII", 40347, 42349, 40347, 41661.7, 1),
+        ],
+    )
+    conn.commit()
+    conn.close()
+    # 圖軸故意漏 11/06 → 倒數第二會變成 11/05（舊 bug＝+0.21%）
+    bars = [
+        {"date": "20261105", "close": 41574.72},
+        {"date": "20261109", "close": 41661.7},
+    ]
+    assert abs(float(_prev_bar_close(bars) or 0) - 41574.72) < 1.0
+    prev = _prev_bar_close(bars, db_path=db)
+    assert abs(float(prev or 0) - 39701.64) < 1.0
+    chg = _day_change_vs_prev(41661.7, prev)
+    assert abs(float(chg["pct"]) - 4.94) < 0.02
+    assert abs(float(chg["pts"]) - 1960.0) < 2.0
+    line = _teach_stamp_line(bars, close=41661.7, db_path=db, label_prefix="加權")
+    assert "4.94%" in line or "＋4.94" in line or "+4.94" in line
+    assert "0.21%" not in line
+    assert "1,960" in line or "1960" in line
+
+
+def test_apply_live_tx_replaces_full_ohlc_not_stale_wick():
+    """夜盤 MIS 整根置換：不准留前收填舊開／舊低造成假影線。"""
+    from biaoke_level_learn import _apply_live_tx_to_axis
+
+    tw = [{"date": "20261109", "close": 41661.7}]
+    tx_o = [39742.0]
+    tx_h = [40845.0]
+    tx_l = [39129.0]
+    tx_c = [40298.0]
+    live = {
+        "date": "20261109",
+        "open": 41240.0,
+        "high": 42380.0,
+        "low": 40715.0,
+        "close": 42372.0,
+        "source": "taifex_mis",
+        "is_realtime": True,
+    }
+    idx = _apply_live_tx_to_axis(
+        tx_o=tx_o, tx_h=tx_h, tx_l=tx_l, tx_c=tx_c, tw_bars=tw, live=live
+    )
+    assert idx == 0
+    assert abs(tx_o[0] - 41240.0) < 1e-6
+    assert abs(tx_h[0] - 42380.0) < 1e-6
+    assert abs(tx_l[0] - 40715.0) < 1e-6
+    assert abs(tx_c[0] - 42372.0) < 1e-6
+    assert tx_l[0] > 40000  # 舊低 39129 不准留下
+
+
+def test_tx_align_no_ffill_fake_duplicate_candle():
+    """電子盤缺日不准前收灌假K（11/09 不准複製 11/06 夜的 39129 下影）。"""
+    import math
+
+    from biaoke_level_learn import _align_us_to_twii_dates
+
+    bars = [{"date": "20261105"}, {"date": "20261106"}, {"date": "20261109"}]
+    rows = [
+        {
+            "date": "20261105",
+            "open": 41990.0,
+            "high": 42298.0,
+            "low": 38799.0,
+            "close": 38936.0,
+            "volume": 1,
+        },
+        {
+            "date": "20261106",
+            "open": 39742.0,
+            "high": 40845.0,
+            "low": 39129.0,
+            "close": 40298.0,
+            "volume": 1,
+        },
+    ]
+    a = _align_us_to_twii_dates(rows, bars, fill_missing=False)
+    assert abs(a["low"][0] - 38799.0) < 1e-6
+    assert abs(a["low"][1] - 39129.0) < 1e-6
+    assert math.isnan(a["close"][2])
+    assert math.isnan(a["low"][2])
+
+
+def test_press_level_break_uses_high_not_crash_low():
+    """台指壓力破位看高點向上穿；不准因急跌低點就標已破。"""
+    from biaoke_level_learn import _tw_pred_break_tag, _tw_pred_right_notes
+
+    lows = [45000.0, 40000.0, 37837.0, 40347.0]
+    # 全程高點都低於 41760 → 壓力未破（不准因急跌低點變已破）
+    highs = [41000.0, 40500.0, 40435.0, 41600.0]
+    assert _tw_pred_break_tag(41760.0, lows, role="台指壓力", highs=highs) in {
+        "未到",
+        "未破",
+    }
+    # 若誤用低點破位邏輯會變已破——這裡必須不是
+    assert _tw_pred_break_tag(41760.0, lows, role="台指壓力", highs=highs) != "已破"
+    # 今日高穿壓 → 已破
+    assert (
+        _tw_pred_break_tag(
+            41760.0, lows, role="台指壓力", highs=[41000.0, 42349.0]
+        )
+        == "已破"
+    )
+    notes = _tw_pred_right_notes(
+        {
+            "pred_levels": {
+                "tw": [
+                    {
+                        "level": 41760.0,
+                        "role": "台指壓力",
+                        "tag": "未到",
+                        "label": "台指壓力／41,760",
+                    }
+                ]
+            }
+        },
+        n=10,
+        lows=lows,
+        highs=highs,
+        bars=[
+            {"date": "20261106", "high": 40435.0, "low": 37837.0, "close": 39701.0},
+            {"date": "20261109", "high": 41600.0, "low": 40347.0, "close": 41661.0},
+        ],
+    )
+    blob = " ".join(str(x.get("text") or "") for x in notes)
+    assert "台指壓力" in blob
+    assert "飆預測" not in blob
+    assert "已破" not in blob
+    assert ("未到" in blob) or ("未破" in blob)
+
+
+def test_c9_extension_inactive_on_stop_confirm():
+    """止跌確認當令：不准再開九波 C1…C9／C-7轉C-8 標。"""
+    from biaoke_level_learn import _c9_extension_active
+
+    pack = {
+        "thesis": "大A→大B→大C｜C3-5＋1 4重疊・確認上週五低＝最低（預估）",
+        "snippet": "確認上週五低點就是最低點；大盤止跌；台指壓41760",
+        "wait_struct": "台指壓41760；一定再測週五低；非買訊",
+        "pred_levels": {"tw": [{"level": 41760.0, "role": "台指壓力"}]},
+    }
+    assert not _c9_extension_active(pack)
+    # 雙軌／foot2 區也不准誤開九波路徑標
+    assert not _c9_extension_active(
+        {
+            "thesis": "大A→大B→大C｜主線五波跌完走B-b・備線九波擴延（預估）",
+            "snippet": "5波跌完走B-b；假跌破37837；不排除9波擴延35579",
+            "pred_levels": {
+                "tw": [
+                    {"level": 37500.0, "role": "改口低上沿"},
+                    {"level": 37000.0, "role": "改口低下沿"},
+                ]
+            },
+        }
+    )
+
+
 def test_us_real_close_pair_skips_twii_ffill_flat():
     """費半黃框：對真實美股日算漲跌，不准因加權軸前收填日變假 +0%。"""
     from biaoke_level_learn import (
@@ -1302,6 +1482,85 @@ def test_bb_dual_path_thesis_beats_earlier_foot2(tmp_path):
     out = str(tmp_path / "oral.png")
     got = render_oral_dual_path_schematic(out, snip=main)
     assert got and __import__("os").path.isfile(got)
+
+
+def test_stop_low_confirm_thesis_beats_older_bb_dual_and_c9(tmp_path):
+    """11/9 止跌／C3-5＋1 4確認壓 11/8 雙軌；不准舊 9波備線整段蓋最新題旨。"""
+    import sqlite3
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_level_learn import (
+        _latest_level_thesis,
+        _text_has_bb_dual_path,
+        _text_has_c9_extension,
+        _text_has_stop_low_confirm,
+        _thesis_pred_levels,
+        _wave_now_ladder,
+        ensure_tables,
+    )
+
+    db = str(tmp_path / "stop.db")
+    ensure_tables(db)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS biaoke_posts("
+        "id TEXT PRIMARY KEY, date TEXT, time TEXT, kind TEXT, text TEXT)"
+    )
+    bb = (
+        "大盤底部判斷訊號。由台指期來看大盤，星期五夜盤已經破壞最後一組3-5下跌脈動。"
+        "星期五最低點位37837。這也是波浪理論5波跌完走B-b，也有可能會破37837，但是假跌破買點。"
+        "因為第二組下跌是走5波，當然不排除走9波擴延，非常有可能有效跌破"
+        "2/26第一波高點35579，則殺到3/31低點31705。"
+    )
+    morning = (
+        "用台指期看大盤，台指期第一道壓力區41760是基本的。"
+        "已經和最後一組下跌脈動C3-5 1 4重疊，確認上週五低點就是最低點，"
+        "接下來還會再去測星期五低點一次，破不破，跌破上星期五低點是假跌破，都是上車點。"
+    )
+    evening = (
+        "這周大盤一定會有2000~3000點大震盪，今天立刻達標。"
+        "不相信我大盤止跌，頂多在測一次低破星期五低點假跌破我都已經說的非常清楚。"
+    )
+    conn.execute(
+        "INSERT INTO biaoke_posts(id, date, time, kind, text) VALUES (?,?,?,?,?)",
+        ("188039214", "2026-11-08", "12:01", "post", bb),
+    )
+    conn.execute(
+        "INSERT INTO biaoke_posts(id, date, time, kind, text) VALUES (?,?,?,?,?)",
+        ("188048401", "2026-11-09", "09:09", "post", morning),
+    )
+    conn.execute(
+        "INSERT INTO biaoke_posts(id, date, time, kind, text) VALUES (?,?,?,?,?)",
+        ("188138405", "2026-11-09", "18:20", "post", evening),
+    )
+    conn.commit()
+    conn.close()
+    assert _text_has_bb_dual_path(bb)
+    assert not _text_has_c9_extension(bb)
+    assert _text_has_stop_low_confirm(morning)
+    assert _text_has_stop_low_confirm(evening)
+    tz = ZoneInfo("Asia/Taipei")
+    th = _latest_level_thesis(
+        db, as_of="20261109", now=datetime(2026, 11, 9, 22, 0, tzinfo=tz)
+    )
+    thesis = th.get("thesis") or ""
+    wait = th.get("wait_struct") or ""
+    snip = th.get("snippet_full") or th.get("snippet") or ""
+    assert "確認上週五低" in thesis or "1 4重疊" in thesis
+    assert "B-b" not in thesis
+    assert "九波" not in thesis
+    assert "第二隻腳" not in thesis
+    assert "41760" in wait or "41760" in snip
+    assert "再測週五低" in wait or "假跌破" in wait
+    assert "35579" not in snip
+    pred = _thesis_pred_levels(snip, db)
+    roles = {str(r.get("role")): float(r["level"]) for r in (pred.get("tw") or [])}
+    assert abs(roles.get("台指壓力", 0) - 41760) < 1
+    assert "九波備線破位" not in roles
+    ladder = _wave_now_ladder(th)
+    assert "止跌確認" in (ladder.get("now") or "")
+    assert "B-b" not in (ladder.get("now") or "")
 
 
 def test_oral_dual_path_uses_bundled_cjk_font():
@@ -3375,3 +3634,31 @@ def test_paint_tx_now_rail_mid_session_white_neon():
     assert _TEACH_STAMP_FACE.lower() in ("#ffffff", "#fff", "white")
     assert _TEACH_STAMP_EDGE_LIVE.lower() in ("#ffff00", "#ff0", "yellow")
     assert _TEACH_STAMP_EDGE_CLOSED.startswith("#")
+
+
+def test_tip_anchors_empty_on_stop_confirm_no_old_45546():
+    """止跌確認＋41760：tip 不准退回舊 45546／44210 佔右欄。"""
+    from biaoke_level_learn import _tw_tip_anchors, _format_tw_pred_note
+
+    pack = {
+        "thesis": "大A→大B→大C｜C3-5＋1 4重疊・確認上週五低＝最低（預估）",
+        "wait_struct": "台指壓41760；一定再測週五低；非買訊",
+        "snippet_full": "不相信我大盤止跌，確認上週五低點就是最低點；台指壓力41760",
+        "pred_levels": {
+            "tw": [
+                {
+                    "level": 41760.0,
+                    "role": "台指壓力",
+                    "tag": "未到",
+                    "label": "台指壓力／41,760",
+                }
+            ]
+        },
+        "key_levels": {"pred_tw_41760": 41760.0},
+    }
+    assert _tw_tip_anchors(pack) == tuple()
+    lab = _format_tw_pred_note(
+        41760.0, pack=pack, lows=[37837.0], highs=[41600.0]
+    )
+    assert "台指壓力" in lab
+    assert "飆預測" not in lab
