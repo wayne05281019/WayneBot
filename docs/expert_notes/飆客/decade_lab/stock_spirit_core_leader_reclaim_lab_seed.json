@@ -1,0 +1,43 @@
+{
+  "version": "stock_spirit_core_leader_reclaim_lab_v1",
+  "tz": "Asia/Taipei",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "promote_lookup": false,
+  "gate_passed": false,
+  "keep": "v106",
+  "keep_detail": "compare vs sealed early ei_n2_lu5／fast lu5_vol_next；sell hi20_or_desync",
+  "entry": "SPIRIT_core",
+  "parents": [
+    "stock_leader_reclaim_combo_lab_decision.json",
+    "stock_tech_confirm_lab_decision.json",
+    "stock_pair_exit_leg_confirm_lab_decision.json"
+  ],
+  "hypothesis_zh": "combo 軌 sealed keep 核本機全空；改 SPIRIT_core（present-data 會亮）× leader×reclaim／vol×bias，看能否逼近 sealed keep 勝率",
+  "confirm_variants": [
+    "plain",
+    "leader_tag",
+    "reclaim_ma20",
+    "leader_and_reclaim_ma20",
+    "leader_reclaim_and_vol_1p5",
+    "leader_and_vol_1p5_bias_lt8",
+    "vol_1p5_and_bias_lt8"
+  ],
+  "sell": "hi20_or_desync",
+  "next": "keep v106；下一 present-data 候選 stock_spirit_pull_fib_leader_bias_lab_v1（SPIRIT_pull_fib×leader×bias_lt8）；不准混浪形、不准改話筒",
+  "status": "plain_delta_only_keep_v106",
+  "as_of": "2026-11-10T02:23:11+08:00",
+  "best_candidate": {
+    "leg": "spirit_core_confirm",
+    "entry": "SPIRIT_core",
+    "variant": "reclaim_ma20",
+    "kind": "vs_plain",
+    "oos_wr": 0.7384428223844283,
+    "oos_d": 352,
+    "plain_oos_wr": 0.7227848101265822,
+    "plain_oos_d": 526,
+    "delta_oos_wr": 0.01565801225784602,
+    "beats_v106_early_keep_oos": false,
+    "beats_v106_fast_keep_oos": false
+  }
+}

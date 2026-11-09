@@ -278,6 +278,7 @@ def run(*, n_stocks: int = 220, min_avg_turnover_k: float = 800_000.0, smoke: bo
     all_dates: List[str] = []
     errors: List[str] = []
     meta_n = 0
+    keep_core_hits = {"early": 0, "fast": 0}
 
     for sid in symbols:
         try:
@@ -301,6 +302,8 @@ def run(*, n_stocks: int = 220, min_avg_turnover_k: float = 800_000.0, smoke: bo
             aux = tech_sell_aux(df)
             early = masks[KEEP_EARLY].fillna(False)
             fast = masks[KEEP_FAST].fillna(False)
+            keep_core_hits["early"] += int(early.sum())
+            keep_core_hits["fast"] += int(fast.sum())
             for core_name, base in (("early", early), ("fast", fast)):
                 for fname, fmask in cmasks.items():
                     em = (base & fmask.reindex(df.index).fillna(False)).fillna(False)
@@ -318,6 +321,35 @@ def run(*, n_stocks: int = 220, min_avg_turnover_k: float = 800_000.0, smoke: bo
                     )
         except Exception as e:  # noqa: BLE001
             errors.append(f"{sid}:{type(e).__name__}:{e}")
+
+    if keep_core_hits["early"] + keep_core_hits["fast"] <= 0:
+        out = {
+            "version": "stock_leader_reclaim_combo_lab_v1",
+            "as_of": _now(),
+            "tz": "Asia/Taipei",
+            "phone_sync": PHONE_SYNC,
+            "buy_signal": BUY_SIGNAL,
+            "status": "blocked_silent_keep_cores",
+            "finding_zh": (
+                "spirit 堆可 import，但 sealed keep 核（ei_n2_lu5／lu5_vol_next）"
+                "在本機波狀態機未吐 WAVE_3_MAIN、spirit 無 PHASE_* 下全空。"
+                "不准假核湊數。keep 仍 v106。下一刀改跑 present-data："
+                "stock_spirit_core_leader_reclaim_lab_v1（SPIRIT_core×leader×reclaim）。"
+            ),
+            "keep": "v106",
+            "promote": False,
+            "gate_passed": False,
+            "n_stocks": meta_n,
+            "keep_core_hits": keep_core_hits,
+            "smoke": bool(smoke),
+            "db_path": str(MARKET_DB),
+            "mix_root": str(MIX_ROOT) if MIX_ROOT else None,
+            "errors_sample": errors[:12],
+            "next": "stock_spirit_core_leader_reclaim_lab_v1",
+            "elapsed_s": round(time.time() - t0, 2),
+        }
+        _write_outputs(out)
+        return out
 
     train_d, test_d = _half_split_dates(all_dates)
     tracks: Dict[str, Any] = {}
@@ -425,8 +457,8 @@ def run(*, n_stocks: int = 220, min_avg_turnover_k: float = 800_000.0, smoke: bo
             "stock_pair_exit_leg_confirm_lab_decision.json",
         ],
         "next": (
-            "若 gate 真過→同件再生下一鍵；否則換下一交叉（例 leader×vol_1p5×bias）"
-            "；不准混浪形、不准改話筒"
+            "若 gate 真過→同件再生下一鍵；否則改 present-data："
+            "stock_spirit_core_leader_reclaim_lab_v1；不准混浪形、不准改話筒"
         ),
         "elapsed_s": round(time.time() - t0, 2),
         "errors_sample": errors[:12],

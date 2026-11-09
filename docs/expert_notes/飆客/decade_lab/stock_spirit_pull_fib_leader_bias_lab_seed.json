@@ -1,0 +1,25 @@
+{
+  "version": "stock_spirit_pull_fib_leader_bias_lab_v1",
+  "tz": "Asia/Taipei",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "promote_lookup": false,
+  "gate_passed": false,
+  "keep": "v106",
+  "entry": "SPIRIT_pull_fib",
+  "parents": [
+    "stock_spirit_core_leader_reclaim_lab_decision.json",
+    "stock_leader_reclaim_combo_lab_decision.json"
+  ],
+  "hypothesis_zh": "SPIRIT_core×reclaim 對 plain 微正Δ未贏 sealed keep；改 SPIRIT_pull_fib 進場核 × leader_tag × bias20_lt8／vol_1p5 交叉，看是否更貼 sealed 選擇性",
+  "confirm_variants": [
+    "plain",
+    "leader_tag",
+    "bias20_lt8",
+    "vol_1p5_and_bias_lt8",
+    "leader_and_bias_lt8",
+    "leader_and_vol_1p5_bias_lt8"
+  ],
+  "sell": "hi20_or_desync",
+  "next": "實作 scripts/decade_lab_stock_spirit_pull_fib_leader_bias_lab.py 後跑 OOS；n≥20 且贏 keep 才談替換"
+}

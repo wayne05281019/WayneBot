@@ -1,14 +1,67 @@
 {
   "version": "stock_leader_reclaim_combo_lab_v1",
-  "as_of": "2026-11-09T23:25:22+08:00",
+  "as_of": "2026-11-10T02:22:11+08:00",
   "tz": "Asia/Taipei",
   "phone_sync": "blocked",
   "buy_signal": false,
-  "status": "blocked_missing_spirit_stack",
-  "finding_zh": "本機缺 spirit／v106 核依賴。請設 WAYNE_LAB_MIX_ROOT 再跑。keep 仍 v106。",
-  "keep": "v106",
-  "promote": false,
+  "promote_lookup": false,
+  "status": "plain_delta_only_keep_v106",
   "gate_passed": false,
-  "db_path": "/agent/repos/WayneBot/data/wayne_market.db",
-  "mix_root": "."
+  "keep": "v106",
+  "keep_detail": "early ei_n2_lu5／eg_bridge；fast lu5_vol_next；sell hi20_or_desync",
+  "sell": "hi20_or_desync",
+  "variant_tested_zh": "v106 進場核 × leader_tag×reclaim_ma20 交叉（可選近60低／量1.5）",
+  "n_stocks": 201,
+  "smoke": false,
+  "best_candidate": null,
+  "shared_vs_keep": [],
+  "oos_vs_v106_keep": {
+    "early_plain_oos": {
+      "n_trades": 38,
+      "n_unique_entry_days": 36,
+      "win_rate": 0.8421052631578947,
+      "expectancy": 0.07467569895008162,
+      "avg_hold": 15.447368421052632,
+      "exit_reason_counts": {
+        "first_hi20": 36,
+        "max_hold_60": 2
+      },
+      "gate_n20": true
+    },
+    "fast_plain_oos": {
+      "n_trades": 37,
+      "n_unique_entry_days": 35,
+      "win_rate": 0.8378378378378378,
+      "expectancy": 0.07574122145899685,
+      "avg_hold": 15.405405405405405,
+      "exit_reason_counts": {
+        "first_hi20": 35,
+        "max_hold_60": 2
+      },
+      "gate_n20": true
+    },
+    "v106_ref": {
+      "early": {
+        "wr": 0.8269230769230769,
+        "d": 51,
+        "bars": 16.54901960784314
+      },
+      "fast": {
+        "wr": 0.8545454545454545,
+        "d": 54,
+        "bars": 15.296296296296296
+      }
+    }
+  },
+  "gate_one_liner": "stock_leader_reclaim_combo n=201 smoke=0; best=None; shared=[]; promote=False",
+  "finding_zh": "leader×reclaim 交叉確認：最佳=None；未贏 sealed v106 keep → keep v106。不准改話筒。",
+  "parent_keep": "phone_spirit_mix_dual_track_v106_decision.json",
+  "prev_failed": [
+    "stock_inst_filter_lab_decision.json",
+    "stock_tech_confirm_lab_decision.json",
+    "stock_pair_exit_leg_confirm_lab_decision.json"
+  ],
+  "next": "已開 present-data 下一刀 stock_spirit_core_leader_reclaim_lab_v1；本軌 keep 核樣本偏稀、確認層未贏 plain／sealed keep → keep v106",
+  "elapsed_s": 107.15,
+  "db_path": "/agent/repos/WayneBot/data/wayne_market.db"
 }
