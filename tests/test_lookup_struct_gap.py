@@ -6,7 +6,6 @@ import asyncio
 import inspect
 import os
 import tempfile
-import threading
 import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -209,13 +208,6 @@ def test_gap_line_while_official_volume_still_running():
     """第 2 張送出時官方量還沒齊：話筒要寫在等成交量，不准空白。"""
     td = tempfile.mkdtemp()
     bot = _bot(td)
-    # CI 負載下 card／glance 常 >3s；固定 sleep 會讓 ensure 先完、gap 句被跳過。
-    # 用 Event：等看到結構等待句才放行 ensure（逾時仍放，讓後面 assert 紅）。
-    gap_gate = threading.Event()
-
-    def _ensure(*_a, **_k):
-        gap_gate.wait(timeout=60.0)
-        return {"sid": "2330", "confirmed_absent": [], "still_missing": [], "filled": []}
 
     def _bars(*_a, **_k):
         return {
@@ -249,20 +241,39 @@ def test_gap_line_while_official_volume_still_running():
             or ("結構圖繪製中" in text)
         )
 
-    async def _reply_text(*args, **_kwargs):
-        text = str(args[0]) if args else ""
-        if _is_struct_gap(text):
-            gap_gate.set()
-        return MagicMock(delete=AsyncMock(), edit_text=AsyncMock())
-
     message = MagicMock()
     message.from_user = SimpleNamespace(id=111, first_name="u")
     message.chat_id = 999
     message.reply_html = AsyncMock(return_value=MagicMock())
-    message.reply_text = AsyncMock(side_effect=_reply_text)
     message.reply_photo = AsyncMock()
 
     async def _run():
+        # 不准用 threading.Event 卡 to_thread：會占滿 worker，CI 下 glance 出不來、gap 永不送。
+        # 改傳 async ensure_task：等 gap 句（或逾時）才完成，不占 thread pool。
+        gap_gate = asyncio.Event()
+
+        async def _reply_text(*args, **_kwargs):
+            text = str(args[0]) if args else ""
+            if _is_struct_gap(text):
+                gap_gate.set()
+            return MagicMock(delete=AsyncMock(), edit_text=AsyncMock())
+
+        message.reply_text = AsyncMock(side_effect=_reply_text)
+
+        async def _async_ensure():
+            try:
+                await asyncio.wait_for(gap_gate.wait(), timeout=60.0)
+            except asyncio.TimeoutError:
+                pass
+            return {
+                "sid": "2330",
+                "confirmed_absent": [],
+                "still_missing": [],
+                "filled": [],
+            }
+
+        ensure_task = asyncio.create_task(_async_ensure())
+
         with patch("wayne_navigator.NavigatorEngine", _Engine), patch(
             "chip_tape.build_tape", return_value={}
         ), patch(
@@ -277,8 +288,6 @@ def test_gap_line_while_official_volume_still_running():
         ), patch(
             "vol_zone_chart.render_lookup_vol_result",
             side_effect=lambda *_a, **_k: (_png(td, "v.png"), "大量撐壓圖（非買訊）"),
-        ), patch(
-            "vol_zone_chart.ensure_official_volume_window", side_effect=_ensure
         ), patch(
             "vol_zone_chart.prepare_lookup_structure_bars", side_effect=_bars
         ), patch.object(
@@ -306,6 +315,7 @@ def test_gap_line_while_official_volume_still_running():
                 "111",
                 "999:111",
                 [{"stock_id": "2330", "stock_name": "台積電", "close": 100}],
+                ensure_task=ensure_task,
             )
 
     with patch(
