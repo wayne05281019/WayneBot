@@ -64,6 +64,7 @@ def _log_len(a: float, b: float) -> float:
 # 實驗室進場预设（不上話筒）
 # A4_index_soft：大盤指數 decade 窗專用；放寬量能／週線硬閘，仍 phone_sync=blocked
 # A5_index_dense：A4 下一版靜默對質——再放寬結構／逾時，目標抬獨立進場日密度（仍非買訊）
+# A6_index_quality：A5 denser 未清贏 A0 → 再生質量中軌（保留 X 鎖／比 A5 緊、比 A4 鬆；仍非買訊）
 ENTRY_PRESETS = (
     "A0_strict",
     "A1_score",
@@ -71,6 +72,7 @@ ENTRY_PRESETS = (
     "A3_squeeze",
     "A4_index_soft",
     "A5_index_dense",
+    "A6_index_quality",
 )
 
 
@@ -360,7 +362,7 @@ class ElliottHsiaoEngine:
             heavy_cap = (np.isfinite(ma60_safe) and ma60_safe < -0.8) and (
                 np.isfinite(ma60_ang) and ma60_ang < -25.0
             )
-            # A5：點火更鬆——抬循環次數／獨立進場日密度（仍非買訊、不上話筒）
+            # A5／A6：點火放寬抬獨立進場日；A6 較 A5 緊（質量中軌）；仍非買訊、不上話筒
             if self.entry_preset == "A5_index_dense":
                 ignite = (
                     (close > ma60 if np.isfinite(ma60) else False)
@@ -374,6 +376,22 @@ class ElliottHsiaoEngine:
                 )
                 ang_need = 18.0
                 ma20_need = -0.25
+                swing_need = self._confirm_swing_low(t, row) or bool(
+                    row.get("kd_pullback_buy_zone")
+                )
+            elif self.entry_preset == "A6_index_quality":
+                ignite = (
+                    (close > ma60 if np.isfinite(ma60) else False)
+                    or bool(row.get("bull_alignment"))
+                ) and (
+                    bool(row.get("is_key_bull_candle"))
+                    or (
+                        bool(row.get("is_attack_vol"))
+                        and bool(row.get("kd_pullback_buy_zone"))
+                    )
+                )
+                ang_need = 25.0
+                ma20_need = -0.10
                 swing_need = self._confirm_swing_low(t, row) or bool(
                     row.get("kd_pullback_buy_zone")
                 )
@@ -397,7 +415,7 @@ class ElliottHsiaoEngine:
                 self.t_P0 = self.cand_low.t_idx
                 self.sum_vol_w1_up = up_vol
                 self.cand_high = SwingCandidate(t, float(row["High"]), vol_ma5, angle10)
-                # A5 不鎖 X 浪反彈，避免 decade 指數長困 BASE／CRASH
+                # A5 不鎖 X 浪反彈；A6 恢復 X 鎖（質量軌，避季線重壓假點火）
                 if heavy_cap and self.entry_preset != "A5_index_dense":
                     self.x_rebound_lock = True
                     self.state = WaveState.WAVE_X_REBOUND
@@ -422,8 +440,13 @@ class ElliottHsiaoEngine:
             self._apply_breakaway_gap(t, row, True)
             if self._confirm_swing_high(t, row):
                 p1 = self.cand_high.price
-                # A5：W1 幅度門檻略降，讓指數 decade 更常進 W2 對質窗
-                w1_mult = 1.03 if self.entry_preset == "A5_index_dense" else 1.06
+                # A5／A6：W1 幅度門檻略降，讓指數 decade 更常進 W2 對質窗
+                if self.entry_preset == "A5_index_dense":
+                    w1_mult = 1.03
+                elif self.entry_preset == "A6_index_quality":
+                    w1_mult = 1.045
+                else:
+                    w1_mult = 1.06
                 if np.isfinite(self.P0) and p1 > self.P0 * w1_mult:
                     self.P1 = p1
                     self.t_P1 = self.cand_high.t_idx
@@ -460,13 +483,19 @@ class ElliottHsiaoEngine:
                 cur_low = self.cand_low.price if np.isfinite(self.cand_low.price) else close
                 retrace = _log_retrace(self.P1, self.P0, cur_low)
                 days_w2 = t - self.t_P1 if self.t_P1 >= 0 else 0
-                # A4／A5：指數 decade 防 W2 淺回卡死（曾見近千根不進 W3）
-                # A5 逾時更寬＝續收獨立進場日，仍不准上話筒
-                if self.entry_preset in {"A4_index_soft", "A5_index_dense"} and days_w2 >= 60:
-                    shallow_floor = 0.12 if self.entry_preset == "A5_index_dense" else 0.20
+                # A4／A5／A6：指數 decade 防 W2 淺回卡死（曾見近千根不進 W3）
+                # A5 逾時更寬＝密度；A6 居中＝質量中軌；仍不准上話筒
+                if (
+                    self.entry_preset in {"A4_index_soft", "A5_index_dense", "A6_index_quality"}
+                    and days_w2 >= 60
+                ):
+                    if self.entry_preset == "A5_index_dense":
+                        shallow_floor, extend_days, timeout_days = 0.12, 90, 240
+                    elif self.entry_preset == "A6_index_quality":
+                        shallow_floor, extend_days, timeout_days = 0.16, 75, 180
+                    else:
+                        shallow_floor, extend_days, timeout_days = 0.20, 60, 120
                     shallow = (not np.isfinite(retrace)) or retrace < shallow_floor
-                    extend_days = 90 if self.entry_preset == "A5_index_dense" else 60
-                    timeout_days = 240 if self.entry_preset == "A5_index_dense" else 120
                     if shallow and days_w2 >= extend_days and np.isfinite(self.P1) and close > self.P1:
                         # 淺回後再創高＝W1 延伸，重標 P1，繼續等真 W2
                         self.P1 = float(row["High"]) if np.isfinite(row.get("High", np.nan)) else close
@@ -600,6 +629,41 @@ class ElliottHsiaoEngine:
                     )
                     soft = vol_soft or kd_buy or hammer_confirm or ang_soft or (
                         eff_score >= max(45.0, float(self.score_threshold) - 10.0)
+                    )
+                    enter = hard and soft
+                elif preset == "A6_index_quality":
+                    # A5 denser 未清贏 → 質量中軌：比 A5 緊、比 A4 鬆；保留結構／量能底線
+                    vol_q = self.had_trough_since_p1 and (
+                        (np.isfinite(attack) and attack >= 1.05)
+                        or bool(row.get("is_attack_vol"))
+                    )
+                    ang_q = (
+                        (np.isfinite(angle5) and angle5 >= 20.0 and turn)
+                        or kd_buy
+                        or hammer_confirm
+                    )
+                    above_ma = (np.isfinite(ma60) and close > ma60) or (
+                        np.isfinite(ma20) and close > ma20
+                    )
+                    price_q = (
+                        np.isfinite(retrace) and 0.12 <= retrace <= 0.90 and above_ma
+                    )
+                    weekly_q = weekly_bull or (
+                        above_ma
+                        and np.isfinite(ma60_safe)
+                        and ma60_safe >= -0.30
+                    )
+                    mtf_q = weekly_q and (not overext_block) and (not block_entry) and turnover_ok
+                    structure_turn = swing_ok or turn or kd_buy or hammer_confirm
+                    hard = (
+                        mtf_q
+                        and price_q
+                        and np.isfinite(ma20_safe)
+                        and ma20_safe >= -0.60
+                        and structure_turn
+                    )
+                    soft = vol_q or kd_buy or hammer_confirm or ang_q or (
+                        eff_score >= max(40.0, float(self.score_threshold) - 15.0)
                     )
                     enter = hard and soft
                 else:
@@ -1015,7 +1079,7 @@ class ElliottHsiaoEngine:
                 self.in_short = False
                 self.short_stop = float("nan")
                 self._emit(t, signal)
-            # A5：C 段結束條件放寬，避免指數 decade 長困 WAVE_C_CRASH
+            # A5／A6：C 段結束條件放寬，避免指數 decade 長困 WAVE_C_CRASH；A6 較緊
             if self.entry_preset == "A5_index_dense":
                 cycle_reset = (
                     (
@@ -1031,6 +1095,23 @@ class ElliottHsiaoEngine:
                         bool(row.get("is_key_bull_candle"))
                         or bool(row.get("kd_golden_cross"))
                         or (np.isfinite(angle5) and angle5 >= 15.0)
+                    )
+                )
+            elif self.entry_preset == "A6_index_quality":
+                cycle_reset = (
+                    (
+                        bool(row.get("is_trough_vol"))
+                        or bool(row.get("had_trough_vol_10d"))
+                    )
+                    and np.isfinite(ma60)
+                    and close > ma60
+                    and (
+                        bool(row.get("is_key_bull_candle"))
+                        or (
+                            bool(row.get("kd_golden_cross"))
+                            and np.isfinite(angle5)
+                            and angle5 >= 20.0
+                        )
                     )
                 )
             else:

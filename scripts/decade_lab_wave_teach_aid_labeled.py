@@ -99,6 +99,8 @@ FOCUS_PHRASE_TAGS = frozenset(
 CRASH_PHASE_TAGS = frozenset(
     {"warn", "guidance", "crash", "candidate", "confirm"}
 )
+# 續收墊：急跌相位 end 往後延 N 個開市日（仍止於下一相位 start 前；抬 n→≥20）
+CRASH_PAD_OPEN_DAYS = 3
 SCORE_MODES = ("baseline", "tight", "phrase_focus", "phrase_focus_crash")
 
 
@@ -183,6 +185,60 @@ def _tag_phase(day: str, windows: Dict[str, Dict[str, Any]]) -> Optional[Dict[st
         "title_zh": w["title_zh"],
         "window": {"start": w["start"], "end": w["end"]},
     }
+
+
+def _pad_crash_phase_windows(
+    windows: Dict[str, Dict[str, Any]],
+    open_days: List[str],
+    *,
+    pad: int = CRASH_PAD_OPEN_DAYS,
+) -> Dict[str, Dict[str, Any]]:
+    """急跌相位 end 往後延 pad 個開市日；不准跨下一相位 start；stock_hunt 不墊。"""
+    if pad <= 0 or not windows or not open_days:
+        return windows
+    # 只墊計分相位（CRASH_PHASE_TAGS）；保持時間線先後
+    scored = [
+        (k, dict(w))
+        for k, w in windows.items()
+        if str(w.get("phase_tag") or "") in CRASH_PHASE_TAGS
+    ]
+    scored.sort(key=lambda kv: str(kv[1].get("start") or ""))
+    out = {k: dict(w) for k, w in windows.items()}
+    for i, (key, w) in enumerate(scored):
+        end = str(w.get("end") or "")
+        if len(end) != 8:
+            continue
+        # 下一計分相位 start 當硬上限
+        hard_cap = None
+        if i + 1 < len(scored):
+            hard_cap = str(scored[i + 1][1].get("start") or "") or None
+        try:
+            idx = open_days.index(end) if end in open_days else -1
+        except ValueError:
+            idx = -1
+        if idx < 0:
+            # end 非開市日：找第一個 >= end 的開市日再墊
+            later = [d for d in open_days if d >= end]
+            if not later:
+                continue
+            idx = open_days.index(later[0])
+        new_end = end
+        stepped = 0
+        j = idx + 1
+        while j < len(open_days) and stepped < pad:
+            cand = open_days[j]
+            if hard_cap and cand >= hard_cap:
+                break
+            new_end = cand
+            stepped += 1
+            j += 1
+        if new_end > end:
+            padded = dict(out[key])
+            padded["end"] = new_end
+            padded["crash_pad_open_days"] = stepped
+            padded["crash_pad_from_end"] = end
+            out[key] = padded
+    return out
 
 
 def _phrase_tags(snip: str) -> List[str]:
@@ -588,6 +644,10 @@ def run(
 
     phase_windows = _load_timeline_phase_windows(TIMELINE_SEAL)
     open_days = _open_days(start_d, end)
+    if mode == "phrase_focus_crash":
+        phase_windows = _pad_crash_phase_windows(
+            phase_windows, open_days, pad=CRASH_PAD_OPEN_DAYS
+        )
 
     con = sqlite3.connect(f"file:{MARKET_DB}?mode=ro", uri=True)
     try:
@@ -877,8 +937,9 @@ def run(
             "labeled_in_timeline_seal": seal_stats,
             "matched_day_vs_loose": matched,
             "crash_phase_tags": sorted(CRASH_PHASE_TAGS),
+            "crash_pad_open_days": CRASH_PAD_OPEN_DAYS,
             "next_long_window_zh": (
-                "phrase_focus 全窗續收；phrase_focus_crash 急跌相位子窗續收；"
+                "phrase_focus 全窗續收；phrase_focus_crash 急跌相位＋開市日墊續收；"
                 "n≥20 且同日對照贏 loose 才談換（仍非 drop-in）"
             ),
             "not_buy_signal": True,
@@ -912,7 +973,7 @@ def run(
     # phrase_focus 主軌也刷新 next 指向 crash 子窗
     if mode == "phrase_focus":
         summary["next_window_zh"] = (
-            "續收 phrase_focus with_his；另備 phrase_focus_crash 急跌相位子窗；"
+            "續收 phrase_focus with_his；另備 phrase_focus_crash 急跌相位＋開市日墊；"
             "n≥20 且同日對照贏 loose 才談換（仍非 drop-in）"
         )
         (OUT_DIR / f"{prefix}_summary.json").write_text(

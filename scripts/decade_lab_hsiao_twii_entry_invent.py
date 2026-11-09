@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Hsiao 大盤 decade 下一窗：TWII 進場 preset 矩陣（A4／A5）。
+"""Hsiao 大盤 decade 下一窗：TWII 進場 preset 矩陣（A4／A5／A6）。
 
 只跑實驗室；phone_sync=blocked；不准改買訊／不准搶個股 spirit mix。
 decade 窗固定自 2006-01-02 起（≈20y）；深史 Yahoo 補洞允許，近窗官方量優先。
-A4 續收；A5_index_dense＝下一版靜默對質（抬進場日密度）；未過閘不換。
+A4／A5 續收；A6_index_quality＝A5 未清贏後再生質量中軌；未過閘不換。
 """
 from __future__ import annotations
 
@@ -121,11 +121,13 @@ def run() -> Dict[str, Any]:
     a0 = by_preset.get("A0_strict") or {}
     a4 = by_preset.get("A4_index_soft") or {}
     a5 = by_preset.get("A5_index_dense") or {}
+    a6 = by_preset.get("A6_index_quality") or {}
     a4_vs = _vs_a0(a4, a0)
     a5_vs = _vs_a0(a5, a0)
-    # 換閘看 pick 軌（通常 A5 denser）；仍須 n≥20 且清贏 A0
-    cand = pick or a5 or a4
-    cand_key = str((cand or {}).get("entry_preset") or "A5_index_dense")
+    a6_vs = _vs_a0(a6, a0)
+    # 換閘優先看質量中軌 A6；仍須 n≥20 且清贏 A0
+    cand = a6 if a6.get("has_entries") else (pick or a5 or a4)
+    cand_key = str((cand or {}).get("entry_preset") or "A6_index_quality")
     cand_vs = _vs_a0(cand or {}, a0)
     years_ok = years >= 19.5
     replace = bool(years_ok and cand_vs["gate_n20"] and cand_vs["beat_a0"])
@@ -142,9 +144,10 @@ def run() -> Dict[str, Any]:
         gate_flags.append("n_entry_days_lt_20")
     if not cand_vs["beat_a0"]:
         gate_flags.append("not_clear_win_vs_A0")
-    # A4 未過閘時仍標 A4 閘旗，方便續收
     if not a4_vs["gate_n20"]:
         gate_flags.append("a4_n_entry_days_lt_20")
+    if a5_vs["gate_n20"] and not a5_vs["beat_a0"]:
+        gate_flags.append("a5_n_ok_but_not_clear_win_vs_A0")
     seal = {
         "as_of": _now(),
         "tz": "Asia/Taipei",
@@ -154,7 +157,7 @@ def run() -> Dict[str, Any]:
         "buy_signal": False,
         "not_buy_signal": True,
         "WAVE_NEURONS_MATCH": False,
-        "purpose_zh": "蕭氏大盤 decade：A0–A5 進場矩陣；A5 denser 下一版靜默；不上話筒",
+        "purpose_zh": "蕭氏大盤 decade：A0–A6 進場矩陣；A6 質量中軌靜默；不上話筒",
         "data": {
             "symbol": "TWII",
             "n": n,
@@ -179,7 +182,7 @@ def run() -> Dict[str, Any]:
             "years_ok": years_ok,
             "gate_n20": a4_vs["gate_n20"],
             "beat_a0": a4_vs["beat_a0"],
-            "replace": False,  # A4 本輪未過閘不換；換閘看下方 cand
+            "replace": False,
         },
         "a5_vs_a0": {
             "A0_strict": {
@@ -191,7 +194,19 @@ def run() -> Dict[str, Any]:
             "years_ok": years_ok,
             "gate_n20": a5_vs["gate_n20"],
             "beat_a0": a5_vs["beat_a0"],
-            "replace": bool(years_ok and a5_vs["gate_n20"] and a5_vs["beat_a0"]),
+            "replace": False,
+        },
+        "a6_vs_a0": {
+            "A0_strict": {
+                "n_entry_days": int(a0.get("n_entry_days") or 0),
+                "n_trades": int(a0.get("n_trades") or 0),
+                "total_return": a0.get("total_return"),
+            },
+            "A6_index_quality": a6_vs,
+            "years_ok": years_ok,
+            "gate_n20": a6_vs["gate_n20"],
+            "beat_a0": a6_vs["beat_a0"],
+            "replace": bool(years_ok and a6_vs["gate_n20"] and a6_vs["beat_a0"]),
         },
         "cand_vs_a0": {
             "entry_preset": cand_key,
@@ -204,27 +219,48 @@ def run() -> Dict[str, Any]:
         "gate_flags": gate_flags,
         "next_long_window_zh": (
             f"{cand_key} vs A0：獨立進場開市日 n≥20 且清贏 A0 才談換（仍非買訊）；"
-            "A4 續收、A5 denser 同軌靜默對質"
+            "A4／A5 續收、A6 質量中軌同軌靜默對質"
             if years_ok
             else (
-                "補齊 TWII≈20y 真柱後重跑 A4／A5 vs A0；"
+                "補齊 TWII≈20y 真柱後重跑 A4／A5／A6 vs A0；"
                 "獨立開市日 n≥20 且贏現況才談換（仍非買訊）"
             )
         ),
-        "invent_next_zh": "A5_index_dense＝A4 再生下一版；未過閘不換、不上話筒",
+        "invent_next_zh": "A6_index_quality＝A5 denser 未清贏後再生；未過閘不換、不上話筒",
         "no_invent_wave_5_9_on_stocks": True,
     }
-    # 硬閘：即便 a5_vs 算過也以頂層 replace 為準
     if not replace:
-        seal["a5_vs_a0"]["replace"] = False
+        seal["a6_vs_a0"]["replace"] = False
         seal["cand_vs_a0"]["replace"] = False
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     ART.mkdir(parents=True, exist_ok=True)
     text = json.dumps(seal, ensure_ascii=False, indent=2)
     (OUT_DIR / "hsiao_twii_entry_invent_latest.json").write_text(text, encoding="utf-8")
     (ART / "hsiao_twii_entry_invent_latest.json").write_text(text, encoding="utf-8")
-    # A5 invent 封印（下一版鍵）
     invent = {
+        "as_of": seal["as_of"],
+        "tz": "Asia/Taipei",
+        "track": "market_tw",
+        "pot": "hsiao_twii_entry_invent",
+        "invent_key": "A6_index_quality",
+        "parent_keep": "hsiao_v7 A0_strict lab isolation",
+        "phone_sync": PHONE_SYNC,
+        "buy_signal": False,
+        "not_buy_signal": True,
+        "WAVE_NEURONS_MATCH": False,
+        "replace": False,
+        "a4_vs_a0": seal["a4_vs_a0"],
+        "a5_vs_a0": seal["a5_vs_a0"],
+        "a6_vs_a0": seal["a6_vs_a0"],
+        "gate_flags": gate_flags,
+        "next_long_window_zh": seal["next_long_window_zh"],
+        "no_invent_wave_5_9_on_stocks": True,
+    }
+    invent_text = json.dumps(invent, ensure_ascii=False, indent=2)
+    (OUT_DIR / "hsiao_twii_a6_quality_invent.json").write_text(invent_text, encoding="utf-8")
+    (ART / "hsiao_twii_a6_quality_invent.json").write_text(invent_text, encoding="utf-8")
+    # 保留 A5 封印續標（仍 replace=false）
+    a5_invent = {
         "as_of": seal["as_of"],
         "tz": "Asia/Taipei",
         "track": "market_tw",
@@ -238,13 +274,20 @@ def run() -> Dict[str, Any]:
         "replace": False,
         "a4_vs_a0": seal["a4_vs_a0"],
         "a5_vs_a0": seal["a5_vs_a0"],
-        "gate_flags": gate_flags,
+        "gate_flags": [
+            "phone_sync_blocked",
+            "not_buy_signal",
+            "no_stock_spirit_mix_in_this_invent",
+            "not_clear_win_vs_A0" if not a5_vs["beat_a0"] else "collecting",
+            "a4_n_entry_days_lt_20" if not a4_vs["gate_n20"] else "a4_gate_n20_ok",
+            "regenerated_next_A6_index_quality",
+        ],
         "next_long_window_zh": seal["next_long_window_zh"],
         "no_invent_wave_5_9_on_stocks": True,
     }
-    invent_text = json.dumps(invent, ensure_ascii=False, indent=2)
-    (OUT_DIR / "hsiao_twii_a5_dense_invent.json").write_text(invent_text, encoding="utf-8")
-    (ART / "hsiao_twii_a5_dense_invent.json").write_text(invent_text, encoding="utf-8")
+    a5_text = json.dumps(a5_invent, ensure_ascii=False, indent=2)
+    (OUT_DIR / "hsiao_twii_a5_dense_invent.json").write_text(a5_text, encoding="utf-8")
+    (ART / "hsiao_twii_a5_dense_invent.json").write_text(a5_text, encoding="utf-8")
     print(
         "GATE hsiao_twii_entry",
         f"n={n} years={years:.2f}",
@@ -252,6 +295,8 @@ def run() -> Dict[str, Any]:
         a4_vs["n_entry_days"],
         "A5_entry_days=",
         a5_vs["n_entry_days"],
+        "A6_entry_days=",
+        a6_vs["n_entry_days"],
         "cand=",
         cand_key,
         "gate_n20=",

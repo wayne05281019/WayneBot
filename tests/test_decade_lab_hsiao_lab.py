@@ -171,3 +171,16 @@ def test_a5_index_dense_preset_is_lab_only():
     assert bt.summary["phone_sync"] == "blocked"
     assert bt.summary.get("not_buy_signal") is True
     assert bt.summary.get("buy_signal") in (False, None)
+
+
+def test_a6_index_quality_preset_is_lab_only():
+    from scripts.decade_lab_hsiao_wave_engine import ENTRY_PRESETS, ElliottHsiaoEngine
+
+    assert "A6_index_quality" in ENTRY_PRESETS
+    eng = ElliottHsiaoEngine(entry_preset="A6_index_quality")
+    assert eng.entry_preset == "A6_index_quality"
+    df = _synth(n=360)
+    bt = run_single_backtest(df, symbol="IDX", entry_preset="A6_index_quality")
+    assert bt.summary["phone_sync"] == "blocked"
+    assert bt.summary.get("not_buy_signal") is True
+    assert bt.summary.get("buy_signal") in (False, None)
