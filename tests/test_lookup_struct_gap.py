@@ -206,6 +206,8 @@ def test_struct_paint_does_not_wait_for_volume_zone():
 
 def test_gap_line_while_official_volume_still_running():
     """第 2 張送出時官方量還沒齊：話筒要寫在等成交量，不准空白。"""
+    from concurrent.futures import Future
+
     td = tempfile.mkdtemp()
     bot = _bot(td)
 
@@ -233,6 +235,15 @@ def test_gap_line_while_official_volume_still_running():
             return _png(td, name)
 
         return _inner
+
+    def _sync_paint(fn, /, *args, **kwargs):
+        # 單 worker mpl 佇列在 CI 會跟 ensure 互相拖；同步跑完，測的是等待句不是佇列。
+        fut = Future()
+        try:
+            fut.set_result(fn(*args, **kwargs))
+        except Exception as exc:  # noqa: BLE001
+            fut.set_exception(exc)
+        return fut
 
     def _is_struct_gap(text: str) -> bool:
         return (
@@ -262,7 +273,7 @@ def test_gap_line_while_official_volume_still_running():
 
         async def _async_ensure():
             try:
-                await asyncio.wait_for(gap_gate.wait(), timeout=60.0)
+                await asyncio.wait_for(gap_gate.wait(), timeout=15.0)
             except asyncio.TimeoutError:
                 pass
             return {
@@ -273,11 +284,18 @@ def test_gap_line_while_official_volume_still_running():
             }
 
         ensure_task = asyncio.create_task(_async_ensure())
+        # 營收 ensure 真打外網／DB 會拖到 60s+，介紹圖卡住 → gap 句被跳過。
+        async def _fund_ok():
+            return True
+
+        fund_task = asyncio.create_task(_fund_ok())
 
         with patch("wayne_navigator.NavigatorEngine", _Engine), patch(
             "chip_tape.build_tape", return_value={}
         ), patch(
             "stock_news.fetch_stock_news_stats", return_value=None
+        ), patch(
+            "wayne_navigator.submit_mpl_paint", side_effect=_sync_paint
         ), patch(
             "wayne_navigator.render_first_glance_png", side_effect=_png_fn("g.png")
         ), patch(
@@ -316,6 +334,7 @@ def test_gap_line_while_official_volume_still_running():
                 "999:111",
                 [{"stock_id": "2330", "stock_name": "台積電", "close": 100}],
                 ensure_task=ensure_task,
+                fund_task=fund_task,
             )
 
     with patch(

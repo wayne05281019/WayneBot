@@ -1,0 +1,14 @@
+{
+  "version": "stock_leader_reclaim_combo_lab_v1",
+  "as_of": "2026-11-09T23:25:22+08:00",
+  "tz": "Asia/Taipei",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "status": "blocked_missing_spirit_stack",
+  "finding_zh": "本機缺 spirit／v106 核依賴。請設 WAYNE_LAB_MIX_ROOT 再跑。keep 仍 v106。",
+  "keep": "v106",
+  "promote": false,
+  "gate_passed": false,
+  "db_path": "/agent/repos/WayneBot/data/wayne_market.db",
+  "mix_root": "."
+}

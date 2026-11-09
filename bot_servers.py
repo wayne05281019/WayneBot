@@ -11408,8 +11408,10 @@ class WayneTelegramBot:
             else:
                 await _bump_progress("struct")
             await asyncio.sleep(0)
-            # 介紹已在送／進度在上：再補一句，不准空白乾等第 3 張
-            if glance_item and not struct_task.done():
+            # 介紹已在送／進度在上：再補一句，不准空白乾等第 3 張。
+            # 不准用 struct_task.done() 當門檻：CI 負載下 ensure 逾時後結構可能先完，
+            # glance 才回來 → 跳過等待句（full-suite 誤殺）。有介紹就先寫，送完第3張再刪。
+            if glance_item:
                 try:
                     gap_msg = await message.reply_text(
                         self._struct_gap_line(str(_struct_phase.get("phase") or ""))
