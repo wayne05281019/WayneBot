@@ -1,0 +1,182 @@
+{
+  "seal_id": "biaoke_leader_pe_screen_20261109",
+  "as_of": "2026-11-09",
+  "tz": "Asia/Taipei",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "leave_zero_unchanged": true,
+  "golden_buy_unchanged": true,
+  "source_post": {
+    "id": "188138405",
+    "date": "2026-11-09",
+    "time": "18:20",
+    "item": 3,
+    "snip": "現在就是要趁大盤再一次回測大跌，辨識出真正會漲的股票，今天盤面結構完全沒有代表性，至少要等大盤震盪結束，至少還要1周才能觀察出來，也有可能要2周都難說。所以現在優先去押5成左右的資金趁這幾天看到本益比被低估的龍頭股，並以今天或週五低點(全部講個股)為支撐防守點位來觀察介入，原則就是這樣。"
+  },
+  "attribution_only_his_words": true,
+  "friday_bar_date": "20261106",
+  "today_bar_date": "20261109",
+  "friday_rule": "last TW open Friday on/before post day (Asia/Taipei)",
+  "named_fit": [
+    {
+      "stock_id": "6442",
+      "name": "光聖",
+      "fit": "yes_by_his_words",
+      "his_words": [
+        {
+          "id": "187684179:c187684179-243-10",
+          "date": "2026-11-05",
+          "time": "13:36",
+          "text": "所有龍頭股可以去問AI目前本益比最被低估就是光聖。台光電也很低，但買點沒到。"
+        }
+      ],
+      "waynebot_leader_tag": {
+        "leader_of": "3363",
+        "leader_name": "上詮",
+        "why": "同族跟漲先看龍頭",
+        "self_long_hold": false,
+        "note": "話筒龍頭欄指向同族上詮；他本人仍稱光聖為龍頭且本益最低估"
+      },
+      "official_pe": {
+        "pe": 29.73,
+        "date": "20261106",
+        "source": "twse_bwibbu",
+        "vs_own_recent": "at_min_of_last_32_official_pe_rows (min29.73 max53.7 median45.12)"
+      },
+      "defense_lows": {
+        "today_20261109_low": 1035.0,
+        "friday_20261106_low": 963.0
+      }
+    },
+    {
+      "stock_id": "2383",
+      "name": "台光電",
+      "fit": "partial_yes_leader_and_he_said_pe_low_but_buy_point_not_yet",
+      "his_words": [
+        {
+          "id": "187684179:c187684179-243-10",
+          "date": "2026-11-05",
+          "time": "13:36",
+          "text": "所有龍頭股可以去問AI目前本益比最被低估就是光聖。台光電也很低，但買點沒到。"
+        },
+        {
+          "id": "187684179:c187684179-272-10",
+          "date": "2026-11-05",
+          "time": "13:28",
+          "text": "台光電買點還沒到要說幾次"
+        }
+      ],
+      "waynebot_leader_tag": {
+        "leader_of": "2383",
+        "leader_name": "台光電",
+        "why": "自己就是這族龍頭",
+        "self_long_hold": true
+      },
+      "official_pe": {
+        "pe": 40.92,
+        "date": "20261106",
+        "source": "twse_bwibbu",
+        "vs_own_recent": "at_min_of_last_32_official_pe_rows (min40.92 max96.17 median79.52)"
+      },
+      "defense_lows": {
+        "today_20261109_low": 3785.0,
+        "friday_20261106_low": 3690.0
+      }
+    }
+  ],
+  "other_candidates_leader_low_pe": [
+    {
+      "stock_id": "2330",
+      "name": "台積電",
+      "pe": 24.75,
+      "pe_date": "20261109",
+      "reason": "長線龍頭；官方本益近窗低位；他未在本益低估句點名（且11-05自回：不是台積電／台積電沒超額利潤）",
+      "leader_basis": "自己就是長線龍頭 (_LONG_HOLD)",
+      "today_low": 2190.0,
+      "friday_low": 2020.0,
+      "priority": "secondary_not_named_in_pe_undervalue_line"
+    },
+    {
+      "stock_id": "3017",
+      "name": "奇鋐",
+      "pe": 30.79,
+      "pe_date": "20261109",
+      "reason": "散熱族龍頭＋長線抱；官方本益近窗低位；本波本益低估句未點名",
+      "leader_basis": "自己就是這族龍頭／長線龍頭",
+      "today_low": 2310.0,
+      "friday_low": 2310.0,
+      "priority": "secondary"
+    },
+    {
+      "stock_id": "2308",
+      "name": "台達電",
+      "pe": 31.68,
+      "pe_date": "20261109",
+      "reason": "長線龍頭；官方本益近窗低位；本波本益低估句未點名",
+      "leader_basis": "自己就是長線龍頭 (_LONG_HOLD)",
+      "today_low": 1105.0,
+      "friday_low": 1020.0,
+      "priority": "secondary"
+    },
+    {
+      "stock_id": "2408",
+      "name": "南亞科",
+      "pe": 6.77,
+      "pe_date": "20261109",
+      "reason": "記憶體族龍頭、官方本益偏低；本波「本益低估龍頭」句未點名，僅作同標籤對照",
+      "leader_basis": "自己就是這族龍頭",
+      "today_low": 354.5,
+      "friday_low": 324.0,
+      "priority": "secondary_different_theme"
+    },
+    {
+      "stock_id": "2382",
+      "name": "廣達",
+      "pe": 12.66,
+      "pe_date": "20261109",
+      "reason": "伺服器鏈龍頭標的、官方本益偏低；本波本益低估句未點名",
+      "leader_basis": "_CHAIN 伺服器／AI伺服 → 廣達",
+      "today_low": 290.0,
+      "friday_low": 272.0,
+      "priority": "secondary_not_named"
+    }
+  ],
+  "excluded_or_missing": [
+    {
+      "stock_id": "3363",
+      "name": "上詮",
+      "note": "WayneBot 光通族龍頭標；官方本益缺（pb 有）— 不發明 PE"
+    },
+    {
+      "stock_id": "3081",
+      "name": "聯亞",
+      "pe": 122.77,
+      "note": "他 11-05 自回：本益比過高所以不敢提聯亞 — 不符本益低估"
+    },
+    {
+      "stock_id": "3443",
+      "name": "創意",
+      "pe": 125.35,
+      "note": "11-08／11-09 當大盤指標股，非本益低估句；官方本益偏高"
+    },
+    {
+      "stock_id": "6223",
+      "name": "旺矽",
+      "pe": 79.34,
+      "note": "長線名單但本益不低；未在本益低估句點名"
+    },
+    {
+      "stock_id": "6515",
+      "name": "穎崴",
+      "pe": 53.95,
+      "note": "高階測試龍頭但本益不低；未在本益低估句點名"
+    }
+  ],
+  "ingest": {
+    "ran_live": true,
+    "added_posts_include": ["188048401", "188138405"],
+    "official_ohlc_synced": ["20261106", "20261109"],
+    "valuation_synced": true
+  },
+  "disclaimer": "非買訊；切入仍看高低卡黃金買點（leave_zero／已過閘紅箭頭）。本 seal 不改話筒按鈕、不改 leave_zero／golden_buy。"
+}
