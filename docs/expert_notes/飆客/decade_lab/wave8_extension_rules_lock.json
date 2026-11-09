@@ -1,0 +1,39 @@
+{
+  "as_of": "2026-11-09T13:55:00+08:00",
+  "tz": "Asia/Taipei",
+  "track": "market_tw",
+  "topic": "extension_wave",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "purpose_zh": "擴延波規範鎖：飆大怎麼講＋我估1618閘怎麼分鍋。不懂必拆清。",
+  "biaoke_definition_zh": "一組推進／下跌脈動裡，某一浪（常③或⑤）明顯拉長，細微波可數成7段或9段，而不是停在標準5。",
+  "when_he_expects_extension": [
+    "夜盤／細微波沒有效穿刺下降壓→還可能再推一段＝擴延（2026-07-30）",
+    "止跌只有3段且尚未1 4重疊→仍有跌5／擴延危機（2026-06-25）",
+    "第二段下殺超預期深→改標C-7／C-8／C-9擴延帶（2026-11-06）"
+  ],
+  "when_extension_crisis_eases": [
+    "1 4重疊（有效）→化解跌5段危機候選",
+    "有效穿刺下降壓／他設的帶→暫時或結構性化解（仍可能之後回測再表態）"
+  ],
+  "labels_he_uses": {
+    "ext_7_9": "擴延第7／走9波擴延／C-7 C-8 C-9",
+    "evil_fifth": "邪惡第五波／末升延升浪（升勢末端警示用語）",
+    "failed_or_truncate_zh": "失敗⑤／截斷⑤：反彈不過壓→另一組主跌（見2026-10-21 48066條件句）；專項對質見序B"
+  },
+  "mine_1618_gate": {
+    "source": "docs/expert_notes/dc_wave/dc-wave-digest.md",
+    "formula": "L_max >= 1.618 * L_second_max（五浪群1/3/5價距）",
+    "label_zh": "我估｜擴延1618",
+    "not_biaoke_fib_table_zh": "≠他公開反彈壓0.382／0.618／0.75價位表；那是回撤壓力，不是擴延檢測",
+    "hard_forbid": "不准把DC／我估句寫成他說"
+  },
+  "current_backup_20261108": {
+    "zh": "主線＝C3-5＋1 4底確認＋再測假跌破；備線＝9波擴延有效破35579→31705（AI結束級）。主線未重申備線≠刪除。"
+  },
+  "linked_files": [
+    "wave8_cycle_concept_lock.json",
+    "wave8_14_overlap_resolved.json",
+    "wave_fib_morph_curriculum.md"
+  ]
+}
