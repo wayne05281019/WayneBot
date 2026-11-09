@@ -95,7 +95,11 @@ FOCUS_PHRASE_TAGS = frozenset(
         "escape",
     }
 )
-SCORE_MODES = ("baseline", "tight", "phrase_focus")
+# phrase_focus_crash：硬用語 ∩ 急跌時間線封印相位（教具子窗；仍非 drop-in）
+CRASH_PHASE_TAGS = frozenset(
+    {"warn", "guidance", "crash", "candidate", "confirm"}
+)
+SCORE_MODES = ("baseline", "tight", "phrase_focus", "phrase_focus_crash")
 
 
 def _focus_phrases(phrases: Any) -> List[str]:
@@ -521,7 +525,11 @@ def _replace_gate(
     replace = bool(
         drop_in_ok and n >= 20 and clearly_better and matched_better and not honest
     )
-    if mode_l == "phrase_focus":
+    if mode_l == "phrase_focus_crash":
+        cross_note = (
+            "phrase_focus_crash＝硬用語∩急跌時間線相位子窗；教具對照，不換 loose"
+        )
+    elif mode_l == "phrase_focus":
         cross_note = "phrase_focus＝只評有假跌破／有效穿刺／1-4／壓轉撐等硬用語日；教具對照，不換 loose"
     elif mode_l == "tight":
         cross_note = "tight／跨裁判語意只當教具對照，不換 loose baseline"
@@ -568,8 +576,8 @@ def run(
     mode = (score_mode or "baseline").strip().lower() or "baseline"
     if mode not in SCORE_MODES:
         mode = "baseline"
-    # phrase_focus 底下用 baseline 觸及裁判；另以硬用語閘過濾計分日
-    verify_mode = "baseline" if mode == "phrase_focus" else mode
+    # phrase_focus／phrase_focus_crash 底下用 baseline 觸及裁判；另以硬用語（＋相位）閘過濾
+    verify_mode = "baseline" if mode in {"phrase_focus", "phrase_focus_crash"} else mode
 
     while end >= start_d and not is_tw_open_calendar_day(end):
         end = (datetime.strptime(end, "%Y%m%d") - timedelta(days=1)).strftime("%Y%m%d")
@@ -619,15 +627,26 @@ def run(
         }
         if pending is not None:
             focus = list(pending.get("focus_phrases") or [])
-            if mode == "phrase_focus" and not focus:
+            phase_tag = ((phase or {}).get("phase_tag") if isinstance(phase, dict) else None) or ""
+            in_crash = phase_tag in CRASH_PHASE_TAGS
+            skip_pf = mode == "phrase_focus" and not focus
+            skip_crash = mode == "phrase_focus_crash" and (not focus or not in_crash)
+            if skip_pf or skip_crash:
                 verify = {
-                    "verdict": "無教具硬用語不計",
+                    "verdict": (
+                        "無急跌相位硬用語不計"
+                        if mode == "phrase_focus_crash"
+                        else "無教具硬用語不計"
+                    ),
                     "scoreable": False,
                     "path_results": [],
                     "score_mode": mode,
                     "day_bar_verdict": True,
                     "phrase_focus_skip": True,
-                    "focus_phrases": [],
+                    "focus_phrases": focus,
+                    "crash_phase_gate": mode == "phrase_focus_crash",
+                    "in_crash_phase": in_crash,
+                    "phase_tag": phase_tag or None,
                 }
             else:
                 verify = _verify_paths(
@@ -637,10 +656,14 @@ def run(
                     prior_bars=list(recent_bars),
                     score_mode=verify_mode,
                 )
-                if mode == "phrase_focus":
+                if mode in {"phrase_focus", "phrase_focus_crash"}:
                     verify["score_mode"] = mode
                     verify["focus_phrases"] = focus
                     verify["phrase_focus_gate"] = True
+                    if mode == "phrase_focus_crash":
+                        verify["crash_phase_gate"] = True
+                        verify["in_crash_phase"] = in_crash
+                        verify["phase_tag"] = phase_tag or None
             verify["inferred_on"] = pending["from_day"]
             verify["named_source_days"] = pending.get("near_days")
             verify["day_bar_verdict"] = True
@@ -719,8 +742,20 @@ def run(
         "buy_signal": False,
         "WAVE_NEURONS_MATCH": False,
         "purpose_zh": (
-            "labeled teach pass：with_his 只評他近窗點名位／用語；"
-            "夜盤領先與日盤主分分開；時間線封印相位打標；對照 loose baseline"
+            (
+                "invent phrase_focus_crash：硬用語∩急跌時間線相位才計；"
+                "教具子窗對照不換 loose"
+            )
+            if mode == "phrase_focus_crash"
+            else (
+                "invent phrase_focus：近窗有假跌破／有效穿刺／1-4／壓轉撐等硬用語才計；"
+                "教具對照不換 loose"
+            )
+            if mode == "phrase_focus"
+            else (
+                "labeled teach pass：with_his 只評他近窗點名位／用語；"
+                "夜盤領先與日盤主分分開；時間線封印相位打標；對照 loose baseline"
+            )
         ),
         "start": start_d,
         "end": end,
@@ -759,6 +794,8 @@ def run(
     ART.mkdir(parents=True, exist_ok=True)
     if mode == "tight":
         prefix = "wave_teach_aid_labeled_tight"
+    elif mode == "phrase_focus_crash":
+        prefix = "wave_teach_aid_labeled_phrase_focus_crash"
     elif mode == "phrase_focus":
         prefix = "wave_teach_aid_labeled_phrase_focus"
     else:
@@ -772,11 +809,13 @@ def run(
     (OUT_DIR / f"{prefix}_latest.json").write_text(text, encoding="utf-8")
     (ART / f"{prefix}_summary.json").write_text(text, encoding="utf-8")
 
-    # 對照封印（給話筒外 lab 讀）；baseline 軌寫主對照檔，tight／phrase_focus 另寫
+    # 對照封印（給話筒外 lab 讀）；baseline 軌寫主對照檔，tight／phrase_focus* 另寫
     if mode == "baseline":
         compare_name = "wave_teach_aid_labeled_vs_baseline.json"
     elif mode == "tight":
         compare_name = "wave_teach_aid_labeled_tight_vs_baseline.json"
+    elif mode == "phrase_focus_crash":
+        compare_name = "wave_teach_aid_labeled_phrase_focus_crash_vs_baseline.json"
     else:
         compare_name = "wave_teach_aid_labeled_phrase_focus_vs_baseline.json"
     compare_seal = {
@@ -787,7 +826,13 @@ def run(
         "phone_sync": PHONE_SYNC,
         "buy_signal": False,
         "WAVE_NEURONS_MATCH": False,
-        "purpose_zh": "labeled teach pass vs loose with_his baseline；未過閘不換",
+        "purpose_zh": (
+            "phrase_focus_crash invent vs loose；非 drop-in；未過閘不換"
+            if mode == "phrase_focus_crash"
+            else "phrase_focus invent vs loose with_his；非 drop-in；未過閘不換"
+            if mode == "phrase_focus"
+            else "labeled teach pass vs loose with_his baseline；未過閘不換"
+        ),
         "labeled_with_his": overall,
         "labeled_in_timeline_seal": seal_stats,
         "by_timeline_phase": phase_stats,
@@ -815,6 +860,83 @@ def run(
     (OUT_DIR / compare_name).write_text(compare_text, encoding="utf-8")
     (ART / compare_name).write_text(compare_text, encoding="utf-8")
 
+    if mode == "phrase_focus_crash":
+        invent = {
+            "as_of": summary["as_of"],
+            "tz": "Asia/Taipei",
+            "track": "market_tw",
+            "pot": "wave_teach_aid_deepen",
+            "phone_sync": PHONE_SYNC,
+            "buy_signal": False,
+            "WAVE_NEURONS_MATCH": False,
+            "invent_key": "phrase_focus_crash",
+            "parent_keep": "wave_decade_replay baseline score_mode",
+            "replace": False,
+            "gate": gate,
+            "labeled_with_his": overall,
+            "labeled_in_timeline_seal": seal_stats,
+            "matched_day_vs_loose": matched,
+            "crash_phase_tags": sorted(CRASH_PHASE_TAGS),
+            "next_long_window_zh": (
+                "phrase_focus 全窗續收；phrase_focus_crash 急跌相位子窗續收；"
+                "n≥20 且同日對照贏 loose 才談換（仍非 drop-in）"
+            ),
+            "not_buy_signal": True,
+            "no_invent_wave_5_9": True,
+        }
+        invent_text = json.dumps(invent, ensure_ascii=False, indent=2)
+        (OUT_DIR / "wave_teach_aid_phrase_focus_crash_invent.json").write_text(
+            invent_text, encoding="utf-8"
+        )
+        (ART / "wave_teach_aid_phrase_focus_crash_invent.json").write_text(
+            invent_text, encoding="utf-8"
+        )
+        # 更新 deepen seal 下一版鍵
+        deepen_path = OUT_DIR / "wave_teach_aid_deepen_seal.json"
+        if deepen_path.exists():
+            try:
+                deepen = json.loads(deepen_path.read_text(encoding="utf-8"))
+            except Exception:
+                deepen = {}
+            deepen["as_of"] = summary["as_of"]
+            deepen["next_invent"] = {
+                "key": "phrase_focus_crash",
+                "file": "wave_teach_aid_phrase_focus_crash_invent.json",
+                "replace": False,
+                "note_zh": "phrase_focus 同日未清贏；再生 crash-phase 子窗續收",
+            }
+            deepen_path.write_text(
+                json.dumps(deepen, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+
+    # phrase_focus 主軌也刷新 next 指向 crash 子窗
+    if mode == "phrase_focus":
+        summary["next_window_zh"] = (
+            "續收 phrase_focus with_his；另備 phrase_focus_crash 急跌相位子窗；"
+            "n≥20 且同日對照贏 loose 才談換（仍非 drop-in）"
+        )
+        (OUT_DIR / f"{prefix}_summary.json").write_text(
+            json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        (OUT_DIR / f"{prefix}_latest.json").write_text(
+            json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        invent_pf = OUT_DIR / "wave_teach_aid_phrase_focus_invent.json"
+        if invent_pf.exists():
+            try:
+                body = json.loads(invent_pf.read_text(encoding="utf-8"))
+            except Exception:
+                body = {}
+            body["as_of"] = summary["as_of"]
+            body["gate"] = gate
+            body["labeled_with_his"] = overall
+            body["matched_day_vs_loose"] = matched
+            body["replace"] = False
+            body["next_long_window_zh"] = summary["next_window_zh"]
+            invent_pf.write_text(
+                json.dumps(body, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+
     print(
         "GATE",
         f"{prefix} {start_d}→{end} decided={overall['n_decided']} "
@@ -834,7 +956,10 @@ def main() -> None:
         "--score-mode",
         default="baseline",
         choices=SCORE_MODES,
-        help="labeled 位上的裁判：baseline=觸及；tight=連2收／假跌破；phrase_focus=硬用語日才計",
+        help=(
+            "labeled 位上的裁判：baseline=觸及；tight=連2收／假跌破；"
+            "phrase_focus=硬用語日才計；phrase_focus_crash=硬用語∩急跌相位"
+        ),
     )
     args = ap.parse_args()
     run(

@@ -1,0 +1,58 @@
+{
+  "as_of": "2026-11-10T03:12:50+0800",
+  "tz": "Asia/Taipei",
+  "track": "market_tw",
+  "pot": "hsiao_twii_entry_invent",
+  "invent_key": "A5_index_dense",
+  "parent_keep": "hsiao_v7 A0_strict lab isolation",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "not_buy_signal": true,
+  "WAVE_NEURONS_MATCH": false,
+  "replace": false,
+  "a4_vs_a0": {
+    "A0_strict": {
+      "n_entry_days": 0,
+      "n_trades": 0,
+      "total_return": 0.0
+    },
+    "A4_index_soft": {
+      "n_entry_days": 4,
+      "n_trades": 12,
+      "total_return": 0.006703689979497662,
+      "gate_n20": false,
+      "beat_a0": true
+    },
+    "years_ok": true,
+    "gate_n20": false,
+    "beat_a0": true,
+    "replace": false
+  },
+  "a5_vs_a0": {
+    "A0_strict": {
+      "n_entry_days": 0,
+      "n_trades": 0,
+      "total_return": 0.0
+    },
+    "A5_index_dense": {
+      "n_entry_days": 28,
+      "n_trades": 68,
+      "total_return": -0.04612371266555726,
+      "gate_n20": true,
+      "beat_a0": false
+    },
+    "years_ok": true,
+    "gate_n20": true,
+    "beat_a0": false,
+    "replace": false
+  },
+  "gate_flags": [
+    "phone_sync_blocked",
+    "not_buy_signal",
+    "no_stock_spirit_mix_in_this_invent",
+    "not_clear_win_vs_A0",
+    "a4_n_entry_days_lt_20"
+  ],
+  "next_long_window_zh": "A5_index_dense vs A0：獨立進場開市日 n≥20 且清贏 A0 才談換（仍非買訊）；A4 續收、A5 denser 同軌靜默對質",
+  "no_invent_wave_5_9_on_stocks": true
+}
