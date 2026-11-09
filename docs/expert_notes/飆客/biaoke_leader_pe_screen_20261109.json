@@ -13,21 +13,132 @@
     "item": 3,
     "snip": "現在就是要趁大盤再一次回測大跌，辨識出真正會漲的股票，今天盤面結構完全沒有代表性，至少要等大盤震盪結束，至少還要1周才能觀察出來，也有可能要2周都難說。所以現在優先去押5成左右的資金趁這幾天看到本益比被低估的龍頭股，並以今天或週五低點(全部講個股)為支撐防守點位來觀察介入，原則就是這樣。"
   },
+  "stack_supplement": {
+    "id": "188138405:c188138405-85-1",
+    "date": "2026-11-09",
+    "time": "18:53",
+    "text": "我是看修正型態是完整的abc型態完成，且回到臨界價區， 1 4 不重疊附近，在加上 本益比在龍頭股明顯低估。",
+    "reply_to_snip": "感謝分享 ！飆大之前挑到的股票跟波浪大師一樣…",
+    "legs": ["abc_done", "critical_zone", "near_14_no_overlap", "pe_undervalued_leader"],
+    "marking_rule": "verified=他有對該檔寫過該腿；unknown=沒點名該檔或官方柱無法不發明浪級去證；fail=他後續改口／明文排除，或官方柱明顯不在他寫過的價區。不准發明 5／9 段號。",
+    "no_invent_wave_59": true
+  },
   "attribution_only_his_words": true,
   "friday_bar_date": "20261106",
   "today_bar_date": "20261109",
   "friday_rule": "last TW open Friday on/before post day (Asia/Taipei)",
+  "verdict": "6442 對 stack 最齊（他寫過臨界＋14不重疊＋本益最低估；abc 在光聖討論串有寫）；2383 僅本益低估＋龍頭確認，臨界／14／abc 未用同一套字點名且他仍說買點沒到；其餘候選波腿全 unknown。非買訊。",
+  "stack_table": [
+    {
+      "stock_id": "6442",
+      "name": "光聖",
+      "abc_done": "verified",
+      "critical_zone": "verified",
+      "near_14_no_overlap": "verified",
+      "pe_undervalued_leader": "verified",
+      "today_low": 1035.0,
+      "friday_low": 963.0,
+      "notes": [
+        "11-05 光聖串：走完整組 abc修正（c已跌到5＝他原文，非我們發明段號）",
+        "11-04：光聖回測波浪一，1 4不重疊臨界價區買點；1000~1100；官方今低1035落在區內",
+        "11-05：本益比最被低估就是光聖"
+      ]
+    },
+    {
+      "stock_id": "2383",
+      "name": "台光電",
+      "abc_done": "unknown",
+      "critical_zone": "fail",
+      "near_14_no_overlap": "unknown",
+      "pe_undervalued_leader": "verified",
+      "today_low": 3785.0,
+      "friday_low": 3690.0,
+      "notes": [
+        "未寫台光電 abc 完成",
+        "11-04 寫回測次級四浪／長期支撐，非『1 4不重疊』；11-05 買點更正3900~4000後又說買點還沒到；官方今低3785／週五低3690皆低於該區 → critical_zone=fail",
+        "11-05：台光電也很低（本益），但買點沒到"
+      ]
+    },
+    {
+      "stock_id": "2330",
+      "name": "台積電",
+      "abc_done": "unknown",
+      "critical_zone": "unknown",
+      "near_14_no_overlap": "unknown",
+      "pe_undervalued_leader": "fail",
+      "today_low": 2190.0,
+      "friday_low": 2020.0,
+      "notes": ["11-05：不是台積電／台積電沒超額利潤"]
+    },
+    {
+      "stock_id": "3017",
+      "name": "奇鋐",
+      "abc_done": "unknown",
+      "critical_zone": "unknown",
+      "near_14_no_overlap": "unknown",
+      "pe_undervalued_leader": "unknown",
+      "today_low": 2310.0,
+      "friday_low": 2310.0,
+      "notes": ["本波 stack／本益低估句未點名"]
+    },
+    {
+      "stock_id": "2308",
+      "name": "台達電",
+      "abc_done": "unknown",
+      "critical_zone": "unknown",
+      "near_14_no_overlap": "unknown",
+      "pe_undervalued_leader": "unknown",
+      "today_low": 1105.0,
+      "friday_low": 1020.0,
+      "notes": ["本波 stack／本益低估句未點名"]
+    },
+    {
+      "stock_id": "2408",
+      "name": "南亞科",
+      "abc_done": "unknown",
+      "critical_zone": "unknown",
+      "near_14_no_overlap": "unknown",
+      "pe_undervalued_leader": "unknown",
+      "today_low": 354.5,
+      "friday_low": 324.0,
+      "notes": ["本波未點名"]
+    },
+    {
+      "stock_id": "2382",
+      "name": "廣達",
+      "abc_done": "unknown",
+      "critical_zone": "unknown",
+      "near_14_no_overlap": "unknown",
+      "pe_undervalued_leader": "unknown",
+      "today_low": 290.0,
+      "friday_low": 272.0,
+      "notes": ["本波未點名"]
+    }
+  ],
   "named_fit": [
     {
       "stock_id": "6442",
       "name": "光聖",
-      "fit": "yes_by_his_words",
+      "fit": "yes_by_his_words_stack_most_complete",
       "his_words": [
         {
           "id": "187684179:c187684179-243-10",
           "date": "2026-11-05",
           "time": "13:36",
           "text": "所有龍頭股可以去問AI目前本益比最被低估就是光聖。台光電也很低，但買點沒到。"
+        },
+        {
+          "id": "187684179:c187684179-116-2",
+          "date": "2026-11-04",
+          "time": "21:20",
+          "text": "光聖回測波浪一， 1 4不重疊臨界價區買點"
+        },
+        {
+          "id": "187684179:c187684179-267-1",
+          "date": "2026-11-05",
+          "time": "12:48",
+          "text": "不是完全用波浪理論看的 走完整組 abc修正，c已經跌到5，並且和長線波浪 1 4重疊附近",
+          "context": "reply_to 點名光聖打釘子／前波低點1000"
         }
       ],
       "waynebot_leader_tag": {
@@ -46,12 +157,18 @@
       "defense_lows": {
         "today_20261109_low": 1035.0,
         "friday_20261106_low": 963.0
+      },
+      "stack": {
+        "abc_done": "verified",
+        "critical_zone": "verified",
+        "near_14_no_overlap": "verified",
+        "pe_undervalued_leader": "verified"
       }
     },
     {
       "stock_id": "2383",
       "name": "台光電",
-      "fit": "partial_yes_leader_and_he_said_pe_low_but_buy_point_not_yet",
+      "fit": "partial_pe_leader_buy_point_not_yet",
       "his_words": [
         {
           "id": "187684179:c187684179-243-10",
@@ -64,6 +181,18 @@
           "date": "2026-11-05",
           "time": "13:28",
           "text": "台光電買點還沒到要說幾次"
+        },
+        {
+          "id": "187684179:c187684179-223",
+          "date": "2026-11-05",
+          "time": "09:41",
+          "text": "台光電買點更正3900~4000，現在還不能介入"
+        },
+        {
+          "id": "187684179:c187684179-116-1",
+          "date": "2026-11-04",
+          "time": "21:19",
+          "text": "台光電是回測次級四浪買點"
         }
       ],
       "waynebot_leader_tag": {
@@ -81,6 +210,12 @@
       "defense_lows": {
         "today_20261109_low": 3785.0,
         "friday_20261106_low": 3690.0
+      },
+      "stack": {
+        "abc_done": "unknown",
+        "critical_zone": "fail",
+        "near_14_no_overlap": "unknown",
+        "pe_undervalued_leader": "verified"
       }
     }
   ],
@@ -94,7 +229,13 @@
       "leader_basis": "自己就是長線龍頭 (_LONG_HOLD)",
       "today_low": 2190.0,
       "friday_low": 2020.0,
-      "priority": "secondary_not_named_in_pe_undervalue_line"
+      "priority": "secondary_not_named_in_pe_undervalue_line",
+      "stack": {
+        "abc_done": "unknown",
+        "critical_zone": "unknown",
+        "near_14_no_overlap": "unknown",
+        "pe_undervalued_leader": "fail"
+      }
     },
     {
       "stock_id": "3017",
@@ -105,7 +246,13 @@
       "leader_basis": "自己就是這族龍頭／長線龍頭",
       "today_low": 2310.0,
       "friday_low": 2310.0,
-      "priority": "secondary"
+      "priority": "secondary",
+      "stack": {
+        "abc_done": "unknown",
+        "critical_zone": "unknown",
+        "near_14_no_overlap": "unknown",
+        "pe_undervalued_leader": "unknown"
+      }
     },
     {
       "stock_id": "2308",
@@ -116,7 +263,13 @@
       "leader_basis": "自己就是長線龍頭 (_LONG_HOLD)",
       "today_low": 1105.0,
       "friday_low": 1020.0,
-      "priority": "secondary"
+      "priority": "secondary",
+      "stack": {
+        "abc_done": "unknown",
+        "critical_zone": "unknown",
+        "near_14_no_overlap": "unknown",
+        "pe_undervalued_leader": "unknown"
+      }
     },
     {
       "stock_id": "2408",
@@ -127,7 +280,13 @@
       "leader_basis": "自己就是這族龍頭",
       "today_low": 354.5,
       "friday_low": 324.0,
-      "priority": "secondary_different_theme"
+      "priority": "secondary_different_theme",
+      "stack": {
+        "abc_done": "unknown",
+        "critical_zone": "unknown",
+        "near_14_no_overlap": "unknown",
+        "pe_undervalued_leader": "unknown"
+      }
     },
     {
       "stock_id": "2382",
@@ -138,7 +297,13 @@
       "leader_basis": "_CHAIN 伺服器／AI伺服 → 廣達",
       "today_low": 290.0,
       "friday_low": 272.0,
-      "priority": "secondary_not_named"
+      "priority": "secondary_not_named",
+      "stack": {
+        "abc_done": "unknown",
+        "critical_zone": "unknown",
+        "near_14_no_overlap": "unknown",
+        "pe_undervalued_leader": "unknown"
+      }
     }
   ],
   "excluded_or_missing": [
