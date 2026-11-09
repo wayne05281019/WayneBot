@@ -1163,6 +1163,106 @@ def test_day_change_vs_prev_trading_day():
     assert i_px < i_pct < i_pts
 
 
+def test_prev_bar_close_db_fills_missing_open_day(tmp_path):
+    """圖軸漏開市日時，黃框漲跌仍對庫內前一開市收；不准假 +0.21%。"""
+    import sqlite3
+
+    from biaoke_level_learn import (
+        _day_change_vs_prev,
+        _prev_bar_close,
+        _teach_stamp_line,
+    )
+
+    db = str(tmp_path / "twii_prev.db")
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE index_daily("
+        "date TEXT, symbol TEXT, open REAL, high REAL, low REAL, close REAL, "
+        "volume REAL, PRIMARY KEY(date, symbol))"
+    )
+    conn.executemany(
+        "INSERT INTO index_daily(date,symbol,open,high,low,close,volume) "
+        "VALUES (?,?,?,?,?,?,?)",
+        [
+            ("20261105", "TWII", 42666, 42874, 41514, 41574.72, 1),
+            ("20261106", "TWII", 38916, 40436, 37837, 39701.64, 1),
+            ("20261109", "TWII", 40347, 42349, 40347, 41661.7, 1),
+        ],
+    )
+    conn.commit()
+    conn.close()
+    # 圖軸故意漏 11/06 → 倒數第二會變成 11/05（舊 bug＝+0.21%）
+    bars = [
+        {"date": "20261105", "close": 41574.72},
+        {"date": "20261109", "close": 41661.7},
+    ]
+    assert abs(float(_prev_bar_close(bars) or 0) - 41574.72) < 1.0
+    prev = _prev_bar_close(bars, db_path=db)
+    assert abs(float(prev or 0) - 39701.64) < 1.0
+    chg = _day_change_vs_prev(41661.7, prev)
+    assert abs(float(chg["pct"]) - 4.94) < 0.02
+    assert abs(float(chg["pts"]) - 1960.0) < 2.0
+    line = _teach_stamp_line(bars, close=41661.7, db_path=db, label_prefix="加權")
+    assert "4.94%" in line or "＋4.94" in line or "+4.94" in line
+    assert "0.21%" not in line
+    assert "1,960" in line or "1960" in line
+
+
+def test_apply_live_tx_replaces_full_ohlc_not_stale_wick():
+    """夜盤 MIS 整根置換：不准留前收填舊開／舊低造成假影線。"""
+    from biaoke_level_learn import _apply_live_tx_to_axis
+
+    tw = [{"date": "20261109", "close": 41661.7}]
+    tx_o = [39742.0]
+    tx_h = [40845.0]
+    tx_l = [39129.0]
+    tx_c = [40298.0]
+    live = {
+        "date": "20261109",
+        "open": 41240.0,
+        "high": 42380.0,
+        "low": 40715.0,
+        "close": 42372.0,
+        "source": "taifex_mis",
+        "is_realtime": True,
+    }
+    idx = _apply_live_tx_to_axis(
+        tx_o=tx_o, tx_h=tx_h, tx_l=tx_l, tx_c=tx_c, tw_bars=tw, live=live
+    )
+    assert idx == 0
+    assert abs(tx_o[0] - 41240.0) < 1e-6
+    assert abs(tx_h[0] - 42380.0) < 1e-6
+    assert abs(tx_l[0] - 40715.0) < 1e-6
+    assert abs(tx_c[0] - 42372.0) < 1e-6
+    assert tx_l[0] > 40000  # 舊低 39129 不准留下
+
+
+def test_c9_extension_inactive_on_stop_confirm():
+    """止跌確認當令：不准再開九波 C1…C9／C-7轉C-8 標。"""
+    from biaoke_level_learn import _c9_extension_active
+
+    pack = {
+        "thesis": "大A→大B→大C｜C3-5＋1 4重疊・確認上週五低＝最低（預估）",
+        "snippet": "確認上週五低點就是最低點；大盤止跌；台指壓41760",
+        "wait_struct": "台指壓41760；一定再測週五低；非買訊",
+        "pred_levels": {"tw": [{"level": 41760.0, "role": "台指壓力"}]},
+    }
+    assert not _c9_extension_active(pack)
+    # 雙軌／foot2 區也不准誤開九波路徑標
+    assert not _c9_extension_active(
+        {
+            "thesis": "大A→大B→大C｜主線五波跌完走B-b・備線九波擴延（預估）",
+            "snippet": "5波跌完走B-b；假跌破37837；不排除9波擴延35579",
+            "pred_levels": {
+                "tw": [
+                    {"level": 37500.0, "role": "改口低上沿"},
+                    {"level": 37000.0, "role": "改口低下沿"},
+                ]
+            },
+        }
+    )
+
+
 def test_us_real_close_pair_skips_twii_ffill_flat():
     """費半黃框：對真實美股日算漲跌，不准因加權軸前收填日變假 +0%。"""
     from biaoke_level_learn import (
