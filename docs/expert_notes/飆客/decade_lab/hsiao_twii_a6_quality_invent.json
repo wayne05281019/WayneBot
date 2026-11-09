@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-11-10T04:27:42+0800",
+  "as_of": "2026-11-10T05:42:42+0800",
   "tz": "Asia/Taipei",
   "track": "market_tw",
   "pot": "hsiao_twii_entry_invent",
@@ -53,9 +53,9 @@
       "total_return": 0.0
     },
     "A6_index_quality": {
-      "n_entry_days": 2,
-      "n_trades": 4,
-      "total_return": 0.00919877465560437,
+      "n_entry_days": 1,
+      "n_trades": 2,
+      "total_return": 0.009001489744916658,
       "gate_n20": false,
       "beat_a0": true
     },

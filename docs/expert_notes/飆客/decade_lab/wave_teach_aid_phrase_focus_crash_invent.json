@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-11-10T04:28:46+0800",
+  "as_of": "2026-11-10T05:42:29+0800",
   "tz": "Asia/Taipei",
   "track": "market_tw",
   "pot": "wave_teach_aid_deepen",
@@ -10,20 +10,20 @@
   "parent_keep": "wave_decade_replay baseline score_mode",
   "replace": false,
   "gate": {
-    "n_decided": 18,
+    "n_decided": 17,
     "gate_n20": false,
     "score_mode": "phrase_focus_crash",
     "drop_in_for_loose_baseline": false,
     "baseline_hit_rate": 0.393646408839779,
-    "labeled_hit_rate": 0.3333333333333333,
-    "delta_hit_rate": -0.060313,
+    "labeled_hit_rate": 0.35294117647058826,
+    "delta_hit_rate": -0.040705,
     "matched_day": {
-      "n_matched_decided": 18,
+      "n_matched_decided": 17,
       "labeled_hit": 6,
       "loose_hit": 7,
-      "labeled_hit_rate": 0.3333333333333333,
-      "loose_hit_rate": 0.3888888888888889,
-      "delta_hit_rate_matched": -0.055556,
+      "labeled_hit_rate": 0.35294117647058826,
+      "loose_hit_rate": 0.4117647058823529,
+      "delta_hit_rate_matched": -0.058824,
       "note_zh": "同日對照：headline 高於 loose 全窗若只因放棄難日＝不誠實換閘"
     },
     "min_delta_clear": 0.02,
@@ -43,30 +43,30 @@
     "decision_zh": "phrase_focus_crash＝硬用語∩急跌時間線相位子窗；教具對照，不換 loose"
   },
   "labeled_with_his": {
-    "rows": 749,
-    "n_decided": 18,
+    "rows": 750,
+    "n_decided": 17,
     "hit": 6,
-    "miss": 12,
-    "hit_rate": 0.3333333333333333,
-    "n_with_named": 447,
-    "n_night_touched": 256
+    "miss": 11,
+    "hit_rate": 0.35294117647058826,
+    "n_with_named": 441,
+    "n_night_touched": 248
   },
   "labeled_in_timeline_seal": {
-    "rows": 20,
-    "n_decided": 18,
+    "rows": 21,
+    "n_decided": 17,
     "hit": 6,
-    "miss": 12,
-    "hit_rate": 0.3333333333333333,
+    "miss": 11,
+    "hit_rate": 0.35294117647058826,
     "n_with_named": 20,
-    "n_night_touched": 17
+    "n_night_touched": 15
   },
   "matched_day_vs_loose": {
-    "n_matched_decided": 18,
+    "n_matched_decided": 17,
     "labeled_hit": 6,
     "loose_hit": 7,
-    "labeled_hit_rate": 0.3333333333333333,
-    "loose_hit_rate": 0.3888888888888889,
-    "delta_hit_rate_matched": -0.055556,
+    "labeled_hit_rate": 0.35294117647058826,
+    "loose_hit_rate": 0.4117647058823529,
+    "delta_hit_rate_matched": -0.058824,
     "note_zh": "同日對照：headline 高於 loose 全窗若只因放棄難日＝不誠實換閘"
   },
   "crash_phase_tags": [
@@ -76,9 +76,8 @@
     "guidance",
     "warn"
   ],
+  "crash_pad_open_days": 3,
   "next_long_window_zh": "phrase_focus 全窗續收；phrase_focus_crash 急跌相位＋開市日墊續收；n≥20 且同日對照贏 loose 才談換（仍非 drop-in）",
   "not_buy_signal": true,
-  "no_invent_wave_5_9": true,
-  "crash_pad_open_days": 3,
-  "collect_note_zh": "本機缺 10 月急跌窗文（僅 Render 有）；維持前次 n=18 封印；開市日墊碼已就位，overlay 齊再重測"
+  "no_invent_wave_5_9": true
 }

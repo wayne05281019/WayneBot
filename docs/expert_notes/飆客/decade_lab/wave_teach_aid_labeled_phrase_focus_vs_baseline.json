@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-11-10T03:12:51+0800",
+  "as_of": "2026-11-10T05:42:28+0800",
   "tz": "Asia/Taipei",
   "track": "market_tw",
   "pot": "wave_teach_aid_labeled",
@@ -8,25 +8,107 @@
   "WAVE_NEURONS_MATCH": false,
   "purpose_zh": "phrase_focus invent vs loose with_his；非 drop-in；未過閘不換",
   "labeled_with_his": {
+    "rows": 750,
+    "n_decided": 221,
+    "hit": 92,
+    "miss": 129,
+    "hit_rate": 0.416289592760181,
+    "n_with_named": 441,
+    "n_night_touched": 248
+  },
+  "labeled_in_timeline_seal": {
+    "rows": 20,
+    "n_decided": 17,
+    "hit": 6,
+    "miss": 11,
+    "hit_rate": 0.35294117647058826,
+    "n_with_named": 19,
+    "n_night_touched": 15
+  },
+  "by_timeline_phase": {
+    "candidate": {
+      "rows": 3,
+      "n_decided": 3,
+      "hit": 2,
+      "miss": 1,
+      "hit_rate": 0.6666666666666666,
+      "n_with_named": 3,
+      "n_night_touched": 3
+    },
+    "confirm": {
+      "rows": 1,
+      "n_decided": 1,
+      "hit": 0,
+      "miss": 1,
+      "hit_rate": 0.0,
+      "n_with_named": 1,
+      "n_night_touched": 1
+    },
+    "crash": {
+      "rows": 8,
+      "n_decided": 6,
+      "hit": 1,
+      "miss": 5,
+      "hit_rate": 0.16666666666666666,
+      "n_with_named": 7,
+      "n_night_touched": 4
+    },
+    "guidance": {
+      "rows": 4,
+      "n_decided": 4,
+      "hit": 2,
+      "miss": 2,
+      "hit_rate": 0.5,
+      "n_with_named": 4,
+      "n_night_touched": 4
+    },
+    "outside_seal": {
+      "rows": 730,
+      "n_decided": 204,
+      "hit": 86,
+      "miss": 118,
+      "hit_rate": 0.4215686274509804,
+      "n_with_named": 422,
+      "n_night_touched": 233
+    },
+    "warn": {
+      "rows": 4,
+      "n_decided": 3,
+      "hit": 1,
+      "miss": 2,
+      "hit_rate": 0.3333333333333333,
+      "n_with_named": 4,
+      "n_night_touched": 3
+    }
+  },
+  "loose_baseline_with_his": {
+    "source": "wave_tight_vs_baseline_with_his.json",
     "rows": 749,
-    "n_decided": 226,
-    "hit": 95,
-    "miss": 131,
-    "hit_rate": 0.42035398230088494,
-    "n_with_named": 447,
-    "n_night_touched": 256
+    "n_decided": 724,
+    "hit": 285,
+    "miss": 439,
+    "hit_rate": 0.393646408839779,
+    "tight_with_his": {
+      "rows": 749,
+      "n_decided": 723,
+      "hit": 254,
+      "miss": 469,
+      "hit_rate": 0.35131396957123096,
+      "score_mode": "tight"
+    },
+    "prior_replace": false
   },
   "matched_day_vs_loose": {
-    "n_matched_decided": 226,
-    "labeled_hit": 95,
-    "loose_hit": 94,
-    "labeled_hit_rate": 0.42035398230088494,
-    "loose_hit_rate": 0.415929203539823,
-    "delta_hit_rate_matched": 0.004425,
+    "n_matched_decided": 221,
+    "labeled_hit": 92,
+    "loose_hit": 92,
+    "labeled_hit_rate": 0.416289592760181,
+    "loose_hit_rate": 0.416289592760181,
+    "delta_hit_rate_matched": 0.0,
     "note_zh": "同日對照：headline 高於 loose 全窗若只因放棄難日＝不誠實換閘"
   },
-  "delta_hit_rate_vs_loose": 0.026708,
-  "delta_hit_rate_matched": 0.004425,
+  "delta_hit_rate_vs_loose": 0.022643,
+  "delta_hit_rate_matched": 0.0,
   "decision_zh": "phrase_focus＝只評有假跌破／有效穿刺／1-4／壓轉撐等硬用語日；教具對照，不換 loose",
   "replace": false,
   "keep": "wave_decade_replay baseline score_mode",
@@ -38,6 +120,13 @@
     "cross_score_mode_not_drop_in_for_loose_baseline"
   ],
   "score_mode": "phrase_focus",
+  "linked_seals": [
+    "biaoke_crash_warning_to_tail_timeline_202611.json",
+    "phone_wave_crash_timeline_teach_aid_lock.json",
+    "wave8_14_overlap_resolved.json",
+    "wave8_extension_rules_lock.json",
+    "wave_tight_vs_baseline_with_his.json"
+  ],
   "not_buy_signal": true,
   "no_invent_wave_5_9": true
 }
