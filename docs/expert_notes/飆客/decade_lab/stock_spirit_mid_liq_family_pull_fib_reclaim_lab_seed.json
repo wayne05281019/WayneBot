@@ -13,5 +13,21 @@
   ],
   "hypothesis_zh": "soft_leader×reclaim OOS≈0.825距early 0.827；hard×reclaim wr≈0.89但n=17；mid_liq_family＝硬龍頭＋族內高流動跟漲，目標 n≥20 且贏 sealed keep",
   "sell": "hi20_or_desync",
-  "next": "實作後跑 OOS；n≥20 且贏 keep 才談替換"
+  "next": "實作後跑 OOS；n≥20 且贏 keep 才談替換",
+  "status": "plain_delta_only_keep_v106",
+  "as_of": "2026-11-10T03:59:22+08:00",
+  "best_candidate": {
+    "leg": "spirit_mid_liq_pull_fib_confirm",
+    "entry": "SPIRIT_pull_fib",
+    "variant": "mid_liq_and_reclaim",
+    "kind": "vs_plain",
+    "oos_wr": 0.8245614035087719,
+    "oos_d": 50,
+    "plain_oos_wr": 0.7200902934537246,
+    "plain_oos_d": 250,
+    "delta_oos_wr": 0.10447111005504739,
+    "beats_v106_early_keep_oos": false,
+    "beats_v106_fast_keep_oos": false
+  },
+  "shared_vs_keep": []
 }

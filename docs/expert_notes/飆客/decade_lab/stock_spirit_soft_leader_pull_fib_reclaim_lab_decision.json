@@ -68,7 +68,7 @@
     "stock_spirit_pull_fib_reclaim_bias_lab_decision.json",
     "stock_spirit_pull_fib_leader_bias_lab_decision.json"
   ],
-  "next": "已跑 intent_soft／fib618／pe／fib618_loose／strict 皆未過閘；下一刀 mid_liq_family×pull_fib×reclaim；不准混浪形、不准改話筒",
+  "next": "已跑 intent／fib618／pe／loose／strict／mid_liq 皆未過閘；下一刀 soft_leader×pull_fib×reclaim×ma60_hold；不准混浪形、不准改話筒",
   "elapsed_s": 64.53,
   "db_path": "data/wayne_market.db"
 }
