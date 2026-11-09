@@ -21,5 +21,21 @@
     "leader_and_vol_1p5_bias_lt8"
   ],
   "sell": "hi20_or_desync",
-  "next": "實作 scripts/decade_lab_stock_spirit_pull_fib_leader_bias_lab.py 後跑 OOS；n≥20 且贏 keep 才談替換"
+  "next": "done OOS; next stock_spirit_pull_fib_reclaim_bias_lab_v1 / keep v106",
+  "status": "plain_delta_only_keep_v106",
+  "as_of": "2026-11-10T02:30:13+08:00",
+  "best_candidate": {
+    "leg": "spirit_pull_fib_confirm",
+    "entry": "SPIRIT_pull_fib",
+    "variant": "leader_tag",
+    "kind": "vs_plain",
+    "oos_wr": 0.7551020408163265,
+    "oos_d": 42,
+    "plain_oos_wr": 0.7226337448559671,
+    "plain_oos_d": 249,
+    "delta_oos_wr": 0.032468295960359383,
+    "beats_v106_early_keep_oos": false,
+    "beats_v106_fast_keep_oos": false
+  },
+  "shared_vs_keep": []
 }
