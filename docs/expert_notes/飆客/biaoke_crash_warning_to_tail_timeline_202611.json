@@ -339,5 +339,8 @@
   "related_seals": {
     "playbook": "biaoke_crash_week_select_and_tail_end_playbook.json",
     "leader_pe": "biaoke_leader_pe_screen_20261109.json"
-  }
+  },
+  "wave_teach_aid": true,
+  "wave_teach_aid_lock": "decade_lab/phone_wave_crash_timeline_teach_aid_lock.json",
+  "wave_teach_aid_zh": "使用者確認：本時間線可當大盤波浪研究教具；只讀對質，非買訊，不准發明5/9。"
 }

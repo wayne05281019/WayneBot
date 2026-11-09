@@ -93,5 +93,7 @@
       "切入仍只認已過閘的高低卡黃金買點／已確認紅箭頭代理"
     ]
   },
-  "not_buy_signal": true
+  "not_buy_signal": true,
+  "wave_teach_aid_zh": "可當 market_tw 大盤波浪研究教具（改口鏈／止跌升級／夜盤vs日盤）；見 decade_lab/phone_wave_crash_timeline_teach_aid_lock.json。只讀學習，不准寫回黃金買點／海選，不上話筒定論。",
+  "wave_teach_aid_lock": "decade_lab/phone_wave_crash_timeline_teach_aid_lock.json"
 }

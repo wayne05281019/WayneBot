@@ -6,6 +6,8 @@
   "buy_signal": false,
   "timeline_seal": "biaoke_crash_warning_to_tail_timeline_202611.json",
   "timeline_seal_note_zh": "示警→路徑改口→急跌兌現→止跌候選／確認→確認前選股語，見 timeline_seal（Asia/Taipei；非買訊）。",
+  "wave_teach_aid_zh": "可當 market_tw 大盤波浪研究教具（改口鏈／止跌升級／夜盤vs日盤）；見 decade_lab/phone_wave_crash_timeline_teach_aid_lock.json。只讀學習，不准寫回黃金買點／海選，不上話筒定論。",
+  "wave_teach_aid_lock": "decade_lab/phone_wave_crash_timeline_teach_aid_lock.json",
   "purpose_zh": "使用者鎖：以後大盤若再出現類似本週急跌／回測大跌，要記得怎麼選股；以及怎麼像飆大判斷跌勢已到尾聲。可提醒／給指引，不准自動當買訊改話筒。",
   "source_posts": [
     {
