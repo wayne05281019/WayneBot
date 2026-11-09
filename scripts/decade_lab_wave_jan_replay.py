@@ -374,21 +374,60 @@ def _infer_next(
     return paths
 
 
+def _closes_beyond(
+    bars: List[Dict[str, float]],
+    level: float,
+    *,
+    side: str,
+    n: int = 2,
+) -> bool:
+    """有效穿刺／有效突破候選：近 n 根收盤連續在位的同側。"""
+    if level <= 0 or len(bars) < n:
+        return False
+    window = bars[-n:]
+    if side == "below":
+        return all(b["c"] < level for b in window)
+    if side == "above":
+        return all(b["c"] > level for b in window)
+    return False
+
+
+def _fake_breakdown_candidate(
+    bars: List[Dict[str, float]],
+    floor: float,
+) -> bool:
+    """假跌破候選：近窗有影線戳破 floor，但最新收回到 floor 上方。"""
+    if floor <= 0 or len(bars) < 2:
+        return False
+    last = bars[-1]
+    pierced = any(b["l"] < floor for b in bars[-3:])
+    return bool(pierced and last["c"] > floor)
+
+
 def _verify_paths(
     paths: List[Dict[str, Any]],
     *,
     bar: Optional[Dict[str, float]],
     tx_day: Optional[Dict[str, float]],
+    prior_bars: Optional[List[Dict[str, float]]] = None,
+    score_mode: str = "baseline",
 ) -> Dict[str, Any]:
-    """日盤主對質。用加權；台指有則並記。"""
+    """日盤主對質。用加權；台指有則並記。
+
+    score_mode:
+      - baseline：觸及／距≤2% 就算（現況）
+      - tight：觸及未確認降權；連2收破／過才算有效；假跌破候選另標
+    """
     if not bar:
         return {
             "verdict": "缺柱",
             "path_results": [],
             "leading": None,
             "scoreable": False,
+            "score_mode": score_mode,
         }
-    probe = tx_day or bar
+    hist = list(prior_bars or []) + [bar]
+    tight = str(score_mode or "baseline").strip().lower() == "tight"
     results = []
     for p in paths:
         hits, misses, tags = [], [], []
@@ -396,26 +435,58 @@ def _verify_paths(
         floor = _f(lv.get("floor"))
         cap = _f(lv.get("cap"))
         if floor is not None:
-            # 真的碰到價區，或距離 ≤1%
             touched = bar["l"] <= floor <= bar["h"]
             dist = abs(bar["l"] - floor) / floor if floor else 999
-            if touched or dist <= 0.02:
-                hits.append(f"觸及／近floor {floor:.0f} (L={bar['l']:.0f})")
-                tags.append("near_floor")
+            near = touched or dist <= 0.02
+            eff_break = _closes_beyond(hist, floor, side="below", n=2)
+            fake_bd = _fake_breakdown_candidate(hist, floor)
+            if tight:
+                if eff_break:
+                    hits.append(f"有效跌破floor連2收 {floor:.0f} (C={bar['c']:.0f})")
+                    tags.append("eff_break_floor")
+                elif fake_bd:
+                    hits.append(f"假跌破候選floor {floor:.0f} (戳破後收回)")
+                    tags.append("fake_breakdown_cand")
+                elif near:
+                    # 觸及未確認＝未完，不灌「對」也不灌「偏」
+                    tags.append("touch_unconfirmed_floor")
+                    hits.append(f"觸及未確認floor {floor:.0f} (L={bar['l']:.0f})")
+                else:
+                    misses.append(f"未近floor {floor:.0f} (L={bar['l']:.0f})")
             else:
-                misses.append(f"未近floor {floor:.0f} (L={bar['l']:.0f})")
+                if near:
+                    hits.append(f"觸及／近floor {floor:.0f} (L={bar['l']:.0f})")
+                    tags.append("near_floor")
+                else:
+                    misses.append(f"未近floor {floor:.0f} (L={bar['l']:.0f})")
         if cap is not None:
             touched = bar["l"] <= cap <= bar["h"]
             dist = abs(bar["h"] - cap) / cap if cap else 999
-            if touched or dist <= 0.02:
-                hits.append(f"觸及／近cap {cap:.0f} (H={bar['h']:.0f})")
-                tags.append("near_cap")
-                if bar["c"] < cap:
-                    tags.append("cap_still")
+            near = touched or dist <= 0.02
+            eff_break = _closes_beyond(hist, cap, side="above", n=2)
+            if tight:
+                if eff_break:
+                    hits.append(f"有效突破cap連2收 {cap:.0f} (C={bar['c']:.0f})")
+                    tags.append("eff_break_cap")
+                elif near and bar["c"] < cap:
+                    tags.append("touch_unconfirmed_cap")
+                    hits.append(f"觸及未確認cap {cap:.0f} (H={bar['h']:.0f})")
+                elif near and bar["c"] >= cap:
+                    # 單日收上但未連2＝未確認
+                    tags.append("cap_close_1bar_unconfirmed")
+                    hits.append(f"單收過cap未連2 {cap:.0f}")
                 else:
-                    tags.append("cap_break_close")
+                    misses.append(f"未近cap {cap:.0f} (H={bar['h']:.0f})")
             else:
-                misses.append(f"未近cap {cap:.0f} (H={bar['h']:.0f})")
+                if near:
+                    hits.append(f"觸及／近cap {cap:.0f} (H={bar['h']:.0f})")
+                    tags.append("near_cap")
+                    if bar["c"] < cap:
+                        tags.append("cap_still")
+                    else:
+                        tags.append("cap_break_close")
+                else:
+                    misses.append(f"未近cap {cap:.0f} (H={bar['h']:.0f})")
         if p.get("id") == "P3_session_bias_continue_or_fade":
             note = ""
             for s in p.get("segments_provisional") or []:
@@ -428,9 +499,38 @@ def _verify_paths(
             else:
                 misses.append("弱先驗方向相反")
                 tags.append("bias_miss")
+        struct_tags = [
+            t
+            for t in tags
+            if t
+            not in (
+                "bias_hit",
+                "bias_miss",
+            )
+        ]
+        confirmed = any(
+            t
+            in (
+                "eff_break_floor",
+                "eff_break_cap",
+                "fake_breakdown_cand",
+                "near_floor",
+                "near_cap",
+                "cap_still",
+                "cap_break_close",
+            )
+            for t in struct_tags
+        )
+        only_unconfirmed = bool(struct_tags) and (not confirmed) and all(
+            t.startswith("touch_unconfirmed") or t == "cap_close_1bar_unconfirmed"
+            for t in struct_tags
+        )
         score = len(hits) - 0.5 * len(misses)
         if not hits and not misses:
             verd = "觀望不計分"
+            scoreable = False
+        elif tight and only_unconfirmed and not misses:
+            verd = "未完／觸及未確認"
             scoreable = False
         else:
             verd = "對" if score > 0 else "偏"
@@ -469,6 +569,7 @@ def _verify_paths(
         "path_results": results,
         "leading": leading,
         "scoreable": bool(scored),
+        "score_mode": score_mode,
         "probe": "tx_day" if tx_day else "twii",
         "bar_twii": bar,
         "bar_tx": tx_day,
@@ -522,15 +623,21 @@ def run(
     pot: Optional[str] = None,
     out_prefix: Optional[str] = None,
     checkpoint_every: Optional[int] = None,
+    score_mode: str = "baseline",
 ) -> Dict[str, Any]:
     from trading_calendar import is_tw_open_calendar_day
 
     start_d = _ymd(start) or DEFAULT_START
     end = _ymd(end) or datetime.now(TAIPEI).strftime("%Y%m%d")
     pot_id = pot or POT
+    mode = (score_mode or "baseline").strip().lower() or "baseline"
+    if mode not in ("baseline", "tight"):
+        mode = "baseline"
     prefix = out_prefix or (
         "wave_decade_replay" if start_d < "20260101" else "wave_jan_replay"
     )
+    if mode == "tight" and not out_prefix:
+        prefix = f"{prefix}_tight"
     ck_every = int(checkpoint_every or CHECKPOINT_EVERY)
     # 對到最新開市日
     while end >= start_d and not is_tw_open_calendar_day(end):
@@ -570,13 +677,20 @@ def run(
         else:
             phase_pre_his += 1
 
-        # ① 驗證：用前一日自推對今日日盤
-        verify = {"verdict": "首日無前推", "scoreable": False, "path_results": []}
+        # ① 驗證：用前一日自推對今日日盤（tight 要帶先前柱做連2收）
+        verify = {
+            "verdict": "首日無前推",
+            "scoreable": False,
+            "path_results": [],
+            "score_mode": mode,
+        }
         if pending_infer is not None:
             verify = _verify_paths(
                 pending_infer["paths"],
                 bar=bar,
                 tx_day=txd,
+                prior_bars=list(recent_bars),
+                score_mode=mode,
             )
             verify["inferred_on"] = pending_infer["from_day"]
             verify["night_lead"] = txn
@@ -686,13 +800,21 @@ def run(
         "hit": hit,
         "miss": miss,
         "hit_rate": (hit / len(decided)) if decided else None,
+        "score_mode": mode,
         "gate_n20": len(decided) >= 20,
         "degree_end": state.degree_primary,
         "checkpoints": checks,
         "isolation_zh": "專鍋；不混海選／黃金買點／洞燭／AI倉／個股",
         "not_buy_signal": True,
         "WAVE_NEURONS_MATCH": False,
-        "note_zh": "冷啟動重播完成至最新開市日；段號暫定；主分＝自推對日盤。不上話筒。",
+        "note_zh": (
+            "冷啟動重播完成至最新開市日；段號暫定；主分＝自推對日盤。不上話筒。"
+            + (
+                " tight＝觸及未確認不計分；連2收／假跌破候選才計。"
+                if mode == "tight"
+                else ""
+            )
+        ),
     }
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -725,6 +847,12 @@ def main() -> None:
     ap.add_argument("--pot", default="", help="pot id")
     ap.add_argument("--prefix", default="", help="output file prefix")
     ap.add_argument("--checkpoint-every", type=int, default=0)
+    ap.add_argument(
+        "--score-mode",
+        default="baseline",
+        choices=("baseline", "tight"),
+        help="baseline=觸及計分；tight=連2收／假跌破才計，觸及未確認不計",
+    )
     args = ap.parse_args()
     run(
         start=args.start or None,
@@ -732,6 +860,7 @@ def main() -> None:
         pot=args.pot or None,
         out_prefix=args.prefix or None,
         checkpoint_every=args.checkpoint_every or None,
+        score_mode=args.score_mode,
     )
 
 
