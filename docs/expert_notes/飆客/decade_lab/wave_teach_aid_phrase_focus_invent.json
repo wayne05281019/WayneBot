@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-11-09T23:23:40+0800",
+  "as_of": "2026-11-10T03:12:51+0800",
   "tz": "Asia/Taipei",
   "track": "market_tw",
   "pot": "wave_teach_aid_deepen",
@@ -58,7 +58,8 @@
     "delta_hit_rate_matched": 0.004425,
     "note_zh": "同日對照：headline 高於 loose 全窗若只因放棄難日＝不誠實換閘"
   },
-  "next_long_window_zh": "with_his 20231204→最新開市日；phrase_focus 續收；另備 crash-phase 子窗",
+  "next_long_window_zh": "續收 phrase_focus with_his；另備 phrase_focus_crash 急跌相位子窗；n≥20 且同日對照贏 loose 才談換（仍非 drop-in）",
   "not_buy_signal": true,
-  "no_invent_wave_5_9": true
+  "no_invent_wave_5_9": true,
+  "next_window_zh": "續收 phrase_focus with_his；另備 phrase_focus_crash 急跌相位子窗；n≥20 且同日對照贏 loose 才談換（仍非 drop-in）"
 }

@@ -6,7 +6,9 @@ import json
 from pathlib import Path
 
 from scripts.decade_lab_wave_teach_aid_labeled import (
+    CRASH_PHASE_TAGS,
     OUT_DIR,
+    SCORE_MODES,
     _focus_phrases,
     _honest_flags,
     _infer_named_only,
@@ -185,6 +187,18 @@ def test_replace_gate_blocks_without_clear_win():
     assert gate_pf["replace"] is False
     assert "cross_score_mode_not_drop_in_for_loose_baseline" in gate_pf["gate_flags"]
 
+    # phrase_focus_crash 亦非 drop-in
+    gate_crash = _replace_gate(
+        stats2,
+        baseline_hr=0.3936,
+        honest=[],
+        matched=matched_ok,
+        min_delta=0.02,
+        score_mode="phrase_focus_crash",
+    )
+    assert gate_crash["replace"] is False
+    assert "cross_score_mode_not_drop_in_for_loose_baseline" in gate_crash["gate_flags"]
+
     # 命中過高＝不誠實
     stats3 = {"n_decided": 50, "hit_rate": 0.96, "n_with_named": 40}
     honest3 = _honest_flags(stats3, baseline_hr=0.39, matched=matched_ok)
@@ -233,3 +247,10 @@ def test_focus_phrases_keeps_hard_teach_tags_only():
     )
     assert got == ["fake_breakdown", "pierce", "overlap_14"]
     assert _focus_phrases(["empty_hand", "no_dip"]) == []
+
+
+def test_phrase_focus_crash_mode_registered():
+    assert "phrase_focus_crash" in SCORE_MODES
+    assert "warn" in CRASH_PHASE_TAGS
+    assert "crash" in CRASH_PHASE_TAGS
+    assert "stock_hunt_note" not in CRASH_PHASE_TAGS

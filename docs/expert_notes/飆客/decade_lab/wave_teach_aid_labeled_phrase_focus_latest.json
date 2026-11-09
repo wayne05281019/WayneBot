@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-11-09T23:23:40+0800",
+  "as_of": "2026-11-10T03:12:51+0800",
   "tz": "Asia/Taipei",
   "track": "market_tw",
   "pot": "wave_teach_aid_labeled",
@@ -154,5 +154,5 @@
   "not_buy_signal": true,
   "no_invent_wave_5_9": true,
   "invent_of": "wave_teach_aid_deepen",
-  "next_window_zh": "續收 phrase_focus with_his；對照 crash timeline 相位；n≥20 且同日對照贏 loose 才談換（仍非 drop-in）"
+  "next_window_zh": "續收 phrase_focus with_his；另備 phrase_focus_crash 急跌相位子窗；n≥20 且同日對照贏 loose 才談換（仍非 drop-in）"
 }

@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-11-09T21:21:06+0800",
+  "as_of": "2026-11-10T03:10:46+0800",
   "tz": "Asia/Taipei",
   "track": "market_tw",
   "pot": "wave_teach_aid_deepen",
@@ -169,11 +169,10 @@
   "not_buy_signal": true,
   "no_invent_wave_5_9": true,
   "next_invent": {
-    "key": "phrase_focus",
-    "file": "wave_teach_aid_phrase_focus_invent.json",
-    "as_of": "2026-11-09T23:23:40+0800",
+    "key": "phrase_focus_crash",
+    "file": "wave_teach_aid_phrase_focus_crash_invent.json",
     "replace": false,
-    "note_zh": "labeled／tight 未過閘；再生 phrase_focus 硬用語日軌續收"
+    "note_zh": "phrase_focus 同日未清贏；再生 crash-phase 子窗續收"
   },
   "as_of_invent_touch": "2026-11-09T23:23:40+0800"
 }
