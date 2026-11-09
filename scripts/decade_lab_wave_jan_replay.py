@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""大盤 2026-01-01 起重播：冷啟動未知→逐日自推→日盤對質→可回溯修訂（計分不穿越）。
+"""大盤冷啟動重播：逐日自推→日盤對質→可回溯修訂（計分不穿越）。
 
-專鍋 wave_jan_replay。不是買訊。phone_sync=blocked。
-夜盤領先紀錄；對質計分以日盤為主。他沒文仍自推；有文再補我vs他。
+預設 2026-01；亦可 --start 十年窗。飆大文約 2023-12-04 起才有：
+有文前＝只自推對官方；有文後才補我vs他。專鍋。不是買訊。phone_sync=blocked。
 """
 from __future__ import annotations
 
@@ -25,8 +25,10 @@ ART = Path("/opt/cursor/artifacts")
 TAIPEI = ZoneInfo("Asia/Taipei")
 POT = "wave_jan_replay"
 PHONE_SYNC = "blocked"
-START = "20260101"
+DEFAULT_START = "20260101"
 CHECKPOINT_EVERY = 20  # open days
+# 飆大公開文庫最早約 2023-12-04；此前＝無文日只自推對官方柱
+HIS_POSTS_FROM = "20231204"
 
 WAVE_RE = re.compile(
     r"(?:八浪|細微|鐵律|擴延|假跌破|壓轉撐|1\s*[-–]?\s*4\s*重疊|14重疊|"
@@ -513,21 +515,39 @@ def _self_check(rows: List[Dict[str, Any]], *, checkpoint: int) -> Dict[str, Any
     }
 
 
-def run(*, end: Optional[str] = None) -> Dict[str, Any]:
+def run(
+    *,
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    pot: Optional[str] = None,
+    out_prefix: Optional[str] = None,
+    checkpoint_every: Optional[int] = None,
+) -> Dict[str, Any]:
     from trading_calendar import is_tw_open_calendar_day
 
+    start_d = _ymd(start) or DEFAULT_START
     end = _ymd(end) or datetime.now(TAIPEI).strftime("%Y%m%d")
+    pot_id = pot or POT
+    prefix = out_prefix or (
+        "wave_decade_replay" if start_d < "20260101" else "wave_jan_replay"
+    )
+    ck_every = int(checkpoint_every or CHECKPOINT_EVERY)
     # 對到最新開市日
-    while end >= START and not is_tw_open_calendar_day(end):
+    while end >= start_d and not is_tw_open_calendar_day(end):
         end = (datetime.strptime(end, "%Y%m%d") - timedelta(days=1)).strftime("%Y%m%d")
+    while start_d <= end and not is_tw_open_calendar_day(start_d):
+        start_d = (datetime.strptime(start_d, "%Y%m%d") + timedelta(days=1)).strftime(
+            "%Y%m%d"
+        )
 
-    open_days = _open_days(START, end)
+    open_days = _open_days(start_d, end)
     con = sqlite3.connect(f"file:{MARKET_DB}?mode=ro", uri=True)
     try:
-        twii = _load_twii(con, START)
-        tx_reg = _load_tx(con, START, "regular")
-        tx_night = _load_tx(con, START, "night")
-        posts_by = _load_posts(con, START, end)
+        twii = _load_twii(con, start_d)
+        tx_reg = _load_tx(con, start_d, "regular")
+        tx_night = _load_tx(con, start_d, "night")
+        # 文庫最早約 HIS_POSTS_FROM；更早只會拿到空
+        posts_by = _load_posts(con, max(start_d, HIS_POSTS_FROM[:8]), end)
     finally:
         con.close()
 
@@ -536,12 +556,19 @@ def run(*, end: Optional[str] = None) -> Dict[str, Any]:
     pending_infer: Optional[Dict[str, Any]] = None
     checks: List[Dict[str, Any]] = []
     recent_bars: List[Dict[str, float]] = []
+    phase_pre_his = 0
+    phase_with_his = 0
 
     for i, day in enumerate(open_days):
         bar = twii.get(day)
         txd = tx_reg.get(day)
         txn = tx_night.get(day)
         posts = posts_by.get(day) or []
+        has_his_corpus = day >= HIS_POSTS_FROM
+        if has_his_corpus:
+            phase_with_his += 1
+        else:
+            phase_pre_his += 1
 
         # ① 驗證：用前一日自推對今日日盤
         verify = {"verdict": "首日無前推", "scoreable": False, "path_results": []}
@@ -559,6 +586,10 @@ def run(*, end: Optional[str] = None) -> Dict[str, Any]:
             recent_bars[-1]["c"] if recent_bars else None
         )
         absorb = _absorb_posts(state, posts, day, ref_px=ref_px)
+        absorb["his_corpus_available"] = has_his_corpus
+        absorb["phase_zh"] = (
+            "有文窗（可補我vs他）" if has_his_corpus else "無文窗（只自推對官方柱）"
+        )
         if bar:
             recent_bars.append(bar)
             recent_bars = recent_bars[-12:]  # 近12開市日窗
@@ -575,7 +606,7 @@ def run(*, end: Optional[str] = None) -> Dict[str, Any]:
                 "role_zh": "領先指標紀錄；主對質仍看日盤",
             }
 
-        # ④ 自推下一開市日（先前窗＝含今日的 recent，函式內會去掉「只複製今日」）
+        # ④ 自推下一開市日
         paths = _infer_next(
             state,
             day=day,
@@ -587,7 +618,7 @@ def run(*, end: Optional[str] = None) -> Dict[str, Any]:
         pending_infer = {"from_day": day, "paths": path_dicts}
 
         row = {
-            "pot": POT,
+            "pot": pot_id,
             "day": day,
             "phone_sync": PHONE_SYNC,
             "buy_signal": False,
@@ -601,16 +632,15 @@ def run(*, end: Optional[str] = None) -> Dict[str, Any]:
             "verify": verify,
             "infer_for_next": path_dicts,
             "asof_visible_only": True,
+            "phase": "with_his" if has_his_corpus else "pre_his",
         }
         rows.append(row)
 
         # 自檢
-        if (i + 1) % CHECKPOINT_EVERY == 0 or day == open_days[-1]:
-            window = rows[-CHECKPOINT_EVERY:] if len(rows) >= CHECKPOINT_EVERY else rows
+        if (i + 1) % ck_every == 0 or day == open_days[-1]:
+            window = rows[-ck_every:] if len(rows) >= ck_every else rows
             chk = _self_check(window, checkpoint=i + 1)
-            # 若段號缺失＝硬錯，再生規則（本版不應發生）
             if not chk["ok_to_continue"]:
-                # 修：對缺段路徑補 UNKNOWN
                 for r in rows:
                     for p in r.get("infer_for_next") or []:
                         segs = p.get("segments_provisional")
@@ -621,18 +651,35 @@ def run(*, end: Optional[str] = None) -> Dict[str, Any]:
                 chk["repaired_zh"] = "補段號後續跑"
             checks.append(chk)
 
-    # 總結（分軌）
     decided = [r for r in rows if (r.get("verify") or {}).get("scoreable")]
     hit = sum(1 for r in decided if r["verify"]["verdict"] == "對")
     miss = sum(1 for r in decided if r["verify"]["verdict"] == "偏")
+
+    def _phase_stats(phase: str) -> Dict[str, Any]:
+        sub = [r for r in rows if r.get("phase") == phase]
+        dec = [r for r in sub if (r.get("verify") or {}).get("scoreable")]
+        h = sum(1 for r in dec if r["verify"]["verdict"] == "對")
+        m = sum(1 for r in dec if r["verify"]["verdict"] == "偏")
+        return {
+            "rows": len(sub),
+            "n_decided": len(dec),
+            "hit": h,
+            "miss": m,
+            "hit_rate": (h / len(dec)) if dec else None,
+        }
+
     summary = {
         "written_at": _now(),
         "tz": "Asia/Taipei",
-        "pot": POT,
+        "pot": pot_id,
         "phone_sync": PHONE_SYNC,
         "buy_signal": False,
-        "start": START,
+        "start": start_d,
         "end": end,
+        "his_posts_from": HIS_POSTS_FROM,
+        "phase_split_zh": "有文前只自推對官方；2023-12-04起才有飆大文可對我vs他",
+        "phase_pre_his": _phase_stats("pre_his"),
+        "phase_with_his": _phase_stats("with_his"),
         "open_days_n": len(open_days),
         "rows_n": len(rows),
         "n_decided": len(decided),
@@ -650,37 +697,42 @@ def run(*, end: Optional[str] = None) -> Dict[str, Any]:
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     ART.mkdir(parents=True, exist_ok=True)
-    jsonl = OUT_DIR / "wave_jan_replay_daily.jsonl"
+    jsonl = OUT_DIR / f"{prefix}_daily.jsonl"
     with jsonl.open("w", encoding="utf-8") as f:
         for r in rows:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
-    # 摘要不塞滿每日正文
-    sum_path = OUT_DIR / "wave_jan_replay_summary.json"
-    sum_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
-    (OUT_DIR / "wave_jan_replay_latest.json").write_text(
-        json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
-    (ART / "wave_jan_replay_summary.json").write_text(
-        json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
-    # 精簡 jsonl 到 artifacts 太大可能；只放 summary + 最後 5 日
+    text = json.dumps(summary, ensure_ascii=False, indent=2)
+    (OUT_DIR / f"{prefix}_summary.json").write_text(text, encoding="utf-8")
+    (OUT_DIR / f"{prefix}_latest.json").write_text(text, encoding="utf-8")
+    (ART / f"{prefix}_summary.json").write_text(text, encoding="utf-8")
     tail = {"tail_days": rows[-5:], "summary": summary}
-    (ART / "wave_jan_replay_tail.json").write_text(
+    (ART / f"{prefix}_tail.json").write_text(
         json.dumps(tail, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     print(
         "GATE",
-        f"wave_jan_replay {START}→{end} days={len(open_days)} decided={len(decided)} "
-        f"hit_rate={summary['hit_rate']} phone_sync=blocked",
+        f"{prefix} {start_d}→{end} days={len(open_days)} decided={len(decided)} "
+        f"hit_rate={summary['hit_rate']} pre_his={phase_pre_his} with_his={phase_with_his} "
+        f"phone_sync=blocked",
     )
     return summary
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
+    ap.add_argument("--start", default="", help="YYYYMMDD cold-start day")
     ap.add_argument("--end", default="", help="YYYYMMDD latest open day cap")
+    ap.add_argument("--pot", default="", help="pot id")
+    ap.add_argument("--prefix", default="", help="output file prefix")
+    ap.add_argument("--checkpoint-every", type=int, default=0)
     args = ap.parse_args()
-    run(end=args.end or None)
+    run(
+        start=args.start or None,
+        end=args.end or None,
+        pot=args.pot or None,
+        out_prefix=args.prefix or None,
+        checkpoint_every=args.checkpoint_every or None,
+    )
 
 
 if __name__ == "__main__":

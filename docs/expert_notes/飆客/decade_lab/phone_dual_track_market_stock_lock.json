@@ -12,6 +12,13 @@
         "zh": "2026-01-01起重播自推對質；專鍵／專鍋；不上新話筒鈕",
         "pot": "wave_jan_replay",
         "doctrine": "phone_wave_jan_replay_doctrine.json"
+      },
+      "subtrack_decade_replay": {
+        "id": "market_tw_decade_replay",
+        "zh": "約十年前→最新開市日；2023-12-04前無飆大文＝只自推對官方；之後才有我vs他",
+        "pot": "wave_decade_replay",
+        "his_posts_from": "20231204",
+        "doctrine": "phone_wave_jan_replay_doctrine.json"
       }
     },
     "stock_lab": {
