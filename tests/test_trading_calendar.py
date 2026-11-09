@@ -332,3 +332,17 @@ def test_is_official_daily_bar_today_needs_close():
     assert not is_official_daily_bar("20260915", now=mid)
     assert is_official_daily_bar("20260915", now=after)
     assert not is_official_daily_bar("20260916", now=after)
+
+
+def test_tw_cash_bars_fetch_ready_at_1340():
+    """加權當日走勢約 13:40 可抓；不必等 16:30 融合。"""
+    from trading_calendar import tw_cash_bars_fetch_ready
+
+    taipei = ZoneInfo("Asia/Taipei")
+    # 2026-09-15 周二開市日
+    assert not tw_cash_bars_fetch_ready(datetime(2026, 9, 15, 13, 30, tzinfo=taipei))
+    assert not tw_cash_bars_fetch_ready(datetime(2026, 9, 15, 13, 39, tzinfo=taipei))
+    assert tw_cash_bars_fetch_ready(datetime(2026, 9, 15, 13, 40, tzinfo=taipei))
+    assert tw_cash_bars_fetch_ready(datetime(2026, 9, 15, 16, 0, tzinfo=taipei))
+    # 週末不准
+    assert not tw_cash_bars_fetch_ready(datetime(2026, 9, 13, 14, 0, tzinfo=taipei))
