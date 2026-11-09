@@ -1,0 +1,93 @@
+{
+  "version": "stock_pair_exit_leg_confirm_lab_v1",
+  "as_of": "2026-11-09T21:33:16+08:00",
+  "tz": "Asia/Taipei",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "promote_lookup": false,
+  "status": "plain_delta_only_keep_v106",
+  "gate_passed": false,
+  "keep": "v106",
+  "keep_detail": "early ei_n2_lu5／eg_bridge；fast lu5_vol_next；sell hi20_or_desync",
+  "sell": "hi20_or_desync",
+  "variant_tested_zh": "成對出場（同進場比賣出）＋急跌四腿可重述代理確認（leader／PE近自身低／近60低；無abc／5／9／1-4計分）",
+  "n_stocks": 199,
+  "n_stocks_with_pe": 191,
+  "smoke": false,
+  "best_candidate": {
+    "leg": "crash_confirm",
+    "core": "early",
+    "variant": "leader_tag",
+    "kind": "vs_plain",
+    "oos_wr": 0.7283500455788514,
+    "oos_d": 839,
+    "plain_oos_wr": 0.7031975949713036,
+    "plain_oos_d": 2390,
+    "delta_oos_wr": 0.025152450607547783,
+    "beats_v106_keep_oos": false,
+    "delta_vs_v106_keep_wr": -0.09857303134422546
+  },
+  "best_confirm_vs_plain": {
+    "leg": "crash_confirm",
+    "core": "early",
+    "variant": "leader_tag",
+    "kind": "vs_plain",
+    "oos_wr": 0.7283500455788514,
+    "oos_d": 839,
+    "plain_oos_wr": 0.7031975949713036,
+    "plain_oos_d": 2390,
+    "delta_oos_wr": 0.025152450607547783,
+    "beats_v106_keep_oos": false,
+    "delta_vs_v106_keep_wr": -0.09857303134422546
+  },
+  "best_sell_vs_keep_sell": null,
+  "shared_confirm_vs_keep": [],
+  "shared_sell_vs_keep": [],
+  "oos_vs_v106_keep": {
+    "early_plain_oos": {
+      "n_trades": 14636,
+      "n_unique_entry_days": 2390,
+      "win_rate": 0.7031975949713036,
+      "expectancy": 0.011618567926226776,
+      "avg_hold": 11.493440830828096,
+      "exit_reason_counts": {
+        "first_hi20": 14191,
+        "max_hold_60": 445
+      },
+      "gate_n20": true
+    },
+    "fast_plain_oos": {
+      "n_trades": 14612,
+      "n_unique_entry_days": 2392,
+      "win_rate": 0.7029838488913221,
+      "expectancy": 0.011633412203382768,
+      "avg_hold": 11.487476047084588,
+      "exit_reason_counts": {
+        "first_hi20": 14167,
+        "max_hold_60": 445
+      },
+      "gate_n20": true
+    },
+    "v106_ref": {
+      "early": {
+        "wr": 0.8269230769230769,
+        "d": 51,
+        "bars": 16.54901960784314
+      },
+      "fast": {
+        "wr": 0.8545454545454545,
+        "d": 54,
+        "bars": 15.296296296296296
+      }
+    }
+  },
+  "gate_one_liner": "stock_pair_exit_leg_confirm n=199 smoke=0; early_plain_oos_wr=0.7031975949713036 d=2390; fast_plain_oos_wr=0.7029838488913221 d=2392; best={'leg': 'crash_confirm', 'core': 'early', 'variant': 'leader_tag', 'kind': 'vs_plain', 'oos_wr': 0.7283500455788514, 'oos_d': 839, 'plain_oos_wr': 0.7031975949713036, 'plain_oos_d': 2390, 'delta_oos_wr': 0.025152450607547783, 'beats_v106_keep_oos': False, 'delta_vs_v106_keep_wr': -0.09857303134422546}; promote=False",
+  "finding_zh": "成對出場＋急跌四腿可重述代理確認（leader／PE近自身低／近60低；無abc／5／9／1-4計分）：相對同跑 baseline 有 Δ（{'leg': 'crash_confirm', 'core': 'early', 'variant': 'leader_tag', 'kind': 'vs_plain', 'oos_wr': 0.7283500455788514, 'oos_d': 839, 'plain_oos_wr': 0.7031975949713036, 'plain_oos_d': 2390, 'delta_oos_wr': 0.025152450607547783, 'beats_v106_keep_oos': False, 'delta_vs_v106_keep_wr': -0.09857303134422546}），但未贏 sealed v106 keep → keep v106。 法人濾／技術確認不重推。",
+  "latest": "stock_pair_exit_leg_confirm_lab_latest.json",
+  "parent_keep": "phone_spirit_mix_dual_track_v106_decision.json",
+  "prev_failed": [
+    "stock_inst_filter_lab_decision.json",
+    "stock_tech_confirm_lab_decision.json"
+  ],
+  "next": "keep v106；成對出場／四腿代理可當後續候選；不准混浪形軌、不准改話筒"
+}
