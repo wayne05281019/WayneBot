@@ -3634,3 +3634,31 @@ def test_paint_tx_now_rail_mid_session_white_neon():
     assert _TEACH_STAMP_FACE.lower() in ("#ffffff", "#fff", "white")
     assert _TEACH_STAMP_EDGE_LIVE.lower() in ("#ffff00", "#ff0", "yellow")
     assert _TEACH_STAMP_EDGE_CLOSED.startswith("#")
+
+
+def test_tip_anchors_empty_on_stop_confirm_no_old_45546():
+    """止跌確認＋41760：tip 不准退回舊 45546／44210 佔右欄。"""
+    from biaoke_level_learn import _tw_tip_anchors, _format_tw_pred_note
+
+    pack = {
+        "thesis": "大A→大B→大C｜C3-5＋1 4重疊・確認上週五低＝最低（預估）",
+        "wait_struct": "台指壓41760；一定再測週五低；非買訊",
+        "snippet_full": "不相信我大盤止跌，確認上週五低點就是最低點；台指壓力41760",
+        "pred_levels": {
+            "tw": [
+                {
+                    "level": 41760.0,
+                    "role": "台指壓力",
+                    "tag": "未到",
+                    "label": "台指壓力／41,760",
+                }
+            ]
+        },
+        "key_levels": {"pred_tw_41760": 41760.0},
+    }
+    assert _tw_tip_anchors(pack) == tuple()
+    lab = _format_tw_pred_note(
+        41760.0, pack=pack, lows=[37837.0], highs=[41600.0]
+    )
+    assert "台指壓力" in lab
+    assert "飆預測" not in lab

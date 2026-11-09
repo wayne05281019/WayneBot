@@ -5816,6 +5816,45 @@ def _level_break_tag(level: float, lows: Sequence[float]) -> str:
     return "未破" if mn <= lv * 1.02 else "未到"
 
 
+def _tw_level_role(pack: Optional[Dict[str, Any]], level: float) -> str:
+    """pred_levels.tw 對該價的 role；沒有就空。"""
+    try:
+        lv = float(level)
+    except (TypeError, ValueError):
+        return ""
+    for row in ((pack or {}).get("pred_levels") or {}).get("tw") or []:
+        try:
+            if abs(float(row.get("level")) - lv) < 0.6:
+                return str(row.get("role") or "")
+        except (TypeError, ValueError):
+            continue
+    # 原文壓力位硬釘（題旨有 41760）
+    if abs(lv - 41760.0) < 0.6:
+        return "台指壓力"
+    return ""
+
+
+def _format_tw_pred_note(
+    level: float,
+    *,
+    pack: Optional[Dict[str, Any]] = None,
+    lows: Optional[Sequence[float]] = None,
+    highs: Optional[Sequence[float]] = None,
+) -> str:
+    """加權右標／tip 錨文：壓力位保留「台指壓力」，撐／低才用飆預測＋破位。"""
+    role = _tw_level_role(pack, level)
+    br = _tw_pred_break_tag(
+        float(level),
+        list(lows or []),
+        pack=pack,
+        role=role,
+        highs=list(highs or []) if highs is not None else None,
+    )
+    if role == "台指壓力" or abs(float(level) - 41760.0) < 0.6:
+        return f"台指壓力／{_px(level)}・{br}"
+    return _biaoke_pred_label(float(level), br)
+
+
 def _biaoke_pred_label(
     price: float,
     tag: str = "",
@@ -6354,7 +6393,8 @@ def _tw_tip_anchors(pack: Optional[Dict[str, Any]] = None) -> Tuple[float, ...]:
     有 C9／改口低點區時，舊劇本一 35000／38000 不准再當虛線下一錨（改口已破）。
     不准把舊 claim_* 歷史宣稱混進虛線梯，否則端點／右標會卡在舊價。
     """
-    _OVERHEAD = {"反彈穿刺", "轉震盪"}
+    # 台指壓力＝上方觀察壓，改走 _tw_pred_right_notes；不准進下跌虛線 tip 裸標成「飆預測・已破」
+    _OVERHEAD = {"反彈穿刺", "轉震盪", "台指壓力"}
     _OLD_SCRIPT1 = {"劇本一上沿", "劇本一下沿"}
     # 雙軌關鍵位改走 _tw_pred_right_notes（角色標＋分色）；不准先被裸「未破／未到」佔位
     _DUAL_PATH = {
@@ -6405,6 +6445,14 @@ def _tw_tip_anchors(pack: Optional[Dict[str, Any]] = None) -> Tuple[float, ...]:
         if str(r.get("role") or "") in _DUAL_PATH
         and r.get("level") is not None
     }
+    # 上方觀察壓／台指壓力：同樣不進 tip 裸梯（改走右欄角色標）
+    _overhead_px = {
+        round(float(r.get("level")), 1)
+        for r in ((pack or {}).get("pred_levels") or {}).get("tw") or []
+        if str(r.get("role") or "") in _OVERHEAD
+        and r.get("level") is not None
+    }
+    _overhead_px.add(round(41760.0, 1))
     # 原文常見雙軌四價：沒 role 也擋
     for _px0 in (37837.0, 37164.0, 35579.0, 31705.0):
         _dual_px.add(round(_px0, 1))
@@ -6417,7 +6465,7 @@ def _tw_tip_anchors(pack: Optional[Dict[str, Any]] = None) -> Tuple[float, ...]:
             continue
         if drop_script1 and _is_old_script1_px(v):
             continue
-        if round(v, 1) in _dual_px:
+        if round(v, 1) in _dual_px or round(v, 1) in _overhead_px:
             continue
         if any(abs(float(v) - x) < 1.0 for x in (39000.0, 37100.0, 37500.0, 37000.0)):
             continue
@@ -6452,10 +6500,17 @@ def _tw_tip_anchors(pack: Optional[Dict[str, Any]] = None) -> Tuple[float, ...]:
                 (pack or {}).get("thesis"),
                 (pack or {}).get("snippet"),
                 (pack or {}).get("snippet_full"),
+                (pack or {}).get("wait_struct"),
             )
         )
-        # 雙軌當令：空梯就空，不准退回舊 45546→44210 擠掉紅框雙軌
-        if _text_has_bb_dual_path(blob_empty) or "37837" in blob_empty:
+        # 雙軌／止跌確認當令：空梯就空，不准退回舊 45546→44210 佔右欄
+        if (
+            _text_has_bb_dual_path(blob_empty)
+            or "37837" in blob_empty
+            or _text_has_stop_low_confirm(blob_empty)
+            or "止跌確認" in blob_empty
+            or "41760" in blob_empty
+        ):
             return tuple()
         return (45546.0, 44210.0)
     # 他點過的價高→低；1 點內視為同錨（避免 39384／39384.9 雙標）
@@ -6855,7 +6910,31 @@ def _build_live_pack(
     wait = str(thesis_pack.get("wait_struct") or "")
     if intent:
         wait = f"{wait}｜量價故事：{intent}"
-    if fut.get("note"):
+    # 夜盤進行中：wait 注用 MIS 即時 OHLC，不准還寫庫內未收完舊夜盤收
+    live_tx = _ensure_paint_live_tx(thesis_pack, now=dt)
+    if (
+        isinstance(live_tx, dict)
+        and float(live_tx.get("close") or 0) > 0
+        and _tx_night_session_live(dt)
+    ):
+        try:
+            _lc = float(live_tx["close"])
+            _lh = float(live_tx.get("high") or 0)
+            _ll = float(live_tx.get("low") or 0)
+            _ld = _ymd(live_tx.get("date")) or dt.strftime("%Y%m%d")
+            levels["tx_night_c"] = _lc
+            if _lh > 0:
+                levels["tx_night_h"] = _lh
+            if _ll > 0:
+                levels["tx_night_l"] = _ll
+            _live_note = f"大台夜{_ld}盤中{_px(_lc)}"
+            if _lh > 0 and _ll > 0:
+                _live_note += f"（高{_px(_lh)}低{_px(_ll)}）"
+            wait = f"{wait}｜{_live_note}"
+        except (TypeError, ValueError):
+            if fut.get("note"):
+                wait = f"{wait}｜{fut['note']}"
+    elif fut.get("note"):
         wait = f"{wait}｜{fut['note']}"
     if claims.get("note"):
         wait = f"{wait}｜{claims['note']}"
@@ -11850,16 +11929,17 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 }
             )
     tip_anchor = tip.get("anchor_y")
+    _c_seg_highs = list(highs[i_c : i_now + 1]) if highs else []
     if tip_anchor is not None:
         right_notes.append(
             {
                 "x": n_axis - 1,
                 "y": float(tip_anchor),
-                "text": _biaoke_pred_label(
+                "text": _format_tw_pred_note(
                     float(tip_anchor),
-                    _tw_pred_break_tag(
-                        float(tip_anchor), c_seg_lows, pack=pack
-                    ),
+                    pack=pack,
+                    lows=c_seg_lows,
+                    highs=_c_seg_highs or highs,
                 ),
                 "color": "#ea80fc",
             }
@@ -11887,9 +11967,11 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             {
                 "x": n_axis - 1,
                 "y": float(anch),
-                "text": _biaoke_pred_label(
+                "text": _format_tw_pred_note(
                     float(anch),
-                    _tw_pred_break_tag(float(anch), c_seg_lows, pack=pack),
+                    pack=pack,
+                    lows=c_seg_lows,
+                    highs=_c_seg_highs or highs,
                 ),
                 "color": "#82b1ff",
             }
@@ -11897,7 +11979,12 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         tip_skip.add(round(float(anch), 1))
     right_notes.extend(
         _tw_pred_right_notes(
-            pack, n=n_axis, lows=c_seg_lows, tip_skip=tip_skip, bars=bars
+            pack,
+            n=n_axis,
+            lows=c_seg_lows,
+            tip_skip=tip_skip,
+            bars=bars,
+            highs=_c_seg_highs or highs,
         )
     )
     # 右標在末日右側；拉開欄位，不准蓋住 K 上 C7／C8 圓點
@@ -13180,14 +13267,17 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
                 }
             )
     # 圖上若沒浮預估標（有 c4／c5 時 show_label=False）→ 端點錨改上右欄
+    _near_highs = list(highs[i_c : i_now + 1]) if highs else []
     if tip_anchor is not None and bool(c_sub.get("ok")):
         right_notes.append(
             {
                 "x": 0,
                 "y": float(tip_anchor),
-                "text": _biaoke_pred_label(
+                "text": _format_tw_pred_note(
                     float(tip_anchor),
-                    _tw_pred_break_tag(float(tip_anchor), c_seg_lows, pack=pack),
+                    pack=pack,
+                    lows=c_seg_lows,
+                    highs=_near_highs or highs,
                 ),
                 "color": "#ea80fc",
             }
@@ -13203,9 +13293,11 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
             {
                 "x": 0,
                 "y": float(anch),
-                "text": _biaoke_pred_label(
+                "text": _format_tw_pred_note(
                     float(anch),
-                    _tw_pred_break_tag(float(anch), c_seg_lows, pack=pack),
+                    pack=pack,
+                    lows=c_seg_lows,
+                    highs=_near_highs or highs,
                 ),
                 "color": "#82b1ff",
             }
@@ -13213,7 +13305,12 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         tip_skip.add(round(float(anch), 1))
     right_notes.extend(
         _tw_pred_right_notes(
-            pack, n=n, lows=c_seg_lows, tip_skip=tip_skip, bars=bars
+            pack,
+            n=n,
+            lows=c_seg_lows,
+            tip_skip=tip_skip,
+            bars=bars,
+            highs=_near_highs or highs,
         )
     )
     # 落在黃帶內的青標改右欄；雙軌／C9／下週底當令＝跟遠窗日盤：不准再加青撐壓擠掉買點
@@ -13871,9 +13968,11 @@ def _render_twii_super_near_c9_60m(
             {
                 "x": n - 1,
                 "y": float(tip_anchor),
-                "text": _biaoke_pred_label(
+                "text": _format_tw_pred_note(
                     float(tip_anchor),
-                    _tw_pred_break_tag(float(tip_anchor), lows, pack=pack),
+                    pack=pack,
+                    lows=lows,
+                    highs=highs,
                 ),
                 "color": "#ea80fc",
             }
@@ -13886,16 +13985,20 @@ def _render_twii_super_near_c9_60m(
             {
                 "x": n - 1,
                 "y": float(anch),
-                "text": _biaoke_pred_label(
+                "text": _format_tw_pred_note(
                     float(anch),
-                    _tw_pred_break_tag(float(anch), lows, pack=pack),
+                    pack=pack,
+                    lows=lows,
+                    highs=highs,
                 ),
                 "color": "#82b1ff",
             }
         )
         tip_skip.add(round(float(anch), 1))
     right_notes.extend(
-        _tw_pred_right_notes(pack, n=n, lows=lows, tip_skip=tip_skip, bars=rows)
+        _tw_pred_right_notes(
+            pack, n=n, lows=lows, tip_skip=tip_skip, bars=rows, highs=highs
+        )
     )
     y_bot, y_top = float(ymin), float(ymax)
     ax.set_ylim(y_bot, y_top)
@@ -14576,14 +14679,17 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
             },
         ]
     # 超近圖上不准浮預估標 → 端點錨改上右欄（跟遠窗同一套）
+    _micro_highs = list(highs[i_c : i_now + 1]) if highs else []
     if tip_anchor is not None:
         right_notes.append(
             {
                 "x": 0,
                 "y": float(tip_anchor),
-                "text": _biaoke_pred_label(
+                "text": _format_tw_pred_note(
                     float(tip_anchor),
-                    _tw_pred_break_tag(float(tip_anchor), c_seg_lows, pack=pack),
+                    pack=pack,
+                    lows=c_seg_lows,
+                    highs=_micro_highs or highs,
                 ),
                 "color": "#ea80fc",
             }
@@ -14597,9 +14703,11 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
             {
                 "x": 0,
                 "y": float(anch),
-                "text": _biaoke_pred_label(
+                "text": _format_tw_pred_note(
                     float(anch),
-                    _tw_pred_break_tag(float(anch), c_seg_lows, pack=pack),
+                    pack=pack,
+                    lows=c_seg_lows,
+                    highs=_micro_highs or highs,
                 ),
                 "color": "#82b1ff",
             }
@@ -14624,7 +14732,12 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         )
     right_notes.extend(
         _tw_pred_right_notes(
-            pack, n=n, lows=c_seg_lows, tip_skip=tip_skip, bars=bars
+            pack,
+            n=n,
+            lows=c_seg_lows,
+            tip_skip=tip_skip,
+            bars=bars,
+            highs=_micro_highs or highs,
         )
     )
     have_ys = {round(float(n0["y"]), 1) for n0 in right_notes} | tip_skip
