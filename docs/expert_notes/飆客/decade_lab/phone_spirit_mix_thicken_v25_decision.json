@@ -1,0 +1,13 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "as_of_taipei": "2026-11-08T08:36:29.992150+08:00",
+  "gate_one_liner": "spirit_mix_thicken_v25 U112 n=112 parent_pe2_ok=True parent_hold=13.058823529411764; pe_ge80_d50=1 earlier_than_parent=0; best_early=None hold=None win=None; promote_lookup=NO",
+  "parent_seal": "phone_spirit_mix_thicken_v24_decision.json",
+  "elapsed_s": 343.2,
+  "n_stocks": 112,
+  "lock_unchanged": "add_i3_pe2",
+  "finding_zh": "pe 階梯／回吐／ATR 無 beats_random 的更早 hold；父鎖 pe2 維持。下一版改結構出場（均線跌破／低點結構／max_hold 帽）＋買側再提早。",
+  "near_miss_zh": "pe16/atr1 hold≈12.8–13.0 但不 beats_random；giveback 胜率崩到 57–70%",
+  "next": "mix_v26 structure exits + buy bars hunt; phone_sync=blocked"
+}

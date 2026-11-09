@@ -1,0 +1,116 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "method_zh": "balanced_score=win×min(1,days/50)；近窗量／軟門／計分卡",
+  "n100_gate": "n=100; winners=15/54; lift=13; best_balanced=core_w3_or_ma60w3__BAL_Vnear2_or_S55__hi20_or_desync win=0.76 days=50 B=0.76; ge50=core_w3_or_ma60w3__BAL_Vnear2_or_S55__hi20_or_desync; promote_lookup=NO",
+  "n150_gate": "n=150; winners=12/54; lift=10; best_balanced=core_w3_start__BAL_Vm_near2__hi20_or_desync win=0.7837837837837838 days=37 B=0.58; ge50=None; promote_lookup=NO",
+  "best_balanced": [
+    {
+      "key": "core_w3_or_ma60w3__BAL_Vnear2_or_S55__hi20_or_desync",
+      "source": "n100",
+      "win": 0.76,
+      "days": 50,
+      "B": 0.76,
+      "E": 0.0193,
+      "lift": true
+    },
+    {
+      "key": "core_w3_or_ma60w3__BAL_V_near2__hi20_or_desync",
+      "source": "n100",
+      "win": 0.7632,
+      "days": 38,
+      "B": 0.58,
+      "E": 0.0244,
+      "lift": true
+    },
+    {
+      "key": "core_w3_or_ma60w3__BAL_Vnear2_and_safe__hi20_or_desync",
+      "source": "n100",
+      "win": 0.7632,
+      "days": 38,
+      "B": 0.58,
+      "E": 0.0244,
+      "lift": true
+    },
+    {
+      "key": "core_w3_start__BAL_Vnear2_or_S55__hi20_or_desync",
+      "source": "n100",
+      "win": 0.7838,
+      "days": 37,
+      "B": 0.58,
+      "E": 0.028,
+      "lift": true
+    },
+    {
+      "key": "core_w3_start__BAL_Vm_near2__hi20_or_desync",
+      "source": "n150",
+      "win": 0.7838,
+      "days": 37,
+      "B": 0.58,
+      "E": 0.0277,
+      "lift": true
+    },
+    {
+      "key": "core_w3_start__BAL_Vm_near2__hi20_or_desync",
+      "source": "n100",
+      "win": 0.8235,
+      "days": 34,
+      "B": 0.56,
+      "E": 0.0344,
+      "lift": true
+    },
+    {
+      "key": "core_w3_start__BAL_S55__hi20_or_desync",
+      "source": "n100",
+      "win": 0.8125,
+      "days": 32,
+      "B": 0.52,
+      "E": 0.0358,
+      "lift": true
+    },
+    {
+      "key": "core_w3_or_ma60w3__BAL_hard_S55__hi20_or_desync",
+      "source": "n100",
+      "win": 0.8125,
+      "days": 32,
+      "B": 0.52,
+      "E": 0.0358,
+      "lift": true
+    },
+    {
+      "key": "core_w3_or_ma60w3__BAL_S55__hi20_or_desync",
+      "source": "n100",
+      "win": 0.8125,
+      "days": 32,
+      "B": 0.52,
+      "E": 0.0358,
+      "lift": true
+    },
+    {
+      "key": "core_w3_start__BAL_hard_S55__hi20_or_desync",
+      "source": "n150",
+      "win": 0.7647,
+      "days": 34,
+      "B": 0.52,
+      "E": 0.0282,
+      "lift": true
+    }
+  ],
+  "best_ge50": [
+    {
+      "key": "core_w3_or_ma60w3__BAL_Vnear2_or_S55__hi20_or_desync",
+      "source": "n100",
+      "win": 0.76,
+      "days": 50,
+      "B": 0.76,
+      "E": 0.0193
+    }
+  ],
+  "read_zh": [
+    "均衡最高：core_w3_or_ma60w3__BAL_Vnear2_or_S55__hi20_or_desync 勝率76.0%／日50（B=0.760）",
+    "相對先前薄樣本87%@22，本軌優先厚薄折衷；仍 phone_sync=blocked",
+    "日≥50 最佳：core_w3_or_ma60w3__BAL_Vnear2_or_S55__hi20_or_desync 勝率76.0%／日50"
+  ],
+  "gate_one_liner": "balanced best=core_w3_or_ma60w3__BAL_Vnear2_or_S55__hi20_or_desync src=n100 win=0.7600 days=50 B=0.7600; ge50=core_w3_or_ma60w3__BAL_Vnear2_or_S55__hi20_or_desync; promote_lookup=NO",
+  "n100_vs_n150_zh": "母體扩到150是否抬均衡分，見 best_balanced 的 source 分布"
+}

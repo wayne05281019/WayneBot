@@ -1,0 +1,441 @@
+{
+  "phone_sync": "blocked",
+  "not_buy_signal": true,
+  "elapsed_s": 228.7,
+  "n_stocks": 100,
+  "method_zh": "話筒進場×蕭氏波浪狀態濾網；出場同 phone_trade；對照＝同波浪條件密度隨機；不畫話筒浪號",
+  "leave_zero_W0": {
+    "n_trades": 6410,
+    "n_unique_entry_days": 2424,
+    "n_sids": 100,
+    "win_rate": 0.49469578783151325,
+    "wilson_ci95": [
+      0.482462878371131,
+      0.5069350512565668
+    ],
+    "avg_net": -0.0009475979666999866,
+    "median_net": -0.0014807805484490207,
+    "expectancy": -0.0009475979666999866,
+    "avg_hold": 11.881747269890795,
+    "avg_mfe": 0.05982350835012802,
+    "avg_mae": -0.05143482263435398,
+    "exit_reason_counts": {
+      "giveback_8pct": 3381,
+      "first_hi20": 3017,
+      "max_hold_60": 12
+    }
+  },
+  "ranking": [
+    {
+      "key": "ma60_lower_confirmed__W_w3_zone",
+      "n_trades": 47,
+      "n_unique_entry_days": 46,
+      "win_rate": 0.6595744680851063,
+      "expectancy": 0.01559913162052573,
+      "avg_hold": 11.127659574468085,
+      "exit_reason_counts": {
+        "giveback_8pct": 14,
+        "first_hi20": 32,
+        "max_hold_60": 1
+      },
+      "random_win_rate": 0.6,
+      "random_expectancy": -0.007935762772200719,
+      "beats_random": true,
+      "beats_leave_zero_F0": true,
+      "E_minus_random": 0.02353489439272645,
+      "win_minus_random": 0.05957446808510636
+    },
+    {
+      "key": "entry_W3_start__W0",
+      "n_trades": 111,
+      "n_unique_entry_days": 107,
+      "win_rate": 0.6036036036036037,
+      "expectancy": 0.005167275875755456,
+      "avg_hold": 6.72972972972973,
+      "exit_reason_counts": {
+        "first_hi20": 70,
+        "giveback_8pct": 41
+      },
+      "random_win_rate": 0.5765765765765766,
+      "random_expectancy": 0.0005008908255716411,
+      "beats_random": true,
+      "beats_leave_zero_F0": true,
+      "E_minus_random": 0.004666385050183815,
+      "win_minus_random": 0.027027027027027084
+    },
+    {
+      "key": "ma60_lower_confirmed__W0_none",
+      "n_trades": 2885,
+      "n_unique_entry_days": 1609,
+      "win_rate": 0.5376083188908145,
+      "expectancy": 0.002679976868547122,
+      "avg_hold": 12.41317157712305,
+      "exit_reason_counts": {
+        "giveback_8pct": 1290,
+        "first_hi20": 1588,
+        "max_hold_60": 7
+      },
+      "random_win_rate": 0.5925253049571763,
+      "random_expectancy": 0.002959532748983663,
+      "beats_random": false,
+      "beats_leave_zero_F0": true,
+      "E_minus_random": -0.00027955588043654086,
+      "win_minus_random": -0.05491698606636175
+    },
+    {
+      "key": "ma60_lower_confirmed__W_w2",
+      "n_trades": 995,
+      "n_unique_entry_days": 749,
+      "win_rate": 0.5517587939698493,
+      "expectancy": 0.004585464133661745,
+      "avg_hold": 12.574874371859297,
+      "exit_reason_counts": {
+        "first_hi20": 556,
+        "giveback_8pct": 435,
+        "max_hold_60": 4
+      },
+      "random_win_rate": 0.6117103235747303,
+      "random_expectancy": 0.005096388150773617,
+      "beats_random": false,
+      "beats_leave_zero_F0": true,
+      "E_minus_random": -0.0005109240171118721,
+      "win_minus_random": -0.05995152960488104
+    },
+    {
+      "key": "ma60_lower_confirmed__W_pullbase",
+      "n_trades": 1501,
+      "n_unique_entry_days": 1003,
+      "win_rate": 0.5349766822118588,
+      "expectancy": 0.0032584032232877945,
+      "avg_hold": 12.068620919387076,
+      "exit_reason_counts": {
+        "giveback_8pct": 689,
+        "first_hi20": 807,
+        "max_hold_60": 5
+      },
+      "random_win_rate": 0.5900877645844089,
+      "random_expectancy": 0.00538075165051511,
+      "beats_random": false,
+      "beats_leave_zero_F0": true,
+      "E_minus_random": -0.0021223484272273156,
+      "win_minus_random": -0.055111082372550135
+    },
+    {
+      "key": "ma60_lower_confirmed__W_not_crash",
+      "n_trades": 1591,
+      "n_unique_entry_days": 1059,
+      "win_rate": 0.5342551854179761,
+      "expectancy": 0.003162018946708493,
+      "avg_hold": 11.967316153362665,
+      "exit_reason_counts": {
+        "giveback_8pct": 730,
+        "first_hi20": 855,
+        "max_hold_60": 6
+      },
+      "random_win_rate": 0.5943716642406599,
+      "random_expectancy": 0.005923597795302207,
+      "beats_random": false,
+      "beats_leave_zero_F0": true,
+      "E_minus_random": -0.002761578848593714,
+      "win_minus_random": -0.06011647882268378
+    },
+    {
+      "key": "ma60_lower_confirmed__W_base",
+      "n_trades": 506,
+      "n_unique_entry_days": 350,
+      "win_rate": 0.5019762845849802,
+      "expectancy": 0.0006488664528884262,
+      "avg_hold": 11.07312252964427,
+      "exit_reason_counts": {
+        "giveback_8pct": 254,
+        "first_hi20": 251,
+        "max_hold_60": 1
+      },
+      "random_win_rate": 0.5685975609756098,
+      "random_expectancy": 0.0041384119801538876,
+      "beats_random": false,
+      "beats_leave_zero_F0": true,
+      "E_minus_random": -0.0034895455272654615,
+      "win_minus_random": -0.06662127639062954
+    },
+    {
+      "key": "ma60_lower_confirmed__W_pullbase_plus",
+      "n_trades": 973,
+      "n_unique_entry_days": 727,
+      "win_rate": 0.5210688591983555,
+      "expectancy": -0.0015517218003597234,
+      "avg_hold": 12.437821171634122,
+      "exit_reason_counts": {
+        "giveback_8pct": 455,
+        "first_hi20": 515,
+        "max_hold_60": 3
+      },
+      "random_win_rate": 0.5732984293193717,
+      "random_expectancy": 0.00016531127210679518,
+      "beats_random": false,
+      "beats_leave_zero_F0": false,
+      "E_minus_random": -0.0017170330724665187,
+      "win_minus_random": -0.052229570121016144
+    },
+    {
+      "key": "leave_zero_blue_tri__W_w2",
+      "n_trades": 2144,
+      "n_unique_entry_days": 1312,
+      "win_rate": 0.4962686567164179,
+      "expectancy": -0.001024264192179,
+      "avg_hold": 12.11660447761194,
+      "exit_reason_counts": {
+        "first_hi20": 1010,
+        "giveback_8pct": 1128,
+        "max_hold_60": 6
+      },
+      "random_win_rate": 0.589356858281161,
+      "random_expectancy": 0.0028326635010923365,
+      "beats_random": false,
+      "beats_leave_zero_F0": false,
+      "E_minus_random": -0.0038569276932713366,
+      "win_minus_random": -0.09308820156474312
+    },
+    {
+      "key": "leave_zero_blue_tri__W0_none",
+      "n_trades": 6410,
+      "n_unique_entry_days": 2424,
+      "win_rate": 0.49469578783151325,
+      "expectancy": -0.0009475979666999866,
+      "avg_hold": 11.881747269890795,
+      "exit_reason_counts": {
+        "giveback_8pct": 3381,
+        "first_hi20": 3017,
+        "max_hold_60": 12
+      },
+      "random_win_rate": 0.5939883763167454,
+      "random_expectancy": 0.0034438334555121596,
+      "beats_random": false,
+      "beats_leave_zero_F0": false,
+      "E_minus_random": -0.004391431422212146,
+      "win_minus_random": -0.09929258848523215
+    },
+    {
+      "key": "leave_zero_blue_tri__W_not_crash",
+      "n_trades": 3518,
+      "n_unique_entry_days": 1780,
+      "win_rate": 0.480955088118249,
+      "expectancy": -0.002019857271430357,
+      "avg_hold": 11.474417282546902,
+      "exit_reason_counts": {
+        "giveback_8pct": 1936,
+        "first_hi20": 1574,
+        "max_hold_60": 8
+      },
+      "random_win_rate": 0.5851006950632686,
+      "random_expectancy": 0.004073575586927754,
+      "beats_random": false,
+      "beats_leave_zero_F0": false,
+      "E_minus_random": -0.006093432858358111,
+      "win_minus_random": -0.10414560694501956
+    },
+    {
+      "key": "leave_zero_blue_tri__W_pullbase",
+      "n_trades": 3411,
+      "n_unique_entry_days": 1747,
+      "win_rate": 0.48226326590442686,
+      "expectancy": -0.0022019289945500336,
+      "avg_hold": 11.471122837877456,
+      "exit_reason_counts": {
+        "giveback_8pct": 1877,
+        "first_hi20": 1527,
+        "max_hold_60": 7
+      },
+      "random_win_rate": 0.5841803733136204,
+      "random_expectancy": 0.004370186239685224,
+      "beats_random": false,
+      "beats_leave_zero_F0": false,
+      "E_minus_random": -0.006572115234235258,
+      "win_minus_random": -0.10191710740919352
+    },
+    {
+      "key": "leave_zero_blue_tri__W_score50",
+      "n_trades": 139,
+      "n_unique_entry_days": 130,
+      "win_rate": 0.5467625899280576,
+      "expectancy": -0.009120464287499823,
+      "avg_hold": 10.29496402877698,
+      "exit_reason_counts": {
+        "first_hi20": 85,
+        "giveback_8pct": 54
+      },
+      "random_win_rate": 0.5957446808510638,
+      "random_expectancy": -0.0006342052268225957,
+      "beats_random": false,
+      "beats_leave_zero_F0": false,
+      "E_minus_random": -0.008486259060677227,
+      "win_minus_random": -0.048982090923006205
+    },
+    {
+      "key": "leave_zero_blue_tri__W_base",
+      "n_trades": 1273,
+      "n_unique_entry_days": 740,
+      "win_rate": 0.4587588373919874,
+      "expectancy": -0.00434112240064342,
+      "avg_hold": 10.365278868813826,
+      "exit_reason_counts": {
+        "giveback_8pct": 753,
+        "first_hi20": 519,
+        "max_hold_60": 1
+      },
+      "random_win_rate": 0.5567394778902504,
+      "random_expectancy": 0.004616036918140661,
+      "beats_random": false,
+      "beats_leave_zero_F0": false,
+      "E_minus_random": -0.008957159318784082,
+      "win_minus_random": -0.09798064049826294
+    },
+    {
+      "key": "leave_zero_blue_tri__W_pullbase_plus",
+      "n_trades": 1025,
+      "n_unique_entry_days": 769,
+      "win_rate": 0.5073170731707317,
+      "expectancy": -0.006084441778085514,
+      "avg_hold": 12.837073170731708,
+      "exit_reason_counts": {
+        "first_hi20": 535,
+        "giveback_8pct": 489,
+        "max_hold_60": 1
+      },
+      "random_win_rate": 0.600088573959256,
+      "random_expectancy": 0.003752431695875279,
+      "beats_random": false,
+      "beats_leave_zero_F0": false,
+      "E_minus_random": -0.009836873473960794,
+      "win_minus_random": -0.09277150078852425
+    },
+    {
+      "key": "leave_zero_blue_tri__W_w3_zone",
+      "n_trades": 59,
+      "n_unique_entry_days": 56,
+      "win_rate": 0.423728813559322,
+      "expectancy": -0.01064687473254115,
+      "avg_hold": 13.338983050847459,
+      "exit_reason_counts": {
+        "giveback_8pct": 31,
+        "first_hi20": 27,
+        "max_hold_60": 1
+      },
+      "random_win_rate": 0.5913978494623656,
+      "random_expectancy": 0.0036974241162739956,
+      "beats_random": false,
+      "beats_leave_zero_F0": false,
+      "E_minus_random": -0.014344298848815145,
+      "win_minus_random": -0.1676690359030436
+    },
+    {
+      "key": "leave_zero_blue_tri__W_pullbase_score",
+      "n_trades": 46,
+      "n_unique_entry_days": 44,
+      "win_rate": 0.5434782608695652,
+      "expectancy": -0.007881245590841466,
+      "avg_hold": 11.065217391304348,
+      "exit_reason_counts": {
+        "first_hi20": 28,
+        "giveback_8pct": 18
+      },
+      "random_win_rate": 0.6739130434782609,
+      "random_expectancy": 0.009316481593006125,
+      "beats_random": false,
+      "beats_leave_zero_F0": false,
+      "E_minus_random": -0.017197727183847593,
+      "win_minus_random": -0.13043478260869568
+    },
+    {
+      "key": "ma60_lower_confirmed__W_pullbase_score",
+      "n_trades": 1,
+      "n_unique_entry_days": 1,
+      "win_rate": 1.0,
+      "expectancy": 0.06391446817628055,
+      "avg_hold": 11.0,
+      "exit_reason_counts": {
+        "first_hi20": 1
+      },
+      "random_win_rate": 1.0,
+      "random_expectancy": 0.023431807699763166,
+      "beats_random": false,
+      "beats_leave_zero_F0": false,
+      "E_minus_random": NaN,
+      "win_minus_random": NaN
+    },
+    {
+      "key": "ma60_lower_confirmed__W_score50",
+      "n_trades": 3,
+      "n_unique_entry_days": 3,
+      "win_rate": 0.6666666666666666,
+      "expectancy": 0.03014532317488679,
+      "avg_hold": 13.0,
+      "exit_reason_counts": {
+        "first_hi20": 2,
+        "giveback_8pct": 1
+      },
+      "random_win_rate": 0.6666666666666666,
+      "random_expectancy": -0.017048259850088104,
+      "beats_random": false,
+      "beats_leave_zero_F0": false,
+      "E_minus_random": NaN,
+      "win_minus_random": NaN
+    }
+  ],
+  "winners_beat_random_and_lz0": [
+    {
+      "key": "ma60_lower_confirmed__W_w3_zone",
+      "n_trades": 47,
+      "n_unique_entry_days": 46,
+      "win_rate": 0.6595744680851063,
+      "expectancy": 0.01559913162052573,
+      "avg_hold": 11.127659574468085,
+      "exit_reason_counts": {
+        "giveback_8pct": 14,
+        "first_hi20": 32,
+        "max_hold_60": 1
+      },
+      "random_win_rate": 0.6,
+      "random_expectancy": -0.007935762772200719,
+      "beats_random": true,
+      "beats_leave_zero_F0": true,
+      "E_minus_random": 0.02353489439272645,
+      "win_minus_random": 0.05957446808510636
+    },
+    {
+      "key": "entry_W3_start__W0",
+      "n_trades": 111,
+      "n_unique_entry_days": 107,
+      "win_rate": 0.6036036036036037,
+      "expectancy": 0.005167275875755456,
+      "avg_hold": 6.72972972972973,
+      "exit_reason_counts": {
+        "first_hi20": 70,
+        "giveback_8pct": 41
+      },
+      "random_win_rate": 0.5765765765765766,
+      "random_expectancy": 0.0005008908255716411,
+      "beats_random": true,
+      "beats_leave_zero_F0": true,
+      "E_minus_random": 0.004666385050183815,
+      "win_minus_random": 0.027027027027027084
+    }
+  ],
+  "promote_to_lookup_display": false,
+  "gate_one_liner": "winners=2/19; best=ma60_lower_confirmed__W_w3_zone win=0.6595744680851063 E=0.01559913162052573 vs_rand_E=0.02353489439272645; promote_lookup=NO",
+  "wave_filter_defs_zh": {
+    "W0_none": "無波浪條件（僅未貼20高）",
+    "W_pullbase": "BASE_BOTTOM 或 WAVE_2_PULLBACK",
+    "W_w2": "僅 WAVE_2_PULLBACK",
+    "W_base": "僅 BASE_BOTTOM",
+    "W_not_crash": "排除 A/B/C 下跌陷阱段",
+    "W_w3_zone": "WAVE_3_MAIN 或 W3起漲近3根",
+    "W_score50": "hsiao_score_eff≥50",
+    "W_pullbase_score": "拉回／築底且分數≥50",
+    "W_pullbase_plus": "拉回／築底＋結構加分（leave 需近確認紅箭）",
+    "entry_W3_start": "純 LAB_BUY_W3_START 進場"
+  },
+  "errors_n": 0,
+  "errors_sample": [],
+  "note_zh": "波浪只當實驗室濾網；不過閘不准上查股浪號／5／9。"
+}

@@ -4892,6 +4892,9 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     ax.add_patch(patches.Rectangle((pad_x, ry), span, tbl_top - ry, facecolor="none",
                                    edgecolor=C["tbl_line"], lw=1.1, zorder=4))
 
+    # LAB-ONLY：高低卡文字／glyph 延伸（旗標預設關＝no-op；不准改 leave_zero）
+    _maybe_lab_lookup_marks(ax, None, None, chart_kind="card", card=card)
+
     save_path = _savefig_lookup_png(fig, save_path, CARD_PNG_DPI)
     _close_lookup_figure(fig)
     _lookup_render_memo_put(memo_key, save_path)
@@ -6207,6 +6210,9 @@ def render_first_glance_png(
             ax.text(inner_l, ny, ln, fontproperties=_fp(12.5, "bold"), color="#AD1457", va="center", zorder=4)
             ny -= 2.55
 
+    # LAB-ONLY：介紹圖如何賣／相對高點協助文案延伸（旗標預設關＝no-op）
+    _maybe_lab_lookup_marks(ax, None, None, chart_kind="glance", card=card)
+
     save_path = _savefig_lookup_png(fig, save_path, GLANCE_PNG_DPI)
     _close_lookup_figure(fig)
     _lookup_render_memo_put(memo_key, save_path)
@@ -6800,6 +6806,31 @@ def _nav_work_or_none(df: pd.DataFrame, already_normalized: bool = False):
     if "is_halt" not in work.columns:
         work["is_halt"] = False
     return work
+
+
+def _maybe_lab_lookup_marks(
+    ax=None,
+    work=None,
+    xs=None,
+    *,
+    chart_kind: str = "",
+    card: Optional[dict] = None,
+) -> bool:
+    """LAB-ONLY 查股記號延伸點（預設 no-op）。
+
+    過閘後才可能畫 LAB_BUY_W3_START／REL_HIGH_SELL；預設旗標關＋phone_sync=blocked
+    永不改現況藍▲／橙▼。見 phone_lookup_mark_hook_map.md；不准改 leave_zero。
+    """
+    try:
+        from scripts.decade_lab_lookup_mark_flags import maybe_paint_lab_lookup_marks
+
+        return bool(
+            maybe_paint_lab_lookup_marks(
+                ax, work, xs, chart_kind=str(chart_kind or ""), card=card
+            )
+        )
+    except Exception:
+        return False
 
 
 def _nav_trade_marks(work: pd.DataFrame, card: Optional[dict] = None):
@@ -7483,6 +7514,8 @@ def overlay_nav_marks_on_zone(
                 hw=0.88,
                 z=8,
             )
+    # LAB-ONLY：大量區疊層上的 W3／相對高點 glyph（旗標預設關＝no-op）
+    _maybe_lab_lookup_marks(ax1, paint, xs, chart_kind="vol", card=card)
     if draw_legend:
         _draw_nav_legend(ax1, zone_mode=True)
 
@@ -7746,6 +7779,8 @@ def _paint_nav_on_axes(
             arrow_h=arrow_h * 1.12, hw=0.88, z=8,
         )
         trade_note += "　賣↓橙"
+    # LAB-ONLY：W3 起漲／相對高點賣 glyph（旗標預設關＝no-op）
+    _maybe_lab_lookup_marks(ax1, work, xs, chart_kind="nav", card=card)
 
     ax1.plot(xs, work["ma20"], color="#f9a825", linewidth=1.85, zorder=4)
     # 壓撐參考線宜細

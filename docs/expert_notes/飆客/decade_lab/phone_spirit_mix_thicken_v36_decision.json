@@ -1,0 +1,36 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "as_of_taipei": "2026-11-08T10:38:22+08:00",
+  "gate_one_liner": "spirit_mix_thicken_v36 U112 n=112 confirm_vdry=True confirm_hold=9.03921568627451; pe_ge80_d50=10 earlier=7; best_early=pe2_mh20_vdry_gb15 hold=8.901960784313726; promote_lookup=NO",
+  "parent_seal": "phone_spirit_mix_thicken_v35_decision.json",
+  "n_stocks": 112,
+  "confirm_pe2_mh20_ma2_vdry": {
+    "key": "pe2_mh20_ma2_vdry",
+    "n_trades": 51,
+    "n_unique_entry_days": 50,
+    "win_rate": 0.803921568627451,
+    "expectancy": 0.00959532789977581,
+    "beats_random": true,
+    "balanced_score": 0.803921568627451,
+    "win_ge80": true,
+    "days_ge50": true,
+    "mean_bars_before_hi20": 15.854166666666666,
+    "mean_hold_days": 9.03921568627451,
+    "earlier_than_parent": false,
+    "beats_seed_votes": "2/2"
+  },
+  "upgrade_lock": {
+    "key": "pe2_mh20_vdry_gb15",
+    "win_rate": 0.803921568627451,
+    "days": 50,
+    "hold_days": 8.901960784313726,
+    "expectancy": 0.01022218017433631,
+    "beats_random": true,
+    "beats_seed_votes": "4/4",
+    "parent_hold": 9.03921568627451,
+    "formula_zh": "vdry＋自高點回吐≥1.5%（已賺≥2%）提早離"
+  },
+  "finding_zh": "升級 pe2_mh20_vdry_gb15：hold≈8.90（父 vdry≈9.04），多種子 beats 4/4。旗標仍關。",
+  "next": "mix_v37 confirm gb15 + hunt hold<8.90; phone_sync=blocked"
+}

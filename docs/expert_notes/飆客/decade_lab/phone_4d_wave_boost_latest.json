@@ -1,0 +1,2564 @@
+{
+  "phone_sync": "blocked",
+  "not_buy_signal": true,
+  "elapsed_s": 393.6,
+  "n_stocks": 100,
+  "keep_exits": [
+    "hi20_or_desync",
+    "hi20_only"
+  ],
+  "leave_zero_baseline": {
+    "n_trades": 4115,
+    "n_unique_entry_days": 1965,
+    "n_sids": 100,
+    "win_rate": 0.650546780072904,
+    "wilson_ci95": [
+      0.6358443170930672,
+      0.6649684162735181
+    ],
+    "avg_net": 0.007754576262837266,
+    "median_net": 0.025668000674052286,
+    "expectancy": 0.007754576262837266,
+    "avg_hold": 24.688942891859053,
+    "avg_mfe": 0.06276525624068072,
+    "avg_mae": -0.09858200630105224,
+    "exit_reason_counts": {
+      "first_hi20": 3774,
+      "max_hold_60": 341
+    }
+  },
+  "core_baselines_D0": [
+    {
+      "key": "core_ma60_w3__D0_none__hi20_only",
+      "n_trades": 46,
+      "n_unique_entry_days": 45,
+      "win_rate": 0.7391304347826086,
+      "expectancy": 0.005728339689441115,
+      "avg_hold": 20.565217391304348,
+      "exit_reason_counts": {
+        "first_hi20": 40,
+        "max_hold_60": 6
+      },
+      "random_win_rate": 0.6857142857142857,
+      "random_expectancy": -0.010912202362492025,
+      "beats_random": true,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7391304347826086,
+      "win_minus_core": 0.0
+    },
+    {
+      "key": "core_w3_start__D0_none__hi20_or_desync",
+      "n_trades": 76,
+      "n_unique_entry_days": 74,
+      "win_rate": 0.7631578947368421,
+      "expectancy": 0.0015491054093313271,
+      "avg_hold": 17.513157894736842,
+      "exit_reason_counts": {
+        "first_hi20": 71,
+        "max_hold_60": 5
+      },
+      "random_win_rate": 0.8,
+      "random_expectancy": 0.020343571937254598,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": 0.0
+    },
+    {
+      "key": "core_w3_start__D0_none__hi20_only",
+      "n_trades": 76,
+      "n_unique_entry_days": 74,
+      "win_rate": 0.7631578947368421,
+      "expectancy": 0.0015491054093313271,
+      "avg_hold": 17.513157894736842,
+      "exit_reason_counts": {
+        "first_hi20": 71,
+        "max_hold_60": 5
+      },
+      "random_win_rate": 0.676056338028169,
+      "random_expectancy": 0.012003781106962727,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": 0.0
+    },
+    {
+      "key": "core_w3_or_ma60w3__D0_none__hi20_or_desync",
+      "n_trades": 113,
+      "n_unique_entry_days": 110,
+      "win_rate": 0.7522123893805309,
+      "expectancy": 0.006333207113396406,
+      "avg_hold": 18.469026548672566,
+      "exit_reason_counts": {
+        "first_hi20": 104,
+        "max_hold_60": 9
+      },
+      "random_win_rate": 0.7285714285714285,
+      "random_expectancy": 0.007648876032734126,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": 0.0
+    },
+    {
+      "key": "core_w3_or_ma60w3__D0_none__hi20_only",
+      "n_trades": 113,
+      "n_unique_entry_days": 110,
+      "win_rate": 0.7522123893805309,
+      "expectancy": 0.006333207113396406,
+      "avg_hold": 18.469026548672566,
+      "exit_reason_counts": {
+        "first_hi20": 104,
+        "max_hold_60": 9
+      },
+      "random_win_rate": 0.7536231884057971,
+      "random_expectancy": 0.02335705595998099,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": 0.0
+    },
+    {
+      "key": "core_ma60_w3__D0_none__hi20_or_desync",
+      "n_trades": 46,
+      "n_unique_entry_days": 45,
+      "win_rate": 0.7391304347826086,
+      "expectancy": 0.005728339689441115,
+      "avg_hold": 20.565217391304348,
+      "exit_reason_counts": {
+        "first_hi20": 40,
+        "max_hold_60": 6
+      },
+      "random_win_rate": 0.7714285714285715,
+      "random_expectancy": 0.012779103256947932,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7391304347826086,
+      "win_minus_core": 0.0
+    }
+  ],
+  "ranking": [
+    {
+      "key": "core_w3_start__V__hi20_or_desync",
+      "n_trades": 23,
+      "n_unique_entry_days": 22,
+      "win_rate": 0.8695652173913043,
+      "expectancy": 0.05966748622623642,
+      "avg_hold": 11.217391304347826,
+      "exit_reason_counts": {
+        "first_hi20": 23
+      },
+      "random_win_rate": 0.631578947368421,
+      "random_expectancy": 0.023194305504207535,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": 0.10640732265446218
+    },
+    {
+      "key": "core_w3_start__V__hi20_only",
+      "n_trades": 23,
+      "n_unique_entry_days": 22,
+      "win_rate": 0.8695652173913043,
+      "expectancy": 0.05966748622623642,
+      "avg_hold": 11.217391304347826,
+      "exit_reason_counts": {
+        "first_hi20": 23
+      },
+      "random_win_rate": 0.5263157894736842,
+      "random_expectancy": 0.021836819808250668,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": 0.10640732265446218
+    },
+    {
+      "key": "core_w3_start__VT__hi20_or_desync",
+      "n_trades": 23,
+      "n_unique_entry_days": 22,
+      "win_rate": 0.8695652173913043,
+      "expectancy": 0.05966748622623642,
+      "avg_hold": 11.217391304347826,
+      "exit_reason_counts": {
+        "first_hi20": 23
+      },
+      "random_win_rate": 0.6111111111111112,
+      "random_expectancy": 0.0037508997316219287,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": 0.10640732265446218
+    },
+    {
+      "key": "core_w3_start__VT__hi20_only",
+      "n_trades": 23,
+      "n_unique_entry_days": 22,
+      "win_rate": 0.8695652173913043,
+      "expectancy": 0.05966748622623642,
+      "avg_hold": 11.217391304347826,
+      "exit_reason_counts": {
+        "first_hi20": 23
+      },
+      "random_win_rate": 0.7222222222222222,
+      "random_expectancy": 0.0327813159847625,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": 0.10640732265446218
+    },
+    {
+      "key": "core_w3_or_ma60w3__VT__hi20_or_desync",
+      "n_trades": 23,
+      "n_unique_entry_days": 22,
+      "win_rate": 0.8695652173913043,
+      "expectancy": 0.05966748622623642,
+      "avg_hold": 11.217391304347826,
+      "exit_reason_counts": {
+        "first_hi20": 23
+      },
+      "random_win_rate": 0.5555555555555556,
+      "random_expectancy": 0.0018402755467417534,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": 0.1173528280107734
+    },
+    {
+      "key": "core_w3_or_ma60w3__VT__hi20_only",
+      "n_trades": 23,
+      "n_unique_entry_days": 22,
+      "win_rate": 0.8695652173913043,
+      "expectancy": 0.05966748622623642,
+      "avg_hold": 11.217391304347826,
+      "exit_reason_counts": {
+        "first_hi20": 23
+      },
+      "random_win_rate": 0.7222222222222222,
+      "random_expectancy": 0.01183308388770994,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": 0.1173528280107734
+    },
+    {
+      "key": "core_w3_or_ma60w3__V__hi20_or_desync",
+      "n_trades": 26,
+      "n_unique_entry_days": 25,
+      "win_rate": 0.8461538461538461,
+      "expectancy": 0.052696415293879875,
+      "avg_hold": 13.076923076923077,
+      "exit_reason_counts": {
+        "first_hi20": 26
+      },
+      "random_win_rate": 0.631578947368421,
+      "random_expectancy": 0.03702468481003409,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": 0.09394145677331522
+    },
+    {
+      "key": "core_w3_or_ma60w3__V__hi20_only",
+      "n_trades": 26,
+      "n_unique_entry_days": 25,
+      "win_rate": 0.8461538461538461,
+      "expectancy": 0.052696415293879875,
+      "avg_hold": 13.076923076923077,
+      "exit_reason_counts": {
+        "first_hi20": 26
+      },
+      "random_win_rate": 0.6842105263157895,
+      "random_expectancy": -0.003036335209532118,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": 0.09394145677331522
+    },
+    {
+      "key": "core_ma60_w3__D0_none__hi20_only",
+      "n_trades": 46,
+      "n_unique_entry_days": 45,
+      "win_rate": 0.7391304347826086,
+      "expectancy": 0.005728339689441115,
+      "avg_hold": 20.565217391304348,
+      "exit_reason_counts": {
+        "first_hi20": 40,
+        "max_hold_60": 6
+      },
+      "random_win_rate": 0.6857142857142857,
+      "random_expectancy": -0.010912202362492025,
+      "beats_random": true,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7391304347826086,
+      "win_minus_core": 0.0
+    },
+    {
+      "key": "core_w3_or_ma60w3__PT__hi20_or_desync",
+      "n_trades": 69,
+      "n_unique_entry_days": 67,
+      "win_rate": 0.7681159420289855,
+      "expectancy": -0.0023808543998875345,
+      "avg_hold": 18.17391304347826,
+      "exit_reason_counts": {
+        "first_hi20": 64,
+        "max_hold_60": 5
+      },
+      "random_win_rate": 0.7755102040816326,
+      "random_expectancy": 0.020298347823533226,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": 0.015903552648454555
+    },
+    {
+      "key": "core_w3_or_ma60w3__PT__hi20_only",
+      "n_trades": 69,
+      "n_unique_entry_days": 67,
+      "win_rate": 0.7681159420289855,
+      "expectancy": -0.0023808543998875345,
+      "avg_hold": 18.17391304347826,
+      "exit_reason_counts": {
+        "first_hi20": 64,
+        "max_hold_60": 5
+      },
+      "random_win_rate": 0.7142857142857143,
+      "random_expectancy": 0.0226205544502557,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": 0.015903552648454555
+    },
+    {
+      "key": "core_w3_or_ma60w3__P__hi20_or_desync",
+      "n_trades": 72,
+      "n_unique_entry_days": 70,
+      "win_rate": 0.7638888888888888,
+      "expectancy": -0.003936120643438213,
+      "avg_hold": 18.625,
+      "exit_reason_counts": {
+        "first_hi20": 67,
+        "max_hold_60": 5
+      },
+      "random_win_rate": 0.7,
+      "random_expectancy": 0.02882729302857358,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": 0.011676499508357918
+    },
+    {
+      "key": "core_w3_or_ma60w3__P__hi20_only",
+      "n_trades": 72,
+      "n_unique_entry_days": 70,
+      "win_rate": 0.7638888888888888,
+      "expectancy": -0.003936120643438213,
+      "avg_hold": 18.625,
+      "exit_reason_counts": {
+        "first_hi20": 67,
+        "max_hold_60": 5
+      },
+      "random_win_rate": 0.78,
+      "random_expectancy": 0.026495108047485675,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": 0.011676499508357918
+    },
+    {
+      "key": "core_w3_or_ma60w3__T__hi20_or_desync",
+      "n_trades": 76,
+      "n_unique_entry_days": 74,
+      "win_rate": 0.7631578947368421,
+      "expectancy": 0.0015491054093313271,
+      "avg_hold": 17.513157894736842,
+      "exit_reason_counts": {
+        "first_hi20": 71,
+        "max_hold_60": 5
+      },
+      "random_win_rate": 0.6666666666666666,
+      "random_expectancy": 0.010753942149955557,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": 0.010945505356311225
+    },
+    {
+      "key": "core_w3_or_ma60w3__T__hi20_only",
+      "n_trades": 76,
+      "n_unique_entry_days": 74,
+      "win_rate": 0.7631578947368421,
+      "expectancy": 0.0015491054093313271,
+      "avg_hold": 17.513157894736842,
+      "exit_reason_counts": {
+        "first_hi20": 71,
+        "max_hold_60": 5
+      },
+      "random_win_rate": 0.7592592592592593,
+      "random_expectancy": 0.019104048007899773,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": 0.010945505356311225
+    },
+    {
+      "key": "core_w3_start__Asteep__hi20_or_desync",
+      "n_trades": 1,
+      "n_unique_entry_days": 1,
+      "win_rate": 1.0,
+      "expectancy": 0.11497149409271679,
+      "avg_hold": 14.0,
+      "exit_reason_counts": {
+        "first_hi20": 1
+      },
+      "random_win_rate": 1.0,
+      "random_expectancy": 0.06213872135102527,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_start__Asteep__hi20_only",
+      "n_trades": 1,
+      "n_unique_entry_days": 1,
+      "win_rate": 1.0,
+      "expectancy": 0.11497149409271679,
+      "avg_hold": 14.0,
+      "exit_reason_counts": {
+        "first_hi20": 1
+      },
+      "random_win_rate": 1.0,
+      "random_expectancy": 0.120404255319149,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_or_ma60w3__Asteep__hi20_or_desync",
+      "n_trades": 1,
+      "n_unique_entry_days": 1,
+      "win_rate": 1.0,
+      "expectancy": 0.11497149409271679,
+      "avg_hold": 14.0,
+      "exit_reason_counts": {
+        "first_hi20": 1
+      },
+      "random_win_rate": 0.0,
+      "random_expectancy": -0.19412125824454585,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_or_ma60w3__Asteep__hi20_only",
+      "n_trades": 1,
+      "n_unique_entry_days": 1,
+      "win_rate": 1.0,
+      "expectancy": 0.11497149409271679,
+      "avg_hold": 14.0,
+      "exit_reason_counts": {
+        "first_hi20": 1
+      },
+      "random_win_rate": 1.0,
+      "random_expectancy": 0.13588888888888884,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_start__S70__hi20_or_desync",
+      "n_trades": 4,
+      "n_unique_entry_days": 4,
+      "win_rate": 1.0,
+      "expectancy": 0.060460583822501024,
+      "avg_hold": 7.5,
+      "exit_reason_counts": {
+        "first_hi20": 4
+      },
+      "random_win_rate": 1.0,
+      "random_expectancy": 0.08764825091462158,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_start__S70__hi20_only",
+      "n_trades": 4,
+      "n_unique_entry_days": 4,
+      "win_rate": 1.0,
+      "expectancy": 0.060460583822501024,
+      "avg_hold": 7.5,
+      "exit_reason_counts": {
+        "first_hi20": 4
+      },
+      "random_win_rate": 0.5,
+      "random_expectancy": 0.002646360850488253,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_or_ma60w3__S70__hi20_or_desync",
+      "n_trades": 4,
+      "n_unique_entry_days": 4,
+      "win_rate": 1.0,
+      "expectancy": 0.060460583822501024,
+      "avg_hold": 7.5,
+      "exit_reason_counts": {
+        "first_hi20": 4
+      },
+      "random_win_rate": 1.0,
+      "random_expectancy": 0.12553688399142948,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_or_ma60w3__S70__hi20_only",
+      "n_trades": 4,
+      "n_unique_entry_days": 4,
+      "win_rate": 1.0,
+      "expectancy": 0.060460583822501024,
+      "avg_hold": 7.5,
+      "exit_reason_counts": {
+        "first_hi20": 4
+      },
+      "random_win_rate": 0.5,
+      "random_expectancy": -0.000796660874138766,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_start__VA__hi20_or_desync",
+      "n_trades": 4,
+      "n_unique_entry_days": 4,
+      "win_rate": 1.0,
+      "expectancy": 0.048747285759701,
+      "avg_hold": 8.25,
+      "exit_reason_counts": {
+        "first_hi20": 4
+      },
+      "random_win_rate": 0.3333333333333333,
+      "random_expectancy": -0.047652219563567244,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_start__VA__hi20_only",
+      "n_trades": 4,
+      "n_unique_entry_days": 4,
+      "win_rate": 1.0,
+      "expectancy": 0.048747285759701,
+      "avg_hold": 8.25,
+      "exit_reason_counts": {
+        "first_hi20": 4
+      },
+      "random_win_rate": 0.6666666666666666,
+      "random_expectancy": -0.03711840451981426,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_start__VPA__hi20_or_desync",
+      "n_trades": 4,
+      "n_unique_entry_days": 4,
+      "win_rate": 1.0,
+      "expectancy": 0.048747285759701,
+      "avg_hold": 8.25,
+      "exit_reason_counts": {
+        "first_hi20": 4
+      },
+      "random_win_rate": 1.0,
+      "random_expectancy": 0.05879654944113403,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_start__VPA__hi20_only",
+      "n_trades": 4,
+      "n_unique_entry_days": 4,
+      "win_rate": 1.0,
+      "expectancy": 0.048747285759701,
+      "avg_hold": 8.25,
+      "exit_reason_counts": {
+        "first_hi20": 4
+      },
+      "random_win_rate": 0.6666666666666666,
+      "random_expectancy": 0.020600716648807655,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_start__VTA__hi20_or_desync",
+      "n_trades": 4,
+      "n_unique_entry_days": 4,
+      "win_rate": 1.0,
+      "expectancy": 0.048747285759701,
+      "avg_hold": 8.25,
+      "exit_reason_counts": {
+        "first_hi20": 4
+      },
+      "random_win_rate": 0.3333333333333333,
+      "random_expectancy": -0.0031365086022140387,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_start__VTA__hi20_only",
+      "n_trades": 4,
+      "n_unique_entry_days": 4,
+      "win_rate": 1.0,
+      "expectancy": 0.048747285759701,
+      "avg_hold": 8.25,
+      "exit_reason_counts": {
+        "first_hi20": 4
+      },
+      "random_win_rate": 1.0,
+      "random_expectancy": 0.06027724841358084,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_start__VPTA__hi20_or_desync",
+      "n_trades": 4,
+      "n_unique_entry_days": 4,
+      "win_rate": 1.0,
+      "expectancy": 0.048747285759701,
+      "avg_hold": 8.25,
+      "exit_reason_counts": {
+        "first_hi20": 4
+      },
+      "random_win_rate": 0.6666666666666666,
+      "random_expectancy": -0.001916206730860089,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_start__VPTA__hi20_only",
+      "n_trades": 4,
+      "n_unique_entry_days": 4,
+      "win_rate": 1.0,
+      "expectancy": 0.048747285759701,
+      "avg_hold": 8.25,
+      "exit_reason_counts": {
+        "first_hi20": 4
+      },
+      "random_win_rate": 0.6666666666666666,
+      "random_expectancy": 0.0368715192782183,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_start__VPTA_S55__hi20_or_desync",
+      "n_trades": 4,
+      "n_unique_entry_days": 4,
+      "win_rate": 1.0,
+      "expectancy": 0.048747285759701,
+      "avg_hold": 8.25,
+      "exit_reason_counts": {
+        "first_hi20": 4
+      },
+      "random_win_rate": 0.6666666666666666,
+      "random_expectancy": 0.06731001650451966,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_start__VPTA_S55__hi20_only",
+      "n_trades": 4,
+      "n_unique_entry_days": 4,
+      "win_rate": 1.0,
+      "expectancy": 0.048747285759701,
+      "avg_hold": 8.25,
+      "exit_reason_counts": {
+        "first_hi20": 4
+      },
+      "random_win_rate": 0.6666666666666666,
+      "random_expectancy": 0.08565421895724923,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_or_ma60w3__VA__hi20_or_desync",
+      "n_trades": 4,
+      "n_unique_entry_days": 4,
+      "win_rate": 1.0,
+      "expectancy": 0.048747285759701,
+      "avg_hold": 8.25,
+      "exit_reason_counts": {
+        "first_hi20": 4
+      },
+      "random_win_rate": 1.0,
+      "random_expectancy": 0.014981728865939998,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_or_ma60w3__VA__hi20_only",
+      "n_trades": 4,
+      "n_unique_entry_days": 4,
+      "win_rate": 1.0,
+      "expectancy": 0.048747285759701,
+      "avg_hold": 8.25,
+      "exit_reason_counts": {
+        "first_hi20": 4
+      },
+      "random_win_rate": 0.3333333333333333,
+      "random_expectancy": -0.02005990851222657,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_or_ma60w3__VPA__hi20_or_desync",
+      "n_trades": 4,
+      "n_unique_entry_days": 4,
+      "win_rate": 1.0,
+      "expectancy": 0.048747285759701,
+      "avg_hold": 8.25,
+      "exit_reason_counts": {
+        "first_hi20": 4
+      },
+      "random_win_rate": 0.6666666666666666,
+      "random_expectancy": 0.12313153483917312,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_or_ma60w3__VPA__hi20_only",
+      "n_trades": 4,
+      "n_unique_entry_days": 4,
+      "win_rate": 1.0,
+      "expectancy": 0.048747285759701,
+      "avg_hold": 8.25,
+      "exit_reason_counts": {
+        "first_hi20": 4
+      },
+      "random_win_rate": 0.6666666666666666,
+      "random_expectancy": 0.024027734170591303,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_or_ma60w3__VTA__hi20_or_desync",
+      "n_trades": 4,
+      "n_unique_entry_days": 4,
+      "win_rate": 1.0,
+      "expectancy": 0.048747285759701,
+      "avg_hold": 8.25,
+      "exit_reason_counts": {
+        "first_hi20": 4
+      },
+      "random_win_rate": 0.6666666666666666,
+      "random_expectancy": 0.14329629629629628,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_or_ma60w3__VTA__hi20_only",
+      "n_trades": 4,
+      "n_unique_entry_days": 4,
+      "win_rate": 1.0,
+      "expectancy": 0.048747285759701,
+      "avg_hold": 8.25,
+      "exit_reason_counts": {
+        "first_hi20": 4
+      },
+      "random_win_rate": 0.6666666666666666,
+      "random_expectancy": 0.0017011381751352872,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_or_ma60w3__VPTA__hi20_or_desync",
+      "n_trades": 4,
+      "n_unique_entry_days": 4,
+      "win_rate": 1.0,
+      "expectancy": 0.048747285759701,
+      "avg_hold": 8.25,
+      "exit_reason_counts": {
+        "first_hi20": 4
+      },
+      "random_win_rate": 0.6666666666666666,
+      "random_expectancy": 0.06428648711556262,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_or_ma60w3__VPTA__hi20_only",
+      "n_trades": 4,
+      "n_unique_entry_days": 4,
+      "win_rate": 1.0,
+      "expectancy": 0.048747285759701,
+      "avg_hold": 8.25,
+      "exit_reason_counts": {
+        "first_hi20": 4
+      },
+      "random_win_rate": 1.0,
+      "random_expectancy": 0.039626812859632765,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_or_ma60w3__VPTA_S55__hi20_or_desync",
+      "n_trades": 4,
+      "n_unique_entry_days": 4,
+      "win_rate": 1.0,
+      "expectancy": 0.048747285759701,
+      "avg_hold": 8.25,
+      "exit_reason_counts": {
+        "first_hi20": 4
+      },
+      "random_win_rate": 1.0,
+      "random_expectancy": 0.08206221822073272,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_or_ma60w3__VPTA_S55__hi20_only",
+      "n_trades": 4,
+      "n_unique_entry_days": 4,
+      "win_rate": 1.0,
+      "expectancy": 0.048747285759701,
+      "avg_hold": 8.25,
+      "exit_reason_counts": {
+        "first_hi20": 4
+      },
+      "random_win_rate": 1.0,
+      "random_expectancy": 0.11155083337564131,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_start__VP__hi20_or_desync",
+      "n_trades": 17,
+      "n_unique_entry_days": 16,
+      "win_rate": 0.9411764705882353,
+      "expectancy": 0.06526843996394312,
+      "avg_hold": 10.764705882352942,
+      "exit_reason_counts": {
+        "first_hi20": 17
+      },
+      "random_win_rate": 0.7142857142857143,
+      "random_expectancy": 0.010320491634408466,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_start__VP__hi20_only",
+      "n_trades": 17,
+      "n_unique_entry_days": 16,
+      "win_rate": 0.9411764705882353,
+      "expectancy": 0.06526843996394312,
+      "avg_hold": 10.764705882352942,
+      "exit_reason_counts": {
+        "first_hi20": 17
+      },
+      "random_win_rate": 0.7857142857142857,
+      "random_expectancy": 0.03051778870392417,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_start__VPT__hi20_or_desync",
+      "n_trades": 17,
+      "n_unique_entry_days": 16,
+      "win_rate": 0.9411764705882353,
+      "expectancy": 0.06526843996394312,
+      "avg_hold": 10.764705882352942,
+      "exit_reason_counts": {
+        "first_hi20": 17
+      },
+      "random_win_rate": 0.7142857142857143,
+      "random_expectancy": 0.025747022845212377,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_start__VPT__hi20_only",
+      "n_trades": 17,
+      "n_unique_entry_days": 16,
+      "win_rate": 0.9411764705882353,
+      "expectancy": 0.06526843996394312,
+      "avg_hold": 10.764705882352942,
+      "exit_reason_counts": {
+        "first_hi20": 17
+      },
+      "random_win_rate": 0.5,
+      "random_expectancy": -0.012720627529040502,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_or_ma60w3__VP__hi20_or_desync",
+      "n_trades": 17,
+      "n_unique_entry_days": 16,
+      "win_rate": 0.9411764705882353,
+      "expectancy": 0.06526843996394312,
+      "avg_hold": 10.764705882352942,
+      "exit_reason_counts": {
+        "first_hi20": 17
+      },
+      "random_win_rate": 0.5714285714285714,
+      "random_expectancy": -0.018524514990414465,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_or_ma60w3__VP__hi20_only",
+      "n_trades": 17,
+      "n_unique_entry_days": 16,
+      "win_rate": 0.9411764705882353,
+      "expectancy": 0.06526843996394312,
+      "avg_hold": 10.764705882352942,
+      "exit_reason_counts": {
+        "first_hi20": 17
+      },
+      "random_win_rate": 0.7142857142857143,
+      "random_expectancy": 0.004367756517870953,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_or_ma60w3__VPT__hi20_or_desync",
+      "n_trades": 17,
+      "n_unique_entry_days": 16,
+      "win_rate": 0.9411764705882353,
+      "expectancy": 0.06526843996394312,
+      "avg_hold": 10.764705882352942,
+      "exit_reason_counts": {
+        "first_hi20": 17
+      },
+      "random_win_rate": 0.7857142857142857,
+      "random_expectancy": 0.002160634341280419,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_or_ma60w3__VPT__hi20_only",
+      "n_trades": 17,
+      "n_unique_entry_days": 16,
+      "win_rate": 0.9411764705882353,
+      "expectancy": 0.06526843996394312,
+      "avg_hold": 10.764705882352942,
+      "exit_reason_counts": {
+        "first_hi20": 17
+      },
+      "random_win_rate": 0.6428571428571429,
+      "random_expectancy": 0.006650668804673386,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_start__S55__hi20_or_desync",
+      "n_trades": 13,
+      "n_unique_entry_days": 12,
+      "win_rate": 0.8461538461538461,
+      "expectancy": 0.05563242453748345,
+      "avg_hold": 12.384615384615385,
+      "exit_reason_counts": {
+        "first_hi20": 13
+      },
+      "random_win_rate": 0.5714285714285714,
+      "random_expectancy": 0.009443912372244194,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_start__S55__hi20_only",
+      "n_trades": 13,
+      "n_unique_entry_days": 12,
+      "win_rate": 0.8461538461538461,
+      "expectancy": 0.05563242453748345,
+      "avg_hold": 12.384615384615385,
+      "exit_reason_counts": {
+        "first_hi20": 13
+      },
+      "random_win_rate": 0.42857142857142855,
+      "random_expectancy": 0.028155861964019535,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_or_ma60w3__S55__hi20_or_desync",
+      "n_trades": 13,
+      "n_unique_entry_days": 12,
+      "win_rate": 0.8461538461538461,
+      "expectancy": 0.05563242453748345,
+      "avg_hold": 12.384615384615385,
+      "exit_reason_counts": {
+        "first_hi20": 13
+      },
+      "random_win_rate": 0.5714285714285714,
+      "random_expectancy": -0.052680061723731804,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_or_ma60w3__S55__hi20_only",
+      "n_trades": 13,
+      "n_unique_entry_days": 12,
+      "win_rate": 0.8461538461538461,
+      "expectancy": 0.05563242453748345,
+      "avg_hold": 12.384615384615385,
+      "exit_reason_counts": {
+        "first_hi20": 13
+      },
+      "random_win_rate": 0.8571428571428571,
+      "random_expectancy": 0.05745628670801833,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_start__P__hi20_or_desync",
+      "n_trades": 69,
+      "n_unique_entry_days": 67,
+      "win_rate": 0.7681159420289855,
+      "expectancy": -0.0023808543998875345,
+      "avg_hold": 18.17391304347826,
+      "exit_reason_counts": {
+        "first_hi20": 64,
+        "max_hold_60": 5
+      },
+      "random_win_rate": 0.6666666666666666,
+      "random_expectancy": 0.015513239005387862,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": 0.0049580472921433305
+    },
+    {
+      "key": "core_w3_start__P__hi20_only",
+      "n_trades": 69,
+      "n_unique_entry_days": 67,
+      "win_rate": 0.7681159420289855,
+      "expectancy": -0.0023808543998875345,
+      "avg_hold": 18.17391304347826,
+      "exit_reason_counts": {
+        "first_hi20": 64,
+        "max_hold_60": 5
+      },
+      "random_win_rate": 0.7058823529411765,
+      "random_expectancy": 0.010885703921786219,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": 0.0049580472921433305
+    },
+    {
+      "key": "core_w3_start__PT__hi20_or_desync",
+      "n_trades": 69,
+      "n_unique_entry_days": 67,
+      "win_rate": 0.7681159420289855,
+      "expectancy": -0.0023808543998875345,
+      "avg_hold": 18.17391304347826,
+      "exit_reason_counts": {
+        "first_hi20": 64,
+        "max_hold_60": 5
+      },
+      "random_win_rate": 0.6530612244897959,
+      "random_expectancy": 0.009367918006008537,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": 0.0049580472921433305
+    },
+    {
+      "key": "core_w3_start__PT__hi20_only",
+      "n_trades": 69,
+      "n_unique_entry_days": 67,
+      "win_rate": 0.7681159420289855,
+      "expectancy": -0.0023808543998875345,
+      "avg_hold": 18.17391304347826,
+      "exit_reason_counts": {
+        "first_hi20": 64,
+        "max_hold_60": 5
+      },
+      "random_win_rate": 0.7755102040816326,
+      "random_expectancy": 0.013237301659164383,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": 0.0049580472921433305
+    },
+    {
+      "key": "core_w3_start__D0_none__hi20_or_desync",
+      "n_trades": 76,
+      "n_unique_entry_days": 74,
+      "win_rate": 0.7631578947368421,
+      "expectancy": 0.0015491054093313271,
+      "avg_hold": 17.513157894736842,
+      "exit_reason_counts": {
+        "first_hi20": 71,
+        "max_hold_60": 5
+      },
+      "random_win_rate": 0.8,
+      "random_expectancy": 0.020343571937254598,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": 0.0
+    },
+    {
+      "key": "core_w3_start__D0_none__hi20_only",
+      "n_trades": 76,
+      "n_unique_entry_days": 74,
+      "win_rate": 0.7631578947368421,
+      "expectancy": 0.0015491054093313271,
+      "avg_hold": 17.513157894736842,
+      "exit_reason_counts": {
+        "first_hi20": 71,
+        "max_hold_60": 5
+      },
+      "random_win_rate": 0.676056338028169,
+      "random_expectancy": 0.012003781106962727,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": 0.0
+    },
+    {
+      "key": "core_w3_start__T__hi20_or_desync",
+      "n_trades": 76,
+      "n_unique_entry_days": 74,
+      "win_rate": 0.7631578947368421,
+      "expectancy": 0.0015491054093313271,
+      "avg_hold": 17.513157894736842,
+      "exit_reason_counts": {
+        "first_hi20": 71,
+        "max_hold_60": 5
+      },
+      "random_win_rate": 0.8888888888888888,
+      "random_expectancy": 0.030372819443300968,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": 0.0
+    },
+    {
+      "key": "core_w3_start__T__hi20_only",
+      "n_trades": 76,
+      "n_unique_entry_days": 74,
+      "win_rate": 0.7631578947368421,
+      "expectancy": 0.0015491054093313271,
+      "avg_hold": 17.513157894736842,
+      "exit_reason_counts": {
+        "first_hi20": 71,
+        "max_hold_60": 5
+      },
+      "random_win_rate": 0.7222222222222222,
+      "random_expectancy": 0.009964320040090164,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": 0.0
+    },
+    {
+      "key": "core_w3_or_ma60w3__D0_none__hi20_or_desync",
+      "n_trades": 113,
+      "n_unique_entry_days": 110,
+      "win_rate": 0.7522123893805309,
+      "expectancy": 0.006333207113396406,
+      "avg_hold": 18.469026548672566,
+      "exit_reason_counts": {
+        "first_hi20": 104,
+        "max_hold_60": 9
+      },
+      "random_win_rate": 0.7285714285714285,
+      "random_expectancy": 0.007648876032734126,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": 0.0
+    },
+    {
+      "key": "core_w3_or_ma60w3__D0_none__hi20_only",
+      "n_trades": 113,
+      "n_unique_entry_days": 110,
+      "win_rate": 0.7522123893805309,
+      "expectancy": 0.006333207113396406,
+      "avg_hold": 18.469026548672566,
+      "exit_reason_counts": {
+        "first_hi20": 104,
+        "max_hold_60": 9
+      },
+      "random_win_rate": 0.7536231884057971,
+      "random_expectancy": 0.02335705595998099,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": 0.0
+    },
+    {
+      "key": "core_ma60_w3__D0_none__hi20_or_desync",
+      "n_trades": 46,
+      "n_unique_entry_days": 45,
+      "win_rate": 0.7391304347826086,
+      "expectancy": 0.005728339689441115,
+      "avg_hold": 20.565217391304348,
+      "exit_reason_counts": {
+        "first_hi20": 40,
+        "max_hold_60": 6
+      },
+      "random_win_rate": 0.7714285714285715,
+      "random_expectancy": 0.012779103256947932,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7391304347826086,
+      "win_minus_core": 0.0
+    },
+    {
+      "key": "core_w3_start__A__hi20_or_desync",
+      "n_trades": 10,
+      "n_unique_entry_days": 10,
+      "win_rate": 0.7,
+      "expectancy": 0.005886025752400248,
+      "avg_hold": 16.4,
+      "exit_reason_counts": {
+        "first_hi20": 10
+      },
+      "random_win_rate": 0.75,
+      "random_expectancy": 0.03975930827184401,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_start__A__hi20_only",
+      "n_trades": 10,
+      "n_unique_entry_days": 10,
+      "win_rate": 0.7,
+      "expectancy": 0.005886025752400248,
+      "avg_hold": 16.4,
+      "exit_reason_counts": {
+        "first_hi20": 10
+      },
+      "random_win_rate": 1.0,
+      "random_expectancy": 0.09362415062952309,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_start__TA__hi20_or_desync",
+      "n_trades": 10,
+      "n_unique_entry_days": 10,
+      "win_rate": 0.7,
+      "expectancy": 0.005886025752400248,
+      "avg_hold": 16.4,
+      "exit_reason_counts": {
+        "first_hi20": 10
+      },
+      "random_win_rate": 0.375,
+      "random_expectancy": 0.0017404141191343387,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_start__TA__hi20_only",
+      "n_trades": 10,
+      "n_unique_entry_days": 10,
+      "win_rate": 0.7,
+      "expectancy": 0.005886025752400248,
+      "avg_hold": 16.4,
+      "exit_reason_counts": {
+        "first_hi20": 10
+      },
+      "random_win_rate": 0.875,
+      "random_expectancy": 0.042045637558629834,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_or_ma60w3__A__hi20_or_desync",
+      "n_trades": 10,
+      "n_unique_entry_days": 10,
+      "win_rate": 0.7,
+      "expectancy": 0.005886025752400248,
+      "avg_hold": 16.4,
+      "exit_reason_counts": {
+        "first_hi20": 10
+      },
+      "random_win_rate": 0.75,
+      "random_expectancy": 0.022042206118312382,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_or_ma60w3__A__hi20_only",
+      "n_trades": 10,
+      "n_unique_entry_days": 10,
+      "win_rate": 0.7,
+      "expectancy": 0.005886025752400248,
+      "avg_hold": 16.4,
+      "exit_reason_counts": {
+        "first_hi20": 10
+      },
+      "random_win_rate": 0.75,
+      "random_expectancy": 0.028713920761028147,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_or_ma60w3__TA__hi20_or_desync",
+      "n_trades": 10,
+      "n_unique_entry_days": 10,
+      "win_rate": 0.7,
+      "expectancy": 0.005886025752400248,
+      "avg_hold": 16.4,
+      "exit_reason_counts": {
+        "first_hi20": 10
+      },
+      "random_win_rate": 0.875,
+      "random_expectancy": -0.018707362955487028,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_or_ma60w3__TA__hi20_only",
+      "n_trades": 10,
+      "n_unique_entry_days": 10,
+      "win_rate": 0.7,
+      "expectancy": 0.005886025752400248,
+      "avg_hold": 16.4,
+      "exit_reason_counts": {
+        "first_hi20": 10
+      },
+      "random_win_rate": 0.625,
+      "random_expectancy": 0.03169769612309935,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_start__PA__hi20_or_desync",
+      "n_trades": 9,
+      "n_unique_entry_days": 9,
+      "win_rate": 0.6666666666666666,
+      "expectancy": 0.004404221848776251,
+      "avg_hold": 18.0,
+      "exit_reason_counts": {
+        "first_hi20": 9
+      },
+      "random_win_rate": 0.5714285714285714,
+      "random_expectancy": 0.025398310766692394,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_start__PA__hi20_only",
+      "n_trades": 9,
+      "n_unique_entry_days": 9,
+      "win_rate": 0.6666666666666666,
+      "expectancy": 0.004404221848776251,
+      "avg_hold": 18.0,
+      "exit_reason_counts": {
+        "first_hi20": 9
+      },
+      "random_win_rate": 0.5714285714285714,
+      "random_expectancy": 0.019356025741435752,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_start__PTA__hi20_or_desync",
+      "n_trades": 9,
+      "n_unique_entry_days": 9,
+      "win_rate": 0.6666666666666666,
+      "expectancy": 0.004404221848776251,
+      "avg_hold": 18.0,
+      "exit_reason_counts": {
+        "first_hi20": 9
+      },
+      "random_win_rate": 1.0,
+      "random_expectancy": 0.07337000631596913,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_start__PTA__hi20_only",
+      "n_trades": 9,
+      "n_unique_entry_days": 9,
+      "win_rate": 0.6666666666666666,
+      "expectancy": 0.004404221848776251,
+      "avg_hold": 18.0,
+      "exit_reason_counts": {
+        "first_hi20": 9
+      },
+      "random_win_rate": 1.0,
+      "random_expectancy": 0.0359656559542521,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_or_ma60w3__PA__hi20_or_desync",
+      "n_trades": 9,
+      "n_unique_entry_days": 9,
+      "win_rate": 0.6666666666666666,
+      "expectancy": 0.004404221848776251,
+      "avg_hold": 18.0,
+      "exit_reason_counts": {
+        "first_hi20": 9
+      },
+      "random_win_rate": 1.0,
+      "random_expectancy": 0.07483407755708757,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_or_ma60w3__PA__hi20_only",
+      "n_trades": 9,
+      "n_unique_entry_days": 9,
+      "win_rate": 0.6666666666666666,
+      "expectancy": 0.004404221848776251,
+      "avg_hold": 18.0,
+      "exit_reason_counts": {
+        "first_hi20": 9
+      },
+      "random_win_rate": 0.42857142857142855,
+      "random_expectancy": 0.012686873916274528,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_or_ma60w3__PTA__hi20_or_desync",
+      "n_trades": 9,
+      "n_unique_entry_days": 9,
+      "win_rate": 0.6666666666666666,
+      "expectancy": 0.004404221848776251,
+      "avg_hold": 18.0,
+      "exit_reason_counts": {
+        "first_hi20": 9
+      },
+      "random_win_rate": 1.0,
+      "random_expectancy": 0.041256812717703616,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_w3_or_ma60w3__PTA__hi20_only",
+      "n_trades": 9,
+      "n_unique_entry_days": 9,
+      "win_rate": 0.6666666666666666,
+      "expectancy": 0.004404221848776251,
+      "avg_hold": 18.0,
+      "exit_reason_counts": {
+        "first_hi20": 9
+      },
+      "random_win_rate": 0.7142857142857143,
+      "random_expectancy": 0.043525850354693696,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_ma60_w3__V__hi20_or_desync",
+      "n_trades": 3,
+      "n_unique_entry_days": 3,
+      "win_rate": 0.6666666666666666,
+      "expectancy": -0.0007484618541870129,
+      "avg_hold": 27.333333333333332,
+      "exit_reason_counts": {
+        "first_hi20": 3
+      },
+      "random_win_rate": 0.5,
+      "random_expectancy": -0.016348188052445145,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7391304347826086,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_ma60_w3__V__hi20_only",
+      "n_trades": 3,
+      "n_unique_entry_days": 3,
+      "win_rate": 0.6666666666666666,
+      "expectancy": -0.0007484618541870129,
+      "avg_hold": 27.333333333333332,
+      "exit_reason_counts": {
+        "first_hi20": 3
+      },
+      "random_win_rate": 0.5,
+      "random_expectancy": -0.011783354869278895,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7391304347826086,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_ma60_w3__P__hi20_or_desync",
+      "n_trades": 3,
+      "n_unique_entry_days": 3,
+      "win_rate": 0.6666666666666666,
+      "expectancy": -0.03970724424510382,
+      "avg_hold": 29.0,
+      "exit_reason_counts": {
+        "first_hi20": 3
+      },
+      "random_win_rate": 1.0,
+      "random_expectancy": 0.04412026622546209,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7391304347826086,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_ma60_w3__P__hi20_only",
+      "n_trades": 3,
+      "n_unique_entry_days": 3,
+      "win_rate": 0.6666666666666666,
+      "expectancy": -0.03970724424510382,
+      "avg_hold": 29.0,
+      "exit_reason_counts": {
+        "first_hi20": 3
+      },
+      "random_win_rate": 1.0,
+      "random_expectancy": 0.037757778381492746,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7391304347826086,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_ma60_w3__T__hi20_or_desync",
+      "n_trades": 0,
+      "n_unique_entry_days": 0,
+      "win_rate": NaN,
+      "expectancy": NaN,
+      "avg_hold": NaN,
+      "exit_reason_counts": {},
+      "random_win_rate": NaN,
+      "random_expectancy": NaN,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7391304347826086,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_ma60_w3__T__hi20_only",
+      "n_trades": 0,
+      "n_unique_entry_days": 0,
+      "win_rate": NaN,
+      "expectancy": NaN,
+      "avg_hold": NaN,
+      "exit_reason_counts": {},
+      "random_win_rate": NaN,
+      "random_expectancy": NaN,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7391304347826086,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_ma60_w3__A__hi20_or_desync",
+      "n_trades": 0,
+      "n_unique_entry_days": 0,
+      "win_rate": NaN,
+      "expectancy": NaN,
+      "avg_hold": NaN,
+      "exit_reason_counts": {},
+      "random_win_rate": NaN,
+      "random_expectancy": NaN,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7391304347826086,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_ma60_w3__A__hi20_only",
+      "n_trades": 0,
+      "n_unique_entry_days": 0,
+      "win_rate": NaN,
+      "expectancy": NaN,
+      "avg_hold": NaN,
+      "exit_reason_counts": {},
+      "random_win_rate": NaN,
+      "random_expectancy": NaN,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7391304347826086,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_ma60_w3__Asteep__hi20_or_desync",
+      "n_trades": 0,
+      "n_unique_entry_days": 0,
+      "win_rate": NaN,
+      "expectancy": NaN,
+      "avg_hold": NaN,
+      "exit_reason_counts": {},
+      "random_win_rate": NaN,
+      "random_expectancy": NaN,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7391304347826086,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_ma60_w3__Asteep__hi20_only",
+      "n_trades": 0,
+      "n_unique_entry_days": 0,
+      "win_rate": NaN,
+      "expectancy": NaN,
+      "avg_hold": NaN,
+      "exit_reason_counts": {},
+      "random_win_rate": NaN,
+      "random_expectancy": NaN,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7391304347826086,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_ma60_w3__VP__hi20_or_desync",
+      "n_trades": 0,
+      "n_unique_entry_days": 0,
+      "win_rate": NaN,
+      "expectancy": NaN,
+      "avg_hold": NaN,
+      "exit_reason_counts": {},
+      "random_win_rate": NaN,
+      "random_expectancy": NaN,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7391304347826086,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_ma60_w3__VP__hi20_only",
+      "n_trades": 0,
+      "n_unique_entry_days": 0,
+      "win_rate": NaN,
+      "expectancy": NaN,
+      "avg_hold": NaN,
+      "exit_reason_counts": {},
+      "random_win_rate": NaN,
+      "random_expectancy": NaN,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7391304347826086,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_ma60_w3__VT__hi20_or_desync",
+      "n_trades": 0,
+      "n_unique_entry_days": 0,
+      "win_rate": NaN,
+      "expectancy": NaN,
+      "avg_hold": NaN,
+      "exit_reason_counts": {},
+      "random_win_rate": NaN,
+      "random_expectancy": NaN,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7391304347826086,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_ma60_w3__VT__hi20_only",
+      "n_trades": 0,
+      "n_unique_entry_days": 0,
+      "win_rate": NaN,
+      "expectancy": NaN,
+      "avg_hold": NaN,
+      "exit_reason_counts": {},
+      "random_win_rate": NaN,
+      "random_expectancy": NaN,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7391304347826086,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_ma60_w3__VA__hi20_or_desync",
+      "n_trades": 0,
+      "n_unique_entry_days": 0,
+      "win_rate": NaN,
+      "expectancy": NaN,
+      "avg_hold": NaN,
+      "exit_reason_counts": {},
+      "random_win_rate": NaN,
+      "random_expectancy": NaN,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7391304347826086,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_ma60_w3__VA__hi20_only",
+      "n_trades": 0,
+      "n_unique_entry_days": 0,
+      "win_rate": NaN,
+      "expectancy": NaN,
+      "avg_hold": NaN,
+      "exit_reason_counts": {},
+      "random_win_rate": NaN,
+      "random_expectancy": NaN,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7391304347826086,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_ma60_w3__PT__hi20_or_desync",
+      "n_trades": 0,
+      "n_unique_entry_days": 0,
+      "win_rate": NaN,
+      "expectancy": NaN,
+      "avg_hold": NaN,
+      "exit_reason_counts": {},
+      "random_win_rate": NaN,
+      "random_expectancy": NaN,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7391304347826086,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_ma60_w3__PT__hi20_only",
+      "n_trades": 0,
+      "n_unique_entry_days": 0,
+      "win_rate": NaN,
+      "expectancy": NaN,
+      "avg_hold": NaN,
+      "exit_reason_counts": {},
+      "random_win_rate": NaN,
+      "random_expectancy": NaN,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7391304347826086,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_ma60_w3__PA__hi20_or_desync",
+      "n_trades": 0,
+      "n_unique_entry_days": 0,
+      "win_rate": NaN,
+      "expectancy": NaN,
+      "avg_hold": NaN,
+      "exit_reason_counts": {},
+      "random_win_rate": NaN,
+      "random_expectancy": NaN,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7391304347826086,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_ma60_w3__PA__hi20_only",
+      "n_trades": 0,
+      "n_unique_entry_days": 0,
+      "win_rate": NaN,
+      "expectancy": NaN,
+      "avg_hold": NaN,
+      "exit_reason_counts": {},
+      "random_win_rate": NaN,
+      "random_expectancy": NaN,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7391304347826086,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_ma60_w3__TA__hi20_or_desync",
+      "n_trades": 0,
+      "n_unique_entry_days": 0,
+      "win_rate": NaN,
+      "expectancy": NaN,
+      "avg_hold": NaN,
+      "exit_reason_counts": {},
+      "random_win_rate": NaN,
+      "random_expectancy": NaN,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7391304347826086,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_ma60_w3__TA__hi20_only",
+      "n_trades": 0,
+      "n_unique_entry_days": 0,
+      "win_rate": NaN,
+      "expectancy": NaN,
+      "avg_hold": NaN,
+      "exit_reason_counts": {},
+      "random_win_rate": NaN,
+      "random_expectancy": NaN,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7391304347826086,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_ma60_w3__VPT__hi20_or_desync",
+      "n_trades": 0,
+      "n_unique_entry_days": 0,
+      "win_rate": NaN,
+      "expectancy": NaN,
+      "avg_hold": NaN,
+      "exit_reason_counts": {},
+      "random_win_rate": NaN,
+      "random_expectancy": NaN,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7391304347826086,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_ma60_w3__VPT__hi20_only",
+      "n_trades": 0,
+      "n_unique_entry_days": 0,
+      "win_rate": NaN,
+      "expectancy": NaN,
+      "avg_hold": NaN,
+      "exit_reason_counts": {},
+      "random_win_rate": NaN,
+      "random_expectancy": NaN,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7391304347826086,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_ma60_w3__VPA__hi20_or_desync",
+      "n_trades": 0,
+      "n_unique_entry_days": 0,
+      "win_rate": NaN,
+      "expectancy": NaN,
+      "avg_hold": NaN,
+      "exit_reason_counts": {},
+      "random_win_rate": NaN,
+      "random_expectancy": NaN,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7391304347826086,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_ma60_w3__VPA__hi20_only",
+      "n_trades": 0,
+      "n_unique_entry_days": 0,
+      "win_rate": NaN,
+      "expectancy": NaN,
+      "avg_hold": NaN,
+      "exit_reason_counts": {},
+      "random_win_rate": NaN,
+      "random_expectancy": NaN,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7391304347826086,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_ma60_w3__VTA__hi20_or_desync",
+      "n_trades": 0,
+      "n_unique_entry_days": 0,
+      "win_rate": NaN,
+      "expectancy": NaN,
+      "avg_hold": NaN,
+      "exit_reason_counts": {},
+      "random_win_rate": NaN,
+      "random_expectancy": NaN,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7391304347826086,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_ma60_w3__VTA__hi20_only",
+      "n_trades": 0,
+      "n_unique_entry_days": 0,
+      "win_rate": NaN,
+      "expectancy": NaN,
+      "avg_hold": NaN,
+      "exit_reason_counts": {},
+      "random_win_rate": NaN,
+      "random_expectancy": NaN,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7391304347826086,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_ma60_w3__PTA__hi20_or_desync",
+      "n_trades": 0,
+      "n_unique_entry_days": 0,
+      "win_rate": NaN,
+      "expectancy": NaN,
+      "avg_hold": NaN,
+      "exit_reason_counts": {},
+      "random_win_rate": NaN,
+      "random_expectancy": NaN,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7391304347826086,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_ma60_w3__PTA__hi20_only",
+      "n_trades": 0,
+      "n_unique_entry_days": 0,
+      "win_rate": NaN,
+      "expectancy": NaN,
+      "avg_hold": NaN,
+      "exit_reason_counts": {},
+      "random_win_rate": NaN,
+      "random_expectancy": NaN,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7391304347826086,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_ma60_w3__VPTA__hi20_or_desync",
+      "n_trades": 0,
+      "n_unique_entry_days": 0,
+      "win_rate": NaN,
+      "expectancy": NaN,
+      "avg_hold": NaN,
+      "exit_reason_counts": {},
+      "random_win_rate": NaN,
+      "random_expectancy": NaN,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7391304347826086,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_ma60_w3__VPTA__hi20_only",
+      "n_trades": 0,
+      "n_unique_entry_days": 0,
+      "win_rate": NaN,
+      "expectancy": NaN,
+      "avg_hold": NaN,
+      "exit_reason_counts": {},
+      "random_win_rate": NaN,
+      "random_expectancy": NaN,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7391304347826086,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_ma60_w3__S55__hi20_or_desync",
+      "n_trades": 0,
+      "n_unique_entry_days": 0,
+      "win_rate": NaN,
+      "expectancy": NaN,
+      "avg_hold": NaN,
+      "exit_reason_counts": {},
+      "random_win_rate": NaN,
+      "random_expectancy": NaN,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7391304347826086,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_ma60_w3__S55__hi20_only",
+      "n_trades": 0,
+      "n_unique_entry_days": 0,
+      "win_rate": NaN,
+      "expectancy": NaN,
+      "avg_hold": NaN,
+      "exit_reason_counts": {},
+      "random_win_rate": NaN,
+      "random_expectancy": NaN,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7391304347826086,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_ma60_w3__S70__hi20_or_desync",
+      "n_trades": 0,
+      "n_unique_entry_days": 0,
+      "win_rate": NaN,
+      "expectancy": NaN,
+      "avg_hold": NaN,
+      "exit_reason_counts": {},
+      "random_win_rate": NaN,
+      "random_expectancy": NaN,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7391304347826086,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_ma60_w3__S70__hi20_only",
+      "n_trades": 0,
+      "n_unique_entry_days": 0,
+      "win_rate": NaN,
+      "expectancy": NaN,
+      "avg_hold": NaN,
+      "exit_reason_counts": {},
+      "random_win_rate": NaN,
+      "random_expectancy": NaN,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7391304347826086,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_ma60_w3__VPTA_S55__hi20_or_desync",
+      "n_trades": 0,
+      "n_unique_entry_days": 0,
+      "win_rate": NaN,
+      "expectancy": NaN,
+      "avg_hold": NaN,
+      "exit_reason_counts": {},
+      "random_win_rate": NaN,
+      "random_expectancy": NaN,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7391304347826086,
+      "win_minus_core": NaN
+    },
+    {
+      "key": "core_ma60_w3__VPTA_S55__hi20_only",
+      "n_trades": 0,
+      "n_unique_entry_days": 0,
+      "win_rate": NaN,
+      "expectancy": NaN,
+      "avg_hold": NaN,
+      "exit_reason_counts": {},
+      "random_win_rate": NaN,
+      "random_expectancy": NaN,
+      "beats_random": false,
+      "beats_leave_zero": false,
+      "lifts_core_winrate": false,
+      "core_base_win": 0.7391304347826086,
+      "win_minus_core": NaN
+    }
+  ],
+  "winners_beat_random_and_lz": [
+    {
+      "key": "core_w3_start__V__hi20_or_desync",
+      "n_trades": 23,
+      "n_unique_entry_days": 22,
+      "win_rate": 0.8695652173913043,
+      "expectancy": 0.05966748622623642,
+      "avg_hold": 11.217391304347826,
+      "exit_reason_counts": {
+        "first_hi20": 23
+      },
+      "random_win_rate": 0.631578947368421,
+      "random_expectancy": 0.023194305504207535,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": 0.10640732265446218
+    },
+    {
+      "key": "core_w3_start__V__hi20_only",
+      "n_trades": 23,
+      "n_unique_entry_days": 22,
+      "win_rate": 0.8695652173913043,
+      "expectancy": 0.05966748622623642,
+      "avg_hold": 11.217391304347826,
+      "exit_reason_counts": {
+        "first_hi20": 23
+      },
+      "random_win_rate": 0.5263157894736842,
+      "random_expectancy": 0.021836819808250668,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": 0.10640732265446218
+    },
+    {
+      "key": "core_w3_start__VT__hi20_or_desync",
+      "n_trades": 23,
+      "n_unique_entry_days": 22,
+      "win_rate": 0.8695652173913043,
+      "expectancy": 0.05966748622623642,
+      "avg_hold": 11.217391304347826,
+      "exit_reason_counts": {
+        "first_hi20": 23
+      },
+      "random_win_rate": 0.6111111111111112,
+      "random_expectancy": 0.0037508997316219287,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": 0.10640732265446218
+    },
+    {
+      "key": "core_w3_start__VT__hi20_only",
+      "n_trades": 23,
+      "n_unique_entry_days": 22,
+      "win_rate": 0.8695652173913043,
+      "expectancy": 0.05966748622623642,
+      "avg_hold": 11.217391304347826,
+      "exit_reason_counts": {
+        "first_hi20": 23
+      },
+      "random_win_rate": 0.7222222222222222,
+      "random_expectancy": 0.0327813159847625,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": 0.10640732265446218
+    },
+    {
+      "key": "core_w3_or_ma60w3__VT__hi20_or_desync",
+      "n_trades": 23,
+      "n_unique_entry_days": 22,
+      "win_rate": 0.8695652173913043,
+      "expectancy": 0.05966748622623642,
+      "avg_hold": 11.217391304347826,
+      "exit_reason_counts": {
+        "first_hi20": 23
+      },
+      "random_win_rate": 0.5555555555555556,
+      "random_expectancy": 0.0018402755467417534,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": 0.1173528280107734
+    },
+    {
+      "key": "core_w3_or_ma60w3__VT__hi20_only",
+      "n_trades": 23,
+      "n_unique_entry_days": 22,
+      "win_rate": 0.8695652173913043,
+      "expectancy": 0.05966748622623642,
+      "avg_hold": 11.217391304347826,
+      "exit_reason_counts": {
+        "first_hi20": 23
+      },
+      "random_win_rate": 0.7222222222222222,
+      "random_expectancy": 0.01183308388770994,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": 0.1173528280107734
+    },
+    {
+      "key": "core_w3_or_ma60w3__V__hi20_or_desync",
+      "n_trades": 26,
+      "n_unique_entry_days": 25,
+      "win_rate": 0.8461538461538461,
+      "expectancy": 0.052696415293879875,
+      "avg_hold": 13.076923076923077,
+      "exit_reason_counts": {
+        "first_hi20": 26
+      },
+      "random_win_rate": 0.631578947368421,
+      "random_expectancy": 0.03702468481003409,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": 0.09394145677331522
+    },
+    {
+      "key": "core_w3_or_ma60w3__V__hi20_only",
+      "n_trades": 26,
+      "n_unique_entry_days": 25,
+      "win_rate": 0.8461538461538461,
+      "expectancy": 0.052696415293879875,
+      "avg_hold": 13.076923076923077,
+      "exit_reason_counts": {
+        "first_hi20": 26
+      },
+      "random_win_rate": 0.6842105263157895,
+      "random_expectancy": -0.003036335209532118,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": 0.09394145677331522
+    }
+  ],
+  "winners_also_lift_core_winrate": [
+    {
+      "key": "core_w3_start__V__hi20_or_desync",
+      "n_trades": 23,
+      "n_unique_entry_days": 22,
+      "win_rate": 0.8695652173913043,
+      "expectancy": 0.05966748622623642,
+      "avg_hold": 11.217391304347826,
+      "exit_reason_counts": {
+        "first_hi20": 23
+      },
+      "random_win_rate": 0.631578947368421,
+      "random_expectancy": 0.023194305504207535,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": 0.10640732265446218
+    },
+    {
+      "key": "core_w3_start__V__hi20_only",
+      "n_trades": 23,
+      "n_unique_entry_days": 22,
+      "win_rate": 0.8695652173913043,
+      "expectancy": 0.05966748622623642,
+      "avg_hold": 11.217391304347826,
+      "exit_reason_counts": {
+        "first_hi20": 23
+      },
+      "random_win_rate": 0.5263157894736842,
+      "random_expectancy": 0.021836819808250668,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": 0.10640732265446218
+    },
+    {
+      "key": "core_w3_start__VT__hi20_or_desync",
+      "n_trades": 23,
+      "n_unique_entry_days": 22,
+      "win_rate": 0.8695652173913043,
+      "expectancy": 0.05966748622623642,
+      "avg_hold": 11.217391304347826,
+      "exit_reason_counts": {
+        "first_hi20": 23
+      },
+      "random_win_rate": 0.6111111111111112,
+      "random_expectancy": 0.0037508997316219287,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": 0.10640732265446218
+    },
+    {
+      "key": "core_w3_start__VT__hi20_only",
+      "n_trades": 23,
+      "n_unique_entry_days": 22,
+      "win_rate": 0.8695652173913043,
+      "expectancy": 0.05966748622623642,
+      "avg_hold": 11.217391304347826,
+      "exit_reason_counts": {
+        "first_hi20": 23
+      },
+      "random_win_rate": 0.7222222222222222,
+      "random_expectancy": 0.0327813159847625,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.7631578947368421,
+      "win_minus_core": 0.10640732265446218
+    },
+    {
+      "key": "core_w3_or_ma60w3__VT__hi20_or_desync",
+      "n_trades": 23,
+      "n_unique_entry_days": 22,
+      "win_rate": 0.8695652173913043,
+      "expectancy": 0.05966748622623642,
+      "avg_hold": 11.217391304347826,
+      "exit_reason_counts": {
+        "first_hi20": 23
+      },
+      "random_win_rate": 0.5555555555555556,
+      "random_expectancy": 0.0018402755467417534,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": 0.1173528280107734
+    },
+    {
+      "key": "core_w3_or_ma60w3__VT__hi20_only",
+      "n_trades": 23,
+      "n_unique_entry_days": 22,
+      "win_rate": 0.8695652173913043,
+      "expectancy": 0.05966748622623642,
+      "avg_hold": 11.217391304347826,
+      "exit_reason_counts": {
+        "first_hi20": 23
+      },
+      "random_win_rate": 0.7222222222222222,
+      "random_expectancy": 0.01183308388770994,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": 0.1173528280107734
+    },
+    {
+      "key": "core_w3_or_ma60w3__V__hi20_or_desync",
+      "n_trades": 26,
+      "n_unique_entry_days": 25,
+      "win_rate": 0.8461538461538461,
+      "expectancy": 0.052696415293879875,
+      "avg_hold": 13.076923076923077,
+      "exit_reason_counts": {
+        "first_hi20": 26
+      },
+      "random_win_rate": 0.631578947368421,
+      "random_expectancy": 0.03702468481003409,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": 0.09394145677331522
+    },
+    {
+      "key": "core_w3_or_ma60w3__V__hi20_only",
+      "n_trades": 26,
+      "n_unique_entry_days": 25,
+      "win_rate": 0.8461538461538461,
+      "expectancy": 0.052696415293879875,
+      "avg_hold": 13.076923076923077,
+      "exit_reason_counts": {
+        "first_hi20": 26
+      },
+      "random_win_rate": 0.6842105263157895,
+      "random_expectancy": -0.003036335209532118,
+      "beats_random": true,
+      "beats_leave_zero": true,
+      "lifts_core_winrate": true,
+      "core_base_win": 0.7522123893805309,
+      "win_minus_core": 0.09394145677331522
+    }
+  ],
+  "promote_to_lookup_display": false,
+  "gate_one_liner": "winners=8/120; lift_core=8; best=core_w3_start__V__hi20_or_desync win=0.8695652173913043 E=0.05966748622623642; promote_lookup=NO",
+  "dim_defs_zh": {
+    "V_attack": "量：攻擊量或量比≥1.5",
+    "P_bull": "價：關鍵陽線或多頭排列",
+    "T_safe": "時間：月線時間安全>0",
+    "A_up": "角度：5日角度≥25",
+    "Asteep": "角度：≥35",
+    "S55/S70": "四維總分門檻",
+    "not_hot": "非過熱"
+  },
+  "note_zh": "高勝率核必須保留；四維只准疊加改進。不上話筒浪號。",
+  "errors_n": 0,
+  "errors_sample": []
+}

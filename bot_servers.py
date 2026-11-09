@@ -10922,6 +10922,17 @@ class WayneTelegramBot:
             render_plan_kinds = ("card", "glance", "struct", "vol", "intraday")
             sent_kinds: list[str] = []
             ready_items: list = []
+            # LAB-ONLY 五張掛鉤編排（預設關）：W3 起漲買／相對高點賣；phone_sync=blocked
+            # 真畫在 wayne_navigator／vol_zone／biaoke／intraday 的 _maybe_lab_lookup_marks
+            # 見 docs/expert_notes/飆客/decade_lab/phone_lookup_mark_hook_map.md
+            try:
+                from scripts.decade_lab_lookup_mark_flags import lab_marks_allowed
+
+                if lab_marks_allowed():
+                    # 過閘後才准在各 paint 路徑開 glyph；此處不改預設畫面
+                    pass
+            except Exception:
+                pass
 
             from wayne_navigator import submit_mpl_paint
 

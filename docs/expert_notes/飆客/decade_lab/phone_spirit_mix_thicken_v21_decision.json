@@ -1,0 +1,76 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "as_of_taipei": "2026-11-08T07:46:04.123626+08:00",
+  "gate_one_liner": "spirit_mix_thicken_v21 pe_ge80_d50=6; best=U200__nobody_pe3 win=0.864406779661017 days=58 hold=11.559322033898304; U180_v11_pe3={'win_rate': 0.8032786885245902, 'days': 60, 'hold': 12.524590163934427, 'ge80_d50': True}; U200_v11_pe3={'win_rate': 0.8235294117647058, 'days': 67, 'hold': 11.911764705882353, 'ge80_d50': True}; U250_v11_pe3={'win_rate': 0.8170731707317073, 'days': 79, 'hold': 11.902439024390244, 'ge80_d50': True}; promote_lookup=NO",
+  "parent_seal": "phone_spirit_mix_thicken_v20_decision.json",
+  "elapsed_s": 1579.9,
+  "universe_meta": {
+    "U180": 180,
+    "U200": 200,
+    "U250": 250
+  },
+  "pe_ge80_d50_n": 6,
+  "confirm": {
+    "U180__v11_pe3": {
+      "win_rate": 0.8032786885245902,
+      "days": 60,
+      "hold": 12.524590163934427,
+      "ge80_d50": true
+    },
+    "U180__nobody_pe3": {
+      "win_rate": 0.8490566037735849,
+      "days": 52,
+      "hold": 12.320754716981131,
+      "ge80_d50": true
+    },
+    "U180__v11_hi20": {
+      "win_rate": 0.8166666666666667,
+      "days": 59,
+      "hold": 14.9,
+      "ge80_d50": true
+    },
+    "U200__v11_pe3": {
+      "win_rate": 0.8235294117647058,
+      "days": 67,
+      "hold": 11.911764705882353,
+      "ge80_d50": true
+    },
+    "U200__nobody_pe3": {
+      "win_rate": 0.864406779661017,
+      "days": 58,
+      "hold": 11.559322033898304,
+      "ge80_d50": true
+    },
+    "U200__v11_hi20": {
+      "win_rate": 0.835820895522388,
+      "days": 66,
+      "hold": 14.313432835820896,
+      "ge80_d50": true
+    },
+    "U250__v11_pe3": {
+      "win_rate": 0.8170731707317073,
+      "days": 79,
+      "hold": 11.902439024390244,
+      "ge80_d50": true
+    },
+    "U250__nobody_pe3": {
+      "win_rate": 0.855072463768116,
+      "days": 66,
+      "hold": 11.681159420289855,
+      "ge80_d50": true
+    },
+    "U250__v11_hi20": {
+      "win_rate": 0.825,
+      "days": 77,
+      "hold": 14.8,
+      "ge80_d50": true
+    }
+  },
+  "locked_early_sell": {
+    "same_entry_v11_pe3": "U180+/U200/U250 all ge80_d50; U200≈82.4%@67d hold≈11.9",
+    "nobody_pe3": "U180+/U200/U250 all ge80_d50; best U200≈86.4%@58d hold≈11.6"
+  },
+  "finding_zh": "U180／U200／U250 提早賣全面复現過閘；同進場族 v11_pe3 穩。U112 仍未過閘。下一版專攻 U112 days／win 缺口。",
+  "next": "mix_v22 U112 early-sell: expand nobody days≥50 keep ge80 OR cut soft pe 78.9→80; phone_sync=blocked"
+}

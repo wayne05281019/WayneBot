@@ -1,0 +1,66 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "twii_note_zh": "TWII 狀態機本期幾乎全在 BASE／W2，mkt_not_crash≈恒真；有效大盤閘看 mkt_ok_basic（週線+非過熱）／ok_pull_or_impulse／ok_strong",
+  "market_sync_gate": "winners=30/144; lift=10; best_bal=E_pull_hammer__mkt_not_crash__F_none__hi20_or_desync win=0.749304008908686 days=2730; best_win=E_w3_start__mkt_not_crash__F_hsiao_S55__hi20_or_desync; promote_lookup=NO",
+  "balanced_enlarge_gate": "balanced best=core_w3_or_ma60w3__BAL_Vnear2_or_S55__hi20_or_desync src=n100 win=0.7600 days=50 B=0.7600; ge50=core_w3_or_ma60w3__BAL_Vnear2_or_S55__hi20_or_desync; promote_lookup=NO",
+  "w3_thin_high": [
+    {
+      "key": "E_w3_start__mkt_not_crash__F_hsiao_S55__hi20_or_desync",
+      "win": 0.95,
+      "days": 20,
+      "B": 0.38,
+      "lift": true
+    },
+    {
+      "key": "E_w3_start__mkt_ok_pull_or_impulse__F_hsiao_S55__hi20_or_desync",
+      "win": 0.95,
+      "days": 20,
+      "B": 0.38,
+      "lift": true
+    },
+    {
+      "key": "E_w3_start__mkt_risk_on__F_hsiao_S55__hi20_or_desync",
+      "win": 0.95,
+      "days": 20,
+      "B": 0.38,
+      "lift": true
+    },
+    {
+      "key": "E_w3_or_ma60w3__mkt_not_crash__F_hsiao_S55__hi20_or_desync",
+      "win": 0.95,
+      "days": 20,
+      "B": 0.38,
+      "lift": true
+    },
+    {
+      "key": "E_w3_or_ma60w3__mkt_ok_pull_or_impulse__F_hsiao_S55__hi20_or_desync",
+      "win": 0.95,
+      "days": 20,
+      "B": 0.38,
+      "lift": true
+    }
+  ],
+  "w3_meaningful_mkt_lifts": [
+    {
+      "key": "E_w3_start__mkt_ok_pull_or_impulse__F_hsiao_S55__hi20_or_desync",
+      "win": 0.95,
+      "days": 20,
+      "B": 0.38
+    },
+    {
+      "key": "E_w3_or_ma60w3__mkt_ok_pull_or_impulse__F_hsiao_S55__hi20_or_desync",
+      "win": 0.95,
+      "days": 20,
+      "B": 0.38
+    }
+  ],
+  "recommended_zh": [
+    "均衡主線仍用 balanced：W3∪紅箭 × (近窗V∨S55) ≈76%@50日",
+    "大盤同步：W3×S55 在有效大盤閘下可見極高勝率但日僅20（薄）；先當候選繼續累積",
+    "拉回錘子日數很厚≈75%@2700但未證明抬核，且定義過寬，不當主買訊"
+  ],
+  "gate_one_liner": "mkt_sync W3 meaningful best=E_w3_start__mkt_ok_pull_or_impulse__F_hsiao_S55__hi20_or_desync win=0.9500 days=20; balanced_enlarge still ge50 Vnear2∨S55@76%/50d; thin W3×S55 can hit ~95%@20d; promote_lookup=NO",
+  "feat_resync_gate": "winners=50/240; lift=14; best_bal=E_pull_hammer__mkt_feat_safe__F_none__hi20_or_desync win=0.7557025547445255 days=1165; best_win=E_w3_start__mkt_not_crash__F_hsiao_S55__hi20_or_desync; promote_lookup=NO",
+  "feat_resync_as_of_taipei": "2026-11-07T23:27:01.098522+08:00"
+}

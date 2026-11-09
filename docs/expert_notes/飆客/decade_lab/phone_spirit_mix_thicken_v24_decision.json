@@ -1,0 +1,34 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "as_of_taipei": "2026-11-08T08:28:21.727180+08:00",
+  "gate_one_liner": "spirit_mix_thicken_v24 U112 n=112 confirm_add_i3_pe3=True confirm_win=0.803921568627451 confirm_days=50 confirm_hold=13.196078431372548; pe_ge80_d50=7 earlier_than_parent=2; best_early=add_i3_pe2 hold=13.058823529411764; promote_lookup=NO",
+  "parent_seal": "phone_spirit_mix_thicken_v23_decision.json",
+  "elapsed_s": 354.4,
+  "n_stocks": 112,
+  "confirm_add_i3_pe3": {
+    "key": "add_i3_pe3",
+    "n_trades": 51,
+    "n_unique_entry_days": 50,
+    "win_rate": 0.803921568627451,
+    "expectancy": 0.01728345626777008,
+    "beats_random": true,
+    "balanced_score": 0.803921568627451,
+    "win_ge80": true,
+    "days_ge50": true,
+    "mean_bars_before_hi20": 15.854166666666666,
+    "mean_hold_days": 13.196078431372548,
+    "earlier_than_parent": false
+  },
+  "upgrade_lock": {
+    "from": "add_i3_pe3",
+    "to": "add_i3_pe2",
+    "win_rate": 0.803921568627451,
+    "days": 50,
+    "hold_days": 13.058823529411764,
+    "formula": "entry=v11 & (~body | near(intent,3)); exit=hi20|wave|(exhaust|hi10 & unreal>=2%)",
+    "note_zh": "同胜率同 days，hold 13.06 < pe3 的 13.20；pe15 更早但不 beats_random"
+  },
+  "finding_zh": "add_i3_pe3 复現過閘；升級鎖 add_i3_pe2（更早 hold、仍 ge80×50d）。下一版繼續壓 hold。",
+  "next": "mix_v25 earlier-hold hunt on add_i3_pe2 parent; phone_sync=blocked"
+}

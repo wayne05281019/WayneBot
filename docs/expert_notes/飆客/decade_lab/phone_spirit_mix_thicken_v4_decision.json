@@ -1,0 +1,98 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "as_of_taipei": "2026-11-08T01:41:18.427310+08:00",
+  "gate_one_liner": "spirit_mix_thicken_v4 ge80=11 ge80_d30=4 ge80_d50=0; best_win=E_w3__intent_or_turn_n3__t60_intent__SELL_hi20_or_wave_top win=0.8846153846153846 days=26; best_d50=None; near80_d50=E_w3u__turn_n3__t60_no_fake__SELL_hi20_or_wave_top; promote_lookup=NO",
+  "n_stocks": 100,
+  "elapsed_s": 629.3,
+  "ge80_n": 11,
+  "ge80_d50_n": 0,
+  "best_win": {
+    "key": "E_w3__intent_or_turn_n3__t60_intent__SELL_hi20_or_wave_top",
+    "n_trades": 26,
+    "n_unique_entry_days": 26,
+    "win_rate": 0.8846153846153846,
+    "expectancy": 0.052278249161648645,
+    "beats_random": true,
+    "balanced_score": 0.46,
+    "win_ge80": true,
+    "days_ge30": false,
+    "days_ge40": false,
+    "days_ge50": false
+  },
+  "best_near80_d50": {
+    "key": "E_w3u__turn_n3__t60_no_fake__SELL_hi20_or_wave_top",
+    "n_trades": 68,
+    "n_unique_entry_days": 67,
+    "win_rate": 0.7941176470588235,
+    "expectancy": 0.021068912851222824,
+    "beats_random": true,
+    "balanced_score": 0.7941176470588235,
+    "win_ge80": false,
+    "days_ge30": true,
+    "days_ge40": true,
+    "days_ge50": true
+  },
+  "top_near80_d50": [
+    {
+      "key": "E_w3u__turn_n3__t60_no_fake__SELL_hi20_or_wave_top",
+      "n_trades": 68,
+      "n_unique_entry_days": 67,
+      "win_rate": 0.7941176470588235,
+      "expectancy": 0.021068912851222824,
+      "beats_random": true,
+      "balanced_score": 0.7941176470588235,
+      "win_ge80": false,
+      "days_ge30": true,
+      "days_ge40": true,
+      "days_ge50": true
+    },
+    {
+      "key": "E_w3u__turn_or_fib_n3__t60_no_fake__SELL_hi20_or_wave_top",
+      "n_trades": 74,
+      "n_unique_entry_days": 72,
+      "win_rate": 0.7837837837837838,
+      "expectancy": 0.017416823183022578,
+      "beats_random": true,
+      "balanced_score": 0.7837837837837838,
+      "win_ge80": false,
+      "days_ge30": true,
+      "days_ge40": true,
+      "days_ge50": true
+    },
+    {
+      "key": "E_w3u__intent_or_turn_n3__t60_no_fake__SELL_hi20_or_wave_top",
+      "n_trades": 74,
+      "n_unique_entry_days": 72,
+      "win_rate": 0.7837837837837838,
+      "expectancy": 0.018054869868007917,
+      "beats_random": true,
+      "balanced_score": 0.7837837837837838,
+      "win_ge80": false,
+      "days_ge30": true,
+      "days_ge40": true,
+      "days_ge50": true
+    },
+    {
+      "key": "E_w3u__turn_n4__t60_no_fake__SELL_hi20_or_wave_top",
+      "n_trades": 73,
+      "n_unique_entry_days": 70,
+      "win_rate": 0.7808219178082192,
+      "expectancy": 0.014702805659679609,
+      "beats_random": true,
+      "balanced_score": 0.7808219178082192,
+      "win_ge80": false,
+      "days_ge30": true,
+      "days_ge40": true,
+      "days_ge50": true
+    }
+  ],
+  "read_zh": [
+    "mix_v4 封口：ge80=11 d50=0；near80 仍≈0.7941176470588235@67d（t60_no_fake 未改數字＝樣本無假突破可砍）",
+    "下一輪：對冠軍肢逐筆虧單特徵開微閘／換出場，或放大宇宙"
+  ],
+  "next_lab": [
+    "spirit_mix_thicken_v5_loser_cut"
+  ],
+  "never_quit": true
+}

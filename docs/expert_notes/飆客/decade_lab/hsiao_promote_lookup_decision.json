@@ -1,0 +1,93 @@
+{
+  "phone_sync": "blocked",
+  "not_buy_signal": true,
+  "as_of_taipei": "2026-11-07",
+  "data_policy": "不足20年用該檔真實最長窗；來源標明；對齊失敗不用 Yahoo",
+  "gate_one_liner": "leave_zero h5 days=3759 hit=0.5123473541383989; ma60_lower h5 days=2131 hit=0.5127664064148555; promote=NO（本跑僅統計對質，不上話筒）",
+  "promote_to_lookup_display": false,
+  "reason_zh": "長窗對質後 leave_zero／ma60_lower h5 命中皆約五成，未贏出現況到可改查股顯示；§13 不上話筒",
+  "candidates_lab_only": [
+    {
+      "tag": "leave_zero_blue_tri",
+      "action": "keep_as_is",
+      "note": "現況買訊；本跑僅統計"
+    },
+    {
+      "tag": "ma60_lower_confirmed",
+      "action": "keep_as_is",
+      "note": "已過閘紅箭確認；本跑未顯示需改顯示"
+    }
+  ],
+  "do_not_add_to_lookup": [
+    "no_buy_mark_day",
+    "dry_vol",
+    "attack_vol_up_bar",
+    "red_arrow_raw_first",
+    "ma5_cross_dn_ma20",
+    "ma5_cross_up_ma20",
+    "ma60_vol_proxy",
+    "random_matched_density",
+    "ma20_cross_dn_ma60",
+    "ma20_cross_up_ma60",
+    "ma60_lower_tight_vnext",
+    "stabilize_diamond"
+  ],
+  "must_data_honesty": {
+    "6442": {
+      "name": "光聖",
+      "source": "lab_daily:yahoo_lab",
+      "years": 12.640657084188911,
+      "span": {
+        "d0": "20140317",
+        "d1": "20261106",
+        "n": 3083
+      },
+      "adj_kind": "yahoo_adjclose"
+    },
+    "2383": {
+      "name": "台光電",
+      "source": "lab_daily:yahoo_lab",
+      "years": 20.843258042436688,
+      "span": {
+        "d0": "20060102",
+        "d1": "20261106",
+        "n": 5109
+      },
+      "adj_kind": "yahoo_adjclose"
+    },
+    "6274": {
+      "name": "台燿",
+      "source": "daily_quotes_official",
+      "years": 20.843258042436688,
+      "span": {
+        "d0": "20060102",
+        "d1": "20261106",
+        "n": 4935
+      },
+      "adj_kind": "raw_quote"
+    },
+    "3081": {
+      "name": "聯亞",
+      "source": "daily_quotes_official",
+      "years": 11.290896646132786,
+      "span": {
+        "d0": "20150723",
+        "d1": "20261106",
+        "n": 2627
+      },
+      "adj_kind": "raw_quote"
+    },
+    "8299": {
+      "name": "群聯",
+      "source": "daily_quotes_official",
+      "years": 20.843258042436688,
+      "span": {
+        "d0": "20060102",
+        "d1": "20261106",
+        "n": 4803
+      },
+      "adj_kind": "raw_quote"
+    }
+  },
+  "matrix_entry_days": 171
+}

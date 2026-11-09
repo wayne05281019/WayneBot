@@ -1,0 +1,15 @@
+{
+  "as_of_taipei": "2026-11-08T00:05:33.801616+08:00",
+  "five_proxies_commit": "f6cdf4a",
+  "on_remote": true,
+  "phone_sync": "blocked",
+  "in_flight_spirit": {
+    "pid_note": "started 2026-11-07T15:59:52Z before file mtime 16:02:02Z",
+    "uses_new_five_proxies": false,
+    "action_after_seal": "relaunch phone_spirit_split_mix with strengthened FIVE proxies; do not treat pre-patch run as final FIVE track"
+  },
+  "read_zh": [
+    "五件柱代理強化已合進分支並推送（f6cdf4a）",
+    "進行中的 spirit_split_mix 早於強化啟動＝舊代理；封口後必須用新版重跑"
+  ]
+}

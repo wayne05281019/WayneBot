@@ -1,0 +1,32 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "as_of_taipei": "2026-11-08T10:49:36+08:00",
+  "gate_one_liner": "spirit_mix_thicken_v37 U112 n=112 confirm_gb15=True confirm_hold=8.901960784313726; pe_ge80_d50=7 earlier=0; best_early=None hold=None; promote_lookup=NO",
+  "parent_seal": "phone_spirit_mix_thicken_v36_decision.json",
+  "n_stocks": 112,
+  "confirm_pe2_mh20_vdry_gb15": {
+    "key": "pe2_mh20_vdry_gb15",
+    "n_trades": 51,
+    "n_unique_entry_days": 50,
+    "win_rate": 0.803921568627451,
+    "expectancy": 0.01022218017433631,
+    "beats_random": true,
+    "balanced_score": 0.803921568627451,
+    "win_ge80": true,
+    "days_ge50": true,
+    "mean_bars_before_hi20": 15.854166666666666,
+    "mean_hold_days": 8.901960784313726,
+    "earlier_than_parent": false,
+    "beats_seed_votes": "3/3"
+  },
+  "upgrade_lock": null,
+  "keep_lock": {
+    "key": "pe2_mh20_vdry_gb15",
+    "hold_days": 8.901960784313726,
+    "beats_seed_votes": "3/3",
+    "reason_zh": "gb15 复現 3/3；gb08–12 同 hold（回吐門檻未再提早）"
+  },
+  "finding_zh": "鎖維持 gb15。下一輪換軸：首陰／觸五日高後回／更短 max_hold。",
+  "next": "mix_v38 confirm gb15 + first-red/hi5 axis; phone_sync=blocked"
+}
