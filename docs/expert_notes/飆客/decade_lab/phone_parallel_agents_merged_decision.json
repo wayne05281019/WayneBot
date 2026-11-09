@@ -1,0 +1,91 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "NOT_BUY_SIGNAL": true,
+  "as_of_taipei": "2026-11-07T23:33:02.363226+08:00",
+  "purpose_zh": "合併多代理落地：對準查股五張圖買賣標記（仍 blocked）",
+  "agents_merged": [
+    {
+      "id": "bc-5835b722-4c4a-5b3e-91c6-767acde12dc8",
+      "title": "Lookup mark paint hooks",
+      "status": "merged",
+      "artifact": "phone_lookup_mark_hook_map.md + flags stubs"
+    },
+    {
+      "id": "bc-f5519d65-9d21-5d23-87aa-b3050527c002",
+      "title": "Merge lookup promote decisions",
+      "status": "merged",
+      "artifact": "phone_lookup_mark_promote_gate.json"
+    },
+    {
+      "id": "bc-d32c1d34-6f63-5e50-9df4-e73e09058629",
+      "title": "V3 factor pack ideas",
+      "status": "merged",
+      "artifact": "phone_v3_factor_pack.md + EXTRA_GATES"
+    },
+    {
+      "id": "bc-c61c85c5-7f30-5740-8bd9-6b519c2b8826",
+      "title": "Early-mark timing metric",
+      "status": "merged",
+      "artifact": "phone_mark_earliness_*"
+    }
+  ],
+  "sealed_tracks": {
+    "buy_balanced": {
+      "path": "phone_balanced_enlarge_decision.json",
+      "gate_one_liner": "balanced best=core_w3_or_ma60w3__BAL_Vnear2_or_S55__hi20_or_desync src=n100 win=0.7600 days=50 B=0.7600; ge50=core_w3_or_ma60w3__BAL_Vnear2_or_S55__hi20_or_desync; promote_lookup=NO",
+      "promote": false,
+      "phone_sync": "blocked"
+    },
+    "sell_relhigh": {
+      "path": "phone_relhigh_sell_decision.json",
+      "gate_one_liner": "relhigh_sell winners=4/9; best=w3__SELL_hi20_or_desync win=0.7586206896551724 days=57; promote_lookup=NO",
+      "promote": false,
+      "phone_sync": "blocked"
+    },
+    "earliness": {
+      "path": "phone_mark_earliness_decision.json",
+      "gate_one_liner": "mark_earliness winners=2/5; earliest_n20=ma60_lower_confirmed bars=21.126808834729626 win=0.6735054828440042 days=1583; best_bal=core_w3_start; phone_sync=blocked; promote_lookup=NO",
+      "promote": false,
+      "phone_sync": "blocked"
+    },
+    "market_feat": {
+      "path": "phone_market_wave_sync_feat_decision.json",
+      "gate_one_liner": "winners=50/240; lift=14; best_bal=E_pull_hammer__mkt_feat_safe__F_none__hi20_or_desync win=0.7557025547445255 days=1165; best_win=E_w3_start__mkt_not_crash__F_hsiao_S55__hi20_or_desync; promote_lookup=NO",
+      "promote": false,
+      "phone_sync": "blocked"
+    },
+    "lookup_candidate": {
+      "path": "phone_lookup_mark_candidate_decision.json",
+      "gate_one_liner": "lookup-mark candidate: buy=bal Vnear∨S55 @76%/50d; sell=relhigh relhigh_sell winners=4/9; best=w3__SELL_hi20_or_desync win=0.7586206896551724 days=57; promote_lookup=NO; phone_sync=blocked; promote=NO",
+      "promote": false,
+      "phone_sync": "blocked"
+    },
+    "promote_gate": {
+      "path": "phone_lookup_mark_promote_gate.json",
+      "gate_one_liner": "draft promote-gate: buy=bal Vnear2∨S55 @76%/50d; sell=relhigh sealed w3_or_ma60__SELL_hi20_or_desync; phone_sync=blocked; promote_to_lookup_display=false; gate_status=collecting_v3_and_feat",
+      "promote": false,
+      "phone_sync": "blocked"
+    }
+  },
+  "in_flight": [
+    "champion_v3"
+  ],
+  "deferred": [
+    "champion_v2 — superseded by running v3"
+  ],
+  "five_chart_target_zh": {
+    "buy_glyph": "LAB_BUY_W3_START",
+    "sell_glyph": "REL_HIGH_SELL",
+    "buy_rule": "core_w3_or_ma60w3 & (Vnear|S55) ~76%/50d",
+    "sell_rule": "hi20_or_desync / hi20_or_wave_top (relhigh sealed 4/9)",
+    "hooks_ready": true,
+    "display": "blocked until promote gate clears"
+  },
+  "gate_one_liner": "parallel-merge: hooks+earliness+relhigh+promote-gate merged; v3 in flight; phone_sync=blocked; promote=NO",
+  "next_zh": [
+    "封口 champion_v3 → 若抬 B 寫入候選並再生 v4",
+    "未過閘繼續加因子",
+    "不准改 leave_zero／開旗標"
+  ]
+}

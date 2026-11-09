@@ -1,0 +1,532 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "NOT_BUY_SIGNAL": true,
+  "as_of_taipei": "2026-11-08T12:08:44.948833+08:00",
+  "deliverable_zh": "查股五張圖：極高勝率買進起漲＋相對高點賣出相對位置",
+  "candidate_buy_rule": {
+    "key": "core_w3_or_ma60w3__BAL_Vnear2_or_S55__hi20_or_desync",
+    "zh": "W3起漲∪確認紅箭×W3 ×（近窗量Vnear2∨引擎分S55）；出場腿見 sell",
+    "source_seal": "phone_balanced_enlarge_decision.json / phone_curriculum_merged_decision.json best_ge50／best_balanced[0]",
+    "source_run": "n100",
+    "entry_legs": [
+      "core_w3_or_ma60w3",
+      "BAL_Vnear2_or_S55"
+    ],
+    "win_rate": 0.76,
+    "independent_days": 50,
+    "balanced_score": 0.76,
+    "expectancy": 0.0193,
+    "n_symbols": 100,
+    "n_universe_request": 100,
+    "beats_random": true,
+    "beats_leave_zero": true,
+    "lifts_core_winrate": true,
+    "alt_thin_ceiling_keys": [
+      {
+        "key": "core_w3_start__V__hi20_or_desync",
+        "win_rate": 0.8696,
+        "independent_days": 22,
+        "source_seal": "phone_extreme_merged_decision.json best_by_winrate[0]"
+      },
+      {
+        "key": "E_w3_start__mkt_ok_pull_or_impulse__F_hsiao_S55__hi20_or_desync",
+        "win_rate": 0.95,
+        "independent_days": 20,
+        "balanced_score": 0.38,
+        "source_seal": "phone_market_wave_sync_decision.json w3_meaningful_mkt_lifts[0]"
+      }
+    ],
+    "alt_robust_macd_key": {
+      "key": "core_w3_or_ma60w3__hsiao_macd__hi20_or_desync",
+      "win_rate": 0.7805,
+      "independent_days": 80,
+      "source_seal": "phone_extreme_merged_decision.json best_robust_days40plus[0]"
+    }
+  },
+  "candidate_sell_rule": {
+    "zh": "相對高點賣＝首碰蕭20高為主；浪頂可併",
+    "sealed_exit_leg": "hi20_or_desync",
+    "sealed_exit_alts": [
+      "hi20_only"
+    ],
+    "user_lock_zh": "相對高點就賣；課程 sell＝相對高點＝蕭20高",
+    "wave_top_status": "confronted_optional",
+    "source_seal": [
+      "phone_curriculum_merged_decision.json curriculum_zh.sell",
+      "phone_winrate_boost_decision.json what_lifted_winrate_zh／top_winners exit keys",
+      "phone_balanced_enlarge_decision.json champion key 尾段 __hi20_or_desync",
+      "phone_extreme_merged_decision.json 出場腿同 hi20_or_desync／hi20_only"
+    ],
+    "relhigh_confront": "sealed: relhigh_sell winners=4/9; best=w3__SELL_hi20_or_desync win=0.7586206896551724 days=57; promote_lookup=NO",
+    "best_ge50": {
+      "key": "w3__SELL_hi20_or_desync",
+      "n_trades": 58,
+      "n_unique_entry_days": 57,
+      "win_rate": 0.7586206896551724,
+      "expectancy": -0.003529762536926254,
+      "avg_hold": 19.67241379310345,
+      "exit_reason_counts": {
+        "first_hi20": 53,
+        "max_hold_60": 5
+      },
+      "random_win_rate": 0.6545454545454545,
+      "random_expectancy": -0.021598585086409258,
+      "beats_random": true,
+      "balanced_score": 0.7586206896551724
+    }
+  },
+  "gate_status": "mix_v40_upgrade_ei_n6_room_hunt_v41",
+  "evidence": {
+    "win_rate": 0.76,
+    "independent_days": 50,
+    "balanced_score": 0.76,
+    "expectancy": 0.0193,
+    "n_symbols": 100,
+    "n_universe_request": 100,
+    "leave_zero_baseline_n100": {
+      "win_rate": 0.650546780072904,
+      "n_unique_entry_days": 1965,
+      "n_sids": 100,
+      "source": "phone_balanced_enlarge_n100_latest.json leave_zero_baseline"
+    },
+    "winrate_boost_top": {
+      "key": "w3_start__hi20_or_desync",
+      "win_rate": 0.7632,
+      "independent_days": 74,
+      "source": "phone_winrate_boost_decision.json top_winners[0]"
+    },
+    "market_sync_thin_best": {
+      "key": "E_w3_start__mkt_ok_pull_or_impulse__F_hsiao_S55__hi20_or_desync",
+      "win_rate": 0.95,
+      "independent_days": 20,
+      "balanced_score": 0.38,
+      "source": "phone_market_wave_sync_decision.json"
+    },
+    "twii_discriminate": {
+      "preset": "A0_strict",
+      "score_threshold": 40.0,
+      "n_w3_start": 0,
+      "impulse_pct": 0.003870254330998894,
+      "source": "phone_twii_wave_discriminate_decision.json"
+    },
+    "hsiao_promote_lookup": {
+      "leave_zero_h5_hit": 0.5123473541383989,
+      "leave_zero_h5_days": 3759,
+      "ma60_lower_h5_hit": 0.5127664064148555,
+      "ma60_lower_h5_days": 2131,
+      "promote": false,
+      "source": "hsiao_promote_lookup_decision.json"
+    },
+    "sources": [
+      "docs/expert_notes/飆客/decade_lab/phone_curriculum_merged_decision.json",
+      "docs/expert_notes/飆客/decade_lab/phone_balanced_enlarge_decision.json",
+      "docs/expert_notes/飆客/decade_lab/phone_extreme_merged_decision.json",
+      "docs/expert_notes/飆客/decade_lab/phone_market_wave_sync_decision.json",
+      "docs/expert_notes/飆客/decade_lab/phone_twii_wave_discriminate_decision.json",
+      "docs/expert_notes/飆客/decade_lab/phone_winrate_boost_decision.json",
+      "docs/expert_notes/飆客/decade_lab/hsiao_promote_lookup_decision.json",
+      "/opt/cursor/artifacts/phone_balanced_enlarge_n100_latest.json",
+      "/opt/cursor/artifacts/phone_curriculum_merged_decision.json",
+      "/opt/cursor/artifacts/phone_autonomous_loop_state.json"
+    ],
+    "mark_earliness": {
+      "source": "phone_mark_earliness_decision.json",
+      "best_bal_key": "core_w3_start",
+      "note_zh": "起漲核相對 leave_zero 更早碰上20高窗口且贏隨機；仍非查股顯示"
+    },
+    "relhigh_sell": {
+      "source": "phone_relhigh_sell_decision.json",
+      "gate": "relhigh_sell winners=4/9; best=w3__SELL_hi20_or_desync win=0.7586206896551724 days=57; promote_lookup=NO",
+      "n_winners": 4
+    },
+    "market_feat_resync": {
+      "source": "phone_market_wave_sync_feat_decision.json",
+      "gate": "winners=50/240; lift=14; best_bal=E_pull_hammer__mkt_feat_safe__F_none__hi20_or_desync win=0.7557025547445255 days=1165; best_win=E_w3_start__mkt_not_crash__F_hsiao_S55__hi20_or_desync; promote_lookup=NO"
+    },
+    "lookup_mark_candidate": {
+      "source": "phone_lookup_mark_candidate_decision.json",
+      "gate_one_liner": "lookup-mark candidate: buy=core_w3_or_ma60w3__BAL_Vnear2_or_S55__hi20_or_desync win=0.76 days=50; sell=relhigh sealed; earliness best_bal=core_w3_start; phone_sync=blocked; promote=NO"
+    },
+    "champion_v3": {
+      "source": "phone_champion_v3_decision.json",
+      "gate": "v3 winners=10/110; lift=8; best_bal=B_bal__M0__X0__SELL_hi20_or_wave_top win=0.74 days=50; ge50=B_bal__M0__X0__SELL_hi20_or_wave_top; promote_lookup=NO",
+      "ge50_best": "B_bal__M0__X0 @74%/50d (baseline)",
+      "thin_lifts": true,
+      "promote": false
+    },
+    "champion_v4": {
+      "gate": "v4 winners=12/48; lift_win=7; lift_B=0; best_bal=B_bal__M0__X0__SELL_hi20_or_wave_top win=0.74 days=50; ge50=B_bal__M0__X0__SELL_hi20_or_wave_top; promote_lookup=NO",
+      "lift_B_n": 0,
+      "high_win_ge80": [
+        {
+          "key": "B_bal__M_feat_ok__V4_t60_or_time__SELL_hi20_or_wave_top",
+          "n_trades": 20,
+          "n_unique_entry_days": 20,
+          "win_rate": 0.85,
+          "expectancy": 0.04104367484791359,
+          "avg_hold": 15.55,
+          "exit_reason_counts": {
+            "first_hi20": 18,
+            "wave_rel_high": 1,
+            "max_hold_60": 1
+          },
+          "random_win_rate": 0.6470588235294118,
+          "random_expectancy": -0.01683461495743484,
+          "beats_random": true,
+          "lifts_bal_baseline": true,
+          "lifts_balanced_score": false,
+          "balanced_score": 0.34,
+          "days_ge40": false,
+          "days_ge50": false
+        },
+        {
+          "key": "B_bal__M_feat_ok__V4_week_or_kd__SELL_hi20_or_wave_top",
+          "n_trades": 22,
+          "n_unique_entry_days": 22,
+          "win_rate": 0.8181818181818182,
+          "expectancy": 0.031078200367331464,
+          "avg_hold": 17.363636363636363,
+          "exit_reason_counts": {
+            "first_hi20": 19,
+            "max_hold_60": 2,
+            "wave_rel_high": 1
+          },
+          "random_win_rate": 0.6111111111111112,
+          "random_expectancy": 0.004437516476374507,
+          "beats_random": true,
+          "lifts_bal_baseline": true,
+          "lifts_balanced_score": false,
+          "balanced_score": 0.36000000000000004,
+          "days_ge40": false,
+          "days_ge50": false
+        },
+        {
+          "key": "B_bal__M0__V3_turn_barek__SELL_hi20_or_wave_top",
+          "n_trades": 31,
+          "n_unique_entry_days": 31,
+          "win_rate": 0.8064516129032258,
+          "expectancy": 0.04476773536570325,
+          "avg_hold": 13.838709677419354,
+          "exit_reason_counts": {
+            "first_hi20": 29,
+            "wave_rel_high": 2
+          },
+          "random_win_rate": 0.7407407407407407,
+          "random_expectancy": 0.010628883679428072,
+          "beats_random": true,
+          "lifts_bal_baseline": true,
+          "lifts_balanced_score": false,
+          "balanced_score": 0.49999999999999994,
+          "days_ge40": false,
+          "days_ge50": false
+        },
+        {
+          "key": "B_bal__M_feat_ok__V4_week_stack__SELL_hi20_or_wave_top",
+          "n_trades": 20,
+          "n_unique_entry_days": 20,
+          "win_rate": 0.8,
+          "expectancy": 0.02974875860101849,
+          "avg_hold": 17.95,
+          "exit_reason_counts": {
+            "first_hi20": 17,
+            "max_hold_60": 2,
+            "wave_rel_high": 1
+          },
+          "random_win_rate": 0.6875,
+          "random_expectancy": -0.012559818160371529,
+          "beats_random": true,
+          "lifts_bal_baseline": true,
+          "lifts_balanced_score": false,
+          "balanced_score": 0.32000000000000006,
+          "days_ge40": false,
+          "days_ge50": false
+        }
+      ]
+    },
+    "extreme_win": {
+      "source": "phone_lookup_extreme_win_decision.json",
+      "gate": "lookup_extreme winners_ge80=0; best≈79%@29; promote_lookup=NO",
+      "promote": false
+    },
+    "extreme_thicken": {
+      "source": "phone_lookup_extreme_thicken_decision.json",
+      "gate": "extreme_thicken ge80=14 ge80_d30=3; best_win=E_bal__M_feat_ok__S_t60_or_time__SELL_hi20_or_wave_top win=0.85 days=20; best_ge80_d30=E_bal__M0__S_turn_barek__SELL_hi20_or_wave_top; promote_lookup=NO",
+      "ge80_n": 14,
+      "ge80_d30_n": 3,
+      "best_win": "E_bal__M_feat_ok__S_t60_or_time__SELL_hi20_or_wave_top",
+      "best_ge80_days": "E_w3__M0__S_turn_barek_n3__SELL_hi20_or_wave_top",
+      "best_ge80_days_win": 0.8,
+      "best_ge80_days_n": 49,
+      "promote": false
+    },
+    "spirit_split_mix": {
+      "source": "phone_spirit_split_mix_decision.json",
+      "gate": "spirit_split_mix TRACK_HSIAO:9w/0ge80 | TRACK_BAREK_VP:5w/2ge80 | TRACK_WAVE_FIB:5w/0ge80 | TRACK_FIVE:9w/2ge80 | TRACK_CHAMP:19w/2ge80 | TRACK_MIX:13w/7ge80; promote_lookup=NO",
+      "five_proxies_version": "pre_strengthen",
+      "useful_ge80_n": 13,
+      "promote": false
+    },
+    "extreme_thicken2": {
+      "source": "phone_lookup_extreme_thicken2_decision.json",
+      "gate": "extreme_thicken2 ge80=0 ge80_d30=0 ge80_d50=0; best_win=None win=None days=None; best_ge80_d50=None; best_ge80_days=None; promote_lookup=NO",
+      "ge80_n": 0,
+      "promote": false
+    },
+    "spirit_split_mix_v2": {
+      "source": "phone_spirit_split_mix_v2_decision.json",
+      "gate": "spirit_split_mix TRACK_HSIAO:9w/0ge80 | TRACK_BAREK_VP:6w/2ge80 | TRACK_WAVE_FIB:5w/0ge80 | TRACK_FIVE:6w/1ge80 | TRACK_CHAMP:17w/2ge80 | TRACK_MIX:12w/3ge80; promote_lookup=NO",
+      "five_proxies_version": "post_strengthen_f6cdf4a",
+      "useful_ge80_n": 8,
+      "promote": false
+    },
+    "early_marks_free": {
+      "source": "phone_early_marks_free_decision.json",
+      "gate": "early_marks_free winners=21/90 ge80=1; best_early=E_w3u__F_turn_n3__SELL_hi20_or_wave_top win=0.7441860465116279 bars=15.5 hold=15.279069767441861; best_win=E_w3u__F_intent_n3__SELL_hi20_or_wave_top; promote_lookup=NO",
+      "best_early": "E_w3u__F_turn_n3__SELL_hi20_or_wave_top",
+      "ge80": "E_w3u__F_intent_n3__SELL_hi20_or_wave_top",
+      "promote": false
+    },
+    "spirit_mix_thicken": {
+      "source": "phone_spirit_mix_thicken_decision.json",
+      "gate": "spirit_mix_thicken ge80=18 ge80_d30=12 ge80_d50=0; best_win=E_w3__U_intent__SELL_hi20_or_wave_top win=0.896551724137931 days=29; best_days=E_w3__U_turn_barek_n3__SELL_hi20_or_wave_top; promote_lookup=NO",
+      "ge80_n": 18,
+      "ge80_d30_n": 12,
+      "ge80_d50_n": 0,
+      "best_days": "E_w3__U_turn_barek_n3__SELL_hi20_or_wave_top",
+      "promote": false
+    },
+    "extreme_thicken2_rerun": {
+      "source": "phone_lookup_extreme_thicken2_decision.json",
+      "gate": "extreme_thicken2 ge80=15 ge80_d30=3 ge80_d50=0; best_win=E_bal__M_feat_ok__S_t60_or_time__SELL_hi20_or_wave_top win=0.85 days=20; best_ge80_d50=None; best_ge80_days=E_w3__M0__S_turn_barek_n3__SELL_hi20_or_wave_top; promote_lookup=NO",
+      "ge80_n": 15,
+      "ge80_d30_n": 3,
+      "ge80_d50_n": 0,
+      "best_days": "E_w3__M0__S_turn_barek_n3__SELL_hi20_or_wave_top",
+      "promote": false
+    },
+    "early_marks_free_v2": {
+      "source": "phone_early_marks_free_v2_decision.json",
+      "gate": "early_marks_free_v2 winners=18/108 ge80=5 ge80_d50=0; best_early=E_w3u__F_turn_n3__SELL_hi20_or_wave_top win=0.7654320987654321 bars=15.56; best_win=E_w3__F_intent__SELL_hi20_or_wave_top; promote_lookup=NO",
+      "ge80_n": 5,
+      "promote": false
+    },
+    "spirit_mix_thicken_v2": {
+      "source": "phone_spirit_mix_thicken_v2_decision.json",
+      "gate": "spirit_mix_thicken_v2 ge80=13 ge80_d30=8 ge80_d50=0; best_win=E_w3__U_intent__SELL_hi20_or_wave_top win=0.896551724137931 days=29; best_days=E_w3__U_turn_n3__SELL_hi20_or_wave_top; best_d50=None; promote_lookup=NO",
+      "ge80_n": 13,
+      "ge80_d30_n": 8,
+      "ge80_d50_n": 0,
+      "best_days": "E_w3__U_turn_n3__SELL_hi20_or_wave_top",
+      "promote": false
+    },
+    "spirit_mix_thicken_v3": {
+      "source": "phone_spirit_mix_thicken_v3_decision.json",
+      "gate": "spirit_mix_thicken_v3 ge80=23 ge80_d30=9 ge80_d50=0; best_win=E_w3__B_intent_or_turn_n3__Q_intent__SELL_hi20_or_wave_top win=0.896551724137931 days=29; best_d50=None; near80_d50=E_w3u__B_turn_n3__Q_t60__SELL_hi20_or_wave_top; promote_lookup=NO",
+      "ge80_n": 23,
+      "ge80_d50_n": 0,
+      "best_near80_d50": "E_w3u__B_turn_n3__Q_t60__SELL_hi20_or_wave_top",
+      "promote": false
+    },
+    "spirit_mix_thicken_v4": {
+      "source": "phone_spirit_mix_thicken_v4_decision.json",
+      "gate": "spirit_mix_thicken_v4 ge80=11 ge80_d30=4 ge80_d50=0; best_win=E_w3__intent_or_turn_n3__t60_intent__SELL_hi20_or_wave_top win=0.8846153846153846 days=26; best_d50=None; near80_d50=E_w3u__turn_n3__t60_no_fake__SELL_hi20_or_wave_top; promote_lookup=NO",
+      "ge80_n": 11,
+      "ge80_d50_n": 0,
+      "near80": "E_w3u__turn_n3__t60_no_fake__SELL_hi20_or_wave_top",
+      "promote": false
+    },
+    "spirit_mix_thicken_v5": {
+      "source": "phone_spirit_mix_thicken_v5_decision.json",
+      "gate": "spirit_mix_thicken_v5 ge80=18 ge80_d30=15 ge80_d50=5; best_win=U100__E_w3__turn_n3_t60__intent__SELL_hi20_or_wave_top win=0.88 days=25; best_d50=U150__E_w3u__turn_n3_t60__intent_n3__SELL_hi20_or_wave_top; near80_d50=U150__E_w3u__turn_n3_t60__intent_n3__SELL_hi20_or_wave_top; promote_lookup=NO",
+      "ge80_d50_n": 5,
+      "best_ge80_d50": "U150__E_w3u__turn_n3_t60__intent_n3__SELL_hi20_or_wave_top",
+      "best_win": 0.84,
+      "best_days": 50,
+      "promote": false,
+      "note_zh": "過 ge80×50d 數字閘但仍 blocked：尚未接五張圖 placement／提早賣對質完"
+    },
+    "spirit_mix_thicken_v6": {
+      "source": "phone_spirit_mix_thicken_v6_decision.json",
+      "gate": "spirit_mix_thicken_v6 ge80=2 ge80_d50=2; best_d50=champ_intent_n3__SELL_hi20_or_wave_top win=0.84 days=50 bars=15.270833333333334; promote_lookup=NO",
+      "ge80_d50_n": 2,
+      "best_ge80_d50": "champ_intent_n3__SELL_hi20_or_wave_top",
+      "best_win": 0.84,
+      "best_days": 50,
+      "mean_bars_before_hi20": 15.270833333333334,
+      "promote": false,
+      "note_zh": "提早賣變體未進榜；冠軍仍 v5 核×hi20_or_wave_top"
+    },
+    "spirit_mix_thicken_v7": {
+      "source": "phone_spirit_mix_thicken_v7_decision.json",
+      "gate": "spirit_mix_thicken_v7 ge80=3 ge80_d50=3; best_early_d50=champ_n3__SELL_hi20_or_wave_top win=0.84 days=50 bars=15.270833333333334; promote_lookup=NO",
+      "ge80_d50_n": 3,
+      "best_ge80_d50": "champ_n3__SELL_hi20_or_wave_top",
+      "best_win": 0.84,
+      "mean_bars_before_hi20": 15.270833333333334,
+      "promote": false,
+      "note_zh": "提早加寬 bars↑ 但 win 掉到 ge80 下；再生 v8 品質閘"
+    },
+    "spirit_mix_thicken_v8": {
+      "source": "phone_spirit_mix_thicken_v8_decision.json",
+      "gate": "spirit_mix_thicken_v8 ge80=3 ge80_d50=1 earlier_d50=1; best_early_d50=champ_n3__SELL_hi20_or_wave_top win=0.84 days=50 bars=15.270833333333334; baseline_bars=15.27; promote_lookup=NO",
+      "ge80_d50_n": 1,
+      "near_miss": "early_intent_n5 ≈79.6%@53d bars≈15.9; ei_n5_week ≈82%@44d",
+      "promote": false
+    },
+    "spirit_mix_thicken_v9": {
+      "source": "phone_spirit_mix_thicken_v9_decision.json",
+      "gate": "spirit_mix_thicken_v9 ge80=10 ge80_d50=6 earlier_d50=0; best_early_d50=U150__champ_n3__SELL_hi20_or_wave_top win=0.84 bars=15.270833333333334; near80_early=U150__ei_n5__SELL_hi20_or_wave_top near_win=0.7962962962962963 near_bars=15.923076923076923; baseline_bars=15.27; promote_lookup=NO",
+      "ge80_d50_n": 6,
+      "earlier_d50_n": 0,
+      "near_miss": "ei_n5 ≈79.6%@53d bars≈15.9; ei_n5_week_n3 ≈80.4%@45d",
+      "promote": false
+    },
+    "spirit_mix_thicken_v10": {
+      "source": "phone_spirit_mix_thicken_v10_decision.json",
+      "gate": "spirit_mix_thicken_v10 ge80=4 ge80_d50=1 earlier_d50=0; best_early_d50=champ_n3__SELL_hi20_or_wave_top win=0.84 bars=15.270833333333334; near80_early=ei_n5_not_chase__SELL_hi20_or_wave_top near_win=0.7962962962962963 near_bars=15.923076923076923; baseline_bars=15.27; promote_lookup=NO",
+      "ge80_d50_n": 1,
+      "earlier_d50_n": 0,
+      "near_miss": "ei_n5≈79.6%@53d; week_n3≈80.4%@45d",
+      "promote": false
+    },
+    "spirit_mix_thicken_v11": {
+      "source": "phone_spirit_mix_thicken_v11_decision.json",
+      "gate": "spirit_mix_thicken_v11 ge80=4 ge80_d50=2 earlier_d50=1 cut_pass=0; best_early_d50=ei_n5_week_n3_softbody__SELL_hi20_or_wave_top win=0.803921568627451 bars=15.857142857142858; best_cut=None cut_win=None cut_days=None; near80_early=ei_n5_week_n3_softbody__SELL_hi20_or_wave_top near_win=0.803921568627451; baseline_bars=15.27; promote_lookup=NO",
+      "earlier_d50_n": 1,
+      "earlier_champ": "ei_n5_week_n3_softbody__SELL_hi20_or_wave_top",
+      "best_win": 0.803921568627451,
+      "best_days": 50,
+      "mean_bars_before_hi20": 15.857142857142858,
+      "promote": false,
+      "note_zh": "earlier×ge80×50d 數字閘過了；仍 blocked＝未接五張圖 placement／未改 leave_zero"
+    },
+    "spirit_mix_thicken_v12": {
+      "source": "phone_spirit_mix_thicken_v12_decision.json",
+      "gate": "spirit_mix_thicken_v12 ge80=6 ge80_d50=6 earlier_d50=4 beat_v11_early=1; best_early_d50=v11_week_n3_softbody__SELL_hi20_or_wave_top win=0.803921568627451 bars=15.857142857142858; v11_bars=15.857; baseline_bars=15.27; promote_lookup=NO",
+      "earlier_d50_n": 4,
+      "locked": "v11_week_n3_softbody",
+      "promote": false,
+      "near_miss_bars": "body_n5 ≈78.9%@51d bars≈16.2"
+    },
+    "spirit_mix_thicken_v13": {
+      "source": "phone_spirit_mix_thicken_v13_decision.json",
+      "gate": "spirit_mix_thicken_v13 ge80=2 ge80_d50=2 earlier_d50=1 beat_v11_bars=0; best_early_d50=v11_softbody__SELL_hi20_or_wave_top win=0.803921568627451 bars=15.857142857142858; best_early_sell=v11_softbody__SELL_hi20_or_wave_top hold=nan sell_win=0.803921568627451; v11_bars=15.857; promote_lookup=NO",
+      "earlier_d50_n": 1,
+      "beat_v11_bars_n": 0,
+      "promote": false,
+      "note_zh": "early-sell 無利潤閘打掉勝率；body_n5 仍 sub80"
+    },
+    "spirit_mix_thicken_v14": {
+      "source": "phone_spirit_mix_thicken_v14_decision.json",
+      "gate": "spirit_mix_thicken_v14 ge80=2 ge80_d50=2 earlier_d50=1 beat_v11_bars=0 cut_pass=0; best_early_d50=body_n4__SELL_hi20_or_wave_top win=0.803921568627451 bars=15.857142857142858; best_cut=None cut_win=None; best_profit_sell=None hold=None; v11_bars=15.857; promote_lookup=NO",
+      "cut_pass_n": 0,
+      "promote": false,
+      "near_miss": "profit_early≈78.9% hold≈13; body==false 82%@44d; universe_cap=112"
+    },
+    "spirit_mix_thicken_v15": {
+      "source": "phone_spirit_mix_thicken_v15_decision.json",
+      "gate": "spirit_mix_thicken_v15 ge80=12 ge80_d50=12 earlier_d50=7 beat_v11_bars=0 n_stocks=250; best_early_d50=body_n5_nobody_or_week__SELL_hi20_or_wave_top win=0.8024691358024691 bars=15.645569620253164; best_profit_sell=v11_nobody__SELL_profit_early_3 hold=11.681159420289855 v11_hold=14.8; promote_lookup=NO",
+      "n_stocks": 250,
+      "best_profit_sell": "v11_nobody__SELL_profit_early_3",
+      "best_profit_win": 0.855072463768116,
+      "best_profit_days": 66,
+      "best_profit_hold": 11.681159420289855,
+      "v11_hold_ref": 14.8,
+      "promote": false,
+      "note_zh": "提早賣數字閘過了（hold↓ 且 ge80×50d）；仍 blocked＝未接 placement／未改 leave_zero"
+    },
+    "spirit_mix_thicken_v16": {
+      "source": "phone_spirit_mix_thicken_v16_decision.json",
+      "gate": "spirit_mix_thicken_v16 ge80=18 ge80_d50=13 profit_sell_ge80_d50=8; best_profit_sell=U250__v11_nobody__SELL_profit_early_2 win=0.855072463768116 hold=11.579710144927537 hold_lift=3.2202898550724637; confirm_pe3={U150_soft_pe3:None,U150_nobody_pe3:None,U250_soft_pe3:0.8171,U250_nobody_pe3:0.8551}; promote_lookup=NO",
+      "u250_pe3_ok": true,
+      "u112_pe3_ok": false,
+      "promote": false,
+      "note_zh": "U250 提早卖过闸；U112 未过（soft sub80／nobody 日不够）"
+    },
+    "spirit_mix_thicken_v17": {
+      "source": "phone_spirit_mix_thicken_v17_decision.json",
+      "gate": "spirit_mix_thicken_v17 U112 n=112 profit_sell_ge80_d50=0; best=None win=None days=None hold=None base_hold=15.176470588235293; near=v11_softbody__SELL_profit_early_2 near_win=0.7884615384615384; promote_lookup=NO",
+      "profit_sell_ge80_d50_n": 0,
+      "promote": false
+    },
+    "spirit_mix_thicken_v18": {
+      "source": "phone_spirit_mix_thicken_v18_decision.json",
+      "gate": "spirit_mix_thicken_v18 U112 n=112 cut_pass=0 pe_ge80_d50=0; best=None win=None hold=None; best_cut=None; promote_lookup=NO",
+      "cut_pass_n": 0,
+      "promote": false
+    },
+    "spirit_mix_thicken_v19": {
+      "source": "phone_spirit_mix_thicken_v19_decision.json",
+      "gate": "spirit_mix_thicken_v19 U112 n=112 hybrid_ge80_d50=0; best=None win=None hold=None pe_exits=None base_hold=15.176470588235293; promote_lookup=NO",
+      "hybrid_ge80_d50_n": 0,
+      "promote": false
+    }
+  },
+  "blockers": [
+    "relhigh_sell 已封口但仍 phone_sync=blocked；浪頂腿未單獨贏過 hi20 到可上查股",
+    "market_feat_resync 已跑；W3 薄高檔／錘子厚樣本仍不當主顯示",
+    "phone_sync 鎖 blocked；LOOKUP_LAB_MARKS_ENABLED 預設 False；promote_to_lookup_display 必須維持 false",
+    "薄樣本天花板（extreme V/VT≈87%@22；mkt×S55≈95%@20）日數剛過／剛好 n≥20，不當主推顯示",
+    "TWII Elliott 狀態機本期幾乎無 W3（n_w3_start=0）；大盤浪段閘不夠當顯示條件",
+    "hsiao_promote_lookup：leave_zero／ma60_lower 長窗 h5≈五成 → 不准改現況藍▲／確認紅箭顯示",
+    "不准改 leave_zero／ma60_lower 公式；不准發明話筒浪號 5／9；LAB 記號僅候選",
+    "所有 sealed 決策皆 promote_lookup=NO／promote_to_lookup_display=false",
+    "thicken1 已抬 ge80=14／最厚 80%@49d（差一日到 50）；仍 blocked，進 thicken2",
+    "使用者 2026-11-08：材料若限制達標可自由加因子；目標＝提早知買／賣"
+  ],
+  "next_experiments": [
+    "mix_v20：U180 桥接 pe；placement candidates JSON（flag off）",
+    "U112 pe 续攻或接受 U250-only 早卖政策"
+  ],
+  "gate_one_liner": "draft: mix_v19 hybrid fail ~78.9%; invent v20 U180+placement stub; phone_sync=blocked; buy U112 locked; sell U250 only",
+  "user_goal_zh": "查股：有持有→能不能抱／哪天哪價先賣／怎麼抱；沒持有→能不能買／哪天哪價／本金幾成。未過閘不上話筒。",
+  "metric_priority_zh": [
+    "提早買（訊號相對後續漲段／20高）",
+    "提早賣（相對高點／浪頂）",
+    "勝率極高",
+    "獨立日 n≥20",
+    "贏隨機；不准改 leave_zero"
+  ],
+  "candidate_early_buy_rule": {
+    "key": "ei_n5_week_n3_softbody__SELL_hi20_or_wave_top",
+    "win_rate": 0.803921568627451,
+    "independent_days": 50,
+    "mean_bars_before_hi20": 15.857142857142858,
+    "source": "phone_spirit_mix_thicken_v11_decision.json",
+    "phone_sync": "blocked"
+  },
+  "candidate_early_sell_rule": {
+    "key": "v11_nobody__SELL_profit_early_3",
+    "alt_key": "v11_softbody__SELL_profit_early_3",
+    "win_rate": 0.855072463768116,
+    "independent_days": 66,
+    "mean_hold_days": 11.681159420289855,
+    "source": "phone_spirit_mix_thicken_v15_decision.json",
+    "phone_sync": "blocked"
+  },
+  "early_sell_u112": {
+    "key": "pe2_mh20",
+    "win_rate": 0.8039,
+    "days": 50,
+    "hold_days": 9.45,
+    "status": "locked_lab_candidate",
+    "source": "phone_spirit_mix_thicken_v27_decision.json"
+  },
+  "LOOKUP_LAB_MARKS_ENABLED": false,
+  "spirit_mix_early_buy_u112": {
+    "key": "ei_n5_week_n3_softbody__SELL_hi20_or_wave_top",
+    "win_rate": 0.8039,
+    "days": 50,
+    "bars_before_hi20": 15.86,
+    "status": "locked_lab_candidate"
+  },
+  "spirit_mix_early_sell_u112": {
+    "key": "pe2_mh20",
+    "win_rate": 0.8039,
+    "days": 50,
+    "hold_days": 9.45,
+    "status": "locked_lab_candidate",
+    "source": "phone_spirit_mix_thicken_v27_decision.json"
+  }
+}

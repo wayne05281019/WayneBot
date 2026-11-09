@@ -1,0 +1,13 @@
+{
+  "version": "wave_infer_verify_loop",
+  "as_of": "2026-11-09T11:46:33+08:00",
+  "phone_sync": "blocked",
+  "segment_numbers": "REQUIRED",
+  "thesis_zh": "每次大盤／飆大點位更新→多路推論（段號必標）→官方驗證→漏判回拆八循環→落庫內化",
+  "latest": "wave_infer_verify_20261109.json",
+  "next_actions": [
+    "日盤收完後回填 20261109 miss_analysis",
+    "抓文進庫後把 09:09 原文掛上同一檔",
+    "持續兩路以上推論，正確率升高前不上話筒定論"
+  ]
+}

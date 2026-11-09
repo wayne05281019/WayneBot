@@ -1,0 +1,30 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "as_of_taipei": "2026-11-08T05:18:21.942342+08:00",
+  "gate_one_liner": "spirit_mix_thicken_v15 ge80=12 ge80_d50=12 earlier_d50=7 beat_v11_bars=0 n_stocks=250; best_early_d50=body_n5_nobody_or_week__SELL_hi20_or_wave_top win=0.8024691358024691 bars=15.645569620253164; best_profit_sell=v11_nobody__SELL_profit_early_3 hold=11.681159420289855 v11_hold=14.8; promote_lookup=NO",
+  "parent_seal": "phone_spirit_mix_thicken_v14_decision.json",
+  "elapsed_s": 557.5,
+  "n_stocks": 250,
+  "ge80_d50_n": 12,
+  "profit_sell_ge80_d50_n": 6,
+  "best_profit_sell": {
+    "key": "v11_nobody__SELL_profit_early_3",
+    "n_trades": 69,
+    "n_unique_entry_days": 66,
+    "win_rate": 0.855072463768116,
+    "expectancy": 0.026919102100727503,
+    "beats_random": true,
+    "balanced_score": 0.855072463768116,
+    "win_ge80": true,
+    "days_ge50": true,
+    "mean_bars_before_hi20": 14.923076923076923,
+    "mean_hold_days": 11.681159420289855,
+    "earlier_than_baseline": false,
+    "earlier_than_v11": false
+  },
+  "finding_zh": "BREAKTHROUGH 提早賣：v11_nobody×profit_early_3 ≈85.5%@66d hold≈11.7（對照 hi20 賣 hold≈14.8）；softbody×pe3 ≈81.7%@79d hold≈11.9。仍 blocked。再生 v16 雙母體复現。",
+  "locked_early_buy_u112": "ei_n5&(week_n3|body_n3) ≈80.4%@50d bars≈15.86",
+  "early_sell_formula_zh": "進場=v11；出場=hi20|浪頂|（耗竭量或近10高 且 浮盈≥3%）",
+  "next": "mix_v16 dual-universe confirm profit_early; phone_sync=blocked"
+}

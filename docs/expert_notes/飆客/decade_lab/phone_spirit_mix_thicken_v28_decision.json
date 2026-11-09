@@ -1,0 +1,30 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "as_of_taipei": "2026-11-08T08:58:12.497115+08:00",
+  "gate_one_liner": "spirit_mix_thicken_v28 U112 n=112 confirm_mh20=True confirm_hold=9.450980392156863; pe_ge80_d50=2 earlier=0; best_early=None hold=None; promote_lookup=NO",
+  "parent_seal": "phone_spirit_mix_thicken_v27_decision.json",
+  "elapsed_s": 341.5,
+  "n_stocks": 112,
+  "confirm_pe2_mh20": {
+    "key": "pe2_mh20",
+    "n_trades": 51,
+    "n_unique_entry_days": 50,
+    "win_rate": 0.803921568627451,
+    "expectancy": 0.015031084253507002,
+    "beats_random": true,
+    "balanced_score": 0.803921568627451,
+    "win_ge80": true,
+    "days_ge50": true,
+    "mean_bars_before_hi20": 15.854166666666666,
+    "mean_hold_days": 9.450980392156863,
+    "earlier_than_parent": false
+  },
+  "upgrade_lock": null,
+  "keep_lock": {
+    "key": "pe2_mh20",
+    "reason_zh": "mh20 复現過閘；mh18／mh16／mh15／mh12 提早但破 ge80；mh20+ma10 提早但 beats_random=false → 不准升級"
+  },
+  "finding_zh": "mh20 hold≈9.45 复現；再壓 max_hold 或加 ma10 破閘／不過 beats_random。鎖維持 pe2_mh20。",
+  "next": "mix_v29 hunt hold<9.45 via loser-cut／dual_lh／exhaust-only／mh19；phone_sync=blocked"
+}

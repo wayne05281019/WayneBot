@@ -1,0 +1,63 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "as_of_taipei": "2026-11-08T02:49:28.379500+08:00",
+  "gate_one_liner": "spirit_mix_thicken_v7 ge80=3 ge80_d50=3; best_early_d50=champ_n3__SELL_hi20_or_wave_top win=0.84 days=50 bars=15.270833333333334; promote_lookup=NO",
+  "parent_seal": "phone_spirit_mix_thicken_v6_decision.json",
+  "elapsed_s": 351.0,
+  "n_stocks": 112,
+  "ge80_n": 3,
+  "ge80_d50_n": 3,
+  "best_ge80_d50": {
+    "key": "champ_n3__SELL_hi20_or_wave_top",
+    "n_trades": 50,
+    "n_unique_entry_days": 50,
+    "win_rate": 0.84,
+    "expectancy": 0.03230693275418365,
+    "beats_random": true,
+    "balanced_score": 0.84,
+    "win_ge80": true,
+    "days_ge50": true,
+    "mean_bars_before_hi20": 15.270833333333334
+  },
+  "finding_zh": "near 加寬可把 bars 抬到 ~16（early_intent_n5／early_both_n5），但勝率掉到 ~78–80% 過不了 ge80。冠軍仍 champ_n3 bars≈15.3@84%。下一版對提早母體加品質閘搶回 ≥80%。",
+  "near_miss_early": [
+    {
+      "key": "early_intent_n5__SELL_hi20_or_wave_top",
+      "n_trades": 54,
+      "n_unique_entry_days": 53,
+      "win_rate": 0.7962962962962963,
+      "expectancy": 0.025799601106618296,
+      "beats_random": false,
+      "balanced_score": 0.7962962962962963,
+      "win_ge80": false,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 15.923076923076923
+    },
+    {
+      "key": "early_both_n5__SELL_hi20_or_wave_top",
+      "n_trades": 60,
+      "n_unique_entry_days": 57,
+      "win_rate": 0.7833333333333333,
+      "expectancy": 0.019225039138109194,
+      "beats_random": true,
+      "balanced_score": 0.7833333333333333,
+      "win_ge80": false,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 16.285714285714285
+    },
+    {
+      "key": "early_turn_n7_intent_n5__SELL_hi20_or_wave_top",
+      "n_trades": 61,
+      "n_unique_entry_days": 58,
+      "win_rate": 0.7868852459016393,
+      "expectancy": 0.01954375576386356,
+      "beats_random": true,
+      "balanced_score": 0.7868852459016393,
+      "win_ge80": false,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 16.035087719298247
+    }
+  ],
+  "next": "mix_v8 quality gates on early_intent/both; phone_sync=blocked"
+}

@@ -1,0 +1,27 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "as_of_taipei": "2026-11-08T07:00:00+08:00",
+  "gate_one_liner": "spirit_mix_thicken_v20 U180 n=180 pe_ge80_d50=4; best=U180__nobody_pe3 win=0.8490566037735849 days=52 hold=12.320754716981131 base_hold=14.9; promote_lookup=NO",
+  "parent_seal": "phone_spirit_mix_thicken_v19_decision.json",
+  "elapsed_s": null,
+  "n_stocks": 180,
+  "pe_ge80_d50_n": 4,
+  "locked_early_sell_u180": {
+    "primary_same_entry": {
+      "key": "U180__v11_pe3",
+      "win_rate": 0.8032786885245902,
+      "days": 60,
+      "hold_days": 12.524590163934427,
+      "note_zh": "與提早買同進場族 softbody"
+    },
+    "alt_nobody": {
+      "key": "U180__nobody_pe3",
+      "win_rate": 0.8490566037735849,
+      "days": 52,
+      "hold_days": 12.320754716981131
+    }
+  },
+  "finding_zh": "U180 提早賣過閘：nobody_pe3≈84.9%@52d hold≈12.3；同進場族 v11_pe3≈80.3%@60d hold≈12.5（相對 hi20 基線 hold≈14.9）。U112 仍未過閘。placement 候選已寫；旗標仍關。",
+  "next": "mix_v21 confirm U180/U200/U250 v11_pe3+nobody_pe3; phone_sync=blocked"
+}

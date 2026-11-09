@@ -84,86 +84,76 @@ def test_last_pre_from_block_uses_pre_window():
 
 
 def test_weekend_sox_live_bar_is_official_close_not_extended(monkeypatch):
-    """週末 force 抓費半：live_session=0，收＝日K官方收，不准盤後殘價。
-
-    用固定 Yahoo 假回應，不准綁現場指數值（否則每次美股收完就紅）。
-    """
+    """週末 force 抓費半：live_session=0，收＝日K官方收，不准盤後／meta 殘價。"""
     from datetime import datetime
+    from types import SimpleNamespace
     from zoneinfo import ZoneInfo
 
-    import us_overnight
-    from us_overnight import _us_cash_calendar_closed, fetch_live_sox_display_bar
+    import us_overnight as uo
 
     cash_close = 9390.25
-    residue = 9474.0
-    sox_payload = {
-        "chart": {
-            "result": [
-                {
-                    "meta": {
-                        "symbol": "^SOX",
-                        "regularMarketPrice": residue,
-                        "regularMarketTime": 1762462800,  # 2026-11-06 US cash
-                        "regularMarketOpen": 9300.0,
-                        "regularMarketDayHigh": 9450.0,
-                        "regularMarketDayLow": 9280.0,
-                    },
-                    "timestamp": [1762462800],
-                    "indicators": {
-                        "quote": [
-                            {
-                                "open": [9300.0],
-                                "high": [9450.0],
-                                "low": [9280.0],
-                                "close": [cash_close],
-                                "volume": [0],
-                            }
-                        ]
-                    },
+    extended_px = 9474.0
+    friday_ts = int(datetime(2026, 11, 6, 16, 0, tzinfo=uo.NY).timestamp())
+
+    def _fake_get(url, timeout=20):
+        if "SOXX" in url:
+            body = {
+                "chart": {
+                    "result": [
+                        {
+                            "meta": {"regularMarketVolume": 1_000_000},
+                            "indicators": {"quote": [{"volume": [1_000_000]}]},
+                        }
+                    ]
                 }
-            ]
-        }
-    }
-    soxx_payload = {
-        "chart": {
-            "result": [
-                {
-                    "meta": {"symbol": "SOXX", "regularMarketVolume": 1_000_000},
-                    "indicators": {"quote": [{"volume": [900_000]}]},
+            }
+        else:
+            # 日K官方收 vs meta／盤後殘價：休市只准吃 closes[-1]
+            body = {
+                "chart": {
+                    "result": [
+                        {
+                            "meta": {
+                                "regularMarketPrice": extended_px,
+                                "regularMarketOpen": 9300.0,
+                                "regularMarketDayHigh": extended_px,
+                                "regularMarketDayLow": 9200.0,
+                                "regularMarketTime": friday_ts,
+                                "preMarketPrice": extended_px,
+                            },
+                            "timestamp": [friday_ts],
+                            "indicators": {
+                                "quote": [
+                                    {
+                                        "open": [9300.0],
+                                        "high": [9420.0],
+                                        "low": [9200.0],
+                                        "close": [cash_close],
+                                        "volume": [0],
+                                    }
+                                ]
+                            },
+                        }
+                    ]
                 }
-            ]
-        }
-    }
+            }
+        return SimpleNamespace(
+            raise_for_status=lambda: None,
+            json=lambda: body,
+        )
 
-    class _Resp:
-        def __init__(self, payload):
-            self._payload = payload
-
-        def raise_for_status(self):
-            return None
-
-        def json(self):
-            return self._payload
-
-    def _fake_get(url, timeout=20):  # noqa: ARG001
-        u = str(url)
-        if "SOXX" in u and "%5ESOX" not in u and "^SOX" not in u:
-            return _Resp(soxx_payload)
-        return _Resp(sox_payload)
-
-    monkeypatch.setattr(us_overnight._SESSION, "get", _fake_get)
-    # 週末即使 force 也不准走盤後／盤前末筆蓋收
-    monkeypatch.setattr(us_overnight, "_fetch_post_last", lambda *_a, **_k: {"price": residue})
-    monkeypatch.setattr(us_overnight, "_fetch_pre_last", lambda *_a, **_k: {"price": residue})
+    monkeypatch.setattr(uo._SESSION, "get", _fake_get)
+    monkeypatch.setattr(uo, "_fetch_post_last", lambda _sym: {"price": extended_px, "ts": friday_ts})
+    monkeypatch.setattr(uo, "_fetch_pre_last", lambda _sym: {"price": extended_px, "ts": friday_ts})
 
     taipei = ZoneInfo("Asia/Taipei")
     sunday = datetime(2026, 11, 8, 8, 53, tzinfo=taipei)
-    assert _us_cash_calendar_closed(sunday) is True
-    live = fetch_live_sox_display_bar(sunday, force=True)
+    assert uo._us_cash_calendar_closed(sunday) is True
+    live = uo.fetch_live_sox_display_bar(sunday, force=True)
     assert live is not None
     assert int(live.get("live_session") or 0) == 0
     assert abs(float(live["close"]) - cash_close) < 1e-9
-    assert abs(float(live["close"]) - residue) > 1.0
+    assert abs(float(live["close"]) - extended_px) > 1.0
 
 
 def test_outer_rows_brent_dx_twd():

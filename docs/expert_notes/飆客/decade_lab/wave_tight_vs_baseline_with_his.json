@@ -1,0 +1,30 @@
+{
+  "as_of": "2026-11-09T19:17:38+0800",
+  "tz": "Asia/Taipei",
+  "track": "market_tw",
+  "pot": "wave_decade_replay",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "WAVE_NEURONS_MATCH": false,
+  "purpose_zh": "收緊可裁判位：觸及未確認不計分；連2收／假跌破候選才計。對照 baseline 有文窗，未過閘不換現況。",
+  "baseline_with_his": {
+    "rows": 749,
+    "n_decided": 724,
+    "hit": 285,
+    "miss": 439,
+    "hit_rate": 0.393646408839779
+  },
+  "tight_with_his": {
+    "rows": 749,
+    "n_decided": 723,
+    "hit": 254,
+    "miss": 469,
+    "hit_rate": 0.35131396957123096,
+    "score_mode": "tight"
+  },
+  "delta_hit_rate_with_his": -0.042332,
+  "decision_zh": "tight 命中低於 baseline 有文窗＝更嚴、尚未證明更準；繼續收集有效穿刺／假跌破標籤。不換 decade baseline。",
+  "replace": false,
+  "keep": "wave_decade_replay baseline score_mode",
+  "not_buy_signal": true
+}

@@ -1,0 +1,196 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "curriculum_zh": {
+    "buy": "波浪起漲（主W3）",
+    "sell": "相對高點＝蕭20高",
+    "hsiao": "量價／近窗V／S55",
+    "barek": "建設確認／挡套牢無量（本跑未成為主抬勝率軸）",
+    "market": "TWII 週線+非過熱／拉回推動窗；非崩壞閘本期無效"
+  },
+  "sealed_tiers": {
+    "thin_ceiling": "W3×V/VT 或 W3×S55×大盤閘 ≈87–95%，日20–25",
+    "balanced": "W3∪紅箭×(Vnear2∨S55) ≈76%@50日",
+    "robust_macd": "MACD多 ≈78%@80日（先前 hsiao 軌）"
+  },
+  "balanced_decision": {
+    "phone_sync": "blocked",
+    "promote_to_lookup_display": false,
+    "method_zh": "balanced_score=win×min(1,days/50)；近窗量／軟門／計分卡",
+    "n100_gate": "n=100; winners=15/54; lift=13; best_balanced=core_w3_or_ma60w3__BAL_Vnear2_or_S55__hi20_or_desync win=0.76 days=50 B=0.76; ge50=core_w3_or_ma60w3__BAL_Vnear2_or_S55__hi20_or_desync; promote_lookup=NO",
+    "n150_gate": "n=150; winners=12/54; lift=10; best_balanced=core_w3_start__BAL_Vm_near2__hi20_or_desync win=0.7837837837837838 days=37 B=0.58; ge50=None; promote_lookup=NO",
+    "best_balanced": [
+      {
+        "key": "core_w3_or_ma60w3__BAL_Vnear2_or_S55__hi20_or_desync",
+        "source": "n100",
+        "win": 0.76,
+        "days": 50,
+        "B": 0.76,
+        "E": 0.0193,
+        "lift": true
+      },
+      {
+        "key": "core_w3_or_ma60w3__BAL_V_near2__hi20_or_desync",
+        "source": "n100",
+        "win": 0.7632,
+        "days": 38,
+        "B": 0.58,
+        "E": 0.0244,
+        "lift": true
+      },
+      {
+        "key": "core_w3_or_ma60w3__BAL_Vnear2_and_safe__hi20_or_desync",
+        "source": "n100",
+        "win": 0.7632,
+        "days": 38,
+        "B": 0.58,
+        "E": 0.0244,
+        "lift": true
+      },
+      {
+        "key": "core_w3_start__BAL_Vnear2_or_S55__hi20_or_desync",
+        "source": "n100",
+        "win": 0.7838,
+        "days": 37,
+        "B": 0.58,
+        "E": 0.028,
+        "lift": true
+      },
+      {
+        "key": "core_w3_start__BAL_Vm_near2__hi20_or_desync",
+        "source": "n150",
+        "win": 0.7838,
+        "days": 37,
+        "B": 0.58,
+        "E": 0.0277,
+        "lift": true
+      },
+      {
+        "key": "core_w3_start__BAL_Vm_near2__hi20_or_desync",
+        "source": "n100",
+        "win": 0.8235,
+        "days": 34,
+        "B": 0.56,
+        "E": 0.0344,
+        "lift": true
+      },
+      {
+        "key": "core_w3_start__BAL_S55__hi20_or_desync",
+        "source": "n100",
+        "win": 0.8125,
+        "days": 32,
+        "B": 0.52,
+        "E": 0.0358,
+        "lift": true
+      },
+      {
+        "key": "core_w3_or_ma60w3__BAL_hard_S55__hi20_or_desync",
+        "source": "n100",
+        "win": 0.8125,
+        "days": 32,
+        "B": 0.52,
+        "E": 0.0358,
+        "lift": true
+      },
+      {
+        "key": "core_w3_or_ma60w3__BAL_S55__hi20_or_desync",
+        "source": "n100",
+        "win": 0.8125,
+        "days": 32,
+        "B": 0.52,
+        "E": 0.0358,
+        "lift": true
+      },
+      {
+        "key": "core_w3_start__BAL_hard_S55__hi20_or_desync",
+        "source": "n150",
+        "win": 0.7647,
+        "days": 34,
+        "B": 0.52,
+        "E": 0.0282,
+        "lift": true
+      }
+    ],
+    "best_ge50": [
+      {
+        "key": "core_w3_or_ma60w3__BAL_Vnear2_or_S55__hi20_or_desync",
+        "source": "n100",
+        "win": 0.76,
+        "days": 50,
+        "B": 0.76,
+        "E": 0.0193
+      }
+    ],
+    "read_zh": [
+      "均衡最高：core_w3_or_ma60w3__BAL_Vnear2_or_S55__hi20_or_desync 勝率76.0%／日50（B=0.760）",
+      "相對先前薄樣本87%@22，本軌優先厚薄折衷；仍 phone_sync=blocked",
+      "日≥50 最佳：core_w3_or_ma60w3__BAL_Vnear2_or_S55__hi20_or_desync 勝率76.0%／日50"
+    ],
+    "gate_one_liner": "balanced best=core_w3_or_ma60w3__BAL_Vnear2_or_S55__hi20_or_desync src=n100 win=0.7600 days=50 B=0.7600; ge50=core_w3_or_ma60w3__BAL_Vnear2_or_S55__hi20_or_desync; promote_lookup=NO",
+    "n100_vs_n150_zh": "母體扩到150是否抬均衡分，見 best_balanced 的 source 分布"
+  },
+  "market_sync_decision": {
+    "phone_sync": "blocked",
+    "promote_to_lookup_display": false,
+    "twii_note_zh": "TWII 狀態機本期幾乎全在 BASE／W2，mkt_not_crash≈恒真；有效大盤閘看 mkt_ok_basic（週線+非過熱）／ok_pull_or_impulse／ok_strong",
+    "market_sync_gate": "winners=30/144; lift=10; best_bal=E_pull_hammer__mkt_not_crash__F_none__hi20_or_desync win=0.749304008908686 days=2730; best_win=E_w3_start__mkt_not_crash__F_hsiao_S55__hi20_or_desync; promote_lookup=NO",
+    "w3_thin_high": [
+      {
+        "key": "E_w3_start__mkt_not_crash__F_hsiao_S55__hi20_or_desync",
+        "win": 0.95,
+        "days": 20,
+        "B": 0.38,
+        "lift": true
+      },
+      {
+        "key": "E_w3_start__mkt_ok_pull_or_impulse__F_hsiao_S55__hi20_or_desync",
+        "win": 0.95,
+        "days": 20,
+        "B": 0.38,
+        "lift": true
+      },
+      {
+        "key": "E_w3_start__mkt_risk_on__F_hsiao_S55__hi20_or_desync",
+        "win": 0.95,
+        "days": 20,
+        "B": 0.38,
+        "lift": true
+      },
+      {
+        "key": "E_w3_or_ma60w3__mkt_not_crash__F_hsiao_S55__hi20_or_desync",
+        "win": 0.95,
+        "days": 20,
+        "B": 0.38,
+        "lift": true
+      },
+      {
+        "key": "E_w3_or_ma60w3__mkt_ok_pull_or_impulse__F_hsiao_S55__hi20_or_desync",
+        "win": 0.95,
+        "days": 20,
+        "B": 0.38,
+        "lift": true
+      }
+    ],
+    "w3_meaningful_mkt_lifts": [
+      {
+        "key": "E_w3_start__mkt_ok_pull_or_impulse__F_hsiao_S55__hi20_or_desync",
+        "win": 0.95,
+        "days": 20,
+        "B": 0.38
+      },
+      {
+        "key": "E_w3_or_ma60w3__mkt_ok_pull_or_impulse__F_hsiao_S55__hi20_or_desync",
+        "win": 0.95,
+        "days": 20,
+        "B": 0.38
+      }
+    ],
+    "recommended_zh": [
+      "均衡主線仍用 balanced：W3∪紅箭 × (近窗V∨S55) ≈76%@50日",
+      "大盤同步：W3×S55 在有效大盤閘下可見極高勝率但日僅20（薄）；先當候選繼續累積",
+      "拉回錘子日數很厚≈75%@2700但未證明抬核，且定義過寬，不當主買訊"
+    ],
+    "gate_one_liner": "mkt_sync W3 meaningful best=E_w3_start__mkt_ok_pull_or_impulse__F_hsiao_S55__hi20_or_desync win=0.9500 days=20; balanced_enlarge still ge50 Vnear2∨S55@76%/50d; thin W3×S55 can hit ~95%@20d; promote_lookup=NO"
+  },
+  "gate_one_liner": "mkt_sync W3 meaningful best=E_w3_start__mkt_ok_pull_or_impulse__F_hsiao_S55__hi20_or_desync win=0.9500 days=20; balanced_enlarge still ge50 Vnear2∨S55@76%/50d; thin W3×S55 can hit ~95%@20d; promote_lookup=NO"
+}

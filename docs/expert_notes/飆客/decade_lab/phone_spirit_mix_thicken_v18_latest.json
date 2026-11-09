@@ -1,0 +1,259 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "user_goal_zh": "v18：U112 pe3 去損＋嚴觸發",
+  "parent_seal": "phone_spirit_mix_thicken_v17_decision.json",
+  "elapsed_s": 328.3,
+  "n_stocks": 112,
+  "pe3_feat_n": 52,
+  "cut_scan_top": [
+    {
+      "cut": "vol_r<=0.65454_q0.4",
+      "n_trades": 21,
+      "n_unique_entry_days": 21,
+      "win_rate": 0.8571428571428571,
+      "delta_n": -31,
+      "base_win": 0.7884615384615384,
+      "win_ge80": true,
+      "days_ge50": false
+    },
+    {
+      "cut": "room<=0.0682024_q0.5",
+      "n_trades": 26,
+      "n_unique_entry_days": 25,
+      "win_rate": 0.8461538461538461,
+      "delta_n": -26,
+      "base_win": 0.7884615384615384,
+      "win_ge80": true,
+      "days_ge50": false
+    },
+    {
+      "cut": "body==false",
+      "n_trades": 45,
+      "n_unique_entry_days": 44,
+      "win_rate": 0.8444444444444444,
+      "delta_n": -7,
+      "base_win": 0.7884615384615384,
+      "win_ge80": true,
+      "days_ge50": false
+    },
+    {
+      "cut": "body<=0_q0.25",
+      "n_trades": 45,
+      "n_unique_entry_days": 44,
+      "win_rate": 0.8444444444444444,
+      "delta_n": -7,
+      "base_win": 0.7884615384615384,
+      "win_ge80": true,
+      "days_ge50": false
+    },
+    {
+      "cut": "body<=0_q0.4",
+      "n_trades": 45,
+      "n_unique_entry_days": 44,
+      "win_rate": 0.8444444444444444,
+      "delta_n": -7,
+      "base_win": 0.7884615384615384,
+      "win_ge80": true,
+      "days_ge50": false
+    },
+    {
+      "cut": "body<=0_q0.5",
+      "n_trades": 45,
+      "n_unique_entry_days": 44,
+      "win_rate": 0.8444444444444444,
+      "delta_n": -7,
+      "base_win": 0.7884615384615384,
+      "win_ge80": true,
+      "days_ge50": false
+    },
+    {
+      "cut": "body<=0_q0.6",
+      "n_trades": 45,
+      "n_unique_entry_days": 44,
+      "win_rate": 0.8444444444444444,
+      "delta_n": -7,
+      "base_win": 0.7884615384615384,
+      "win_ge80": true,
+      "days_ge50": false
+    },
+    {
+      "cut": "body<=0_q0.75",
+      "n_trades": 45,
+      "n_unique_entry_days": 44,
+      "win_rate": 0.8444444444444444,
+      "delta_n": -7,
+      "base_win": 0.7884615384615384,
+      "win_ge80": true,
+      "days_ge50": false
+    },
+    {
+      "cut": "room>=0.0547984_q0.25",
+      "n_trades": 39,
+      "n_unique_entry_days": 39,
+      "win_rate": 0.8205128205128205,
+      "delta_n": -13,
+      "base_win": 0.7884615384615384,
+      "win_ge80": true,
+      "days_ge50": false
+    },
+    {
+      "cut": "ret5>=-0.0334681_q0.25",
+      "n_trades": 39,
+      "n_unique_entry_days": 38,
+      "win_rate": 0.8205128205128205,
+      "delta_n": -13,
+      "base_win": 0.7884615384615384,
+      "win_ge80": true,
+      "days_ge50": false
+    },
+    {
+      "cut": "ret5<=0.0193786_q0.75",
+      "n_trades": 39,
+      "n_unique_entry_days": 38,
+      "win_rate": 0.8205128205128205,
+      "delta_n": -13,
+      "base_win": 0.7884615384615384,
+      "win_ge80": true,
+      "days_ge50": false
+    },
+    {
+      "cut": "vol_r>=0.839817_q0.6",
+      "n_trades": 21,
+      "n_unique_entry_days": 21,
+      "win_rate": 0.8095238095238095,
+      "delta_n": -31,
+      "base_win": 0.7884615384615384,
+      "win_ge80": true,
+      "days_ge50": false
+    },
+    {
+      "cut": "room<=0.0608576_q0.4",
+      "n_trades": 21,
+      "n_unique_entry_days": 20,
+      "win_rate": 0.8095238095238095,
+      "delta_n": -31,
+      "base_win": 0.7884615384615384,
+      "win_ge80": true,
+      "days_ge50": false
+    },
+    {
+      "cut": "ret5<=-0.00588517_q0.5",
+      "n_trades": 26,
+      "n_unique_entry_days": 26,
+      "win_rate": 0.8076923076923077,
+      "delta_n": -26,
+      "base_win": 0.7884615384615384,
+      "win_ge80": true,
+      "days_ge50": false
+    },
+    {
+      "cut": "vol_r>=0.692326_q0.5",
+      "n_trades": 26,
+      "n_unique_entry_days": 26,
+      "win_rate": 0.8076923076923077,
+      "delta_n": -26,
+      "base_win": 0.7884615384615384,
+      "win_ge80": true,
+      "days_ge50": false
+    }
+  ],
+  "cut_pass_ge80_d50": [],
+  "ranking": [
+    {
+      "key": "v11__pe3_or",
+      "n_trades": 52,
+      "n_unique_entry_days": 51,
+      "win_rate": 0.7884615384615384,
+      "expectancy": 0.01595003199260491,
+      "beats_random": true,
+      "balanced_score": 0.7884615384615384,
+      "win_ge80": false,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 15.857142857142858,
+      "mean_hold_days": 13.038461538461538
+    },
+    {
+      "key": "v11__pe3_and",
+      "n_trades": 51,
+      "n_unique_entry_days": 50,
+      "win_rate": 0.7843137254901961,
+      "expectancy": 0.018867627582924866,
+      "beats_random": true,
+      "balanced_score": 0.7843137254901961,
+      "win_ge80": false,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 15.857142857142858,
+      "mean_hold_days": 13.92156862745098
+    },
+    {
+      "key": "v11__pe3_or_minhold2",
+      "n_trades": 51,
+      "n_unique_entry_days": 50,
+      "win_rate": 0.7843137254901961,
+      "expectancy": 0.013047463547581939,
+      "beats_random": true,
+      "balanced_score": 0.7843137254901961,
+      "win_ge80": false,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 15.857142857142858,
+      "mean_hold_days": 13.509803921568627
+    },
+    {
+      "key": "v11__pe3_and_minhold2",
+      "n_trades": 51,
+      "n_unique_entry_days": 50,
+      "win_rate": 0.7843137254901961,
+      "expectancy": 0.018867627582924866,
+      "beats_random": true,
+      "balanced_score": 0.7843137254901961,
+      "win_ge80": false,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 15.857142857142858,
+      "mean_hold_days": 13.92156862745098
+    },
+    {
+      "key": "v11__pe2_or_minhold2",
+      "n_trades": 51,
+      "n_unique_entry_days": 50,
+      "win_rate": 0.7843137254901961,
+      "expectancy": 0.011665611457110656,
+      "beats_random": true,
+      "balanced_score": 0.7843137254901961,
+      "win_ge80": false,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 15.857142857142858,
+      "mean_hold_days": 13.372549019607844
+    },
+    {
+      "key": "v11__pe5_and",
+      "n_trades": 51,
+      "n_unique_entry_days": 50,
+      "win_rate": 0.7843137254901961,
+      "expectancy": 0.018867627582924866,
+      "beats_random": true,
+      "balanced_score": 0.7843137254901961,
+      "win_ge80": false,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 15.857142857142858,
+      "mean_hold_days": 13.92156862745098
+    },
+    {
+      "key": "v11__hi20_or_wave_top",
+      "n_trades": 51,
+      "n_unique_entry_days": 50,
+      "win_rate": 0.803921568627451,
+      "expectancy": 0.0242859554519123,
+      "beats_random": true,
+      "balanced_score": 0.803921568627451,
+      "win_ge80": true,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 15.857142857142858,
+      "mean_hold_days": 15.176470588235293
+    }
+  ],
+  "pe_ge80_d50": [],
+  "gate_one_liner": "spirit_mix_thicken_v18 U112 n=112 cut_pass=0 pe_ge80_d50=0; best=None win=None hold=None; best_cut=None; promote_lookup=NO",
+  "errors_n": 0,
+  "errors_sample": []
+}

@@ -1,0 +1,73 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "doctrine_zh": "核心＝波浪W3×蕭出場首碰20高；四維只准疊加",
+  "core_kept_zh": [
+    "W3起漲+hi20",
+    "W3∪紅箭×W3+hi20"
+  ],
+  "best_lifts": [
+    {
+      "key": "core_w3_start__V__hi20_or_desync",
+      "win": 0.8696,
+      "E": 0.0597,
+      "days": 22,
+      "delta_win": 0.1064
+    },
+    {
+      "key": "core_w3_start__V__hi20_only",
+      "win": 0.8696,
+      "E": 0.0597,
+      "days": 22,
+      "delta_win": 0.1064
+    },
+    {
+      "key": "core_w3_start__VT__hi20_or_desync",
+      "win": 0.8696,
+      "E": 0.0597,
+      "days": 22,
+      "delta_win": 0.1064
+    },
+    {
+      "key": "core_w3_start__VT__hi20_only",
+      "win": 0.8696,
+      "E": 0.0597,
+      "days": 22,
+      "delta_win": 0.1064
+    },
+    {
+      "key": "core_w3_or_ma60w3__VT__hi20_or_desync",
+      "win": 0.8696,
+      "E": 0.0597,
+      "days": 22,
+      "delta_win": 0.1174
+    },
+    {
+      "key": "core_w3_or_ma60w3__VT__hi20_only",
+      "win": 0.8696,
+      "E": 0.0597,
+      "days": 22,
+      "delta_win": 0.1174
+    },
+    {
+      "key": "core_w3_or_ma60w3__V__hi20_or_desync",
+      "win": 0.8462,
+      "E": 0.0527,
+      "days": 25,
+      "delta_win": 0.0939
+    },
+    {
+      "key": "core_w3_or_ma60w3__V__hi20_only",
+      "win": 0.8462,
+      "E": 0.0527,
+      "days": 25,
+      "delta_win": 0.0939
+    }
+  ],
+  "what_worked_zh": [
+    "量(V_attack) 單獨疊 W3 核能抬勝率",
+    "量×時間安全(VT) 最高約87%，獨立日22（剛過n≥20）",
+    "過密四維齊上未必更好；先留 VT／V"
+  ],
+  "next_zh": "extreme 三軌改以波浪×蕭為核再壓；樣本偏薄暫不上查股"
+}

@@ -1,0 +1,28 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "user_goal_zh": "v60：ei_n2/no_room earlier>16.26",
+  "parent_seal": "phone_spirit_mix_thicken_v60_decision.json",
+  "sell_lock_key": "pe2_mh20_vdry_gb15",
+  "sell_lock_hold": 8.901960784313726,
+  "parent_bars": 16.26,
+  "elapsed_s": 317.4,
+  "n_stocks": 112,
+  "confirm_buy": null,
+  "ranking": [],
+  "buy_ge80_d50": [],
+  "earlier_ok": [],
+  "gate_one_liner": "spirit_mix_thicken_v60 U180 n=112 confirm_parent=False confirm_bars=None; buy_ge80_d50=0 earlier=0; best_early=None bars=None; sell_lock=pe2_mh20_vdry_gb15 hold=8.901960784313726; promote_lookup=NO",
+  "as_of_taipei": "2026-11-08T15:46:08.450913+08:00",
+  "errors_n": 112,
+  "errors_sample": [
+    "6442:NameError:name 'ei' is not defined",
+    "2383:NameError:name 'ei' is not defined",
+    "6274:NameError:name 'ei' is not defined",
+    "3081:NameError:name 'ei' is not defined",
+    "8299:NameError:name 'ei' is not defined",
+    "2330:NameError:name 'ei' is not defined",
+    "2454:NameError:name 'ei' is not defined",
+    "2408:NameError:name 'ei' is not defined"
+  ]
+}

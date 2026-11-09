@@ -1,0 +1,24 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "as_of_taipei": "2026-11-07T23:59:50.455675+08:00",
+  "gate_one_liner": "lookup_extreme winners_ge80=0; best_win=None win=None days=None; best_bal=E_w3u__F_V_or_S55__SELL_hi20_or_wave_top; promote_lookup=NO",
+  "n_stocks": 100,
+  "elapsed_s": 334.4,
+  "ge80_n": 0,
+  "best_bal": {
+    "key": "E_w3u__F_V_or_S55__SELL_hi20_or_wave_top",
+    "n_trades": 50,
+    "n_unique_entry_days": 50,
+    "win_rate": 0.74,
+    "expectancy": 0.0160548432883322,
+    "beats_random": true,
+    "balanced_score": 0.74,
+    "win_ge80": false,
+    "win_ge85": false
+  },
+  "read_zh": [
+    "本輪 ge80=0；最高約 79%@29（S55×barek）；繼續分測＋混測含 champ",
+    "phone_sync=blocked"
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "winners_beat_random_and_lz0": 0,
+  "best": {
+    "key": "leave_zero_blue_tri__F2_near_ma60",
+    "base": "leave_zero_blue_tri",
+    "filter": "F2_near_ma60",
+    "n_trades": 1736,
+    "n_unique_entry_days": 1175,
+    "win_rate": 0.5299539170506913,
+    "expectancy": -0.005031373946854435,
+    "avg_hold": 13.745967741935484,
+    "exit_reason_counts": {
+      "first_hi20": 971,
+      "giveback_8pct": 762,
+      "max_hold_60": 3
+    },
+    "random_win_rate": 0.4652173913043478,
+    "random_expectancy": -0.015205430321605054,
+    "random_days": 1649,
+    "beats_random": true,
+    "beats_leave_zero_F0": false,
+    "E_minus_random": 0.01017405637475062,
+    "win_minus_random": 0.06473652574634348
+  },
+  "read_zh": "leave_zero＋附近確認紅箭 能贏同密度隨機（勝率+6.5pt），但期望值仍負、也沒贏 leave_zero 無濾網；其他加嚴多半只抬勝率、期望值更差或打平隨機。查股不加條件、不畫新符號。"
+}

@@ -1,0 +1,174 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "user_goal_zh": "v7：冠軍核提早進場壓 bars_before_hi20",
+  "parent_seal": "phone_spirit_mix_thicken_v6_decision.json",
+  "baseline_bars_v5": 15.27,
+  "elapsed_s": 351.0,
+  "n_stocks": 112,
+  "ranking": [
+    {
+      "key": "champ_n3__SELL_hi20_or_wave_top",
+      "n_trades": 50,
+      "n_unique_entry_days": 50,
+      "win_rate": 0.84,
+      "expectancy": 0.03230693275418365,
+      "beats_random": true,
+      "balanced_score": 0.84,
+      "win_ge80": true,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 15.270833333333334
+    },
+    {
+      "key": "early_turn_n5__SELL_hi20_or_wave_top",
+      "n_trades": 54,
+      "n_unique_entry_days": 53,
+      "win_rate": 0.8333333333333334,
+      "expectancy": 0.02929818387696735,
+      "beats_random": true,
+      "balanced_score": 0.8333333333333334,
+      "win_ge80": true,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 15.372549019607844
+    },
+    {
+      "key": "early_intent_n5__SELL_hi20_or_wave_top",
+      "n_trades": 54,
+      "n_unique_entry_days": 53,
+      "win_rate": 0.7962962962962963,
+      "expectancy": 0.025799601106618296,
+      "beats_random": false,
+      "balanced_score": 0.7962962962962963,
+      "win_ge80": false,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 15.923076923076923
+    },
+    {
+      "key": "early_both_n5__SELL_hi20_or_wave_top",
+      "n_trades": 60,
+      "n_unique_entry_days": 57,
+      "win_rate": 0.7833333333333333,
+      "expectancy": 0.019225039138109194,
+      "beats_random": true,
+      "balanced_score": 0.7833333333333333,
+      "win_ge80": false,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 16.285714285714285
+    },
+    {
+      "key": "early_volpre__SELL_hi20_or_wave_top",
+      "n_trades": 18,
+      "n_unique_entry_days": 18,
+      "win_rate": 0.7777777777777778,
+      "expectancy": 0.028439341451710447,
+      "beats_random": false,
+      "balanced_score": -Infinity,
+      "win_ge80": false,
+      "days_ge50": false,
+      "mean_bars_before_hi20": 13.647058823529411
+    },
+    {
+      "key": "early_barek_lead__SELL_hi20_or_wave_top",
+      "n_trades": 54,
+      "n_unique_entry_days": 53,
+      "win_rate": 0.8333333333333334,
+      "expectancy": 0.02929818387696735,
+      "beats_random": true,
+      "balanced_score": 0.8333333333333334,
+      "win_ge80": true,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 15.372549019607844
+    },
+    {
+      "key": "early_turn_n7_intent_n5__SELL_hi20_or_wave_top",
+      "n_trades": 61,
+      "n_unique_entry_days": 58,
+      "win_rate": 0.7868852459016393,
+      "expectancy": 0.01954375576386356,
+      "beats_random": true,
+      "balanced_score": 0.7868852459016393,
+      "win_ge80": false,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 16.035087719298247
+    }
+  ],
+  "extreme_win_ge80": [
+    {
+      "key": "champ_n3__SELL_hi20_or_wave_top",
+      "n_trades": 50,
+      "n_unique_entry_days": 50,
+      "win_rate": 0.84,
+      "expectancy": 0.03230693275418365,
+      "beats_random": true,
+      "balanced_score": 0.84,
+      "win_ge80": true,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 15.270833333333334
+    },
+    {
+      "key": "early_turn_n5__SELL_hi20_or_wave_top",
+      "n_trades": 54,
+      "n_unique_entry_days": 53,
+      "win_rate": 0.8333333333333334,
+      "expectancy": 0.02929818387696735,
+      "beats_random": true,
+      "balanced_score": 0.8333333333333334,
+      "win_ge80": true,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 15.372549019607844
+    },
+    {
+      "key": "early_barek_lead__SELL_hi20_or_wave_top",
+      "n_trades": 54,
+      "n_unique_entry_days": 53,
+      "win_rate": 0.8333333333333334,
+      "expectancy": 0.02929818387696735,
+      "beats_random": true,
+      "balanced_score": 0.8333333333333334,
+      "win_ge80": true,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 15.372549019607844
+    }
+  ],
+  "extreme_win_ge80_days50": [
+    {
+      "key": "champ_n3__SELL_hi20_or_wave_top",
+      "n_trades": 50,
+      "n_unique_entry_days": 50,
+      "win_rate": 0.84,
+      "expectancy": 0.03230693275418365,
+      "beats_random": true,
+      "balanced_score": 0.84,
+      "win_ge80": true,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 15.270833333333334
+    },
+    {
+      "key": "early_turn_n5__SELL_hi20_or_wave_top",
+      "n_trades": 54,
+      "n_unique_entry_days": 53,
+      "win_rate": 0.8333333333333334,
+      "expectancy": 0.02929818387696735,
+      "beats_random": true,
+      "balanced_score": 0.8333333333333334,
+      "win_ge80": true,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 15.372549019607844
+    },
+    {
+      "key": "early_barek_lead__SELL_hi20_or_wave_top",
+      "n_trades": 54,
+      "n_unique_entry_days": 53,
+      "win_rate": 0.8333333333333334,
+      "expectancy": 0.02929818387696735,
+      "beats_random": true,
+      "balanced_score": 0.8333333333333334,
+      "win_ge80": true,
+      "days_ge50": true,
+      "mean_bars_before_hi20": 15.372549019607844
+    }
+  ],
+  "gate_one_liner": "spirit_mix_thicken_v7 ge80=3 ge80_d50=3; best_early_d50=champ_n3__SELL_hi20_or_wave_top win=0.84 days=50 bars=15.270833333333334; promote_lookup=NO",
+  "errors_n": 0,
+  "errors_sample": []
+}

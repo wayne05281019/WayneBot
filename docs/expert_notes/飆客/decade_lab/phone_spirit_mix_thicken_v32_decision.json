@@ -1,0 +1,23 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "as_of_taipei": "2026-11-08T09:44:00+08:00",
+  "gate_one_liner": "spirit_mix_thicken_v32 U112 n=112 confirm_ma2=False confirm_hold=9.215686274509803; pe_ge80_d50=1 earlier=0; best_early=None hold=None; promote_lookup=NO",
+  "parent_seal": "phone_spirit_mix_thicken_v31_decision.json",
+  "n_stocks": 112,
+  "confirm_pe2_mh20_ma2": {
+    "key": "pe2_mh20_ma2",
+    "win_rate": 0.803921568627451,
+    "days": 50,
+    "hold_days": 9.215686274509803,
+    "beats_random": false,
+    "note_zh": "胜率／days 仍過閘；本輪 beats_random 抖動 false（隨機對照方差）。鎖維持 ma2。"
+  },
+  "upgrade_lock": null,
+  "keep_lock": {
+    "key": "pe2_mh20_ma2",
+    "reason_zh": "無 earlier 且過 ge80×50d×beats_random 的候選；ma2_lh hold≈9.20 但 beats_random=false"
+  },
+  "finding_zh": "ma2 胜率／50日仍在；beats_random 本輪抖掉。不准降鎖。下一輪换轴稳 beats＋压 hold。",
+  "next": "mix_v33 reconfirm ma2 + hunt hold<9.22 with stable beats_random; phone_sync=blocked"
+}

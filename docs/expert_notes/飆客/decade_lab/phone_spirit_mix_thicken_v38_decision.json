@@ -1,0 +1,31 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "as_of_taipei": "2026-11-08T10:57:16+08:00",
+  "gate_one_liner": "spirit_mix_thicken_v38 U112 n=112 confirm_gb15=True confirm_hold=8.901960784313726; pe_ge80_d50=8 earlier=0; best_early=None hold=None; promote_lookup=NO",
+  "parent_seal": "phone_spirit_mix_thicken_v37_decision.json",
+  "n_stocks": 112,
+  "confirm_pe2_mh20_vdry_gb15": {
+    "key": "pe2_mh20_vdry_gb15",
+    "n_trades": 51,
+    "n_unique_entry_days": 50,
+    "win_rate": 0.803921568627451,
+    "expectancy": 0.01022218017433631,
+    "beats_random": true,
+    "balanced_score": 0.803921568627451,
+    "win_ge80": true,
+    "days_ge50": true,
+    "mean_bars_before_hi20": 15.854166666666666,
+    "mean_hold_days": 8.901960784313726,
+    "earlier_than_parent": false,
+    "beats_seed_votes": "3/3"
+  },
+  "upgrade_lock": null,
+  "keep_lock": {
+    "key": "pe2_mh20_vdry_gb15",
+    "hold_days": 8.901960784313726,
+    "reason_zh": "首陰／hi5／mh14 無更早；red 軸 hold 反而變 9.0"
+  },
+  "finding_zh": "賣側 hold 平台≈8.90。下一輪改買側 bars 提早（保 ge80×50d）。",
+  "next": "mix_v39 confirm gb15 sell + buy-side earlier bars hunt; phone_sync=blocked"
+}

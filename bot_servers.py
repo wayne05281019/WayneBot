@@ -10922,6 +10922,17 @@ class WayneTelegramBot:
             render_plan_kinds = ("card", "glance", "struct", "vol", "intraday")
             sent_kinds: list[str] = []
             ready_items: list = []
+            # LAB-ONLY 五張掛鉤編排（預設關）：W3 起漲買／相對高點賣；phone_sync=blocked
+            # 真畫在 wayne_navigator／vol_zone／biaoke／intraday 的 _maybe_lab_lookup_marks
+            # 見 docs/expert_notes/飆客/decade_lab/phone_lookup_mark_hook_map.md
+            try:
+                from scripts.decade_lab_lookup_mark_flags import lab_marks_allowed
+
+                if lab_marks_allowed():
+                    # 過閘後才准在各 paint 路徑開 glyph；此處不改預設畫面
+                    pass
+            except Exception:
+                pass
 
             from wayne_navigator import submit_mpl_paint
 
@@ -11397,8 +11408,10 @@ class WayneTelegramBot:
             else:
                 await _bump_progress("struct")
             await asyncio.sleep(0)
-            # 介紹已在送／進度在上：再補一句，不准空白乾等第 3 張
-            if glance_item and not struct_task.done():
+            # 介紹已在送／進度在上：再補一句，不准空白乾等第 3 張。
+            # 不准用 struct_task.done() 當門檻：CI 負載下 ensure 逾時後結構可能先完，
+            # glance 才回來 → 跳過等待句（full-suite 誤殺）。有介紹就先寫，送完第3張再刪。
+            if glance_item:
                 try:
                     gap_msg = await message.reply_text(
                         self._struct_gap_line(str(_struct_phase.get("phase") or ""))

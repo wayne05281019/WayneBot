@@ -1,0 +1,28 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "as_of_taipei": "2026-11-08T04:17:58.995211+08:00",
+  "gate_one_liner": "spirit_mix_thicken_v12 ge80=6 ge80_d50=6 earlier_d50=4 beat_v11_early=1; best_early_d50=v11_week_n3_softbody__SELL_hi20_or_wave_top win=0.803921568627451 bars=15.857142857142858; v11_bars=15.857; baseline_bars=15.27; promote_lookup=NO",
+  "parent_seal": "phone_spirit_mix_thicken_v11_decision.json",
+  "elapsed_s": 353.8,
+  "n_stocks": 112,
+  "ge80_d50_n": 6,
+  "earlier_d50_n": 4,
+  "earlier_champ": {
+    "key": "v11_week_n3_softbody__SELL_hi20_or_wave_top",
+    "n_trades": 51,
+    "n_unique_entry_days": 50,
+    "win_rate": 0.803921568627451,
+    "expectancy": 0.0242859554519123,
+    "beats_random": true,
+    "balanced_score": 0.803921568627451,
+    "win_ge80": true,
+    "days_ge50": true,
+    "mean_bars_before_hi20": 15.857142857142858,
+    "earlier_than_baseline": true,
+    "earlier_than_v11": false
+  },
+  "finding_zh": "v11 冠軍复現；body_n5 bars≈16.2 但 win≈78.9%；bull_or win↑ bars 略降。鎖定 v11，下一版搶 body_n5 ge80＋提早賣。",
+  "locked_early_buy": "v11_week_n3_softbody = ei_n5&(week_n3|body_n3)",
+  "next": "mix_v13 body_n5 recover ge80 + early sell on v11; phone_sync=blocked"
+}

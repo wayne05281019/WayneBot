@@ -1,0 +1,38 @@
+{
+  "phone_sync": "blocked",
+  "promote_to_lookup_display": false,
+  "as_of_taipei": "2026-11-08T11:39:09+08:00",
+  "gate_one_liner": "spirit_mix_thicken_v40 U112 n=112 confirm_v11=True confirm_bars=15.857142857142858; buy_ge80_d50=3 earlier=2; best_early=ei_n6_and_room__SELL_hi20_or_wave_top bars=15.94; sell_lock=pe2_mh20_vdry_gb15 hold=8.901960784313726; promote_lookup=NO",
+  "parent_seal": "phone_spirit_mix_thicken_v39_decision.json",
+  "n_stocks": 112,
+  "confirm_v11_buy": {
+    "key": "v11_week_n3_softbody__SELL_hi20_or_wave_top",
+    "n_trades": 51,
+    "n_unique_entry_days": 50,
+    "win_rate": 0.803921568627451,
+    "expectancy": 0.0242859554519123,
+    "beats_random": true,
+    "balanced_score": 0.803921568627451,
+    "win_ge80": true,
+    "days_ge50": true,
+    "mean_bars_before_hi20": 15.857142857142858,
+    "earlier_than_parent": false
+  },
+  "upgrade_lock": {
+    "key": "ei_n6_and_room__SELL_hi20_or_wave_top",
+    "bars_before_hi20": 15.94,
+    "win_rate": 0.8076923076923077,
+    "days": 51,
+    "expectancy": 0.024182177829618248,
+    "beats_random": true,
+    "alt_same_metric": "ei_n6_and_nofake__SELL_hi20_or_wave_top",
+    "reason_zh": "ei_n6×room 過 ge80×50d×beats，bars 15.94＞父 15.86；查股旗標仍關"
+  },
+  "keep_lock": null,
+  "sell_lock_unchanged": {
+    "key": "pe2_mh20_vdry_gb15",
+    "hold_days": 8.901960784313726
+  },
+  "finding_zh": "買側升級 ei_n6_and_room bars=15.94。下一輪續壓 bars>15.94 且保 ge80×beats。",
+  "next": "mix_v41 hunt bars>15.94 ge80×50d×beats; phone_sync=blocked"
+}
