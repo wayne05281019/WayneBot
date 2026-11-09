@@ -6,6 +6,11 @@
   "phone_sync": "blocked",
   "buy_signal": false,
   "scope_zh": "只拆大盤波浪位階（台指期／加權／細微波服務大盤）。同則個股／族群只歸檔，不改買賣點。",
+  "isolation": {
+    "pot": "wave_jan_replay",
+    "zh": "專鍋專鍵；不准混進海選／黃金買點／洞燭／AI倉／個股實驗室勝率；不准練習句寫成飆大原文；不上新話筒按鍵。",
+    "dual_track_lock": "phone_dual_track_market_stock_lock.json"
+  },
   "cold_start": {
     "zh": "從2026-01-01起當新手：位階一律暫定未知，不准偷帶2025年底「已知答案」。",
     "grow_zh": "隨鏈慢慢定義當層位階；結構走完／鐵律確認後，可回溯修訂前一段的暫定標。",

@@ -1,12 +1,18 @@
 {
-  "as_of": "2026-11-09T12:00:12+08:00",
-  "source": "user_confirm_2026-11-09",
+  "as_of": "2026-11-09T15:59:00+08:00",
+  "source": "user_confirm_2026-11-09_keep_separate",
   "tracks": {
     "market_tw": {
       "name_zh": "大盤",
       "loop": "多路推論→段號必標→官方驗證→漏判回拆八循環→落庫",
       "phone_sync": "blocked_until_accuracy_gate",
-      "buy_signal": false
+      "buy_signal": false,
+      "subtrack_jan_replay": {
+        "id": "market_tw_jan_replay",
+        "zh": "2026-01-01起重播自推對質；專鍵／專鍋；不上新話筒鈕",
+        "pot": "wave_jan_replay",
+        "doctrine": "phone_wave_jan_replay_doctrine.json"
+      }
     },
     "stock_lab": {
       "name_zh": "個股",
@@ -16,5 +22,13 @@
       "keep": "v106 early ei_n2_lu5／eg_bridge；fast lu5_vol_next；sell hi20_or_desync"
     }
   },
-  "isolation_zh": "大盤浪形不准改個股黃金買點；個股勝率不准混報大盤"
+  "isolation_zh": "大盤浪形／1/1重播不准改個股黃金買點、海選、洞燭、AI倉；個股勝率不准混報大盤；勝率分軌分鍋；不准為練習加話筒新按鍵",
+  "no_mix_with_zh": [
+    "leave_zero／golden_buy",
+    "海選各桶",
+    "洞燭",
+    "AI倉",
+    "記買入／持股／觀察",
+    "飆大話筒原文回覆（練習推論不准冒充他說）"
+  ]
 }
