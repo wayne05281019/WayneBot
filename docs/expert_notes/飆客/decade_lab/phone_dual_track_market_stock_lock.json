@@ -1,0 +1,14 @@
+{
+  "version": "phone_dual_track_market_stock_lock_v1",
+  "as_of_note_zh": "雙軌鎖：大盤／個股分開；個股 keep=v106；技術確認 lab 未過閘",
+  "market_track": {
+    "phone_sync": "blocked_until_accuracy_gate",
+    "note_zh": "浪形軌勝率不准混進個股"
+  },
+  "stock_track": {
+    "phone_sync": "blocked",
+    "buy_signal": false,
+    "keep": "v106 early ei_n2_lu5／eg_bridge；fast lu5_vol_next；sell hi20_or_desync",
+    "note_zh": "stock_tech_confirm_lab_v1：v106×技術確認（量／乖離／均線／距60低）與賣端 hi20+量縮／desync+MA60；對 sealed keep 閘見 stock_tech_confirm_lab_decision.json；法人濾不重推"
+  }
+}
