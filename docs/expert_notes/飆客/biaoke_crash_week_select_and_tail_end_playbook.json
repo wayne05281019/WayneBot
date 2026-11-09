@@ -1,0 +1,99 @@
+{
+  "as_of": "2026-11-09T20:30:00+08:00",
+  "tz": "Asia/Taipei",
+  "seal_id": "biaoke_crash_week_select_and_tail_end_playbook",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "timeline_seal": "biaoke_crash_warning_to_tail_timeline_202611.json",
+  "timeline_seal_note_zh": "示警→路徑改口→急跌兌現→止跌候選／確認→確認前選股語，見 timeline_seal（Asia/Taipei；非買訊）。",
+  "wave_teach_aid_zh": "可當 market_tw 大盤波浪研究教具（改口鏈／止跌升級／夜盤vs日盤）；見 decade_lab/phone_wave_crash_timeline_teach_aid_lock.json。只讀學習，不准寫回黃金買點／海選，不上話筒定論。",
+  "wave_teach_aid_lock": "decade_lab/phone_wave_crash_timeline_teach_aid_lock.json",
+  "purpose_zh": "使用者鎖：以後大盤若再出現類似本週急跌／回測大跌，要記得怎麼選股；以及怎麼像飆大判斷跌勢已到尾聲。可提醒／給指引，不准自動當買訊改話筒。",
+  "source_posts": [
+    {
+      "id": "188138405",
+      "when": "2026-11-09 18:20",
+      "role": "選股原則（第3點）"
+    },
+    {
+      "id": "188138405:c188138405-85-1",
+      "when": "2026-11-09 18:53",
+      "role": "選股技巧補充（四腿）"
+    },
+    {
+      "role": "大盤跌勢尾聲文法（同週）",
+      "refs_zh": [
+        "下跌脈動內有效 1 4 重疊→該組下跌完成候選；低點可標最低點候選，仍預期回測／假跌破",
+        "無效穿刺≠立刻當趨勢結束；連2根收盤確認較穩"
+      ],
+      "doctrine_file": "decade_lab/wave8_14_overlap_resolved.json"
+    }
+  ],
+  "when_trigger_zh": [
+    "大盤急跌後再回測大跌／震盪未定",
+    "他說盤面結構沒代表性、還要等震盪結束（本例：至少約1～2周難說）",
+    "夜盤／日盤連續測他點過的低或臨界區"
+  ],
+  "downtrend_tail_end_like_him_zh": {
+    "title_zh": "跌勢尾聲怎麼判（跟他學的文法；大盤為主）",
+    "checklist": [
+      {
+        "id": "abc_done",
+        "zh": "修正型態走出完整 abc，且 c 段走完（只認他點名或官方柱對得上的完成，不准發明 5／9）"
+      },
+      {
+        "id": "critical_zone",
+        "zh": "價回到他說過的臨界價區／長期支撐盒"
+      },
+      {
+        "id": "near_14",
+        "zh": "個股：在「1 4 不重疊」附近當觀察／介入盒；大盤下跌脈動：出現有效 1 4 重疊＝該組下跌結構完成候選（與個股「不重疊買盒」層級不同，要分開記）"
+      },
+      {
+        "id": "eff_vs_fake",
+        "zh": "有效穿刺≈連2收確認；無效穿刺／戳破收回→假跌破候選，不立刻當空方續跌定案"
+      },
+      {
+        "id": "retest_expected",
+        "zh": "結構完成≠不再回踩：他常鎖「一定再測」；破了收回才當假跌破上車語境（仍非自動買訊）"
+      },
+      {
+        "id": "night_lead_day_score",
+        "zh": "夜盤領先更新風險；日盤官方柱才定當日對／偏"
+      }
+    ],
+    "not_enough_alone_zh": [
+      "只看加權跌幾％",
+      "只看單日長下影",
+      "發明浪號卻對不上他點過的位"
+    ]
+  },
+  "stock_select_in_crash_retest_zh": {
+    "title_zh": "類似急跌週／回測大跌時怎麼選股（他的第3點＋四腿）",
+    "capital_note_zh": "他說可優先約5成資金看這類（紀錄他的配置語，不是下單指令）",
+    "steps": [
+      "大盤仍在回測／震盪：先辨識、少追當沖代表性不足的盤面",
+      "族群先找龍頭（他自己點名＞話筒龍頭欄）",
+      "官方本益比在該龍頭上明顯低估（有真數才比；缺本益＝不發明）",
+      "個股修正＝完整 abc 完成",
+      "回到臨界價區，且在 1 4 不重疊附近",
+      "防守：以「當天或該波週五」個股官方低點當支撐觀察盒（本例 20261109／20261106）",
+      "他若明說某檔買點還沒到＝先觀察不催進場"
+    ],
+    "worked_example_20261109": {
+      "best_stack_fit": "6442 光聖（四腿 verified；今低1035／週五低963）",
+      "partial": "2383 台光電（本益低估 verified；買點他說沒到；臨界相對他寫的3900~4000 fail）",
+      "detail_seal": "biaoke_leader_pe_screen_20261109.json"
+    }
+  },
+  "reminder_contract_zh": {
+    "when_similar_zh": "之後大盤再出現類似急跌＋回測週，應主動對照本備忘＋當日他文，列出候選與今／週五低，並標四腿 verified／unknown／fail",
+    "what_to_say_zh": "可提醒：跌勢尾聲 checklist 走到哪、哪幾檔四腿較齊、防守低在哪",
+    "what_not_to_do_zh": [
+      "不准當自動買訊改黃金買點／leave_zero／話筒標記",
+      "不准發明他沒說過的價",
+      "切入仍只認已過閘的高低卡黃金買點／已確認紅箭頭代理"
+    ]
+  },
+  "not_buy_signal": true
+}

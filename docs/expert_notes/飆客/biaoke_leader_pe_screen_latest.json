@@ -1,0 +1,13 @@
+{
+  "seal_id": "biaoke_leader_pe_screen_20261109",
+  "as_of": "2026-11-09",
+  "tz": "Asia/Taipei",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "pointer": "biaoke_leader_pe_screen_20261109.json",
+  "source_post_id": "188138405",
+  "stack_supplement_id": "188138405:c188138405-85-1",
+  "priority_named": ["6442", "2383"],
+  "verdict_one_liner": "6442 stack mostly verified；2383 pe only／critical fail vs 3900~4000；非買訊",
+  "disclaimer": "非買訊；切入仍看高低卡黃金買點"
+}
