@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from scripts.decade_lab_wave_teach_aid_labeled import (
+    CRASH_PAD_OPEN_DAYS,
     CRASH_PHASE_TAGS,
     OUT_DIR,
     SCORE_MODES,
@@ -15,6 +16,7 @@ from scripts.decade_lab_wave_teach_aid_labeled import (
     _matched_day_compare,
     _named_levels_from_posts,
     _night_lead_note,
+    _pad_crash_phase_windows,
     _replace_gate,
     _tag_phase,
     _adapt_paths_for_verify,
@@ -254,3 +256,42 @@ def test_phrase_focus_crash_mode_registered():
     assert "warn" in CRASH_PHASE_TAGS
     assert "crash" in CRASH_PHASE_TAGS
     assert "stock_hunt_note" not in CRASH_PHASE_TAGS
+    assert CRASH_PAD_OPEN_DAYS >= 1
+
+
+def test_pad_crash_phase_windows_extends_end_without_crossing_next():
+    windows = {
+        "warn_start": {
+            "phase_key": "warn_start",
+            "phase_tag": "warn",
+            "start": "20261012",
+            "end": "20261013",
+        },
+        "path_change_guidance": {
+            "phase_key": "path_change_guidance",
+            "phase_tag": "guidance",
+            "start": "20261016",
+            "end": "20261017",
+        },
+        "pre_confirm_stock_hunt": {
+            "phase_key": "pre_confirm_stock_hunt",
+            "phase_tag": "stock_hunt_note",
+            "start": "20261104",
+            "end": "20261108",
+        },
+    }
+    open_days = [
+        "20261012",
+        "20261013",
+        "20261014",
+        "20261015",
+        "20261016",
+        "20261017",
+    ]
+    padded = _pad_crash_phase_windows(windows, open_days, pad=3)
+    # warn 可墊到 15（下一相位 16 前）
+    assert padded["warn_start"]["end"] == "20261015"
+    assert padded["warn_start"]["crash_pad_open_days"] == 2
+    # stock_hunt 不墊
+    assert padded["pre_confirm_stock_hunt"]["end"] == "20261108"
+    assert "crash_pad_open_days" not in padded["pre_confirm_stock_hunt"]

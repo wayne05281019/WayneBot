@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-11-10T03:12:50+0800",
+  "as_of": "2026-11-10T04:27:42+0800",
   "tz": "Asia/Taipei",
   "track": "market_tw",
   "pot": "hsiao_twii_entry_invent",
@@ -7,13 +7,13 @@
   "buy_signal": false,
   "not_buy_signal": true,
   "WAVE_NEURONS_MATCH": false,
-  "purpose_zh": "蕭氏大盤 decade：A0–A5 進場矩陣；A5 denser 下一版靜默；不上話筒",
+  "purpose_zh": "蕭氏大盤 decade：A0–A6 進場矩陣；A6 質量中軌靜默；不上話筒",
   "data": {
     "symbol": "TWII",
-    "n": 5196,
-    "years": 20.8515,
+    "n": 5097,
+    "years": 20.8433,
     "start": "2006-01-02",
-    "end": "2026-11-09",
+    "end": "2026-11-06",
     "decade_start": "20060102",
     "honesty_zh": "decade 窗自 2006-01-02；本機 index_daily 深史可含 Yahoo 補洞，近窗官方量優先；不准謊稱無補洞的二十年官方績效"
   },
@@ -25,143 +25,97 @@
       "entry_days": [],
       "total_return": 0.0,
       "max_drawdown": 0.0,
-      "n_bars": 5196,
+      "n_bars": 5097,
       "has_entries": false
     },
     {
       "entry_preset": "A1_score",
-      "n_trades": 8,
-      "n_entry_days": 3,
-      "entry_days": [
-        "20061201",
-        "20150105",
-        "20221231"
-      ],
-      "total_return": -0.016089881099227932,
-      "max_drawdown": -0.03020253483530555,
-      "n_bars": 5196,
-      "has_entries": true
+      "n_trades": 0,
+      "n_entry_days": 0,
+      "entry_days": [],
+      "total_return": 0.0,
+      "max_drawdown": 0.0,
+      "n_bars": 5097,
+      "has_entries": false
     },
     {
       "entry_preset": "A2_hammer_kd",
-      "n_trades": 8,
-      "n_entry_days": 3,
-      "entry_days": [
-        "20061201",
-        "20150105",
-        "20221231"
-      ],
-      "total_return": -0.016089881099227932,
-      "max_drawdown": -0.03020253483530555,
-      "n_bars": 5196,
-      "has_entries": true
+      "n_trades": 0,
+      "n_entry_days": 0,
+      "entry_days": [],
+      "total_return": 0.0,
+      "max_drawdown": 0.0,
+      "n_bars": 5097,
+      "has_entries": false
     },
     {
       "entry_preset": "A3_squeeze",
-      "n_trades": 8,
-      "n_entry_days": 3,
-      "entry_days": [
-        "20061201",
-        "20150105",
-        "20221231"
-      ],
-      "total_return": -0.016089881099227932,
-      "max_drawdown": -0.03020253483530555,
-      "n_bars": 5196,
-      "has_entries": true
+      "n_trades": 0,
+      "n_entry_days": 0,
+      "entry_days": [],
+      "total_return": 0.0,
+      "max_drawdown": 0.0,
+      "n_bars": 5097,
+      "has_entries": false
     },
     {
       "entry_preset": "A4_index_soft",
-      "n_trades": 12,
-      "n_entry_days": 4,
+      "n_trades": 2,
+      "n_entry_days": 1,
       "entry_days": [
-        "20061114",
-        "20100913",
-        "20210503",
-        "20230517"
+        "20250610"
       ],
-      "total_return": 0.006703689979497662,
-      "max_drawdown": -0.014975024941194293,
-      "n_bars": 5196,
+      "total_return": 0.00019552489534757633,
+      "max_drawdown": -0.0010695194300770483,
+      "n_bars": 5097,
       "has_entries": true
     },
     {
       "entry_preset": "A5_index_dense",
-      "n_trades": 68,
-      "n_entry_days": 28,
+      "n_trades": 13,
+      "n_entry_days": 6,
       "entry_days": [
-        "20060220",
-        "20060504",
         "20060831",
-        "20080827",
-        "20081230",
+        "20120504",
         "20120629",
-        "20121212",
-        "20130111",
-        "20130220",
-        "20130831",
-        "20140115",
-        "20140822",
-        "20141110",
-        "20150113",
-        "20150930",
-        "20160908",
-        "20161020",
-        "20161231",
-        "20181213",
-        "20190218",
-        "20200521",
-        "20210311",
-        "20221231",
-        "20231129",
-        "20241011",
-        "20251130",
-        "20260701",
-        "20260826"
+        "20170316",
+        "20230109",
+        "20250218"
       ],
-      "total_return": -0.04612371266555726,
-      "max_drawdown": -0.08405872317284524,
-      "n_bars": 5196,
+      "total_return": 0.03404549704958315,
+      "max_drawdown": -0.0180274894204997,
+      "n_bars": 5097,
+      "has_entries": true
+    },
+    {
+      "entry_preset": "A6_index_quality",
+      "n_trades": 4,
+      "n_entry_days": 2,
+      "entry_days": [
+        "20061103",
+        "20250610"
+      ],
+      "total_return": 0.00919877465560437,
+      "max_drawdown": -0.004012979778793779,
+      "n_bars": 5097,
       "has_entries": true
     }
   ],
   "pick_lab_only": {
     "entry_preset": "A5_index_dense",
-    "n_trades": 68,
-    "n_entry_days": 28,
+    "n_trades": 13,
+    "n_entry_days": 6,
     "entry_days": [
-      "20060220",
-      "20060504",
       "20060831",
-      "20080827",
-      "20081230",
+      "20120504",
       "20120629",
-      "20121212",
-      "20130111",
-      "20130220",
-      "20130831",
-      "20140115",
-      "20140822",
-      "20141110",
-      "20150113",
-      "20150930",
-      "20160908",
-      "20161020",
-      "20161231",
-      "20181213",
-      "20190218",
-      "20200521",
-      "20210311",
-      "20221231",
-      "20231129",
-      "20241011",
-      "20251130",
-      "20260701",
-      "20260826"
+      "20170316",
+      "20230109",
+      "20250218"
     ],
-    "total_return": -0.04612371266555726,
-    "max_drawdown": -0.08405872317284524,
-    "n_bars": 5196,
+    "total_return": 0.03404549704958315,
+    "max_drawdown": -0.0180274894204997,
+    "n_bars": 5097,
     "has_entries": true
   },
   "a4_vs_a0": {
@@ -171,9 +125,9 @@
       "total_return": 0.0
     },
     "A4_index_soft": {
-      "n_entry_days": 4,
-      "n_trades": 12,
-      "total_return": 0.006703689979497662,
+      "n_entry_days": 1,
+      "n_trades": 2,
+      "total_return": 0.00019552489534757633,
       "gate_n20": false,
       "beat_a0": true
     },
@@ -189,24 +143,42 @@
       "total_return": 0.0
     },
     "A5_index_dense": {
-      "n_entry_days": 28,
-      "n_trades": 68,
-      "total_return": -0.04612371266555726,
-      "gate_n20": true,
-      "beat_a0": false
+      "n_entry_days": 6,
+      "n_trades": 13,
+      "total_return": 0.03404549704958315,
+      "gate_n20": false,
+      "beat_a0": true
     },
     "years_ok": true,
-    "gate_n20": true,
-    "beat_a0": false,
+    "gate_n20": false,
+    "beat_a0": true,
+    "replace": false
+  },
+  "a6_vs_a0": {
+    "A0_strict": {
+      "n_entry_days": 0,
+      "n_trades": 0,
+      "total_return": 0.0
+    },
+    "A6_index_quality": {
+      "n_entry_days": 2,
+      "n_trades": 4,
+      "total_return": 0.00919877465560437,
+      "gate_n20": false,
+      "beat_a0": true
+    },
+    "years_ok": true,
+    "gate_n20": false,
+    "beat_a0": true,
     "replace": false
   },
   "cand_vs_a0": {
-    "entry_preset": "A5_index_dense",
-    "n_entry_days": 28,
-    "n_trades": 68,
-    "total_return": -0.04612371266555726,
-    "gate_n20": true,
-    "beat_a0": false,
+    "entry_preset": "A6_index_quality",
+    "n_entry_days": 2,
+    "n_trades": 4,
+    "total_return": 0.00919877465560437,
+    "gate_n20": false,
+    "beat_a0": true,
     "years_ok": true,
     "replace": false
   },
@@ -216,10 +188,10 @@
     "phone_sync_blocked",
     "not_buy_signal",
     "no_stock_spirit_mix_in_this_invent",
-    "not_clear_win_vs_A0",
+    "n_entry_days_lt_20",
     "a4_n_entry_days_lt_20"
   ],
-  "next_long_window_zh": "A5_index_dense vs A0：獨立進場開市日 n≥20 且清贏 A0 才談換（仍非買訊）；A4 續收、A5 denser 同軌靜默對質",
-  "invent_next_zh": "A5_index_dense＝A4 再生下一版；未過閘不換、不上話筒",
+  "next_long_window_zh": "A6_index_quality vs A0：獨立進場開市日 n≥20 且清贏 A0 才談換（仍非買訊）；A4／A5 續收、A6 質量中軌同軌靜默對質",
+  "invent_next_zh": "A6_index_quality＝A5 denser 未清贏後再生；未過閘不換、不上話筒",
   "no_invent_wave_5_9_on_stocks": true
 }

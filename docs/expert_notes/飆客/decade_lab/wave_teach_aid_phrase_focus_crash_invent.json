@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-11-10T03:10:46+0800",
+  "as_of": "2026-11-10T04:28:46+0800",
   "tz": "Asia/Taipei",
   "track": "market_tw",
   "pot": "wave_teach_aid_deepen",
@@ -76,7 +76,9 @@
     "guidance",
     "warn"
   ],
-  "next_long_window_zh": "phrase_focus 全窗續收；phrase_focus_crash 急跌相位子窗續收；n≥20 且同日對照贏 loose 才談換（仍非 drop-in）",
+  "next_long_window_zh": "phrase_focus 全窗續收；phrase_focus_crash 急跌相位＋開市日墊續收；n≥20 且同日對照贏 loose 才談換（仍非 drop-in）",
   "not_buy_signal": true,
-  "no_invent_wave_5_9": true
+  "no_invent_wave_5_9": true,
+  "crash_pad_open_days": 3,
+  "collect_note_zh": "本機缺 10 月急跌窗文（僅 Render 有）；維持前次 n=18 封印；開市日墊碼已就位，overlay 齊再重測"
 }
