@@ -83,6 +83,29 @@ PHRASE_TAGS = [
     ("主跌", "main_drop"),
 ]
 
+# phrase_focus 下一版候選：只計近窗有教具硬用語的日（對質用，不換 loose）
+FOCUS_PHRASE_TAGS = frozenset(
+    {
+        "fake_breakdown",
+        "eff_pierce",
+        "pierce",
+        "overlap_14",
+        "resist_to_support",
+        "stop_fall",
+        "escape",
+    }
+)
+SCORE_MODES = ("baseline", "tight", "phrase_focus")
+
+
+def _focus_phrases(phrases: Any) -> List[str]:
+    out: List[str] = []
+    for p in phrases or []:
+        t = str(p or "").strip()
+        if t in FOCUS_PHRASE_TAGS and t not in out:
+            out.append(t)
+    return out
+
 
 def _load_timeline_phase_windows(path: Path) -> Dict[str, Dict[str, Any]]:
     """從封印相位文日期推 inclusive 日曆窗；缺文日用相鄰相位夾住。"""
@@ -489,14 +512,21 @@ def _replace_gate(
     if matched and not matched_better:
         gate_flags.append("matched_day_not_clearly_better")
     # 對 loose baseline（觸及計分）只允許同语义 labeled-baseline 換閘；
-    # labeled_tight 是教具對照軌，不是 decade baseline 的 drop-in。
-    drop_in_ok = str(score_mode or "baseline").strip().lower() == "baseline"
+    # labeled_tight／phrase_focus 是教具對照軌，不是 decade baseline 的 drop-in。
+    mode_l = str(score_mode or "baseline").strip().lower()
+    drop_in_ok = mode_l == "baseline"
     if not drop_in_ok:
         gate_flags.append("cross_score_mode_not_drop_in_for_loose_baseline")
     # 換閘：同语义 且 全窗明顯更好 且 同日對照也明顯更好 且 無誠實旗標
     replace = bool(
         drop_in_ok and n >= 20 and clearly_better and matched_better and not honest
     )
+    if mode_l == "phrase_focus":
+        cross_note = "phrase_focus＝只評有假跌破／有效穿刺／1-4／壓轉撐等硬用語日；教具對照，不換 loose"
+    elif mode_l == "tight":
+        cross_note = "tight／跨裁判語意只當教具對照，不換 loose baseline"
+    else:
+        cross_note = "未過閘／同日未贏／選樣膨脹／不誠實 → 不換 decade baseline；labeled 當教具軌續收"
     return {
         "n_decided": n,
         "gate_n20": n >= 20,
@@ -516,11 +546,7 @@ def _replace_gate(
         "decision_zh": (
             "labeled 過閘且全窗＋同日對照皆明顯優於 loose → 可換（仍須另令合主）"
             if replace
-            else (
-                "tight／跨裁判語意只當教具對照，不換 loose baseline"
-                if not drop_in_ok
-                else "未過閘／同日未贏／選樣膨脹／不誠實 → 不換 decade baseline；labeled 當教具軌續收"
-            )
+            else cross_note
         ),
     }
 
@@ -540,8 +566,10 @@ def run(
         start_d = HIS_POSTS_FROM
     end = _ymd(end) or datetime.now(TAIPEI).strftime("%Y%m%d")
     mode = (score_mode or "baseline").strip().lower() or "baseline"
-    if mode not in ("baseline", "tight"):
+    if mode not in SCORE_MODES:
         mode = "baseline"
+    # phrase_focus 底下用 baseline 觸及裁判；另以硬用語閘過濾計分日
+    verify_mode = "baseline" if mode == "phrase_focus" else mode
 
     while end >= start_d and not is_tw_open_calendar_day(end):
         end = (datetime.strptime(end, "%Y%m%d") - timedelta(days=1)).strftime("%Y%m%d")
@@ -590,13 +618,29 @@ def run(
             "day_bar_verdict": True,
         }
         if pending is not None:
-            verify = _verify_paths(
-                pending["paths"],
-                bar=bar,
-                tx_day=txd,
-                prior_bars=list(recent_bars),
-                score_mode=mode,
-            )
+            focus = list(pending.get("focus_phrases") or [])
+            if mode == "phrase_focus" and not focus:
+                verify = {
+                    "verdict": "無教具硬用語不計",
+                    "scoreable": False,
+                    "path_results": [],
+                    "score_mode": mode,
+                    "day_bar_verdict": True,
+                    "phrase_focus_skip": True,
+                    "focus_phrases": [],
+                }
+            else:
+                verify = _verify_paths(
+                    pending["paths"],
+                    bar=bar,
+                    tx_day=txd,
+                    prior_bars=list(recent_bars),
+                    score_mode=verify_mode,
+                )
+                if mode == "phrase_focus":
+                    verify["score_mode"] = mode
+                    verify["focus_phrases"] = focus
+                    verify["phrase_focus_gate"] = True
             verify["inferred_on"] = pending["from_day"]
             verify["named_source_days"] = pending.get("near_days")
             verify["day_bar_verdict"] = True
@@ -606,11 +650,13 @@ def run(
 
         paths = _infer_named_only(day=day, named=named, ref_px=ref_px)
         path_dicts = [asdict(p) for p in paths]
+        focus_now = _focus_phrases(named.get("phrases"))
         pending = {
             "from_day": day,
             "paths": _adapt_paths_for_verify(path_dicts),
             "near_days": near_days,
             "named_levels": list(named.get("levels") or []),
+            "focus_phrases": focus_now,
         }
 
         if bar:
@@ -711,7 +757,12 @@ def run(
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     ART.mkdir(parents=True, exist_ok=True)
-    prefix = "wave_teach_aid_labeled" + ("_tight" if mode == "tight" else "")
+    if mode == "tight":
+        prefix = "wave_teach_aid_labeled_tight"
+    elif mode == "phrase_focus":
+        prefix = "wave_teach_aid_labeled_phrase_focus"
+    else:
+        prefix = "wave_teach_aid_labeled"
     jsonl = OUT_DIR / f"{prefix}_daily.jsonl"
     with jsonl.open("w", encoding="utf-8") as f:
         for r in rows:
@@ -721,12 +772,13 @@ def run(
     (OUT_DIR / f"{prefix}_latest.json").write_text(text, encoding="utf-8")
     (ART / f"{prefix}_summary.json").write_text(text, encoding="utf-8")
 
-    # 對照封印（給話筒外 lab 讀）；baseline 軌寫主對照檔，tight 另寫
-    compare_name = (
-        "wave_teach_aid_labeled_vs_baseline.json"
-        if mode == "baseline"
-        else "wave_teach_aid_labeled_tight_vs_baseline.json"
-    )
+    # 對照封印（給話筒外 lab 讀）；baseline 軌寫主對照檔，tight／phrase_focus 另寫
+    if mode == "baseline":
+        compare_name = "wave_teach_aid_labeled_vs_baseline.json"
+    elif mode == "tight":
+        compare_name = "wave_teach_aid_labeled_tight_vs_baseline.json"
+    else:
+        compare_name = "wave_teach_aid_labeled_phrase_focus_vs_baseline.json"
     compare_seal = {
         "as_of": summary["as_of"],
         "tz": "Asia/Taipei",
@@ -781,8 +833,8 @@ def main() -> None:
     ap.add_argument(
         "--score-mode",
         default="baseline",
-        choices=("baseline", "tight"),
-        help="labeled 位上的裁判：baseline=觸及；tight=連2收／假跌破",
+        choices=SCORE_MODES,
+        help="labeled 位上的裁判：baseline=觸及；tight=連2收／假跌破；phrase_focus=硬用語日才計",
     )
     args = ap.parse_args()
     run(

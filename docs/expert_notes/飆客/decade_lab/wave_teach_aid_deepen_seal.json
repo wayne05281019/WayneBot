@@ -167,5 +167,13 @@
   "decision_zh": "A：headline +2.9pp 但同日 -4.3pp（放棄難日）→不換；B：同日可 +4.1pp 但跨裁判語意非 drop-in→不換；decade baseline 維持；教具軌續收",
   "isolation_zh": "market_tw only；股票鍋不進；不准發明5/9；不上話筒",
   "not_buy_signal": true,
-  "no_invent_wave_5_9": true
+  "no_invent_wave_5_9": true,
+  "next_invent": {
+    "key": "phrase_focus",
+    "file": "wave_teach_aid_phrase_focus_invent.json",
+    "as_of": "2026-11-09T23:23:40+0800",
+    "replace": false,
+    "note_zh": "labeled／tight 未過閘；再生 phrase_focus 硬用語日軌續收"
+  },
+  "as_of_invent_touch": "2026-11-09T23:23:40+0800"
 }
