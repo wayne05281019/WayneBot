@@ -83,12 +83,78 @@ def test_last_pre_from_block_uses_pre_window():
     assert abs(got["pct"] - 2.0) < 1e-9
 
 
-def test_weekend_sox_live_bar_is_official_close_not_extended():
-    """週末 force 抓費半：live_session=0，收＝日K官方收，不准盤後殘價。"""
+def test_weekend_sox_live_bar_is_official_close_not_extended(monkeypatch):
+    """週末 force 抓費半：live_session=0，收＝日K官方收，不准盤後殘價。
+
+    用固定 Yahoo 假回應，不准綁現場指數值（否則每次美股收完就紅）。
+    """
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
+    import us_overnight
     from us_overnight import _us_cash_calendar_closed, fetch_live_sox_display_bar
+
+    cash_close = 9390.25
+    residue = 9474.0
+    sox_payload = {
+        "chart": {
+            "result": [
+                {
+                    "meta": {
+                        "symbol": "^SOX",
+                        "regularMarketPrice": residue,
+                        "regularMarketTime": 1762462800,  # 2026-11-06 US cash
+                        "regularMarketOpen": 9300.0,
+                        "regularMarketDayHigh": 9450.0,
+                        "regularMarketDayLow": 9280.0,
+                    },
+                    "timestamp": [1762462800],
+                    "indicators": {
+                        "quote": [
+                            {
+                                "open": [9300.0],
+                                "high": [9450.0],
+                                "low": [9280.0],
+                                "close": [cash_close],
+                                "volume": [0],
+                            }
+                        ]
+                    },
+                }
+            ]
+        }
+    }
+    soxx_payload = {
+        "chart": {
+            "result": [
+                {
+                    "meta": {"symbol": "SOXX", "regularMarketVolume": 1_000_000},
+                    "indicators": {"quote": [{"volume": [900_000]}]},
+                }
+            ]
+        }
+    }
+
+    class _Resp:
+        def __init__(self, payload):
+            self._payload = payload
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self._payload
+
+    def _fake_get(url, timeout=20):  # noqa: ARG001
+        u = str(url)
+        if "SOXX" in u and "%5ESOX" not in u and "^SOX" not in u:
+            return _Resp(soxx_payload)
+        return _Resp(sox_payload)
+
+    monkeypatch.setattr(us_overnight._SESSION, "get", _fake_get)
+    # 週末即使 force 也不准走盤後／盤前末筆蓋收
+    monkeypatch.setattr(us_overnight, "_fetch_post_last", lambda *_a, **_k: {"price": residue})
+    monkeypatch.setattr(us_overnight, "_fetch_pre_last", lambda *_a, **_k: {"price": residue})
 
     taipei = ZoneInfo("Asia/Taipei")
     sunday = datetime(2026, 11, 8, 8, 53, tzinfo=taipei)
@@ -96,8 +162,8 @@ def test_weekend_sox_live_bar_is_official_close_not_extended():
     live = fetch_live_sox_display_bar(sunday, force=True)
     assert live is not None
     assert int(live.get("live_session") or 0) == 0
-    # 2026-11-06 官方收 9390.25（Yahoo 日K）；盤後殘約 9474 不准進來
-    assert abs(float(live["close"]) - 9390.25) < 1.0
+    assert abs(float(live["close"]) - cash_close) < 1e-9
+    assert abs(float(live["close"]) - residue) > 1.0
 
 
 def test_outer_rows_brent_dx_twd():

@@ -14,7 +14,7 @@
       "phone_sync": "blocked",
       "buy_signal": false,
       "keep": "v106 early ei_n2_lu5／eg_bridge；fast lu5_vol_next；sell hi20_or_desync",
-      "note_zh": "stock_inst_filter_lab_v1：v106×法人股數／BFI 後置濾 OOS 對 plain 有微幅正Δ（最佳 mkt_ft_both_gt0 ≈+2pp）但未贏 sealed keep → 不換；詳 stock_inst_filter_lab_decision.json"
+      "note_zh": "keep=v106。已敗：inst_filter／tech_confirm／pair_exit_leg_confirm（對 plain 有微Δ皆未贏 sealed keep）。下一步候選鍵 stock_leader_reclaim_combo_lab_v1（leader_tag×reclaim_ma20；phone blocked）"
     }
   },
   "isolation_zh": "大盤浪形不准改個股黃金買點；個股勝率不准混報大盤"

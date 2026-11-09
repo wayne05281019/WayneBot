@@ -1,0 +1,26 @@
+{
+  "version": "stock_leader_reclaim_combo_lab_v1",
+  "status": "seeded_awaiting_oos",
+  "tz": "Asia/Taipei",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "promote_lookup": false,
+  "gate_passed": false,
+  "keep": "v106",
+  "keep_detail": "early ei_n2_lu5／eg_bridge；fast lu5_vol_next；sell hi20_or_desync",
+  "parents": [
+    "stock_tech_confirm_lab_decision.json",
+    "stock_pair_exit_leg_confirm_lab_decision.json"
+  ],
+  "hypothesis_zh": "tech_confirm 最佳 reclaim_ma20 與 pair_exit 最佳 leader_tag 對 plain 皆有正Δ但未贏 sealed keep；交叉確認層是否更能逼近 keep 樣本選擇性",
+  "confirm_variants": [
+    "plain",
+    "leader_tag",
+    "reclaim_ma20",
+    "leader_and_reclaim_ma20",
+    "leader_reclaim_and_near_low60_8",
+    "leader_reclaim_and_vol_1p5"
+  ],
+  "sell": "hi20_or_desync",
+  "next": "跑 scripts/decade_lab_stock_leader_reclaim_combo_lab.py；n≥20 且贏 keep 才談替換"
+}

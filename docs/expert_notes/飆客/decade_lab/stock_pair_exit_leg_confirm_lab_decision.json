@@ -89,5 +89,5 @@
     "stock_inst_filter_lab_decision.json",
     "stock_tech_confirm_lab_decision.json"
   ],
-  "next": "keep v106；成對出場／四腿代理可當後續候選；不准混浪形軌、不准改話筒"
+  "next": "keep v106；下一步候選鍵 stock_leader_reclaim_combo_lab_v1（leader_tag×reclaim_ma20 交叉，對 sealed keep 閘；phone blocked；不准混浪形）"
 }

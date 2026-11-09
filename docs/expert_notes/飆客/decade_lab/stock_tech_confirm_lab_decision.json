@@ -1,0 +1,86 @@
+{
+  "version": "stock_tech_confirm_lab_v1",
+  "as_of": "2026-11-09T20:25:49+08:00",
+  "tz": "Asia/Taipei",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "promote_lookup": false,
+  "status": "plain_delta_only_keep_v106",
+  "gate_passed": false,
+  "keep": "v106",
+  "keep_detail": "early ei_n2_lu5／eg_bridge；fast lu5_vol_next；sell hi20_or_desync",
+  "sell": "hi20_or_desync",
+  "variant_tested_zh": "v106 進場核 × 技術確認（量／乖離／均線／距60低）；賣端 hi20+量縮／desync+MA60",
+  "n_stocks": 185,
+  "smoke": false,
+  "best_candidate": {
+    "leg": "buy_confirm",
+    "core": "fast",
+    "variant": "reclaim_ma20",
+    "kind": "vs_plain",
+    "oos_wr": 0.7210113339145597,
+    "oos_d": 1480,
+    "plain_oos_wr": 0.7118630822131916,
+    "plain_oos_d": 2329,
+    "delta_oos_wr": 0.009148251701368126,
+    "beats_v106_keep_oos": false
+  },
+  "best_buy_vs_plain": {
+    "leg": "buy_confirm",
+    "core": "fast",
+    "variant": "reclaim_ma20",
+    "kind": "vs_plain",
+    "oos_wr": 0.7210113339145597,
+    "oos_d": 1480,
+    "plain_oos_wr": 0.7118630822131916,
+    "plain_oos_d": 2329,
+    "delta_oos_wr": 0.009148251701368126,
+    "beats_v106_keep_oos": false
+  },
+  "best_sell_vs_plain": null,
+  "shared_buy_vs_keep": [],
+  "shared_sell_vs_keep": [],
+  "oos_vs_v106_keep": {
+    "early_plain_oos": {
+      "n_trades": 12815,
+      "n_unique_entry_days": 2327,
+      "win_rate": 0.7122902848224737,
+      "expectancy": 0.013275066107046433,
+      "avg_hold": 11.52173234490831,
+      "exit_reason_counts": {
+        "first_hi20": 12420,
+        "max_hold_60": 395
+      },
+      "gate_n20": true
+    },
+    "fast_plain_oos": {
+      "n_trades": 12796,
+      "n_unique_entry_days": 2329,
+      "win_rate": 0.7118630822131916,
+      "expectancy": 0.013288557782803077,
+      "avg_hold": 11.517036573929353,
+      "exit_reason_counts": {
+        "first_hi20": 12401,
+        "max_hold_60": 395
+      },
+      "gate_n20": true
+    },
+    "v106_ref": {
+      "early": {
+        "wr": 0.8269230769230769,
+        "d": 51,
+        "bars": 16.54901960784314
+      },
+      "fast": {
+        "wr": 0.8545454545454545,
+        "d": 54,
+        "bars": 15.296296296296296
+      }
+    }
+  },
+  "gate_one_liner": "stock_tech_confirm_lab n=185 smoke=0; early_plain_oos_wr=0.7122902848224737 d=2327; fast_plain_oos_wr=0.7118630822131916 d=2329; best={'leg': 'buy_confirm', 'core': 'fast', 'variant': 'reclaim_ma20', 'kind': 'vs_plain', 'oos_wr': 0.7210113339145597, 'oos_d': 1480, 'plain_oos_wr': 0.7118630822131916, 'plain_oos_d': 2329, 'delta_oos_wr': 0.009148251701368126, 'beats_v106_keep_oos': False}; promote=False",
+  "finding_zh": "技術確認（量／乖離／均線／距60低；無密技無成本）：相對同跑 plain 有 Δ（{'leg': 'buy_confirm', 'core': 'fast', 'variant': 'reclaim_ma20', 'kind': 'vs_plain', 'oos_wr': 0.7210113339145597, 'oos_d': 1480, 'plain_oos_wr': 0.7118630822131916, 'plain_oos_d': 2329, 'delta_oos_wr': 0.009148251701368126, 'beats_v106_keep_oos': False}），但未贏 sealed v106 keep → keep v106。 未重測純 MA5/10 跌破賣（已知輸 hi20_or_desync）。法人濾不重推。",
+  "latest": "stock_tech_confirm_lab_latest.json",
+  "parent_keep": "phone_spirit_mix_dual_track_v106_decision.json",
+  "next": "keep v106；下一步候選鍵 stock_leader_reclaim_combo_lab_v1（接 pair_exit 的 leader_tag × 本軌 reclaim_ma20；phone blocked）"
+}
