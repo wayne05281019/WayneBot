@@ -1,0 +1,19 @@
+{
+  "as_of": "2026-11-09T12:58:59+08:00",
+  "source": "user_confirm_2026-11-09_priority_infer",
+  "track": "market_tw_only",
+  "phone_sync": "blocked_until_accuracy_gate",
+  "buy_signal": false,
+  "certainty": false,
+  "segment_numbers": "REQUIRED",
+  "order_zh": [
+    "① 先自己多路推論（段號必標）——不等飆大有沒有文",
+    "② 若他有發文：對「我 vs 他」差異（他為何這樣看、怎麼切段／點位）",
+    "③ 官方柱驗證：對「推論 vs 實際」差異（走到沒推到的數、哪段失效）",
+    "④ 收盤後推論隔日走勢（段號必標）→ 隔日再驗"
+  ],
+  "two_diffs_zh": "有機會抓兩次差：我↔飆大；推論↔官方",
+  "if_no_post_zh": "他還沒發／當天沒發＝仍先自己推；日後有文再補②",
+  "example_zh": "如「不過41760→測週五低」：先拆他為何這樣判，再自己留多路，收盤後推明天並隔日驗",
+  "isolation_zh": "大盤軌；與個股買賣實驗室分開"
+}

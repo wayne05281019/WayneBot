@@ -1156,6 +1156,54 @@ def test_format_teach_brief_foot2_revision_readable(monkeypatch):
     assert "波浪位階" in one
 
 
+def test_format_teach_brief_bb_dual_path_beats_foot2(monkeypatch):
+    """波浪位階鈕：後文雙軌 B-b／九波壓第二隻腳一句。"""
+    from biaoke_digest import format_teach_brief, format_wave_level_one_liner
+
+    def _fake(_db):
+        return {
+            "thesis": "大A→大B→大C｜主線五波跌完走B-b・備線九波擴延（預估）",
+            "snippet": (
+                "星期五最低點位37837，已經非常接近4/23低點37164。"
+                "這也是波浪理論5波跌完走B-b，也有可能會破37837，但是假跌破買點。"
+                "如果走9波擴延，下一層35579→31705。"
+            ),
+            "wait_struct": (
+                "主：假跌破37837觀察；備：35579→31705；"
+                "未定案前口述對照與三窗同口；非買訊"
+            ),
+            "chart_as_of": "20261108",
+            "thesis_as_of": "20261108",
+            "pred_levels": {
+                "tw": [
+                    {
+                        "level": 37837.0,
+                        "role": "五波末／週五低",
+                        "tag": "假跌破觀察",
+                        "label": "飆預測37,837・假跌破",
+                    },
+                    {
+                        "level": 35579.0,
+                        "role": "九波備線破位",
+                        "tag": "未到",
+                        "label": "飆預測35579九波備線",
+                    },
+                ],
+                "sox": [],
+            },
+        }
+
+    monkeypatch.setattr("biaoke_level_learn._build_live_pack", _fake)
+    out = format_teach_brief("x.db")
+    assert "B-b" in out
+    assert "37837" in out
+    assert "35579" in out or "九波" in out
+    assert "第二隻腳" not in out
+    assert "非買訊" in out
+    one = format_wave_level_one_liner("x.db")
+    assert "B-b" in one or "雙軌" in one or "37837" in one
+
+
 def test_focus_oral_blank_uses_one_liner_not_full_wave_brief(monkeypatch):
     """飆大空白鍵：口語為主；不准整段波浪位階敘述塞進來。"""
     from biaoke_digest import format_focus_oral
@@ -1256,19 +1304,23 @@ def test_focus_oral_reply_context_and_no_expired_monday():
 
 
 def test_biaoke_teach_charts_only_far_no_us_outer():
-    """空白飆大只送遠窗一張（費半上／加權下）；近／超近改波浪位階。"""
+    """空白飆大只送遠窗一張（費半上／加權下）；近／超近改波浪位階；雙軌時補口述。"""
     import inspect
 
     src = inspect.getsource(WayneTelegramBot._send_biaoke_teach_charts)
     assert '("us_path"' not in src
     assert "panels=\"far\"" in src or "panels='far'" in src
     assert "far_path" in src
+    assert "oral_path" in src
+    assert "口述雙軌對照" in src
     assert "micro_path" not in src or "近／超近請按" in src
     assert "near_path" not in src or "波浪位階" in src
     assert "上費半" in src and "下加權" in src
     wave = inspect.getsource(WayneTelegramBot._send_market_wave_charts)
     assert "外圍對照另張" not in wave
     assert "micro_path" in wave and "far_path" in wave and "near_path" in wave
+    assert "oral_path" in wave
+    assert "口述雙軌對照" in wave
 
 
 def test_sox_9865_official_not_twii(tmp_path):

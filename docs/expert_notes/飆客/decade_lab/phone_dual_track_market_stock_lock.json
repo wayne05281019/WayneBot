@@ -1,0 +1,42 @@
+{
+  "as_of": "2026-11-09T21:59:00+08:00",
+  "source": "user_confirm_2026-11-09_keep_separate",
+  "tracks": {
+    "market_tw": {
+      "name_zh": "大盤",
+      "loop": "多路推論→段號必標→官方驗證→漏判回拆八循環→落庫",
+      "phone_sync": "blocked_until_accuracy_gate",
+      "buy_signal": false,
+      "subtrack_jan_replay": {
+        "id": "market_tw_jan_replay",
+        "zh": "2026-01-01起重播自推對質；專鍵／專鍋；不上新話筒鈕",
+        "pot": "wave_jan_replay",
+        "doctrine": "phone_wave_jan_replay_doctrine.json"
+      },
+      "subtrack_decade_replay": {
+        "id": "market_tw_decade_replay",
+        "zh": "約十年前→最新開市日；2023-12-04前無飆大文＝只自推對官方；之後才有我vs他",
+        "pot": "wave_decade_replay",
+        "his_posts_from": "20231204",
+        "doctrine": "phone_wave_jan_replay_doctrine.json"
+      }
+    },
+    "stock_lab": {
+      "name_zh": "個股",
+      "loop": "找相對正確買／賣切入日與價；双閘／分軌 keep；過閘才談上話筒",
+      "phone_sync": "blocked",
+      "buy_signal": false,
+      "keep": "v106 early ei_n2_lu5／eg_bridge；fast lu5_vol_next；sell hi20_or_desync",
+      "note_zh": "stock_inst_filter_lab_v1：v106×法人股數／BFI 後置濾 OOS 對 plain 有微幅正Δ（最佳 mkt_ft_both_gt0 ≈+2pp）但未贏 sealed keep → 不換；詳 stock_inst_filter_lab_decision.json"
+    }
+  },
+  "isolation_zh": "大盤浪形／1/1重播不准改個股黃金買點、海選、洞燭、AI倉；個股勝率不准混報大盤；勝率分軌分鍋；不准為練習加話筒新按鍵",
+  "no_mix_with_zh": [
+    "leave_zero／golden_buy",
+    "海選各桶",
+    "洞燭",
+    "AI倉",
+    "記買入／持股／觀察",
+    "飆大話筒原文回覆（練習推論不准冒充他說）"
+  ]
+}

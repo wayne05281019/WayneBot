@@ -49,6 +49,30 @@ def test_meta_update_mechanism_note_is_rejected(monkeypatch):
     )
 
 
+def test_strip_meta_clause_keeps_product_note():
+    """夾了『更新通知會依時段…』只留產品句。"""
+    import phone_update as pu
+
+    raw = "更新通知會依時段說正在忙什麼，週末休市不再誤說盤後融合"
+    assert pu._clean_note(raw) == "週末休市不再誤說盤後融合"
+    start = phone_update_starting("abc", note=raw)
+    assert start == f"{UPDATE_START}：週末休市不再誤說盤後融合"
+    assert "依時段" not in start
+
+
+def test_file_note_matches_this_change():
+    """備援檔必須是這次真改動，不准殘留舊早報／通知機制句。"""
+    from pathlib import Path
+
+    import phone_update as pu
+
+    raw = Path(pu._NOTE_FILE).read_text(encoding="utf-8").splitlines()[0]
+    assert "舊海選早報" not in raw
+    assert "依時段" not in raw
+    assert "盤後融合" in raw
+    assert pu._clean_note(raw) == "週末休市不再誤說盤後融合"
+
+
 def test_schedule_wait_note_at_fuse_window():
     """16:30 左右更新＝講盤後融合等候句，不准內部說明。"""
     from datetime import datetime
@@ -100,6 +124,37 @@ def test_schedule_wait_note_beats_product_note(monkeypatch):
     monkeypatch.setenv("WAYNE_UPDATE_NOTE", "查股兩張圖一次畫完")
     now = datetime(2026, 11, 5, 16, 40, tzinfo=ZoneInfo("Asia/Taipei"))
     assert "盤後資料正在下載融合中" in pu.phone_update_note(now=now)
+
+
+def test_schedule_wait_note_skips_closed_saturday_fuse_window(monkeypatch):
+    """週六 16:40 撞到時鐘窗也不准講盤後融合；改落回真更新口語。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    import phone_update as pu
+
+    monkeypatch.setenv("WAYNE_UPDATE_NOTE", "遠窗休市不准寫盤中，電子盤缺日不再重複K")
+    sat = datetime(2026, 11, 7, 16, 40, tzinfo=ZoneInfo("Asia/Taipei"))
+    assert pu.phone_schedule_wait_note(now=sat) == ""
+    note = pu.phone_update_note(now=sat)
+    assert "盤後資料正在下載融合中" not in note
+    assert "遠窗休市不准寫盤中" in note
+
+
+def test_overnight_wait_note_only_after_open_day():
+    """01:00 隔日彙整：週五夜→週六凌晨可說；週六夜→週日凌晨不准說。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from phone_update import phone_schedule_wait_note
+
+    tz = ZoneInfo("Asia/Taipei")
+    # 2026-11-07 週六；前一日 11/6 週五開市 → 01:05 可說
+    sat_am = datetime(2026, 11, 7, 1, 5, tzinfo=tz)
+    assert "隔日盤後彙整" in phone_schedule_wait_note(now=sat_am)
+    # 2026-11-08 週日；前一日週六休市 → 不准說
+    sun_am = datetime(2026, 11, 8, 1, 5, tzinfo=tz)
+    assert phone_schedule_wait_note(now=sun_am) == ""
 
 
 def test_notice_is_spoken_without_sha(monkeypatch):

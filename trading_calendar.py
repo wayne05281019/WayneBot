@@ -90,6 +90,9 @@ def futures_night_date_cap(now=None) -> str:
 
     歷史／OpenAPI 的盤後 date＝夜盤結束後的日曆日（平日）或下一開市日（週末夜盤）。
     05:00 後才認「今晨結束的夜盤」可齊；05:00 前仍停在昨日標籤。
+
+    週末／休市牆鐘：週五夜官方標在「下一開市日」（例週一）。若 cap 停在六／日，
+    會把已齊的週五夜整列擋掉（話筒末K／戳吃到更舊崩盤夜）。休市日 cap 提到下一開市日。
     """
     from config import taipei_now
 
@@ -99,8 +102,13 @@ def futures_night_date_cap(now=None) -> str:
     else:
         now = now.astimezone(TAIPEI)
     if int(now.hour) >= 5:
-        return now.strftime("%Y%m%d")
-    return (now - timedelta(days=1)).strftime("%Y%m%d")
+        raw = now.strftime("%Y%m%d")
+    else:
+        raw = (now - timedelta(days=1)).strftime("%Y%m%d")
+    if is_tw_open_calendar_day(raw):
+        return raw
+    # 六日／國定：已完成的週五夜標在下一開市日
+    return next_open_calendar_day_after(last_open_calendar_day_on_or_before(raw))
 
 
 def futures_night_query_ceiling(cash_as_of: Optional[str] = None, now=None) -> str:
@@ -297,6 +305,20 @@ def tw_post_cash_pre_fuse(now=None) -> bool:
         return False
     t = now.time()
     return dt_time(13, 30) <= t < dt_time(16, 30)
+
+
+def tw_cash_bars_fetch_ready(now=None) -> bool:
+    """開市日約 13:40 起可抓加權當日走勢（日K／分時），不必等 16:30 融合。
+
+    現貨 13:30 收；給資料源約 10 分落地。16:30 仍管法人／產業等重融合。
+    """
+    from config import taipei_now
+
+    now = now or taipei_now()
+    ymd = now.strftime("%Y%m%d")
+    if not is_tw_open_calendar_day(ymd):
+        return False
+    return now.time() >= dt_time(13, 40)
 
 
 def speak_when_for_press(now=None) -> str:

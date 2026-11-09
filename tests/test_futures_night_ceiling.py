@@ -29,6 +29,13 @@ def test_futures_night_query_ceiling_weekday_and_weekend():
     before_five = datetime(2026, 10, 21, 4, 59, tzinfo=TP)
     assert futures_night_date_cap(before_five) == "20261020"
 
+    # 週末牆鐘：週五夜官方標在週一；cap 不准停在六／日把已齊夜盤擋掉
+    sun = datetime(2026, 11, 8, 11, 40, tzinfo=TP)
+    assert futures_night_date_cap(sun) == "20261109"
+    assert futures_night_query_ceiling("20261106", sun) == "20261109"
+    sat = datetime(2026, 11, 7, 16, 0, tzinfo=TP)
+    assert futures_night_date_cap(sat) == "20261109"
+
     # 歷史 as_of 不漂到活檔
     assert futures_night_query_ceiling("20260901", wed) == "20260901"
 

@@ -22,7 +22,8 @@ _HEX = re.compile(r"\b[0-9a-f]{12,}\b", re.I)
 # 把「通知機制本身」寫進話筒＝沒人看得懂；這類一律當無效
 _META_NOTE = re.compile(
     r"(正在更新什麼|再說更新完成|開機推.{0,4}正在更新|就緒再推|"
-    r"開機會先說|兩支話筒各收開始|同\s*SHA\s*不)",
+    r"開機會先說|兩支話筒各收開始|同\s*SHA\s*不|"
+    r"更新通知會依時段|依時段說正在忙)",
     re.I,
 )
 
@@ -109,6 +110,15 @@ def _is_meta_update_note(text: str) -> bool:
     return False
 
 
+def _strip_meta_clauses(text: str) -> str:
+    """逗號句裡若夾「更新通知會依時段…」這類機制句，只留產品口語。"""
+    parts = [p.strip() for p in re.split(r"[，,]", str(text or "")) if p.strip()]
+    if not parts:
+        return ""
+    kept = [p for p in parts if not _META_NOTE.search(p)]
+    return "，".join(kept).strip(" ，,")
+
+
 def _clean_note(raw: str) -> str:
     t = str(raw or "").replace("\r", "").split("\n", 1)[0].strip()
     t = _COMMIT_PREFIX.sub("", t).strip()
@@ -116,6 +126,7 @@ def _clean_note(raw: str) -> str:
         return ""
     t = _HEX.sub("", t)
     t = re.sub(r"\s+", " ", t).strip(" ，,")
+    t = _strip_meta_clauses(t)
     t = t[:80]
     if _is_meta_update_note(t):
         return ""
@@ -133,8 +144,35 @@ def _taipei_now(now: Optional[datetime] = None) -> Optional[datetime]:
         return None
 
 
+def _schedule_window_on_open_day(dt: datetime, *, lo: int) -> bool:
+    """排程等候句只在「真的會跑那檔」的日子說。
+
+    - 一般重窗（早報／尾盤／16:30 融合／盤後彙整／晚間／勝率）：當日台股開市日
+    - 隔日 00:50–01:20 彙整：前一個日曆日是開市日（週末／國定假不准套這句）
+    不准只看時鐘就在週六講「盤後融合中」。
+    """
+    try:
+        from datetime import timedelta
+
+        from trading_calendar import is_tw_open_calendar_day
+    except Exception:
+        return False
+    try:
+        ymd = dt.strftime("%Y%m%d")
+    except Exception:
+        return False
+    # 隔日凌晨窗：對齊「前一日開市才有」
+    if int(lo) < 6 * 60:
+        prev = (dt - timedelta(days=1)).strftime("%Y%m%d")
+        return bool(is_tw_open_calendar_day(prev))
+    return bool(is_tw_open_calendar_day(ymd))
+
+
 def phone_schedule_wait_note(now: Optional[datetime] = None) -> str:
-    """開機／更新落在排程重窗時，用人話講正在忙什麼（台北時區）。"""
+    """開機／更新落在排程重窗時，用人話講正在忙什麼（台北時區）。
+
+    非開市日（週末／國定假）即使撞到 16:25–17:00 時鐘窗，也不准講盤後融合。
+    """
     dt = _taipei_now(now)
     if dt is None:
         return ""
@@ -144,23 +182,34 @@ def phone_schedule_wait_note(now: Optional[datetime] = None) -> str:
         return ""
     for lo, hi, text in _SCHEDULE_WAIT_WINDOWS:
         if lo <= mins < hi:
+            if not _schedule_window_on_open_day(dt, lo=lo):
+                return ""
             return _clean_note(text)
     return ""
 
 
 def _git_head_note() -> str:
-    """這次合進的最後一筆非 merge 標題＝真口語來源。"""
-    try:
-        raw = subprocess.check_output(
-            ["git", "log", "-1", "--format=%s", "--no-merges"],
-            cwd=os.path.dirname(os.path.abspath(__file__)),
-            timeout=2,
-            text=True,
-            stderr=subprocess.DEVNULL,
-        )
-        return _clean_note(raw)
-    except Exception:
-        return ""
+    """這次合進的標題＝真口語來源（Render 常無深歷史，備援 HEAD）。"""
+    cwd = os.path.dirname(os.path.abspath(__file__))
+    cmds = (
+        ["git", "log", "-1", "--format=%s", "--no-merges"],
+        ["git", "log", "-1", "--format=%s"],
+    )
+    for cmd in cmds:
+        try:
+            raw = subprocess.check_output(
+                cmd,
+                cwd=cwd,
+                timeout=2,
+                text=True,
+                stderr=subprocess.DEVNULL,
+            )
+        except Exception:
+            continue
+        note = _clean_note(raw)
+        if note and _has_han(note):
+            return note
+    return ""
 
 
 def _file_note() -> str:

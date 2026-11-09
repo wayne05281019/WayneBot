@@ -19,6 +19,20 @@ def _png(path: str, w: int = 1200, h: int = 700) -> None:
     Image.fromarray(arr, mode="RGB").save(path, format="PNG", compress_level=1)
 
 
+def test_market_teach_stored_reuse_requires_tip_match():
+    """活畫失敗回退存檔：as_of 夠還要 tip 一口對；缺 tip／價差不准混舊戳。"""
+    import inspect
+
+    from bot_servers import WayneTelegramBot
+
+    src = inspect.getsource(WayneTelegramBot._send_market_wave_charts)
+    assert "compute_teach_tip_snapshot" in src
+    assert "teach_tip_snapshots_match" in src
+    assert "_stored_reuse_ok" in src
+    assert "and _stored_asof_ok():" not in src
+    assert "and _stored_reuse_ok():" in src
+
+
 def test_merge_market_teach_kit_fills_missing_far_and_micro(tmp_path):
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     near = tmp_path / "near.png"

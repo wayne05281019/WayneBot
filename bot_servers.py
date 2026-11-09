@@ -6992,9 +6992,11 @@ class WayneTelegramBot:
         sent = 0
         try:
             from biaoke_level_learn import (
+                compute_teach_tip_snapshot,
                 latest_teach_kit,
                 paint_open_day_hypothesis,
                 prepare_wave_live_pack,
+                teach_tip_snapshots_match,
                 _wave_now_ladder,
             )
             from wayne_navigator import submit_mpl_paint
@@ -7044,9 +7046,18 @@ class WayneTelegramBot:
                 )
 
             kit: dict = {}
+            far_painted: dict = {}
+            near_painted: dict = {}
+            micro_painted: dict = {}
             thesis = str(pack.get("thesis") or stored.get("thesis") or "").strip()
             as_of = str(pack.get("chart_as_of") or stored.get("as_of") or "").strip()
             want_as = str(pack.get("chart_as_of") or "").replace("-", "")[:8]
+            want_tip: dict = {}
+            try:
+                want_tip = compute_teach_tip_snapshot(self.db_path, pack) or {}
+            except Exception:
+                logger.exception("大盤現況 tip 略過")
+                want_tip = {}
 
             def _stored_asof_ok() -> bool:
                 """存檔 as_of 不得落後 pack 顯示日；落後＝舊圖，不准回退。"""
@@ -7056,6 +7067,17 @@ class WayneTelegramBot:
                 if want_as and len(want_as) == 8 and not got:
                     return False
                 return True
+
+            def _stored_reuse_ok() -> bool:
+                """as_of 夠新還不夠：費半／電子盤／加權 tip 一口要對得上，不准混舊戳。"""
+                if not _stored_asof_ok():
+                    return False
+                got_tip = stored.get("teach_tip") if isinstance(stored, dict) else None
+                if not isinstance(got_tip, dict) or not got_tip:
+                    return False
+                if not want_tip:
+                    return False
+                return bool(teach_tip_snapshots_match(want_tip, got_tip))
 
             # 層級一句用同一 pack，不准再 _build_live_pack
             ladder_line = ""
@@ -7117,7 +7139,7 @@ class WayneTelegramBot:
                 if far_painted:
                     thesis = str(far_painted.get("thesis") or thesis)[:180]
                     as_of = str(far_painted.get("as_of") or as_of)
-                if not self._market_teach_path_ok(far_path) and _stored_asof_ok():
+                if not self._market_teach_path_ok(far_path) and _stored_reuse_ok():
                     far_path = str(stored.get("far_path") or "")
                 if not self._market_teach_path_ok(far_path):
                     if wait_h and wait_h[0] is not None:
@@ -7188,7 +7210,7 @@ class WayneTelegramBot:
                     logger.exception("大盤近窗活畫略過")
                     near_painted = {}
                 near_path = str((near_painted or {}).get("near_path") or "")
-                if not self._market_teach_path_ok(near_path) and _stored_asof_ok():
+                if not self._market_teach_path_ok(near_path) and _stored_reuse_ok():
                     near_path = str(stored.get("near_path") or "")
 
                 # 3) 開超近 paint，同時送近窗
@@ -7240,7 +7262,7 @@ class WayneTelegramBot:
                     logger.exception("大盤超近活畫略過")
                     micro_painted = {}
                 micro_path = str((micro_painted or {}).get("micro_path") or "")
-                if not self._market_teach_path_ok(micro_path) and _stored_asof_ok():
+                if not self._market_teach_path_ok(micro_path) and _stored_reuse_ok():
                     micro_path = str(stored.get("micro_path") or "")
 
                 if self._market_teach_path_ok(micro_path):
@@ -7264,10 +7286,22 @@ class WayneTelegramBot:
                 else:
                     missing.append(label_by_key.get("micro_path", "超近窗"))
 
+                oral_path = ""
+                for painted in (far_painted, near_painted, micro_painted):
+                    if isinstance(painted, dict) and painted.get("oral_path"):
+                        oral_path = str(painted.get("oral_path") or "")
+                        break
+                if not oral_path:
+                    oral_path = str(
+                        (stored or {}).get("oral_path")
+                        or ((pack or {}).get("key_levels") or {}).get("_oral_path")
+                        or ""
+                    )
                 kit = {
                     "far_path": far_path,
                     "near_path": near_path,
                     "micro_path": micro_path,
+                    "oral_path": oral_path,
                     "thesis": thesis,
                     "as_of": as_of,
                 }
@@ -7282,6 +7316,23 @@ class WayneTelegramBot:
                     )
                 except Exception:
                     pass
+            # 未定案雙軌：口述對照與三窗同口補送（非買訊）
+            oral = str((kit or {}).get("oral_path") or "").strip()
+            if sent > 0 and oral and os.path.isfile(oral):
+                try:
+                    oral_cap = "口述雙軌對照・主B-b／備九波・與三窗同口・非買訊"
+                    if thesis:
+                        oral_cap = f"{oral_cap}\n{thesis[:160]}"
+                    ok_oral = await self._send_market_teach_one(
+                        message,
+                        oral,
+                        caption=oral_cap[:900],
+                        label="口述對照",
+                    )
+                    if ok_oral:
+                        sent += 1
+                except Exception:
+                    logger.exception("波浪口述對照圖送出略過")
             _ = kit  # 路徑已送；保留合併語意給後續擴充
         except Exception:
             logger.exception("大盤教具圖失敗")
@@ -7803,7 +7854,9 @@ class WayneTelegramBot:
             if painted and painted.get("ok"):
                 kit = {
                     "far_path": str(painted.get("far_path") or ""),
+                    "oral_path": str(painted.get("oral_path") or ""),
                     "thesis": str(painted.get("thesis") or "")[:180],
+                    "wait_struct": str(painted.get("wait_struct") or "")[:240],
                     "slot_id": str(painted.get("slot_id") or ""),
                     "as_of": str(painted.get("as_of") or ""),
                 }
@@ -7825,6 +7878,7 @@ class WayneTelegramBot:
         if not self._png_looks_ok(path, min_bytes=8_000, min_w=480, min_h=280):
             return
         thesis = str(kit.get("thesis") or "").strip()
+        wait_struct = str(kit.get("wait_struct") or "").strip()
         ladder_line = ""
         try:
             from biaoke_level_learn import _build_live_pack, _wave_now_ladder
@@ -7845,6 +7899,8 @@ class WayneTelegramBot:
             ladder_line = "\n".join(bits_l).strip()
             if not thesis:
                 thesis = str((pack_for_ladder or {}).get("thesis") or "").strip()
+            if not wait_struct:
+                wait_struct = str((pack_for_ladder or {}).get("wait_struct") or "").strip()
         except Exception:
             logger.exception("教具層級一句略過")
             ladder_line = ""
@@ -7853,6 +7909,8 @@ class WayneTelegramBot:
             bits.extend(ln.strip() for ln in ladder_line.splitlines() if ln.strip())
         elif thesis:
             bits.append(thesis[:160])
+        if wait_struct:
+            bits.append(wait_struct[:160])
         cap = "\n".join(bits)[:900]
         kb = self._biaoke_reply_menu(uid)
         try:
@@ -7872,6 +7930,34 @@ class WayneTelegramBot:
             raise
         except Exception:
             logger.exception("飆大遠窗圖送出略過")
+        # 未定案雙軌：空白飆大也補送口述對照（與波浪位階同口）
+        oral = str(kit.get("oral_path") or "").strip()
+        if not oral:
+            try:
+                from biaoke_level_learn import _paint_dir
+
+                cand = os.path.join(_paint_dir(self.db_path), "oral-dual-path-latest.png")
+                if os.path.isfile(cand):
+                    oral = cand
+            except Exception:
+                oral = ""
+        if oral and os.path.isfile(oral) and self._png_looks_ok(
+            oral, min_bytes=4_000, min_w=400, min_h=400
+        ):
+            try:
+                oral_cap = "口述雙軌對照・主B-b／備九波・與三窗同口・非買訊"
+                if thesis:
+                    oral_cap = f"{oral_cap}\n{thesis[:160]}"
+                with open(oral, "rb") as f:
+                    await message.reply_photo(
+                        photo=f,
+                        caption=oral_cap[:900],
+                        reply_markup=kb,
+                    )
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("飆大口述對照圖送出略過")
 
     async def _send_biaoke_advice_charts(
         self,

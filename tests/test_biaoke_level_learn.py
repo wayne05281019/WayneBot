@@ -208,7 +208,8 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "hspace=0.10" in near_blk
     assert "labs_ax" in near_blk and "labs_axv" in near_blk
     assert "0.62" in near_blk and "_teach_eight_wave_inset_wh" in near_blk
-    assert "width) * 0.15" in near_blk  # 九波鎖價欄紅框
+    # 近窗九波改靠右下（0.55），讓左半區帶黃／紫標齊頭
+    assert "width) * 0.55" in near_blk
     assert "35500.0" in near_blk  # 上緣不准碰藍虛線
     assert "float(i5e) + 7.0" in near_blk  # ⑤末尖右下讓過戳
     assert "_near_major_date_labs" in near_blk  # 結構日欄間單行
@@ -229,7 +230,7 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "_pin_pivot_name" in near_blk
     assert "_pin_pivot_name" in micro_blk
     assert "_pin_pivot_name" in src
-    # 三張共用螢光黃查詢戳（日期／盤中或收／價）；時鐘邏輯仍走 _teach_query_clock
+    # 三張共用白底查詢戳（開盤螢光邊／收盤黑邊；日期／盤中或收／價）
     assert "_paint_teach_query_stamp" in far_blk
     assert "_paint_teach_query_stamp" in near_blk
     assert "_paint_teach_query_stamp" in micro_blk
@@ -237,6 +238,11 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "def _paint_teach_query_stamp" in src
     assert "def _paint_index_last_chg_tip" in src
     assert "_TEACH_STAMP_EDGE" in src
+    assert "_teach_stamp_edge" in src
+    assert "_paint_axis_last_date_neon" in src
+    assert "_TEACH_LAST_DATE_NEON" in src
+    assert "_TEACH_STAMP_EDGE_CLOSED" in src
+    assert "_TEACH_RIGHT_SOFT_CAP" in src
     assert '_TEACH_STAMP_FACE = "#ffffff"' in src or "_TEACH_STAMP_FACE = '#ffffff'" in src
     assert "市撮" in src and "盤前" in src and "收盤" in src
     assert "def _thesis_cap_for_query" in src
@@ -252,6 +258,12 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "_load_tx_futures_daily" in src
     assert "_ensure_paint_live_tx" in src
     assert "_apply_live_tx_to_axis" in far_blk
+    # 夜盤先行：電子盤也釘 C1…C8（與加權日盤九波分開，仍走 _paint_c9_extension_on_bars）
+    assert "夜盤先行" in far_blk or "_c9_pivots_tx" in far_blk
+    assert far_blk.count("_paint_c9_extension_on_bars(") >= 2
+    assert "math.isfinite(hi)" in inspect.getsource(
+        __import__("biaoke_level_learn", fromlist=["_c9_ext_bar_pivots"])._c9_ext_bar_pivots
+    )
     # 電子盤撐壓底色＋右標虛線＋即時K
     assert "tx_vol_sr" in far_blk
     assert "_tx_right_notes" in far_blk
@@ -273,8 +285,8 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "rotation=0" in src
     assert "clip_on=False" in src  # 左軸逐字 ax.text
     assert "labels=False" in far_blk
-    assert "0.11" in far_blk  # 電子盤右標間距
-    assert "nudge=True" in far_blk  # 字盒疏開、虛線仍貼真價
+    assert "0.13" in far_blk  # 電子盤右標間距（疏開字盒）
+    assert "nudge=True" in far_blk  # 參數保留；標籤 Y 已鎖真價（水平接虛線）
     # 各欄各自爆大量日豎線；不准加權 10/15 貫穿費半／電子盤
     assert "_paint_vol_sr_mark_on_axis" in far_blk
     assert "def _paint_vol_sr_day_guides" in src
@@ -291,6 +303,9 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "_TEACH_STAMP_EDGE_TX" in src
     assert "def _resolve_tx_after_hours_tip" in src
     assert "def _paint_tx_after_hours_tip" in src
+    # 夜盤現價虛線：tip 校完才畫，釘最後真K（不准停在左側舊格）
+    assert "rail_pending" in far_blk
+    assert "_paint_tx_now_price_rail" in far_blk
     assert "費半｜台指電子盤｜加權日盤" in far_blk
     # 大B末標假突破；近窗白底戳改主圖框內左上（跟遠窗同軸座標）
     assert "假突破" in src
@@ -384,6 +399,66 @@ def test_sparse_xticks_no_adjacent_crush():
     )
     assert l2[0] == "10/15" and l2[-1] == "11/6"
     assert i2[-1] == 18
+    # must_keep：加權末日與延長格太近時兩邊都留，不准延長日盖掉加權末日
+    i3, l3 = _sparse_xticks(
+        [10, 16, 17],
+        ["10/15", "11/5", "11/6"],
+        min_gap=3,
+        must_keep=[16],
+    )
+    assert 16 in i3 and 17 in i3
+    assert l3[i3.index(16)] == "11/5"
+    assert l3[i3.index(17)] == "11/6"
+
+
+def test_far_shared_axis_xticks_no_feiban_suffix_on_extra():
+    """遠窗共用軸：費半延長格只寫月日，不准標「費半」（電盤／加權／量會誤讀）。"""
+    from biaoke_level_learn import _far_shared_axis_xticks
+
+    bars = [{"date": f"202610{d:02d}"} for d in range(1, 28)]
+    bars.append({"date": "20261105"})
+    want = {"20261001", "20261006", "20261015", "20261105", "20261106"}
+    # 模擬加權停 11/5、費半有 11/6 延長格（話筒紅圈「11/6 費半」根因）
+    t, labs = _far_shared_axis_xticks(
+        bars,
+        sox_extra_dates=["20261106"],
+        want=want,
+        i5s=0,
+        i5e=0,
+        i_alow=0,
+        i_b_end=5,
+        min_gap=4,
+    )
+    assert labs, "應有刻度"
+    assert all("費半" not in str(x) for x in labs)
+    assert any(str(x) == "11/6" or str(x).startswith("11/6") for x in labs)
+    # 加權末日 11/5 必留
+    assert len(bars) - 1 in t
+    assert "11/5" in labs[t.index(len(bars) - 1)]
+
+
+def test_far_render_shared_xticks_forbid_feiban_suffix_in_source():
+    """遠窗源碼：共用軸不准再 append「費半」後綴；改走 _far_shared_axis_xticks。"""
+    from pathlib import Path
+
+    src = Path("biaoke_level_learn.py").read_text(encoding="utf-8")
+    far_blk = src[
+        src.index("def _render_twii_far_dark") : src.index("def _render_twii_live_dark")
+    ]
+    assert "_far_shared_axis_xticks" in far_blk
+    assert 'l2.append(f"{_md(d)}費半")' not in far_blk
+    assert 'f"{_md(d)}費半"' not in far_blk
+    assert "_ensure_teach_index_bars" in far_blk
+    # 週末也要比到最近開市收
+    ensure_src = src[
+        src.index("def _ensure_teach_index_bars") : src.index(
+            "def _fill_live_twii_when_official_lags"
+        )
+    ]
+    assert "last_open_calendar_day_on_or_before" in ensure_src
+    # 遠窗電子盤戳走 _paint_tx_after_hours_tip（收盤／盤中拆開組，不准再硬拼「電盤收」）
+    assert "_paint_tx_after_hours_tip" in far_blk
+    assert "台指電子盤" in far_blk
 
 
 def test_next_support_resist_nearest():
@@ -432,7 +507,9 @@ def test_far_yellow_band_is_max_vol_day_hl():
     near_src = src[src.index("def _render_twii_live_dark") : src.index("def _render_twii_super_near_dark")]
     micro_src = src[src.index("def _render_twii_super_near_dark") : src.index("def _render_us_compare_dark")]
     assert (
-        "0.062 if _c9_near_now else 0.055" in near_src
+        "0.092 if _c9_near_now else 0.068" in near_src
+        or "0.078 if _c9_near_now else 0.068" in near_src
+        or "0.062 if _c9_near_now else 0.055" in near_src
         or "min_gap=(ymax - ymin) * 0.055" in near_src
     )
     assert "nudge=True" in near_src
@@ -442,24 +519,31 @@ def test_far_yellow_band_is_max_vol_day_hl():
     # 超近窗標題不准把 C3-3-4 裁成 C3-3（保留 now 尾碼）
     assert 'one_line")[:40]' not in micro_src and "one_line')[:40]" not in micro_src
     assert "_now" in micro_src
-    # 右欄預設 n+2.55（對齊長標）；不准再漂到 n+1.15、不准 right=0.90 把標甩進圖外溝
-    assert "2.55" in place
+    # 右欄預設走 _TEACH_RIGHT_GUTTER=2.55（_teach_right_col_x）；不准再漂 n+1.15／right=0.90
+    assert "_TEACH_RIGHT_GUTTER" in src and "2.55" in src
+    assert "_teach_right_col_x" in place or "_teach_right_col_x" in block
     assert "n) + 1.15" not in place and "n + 1.15" not in place
-    assert "x_right_col" in block or "x_col=x_right_col" in block
-    assert "min_gap=(ymax - ymin) * 0.055" in block or "0.062 if _c9_now else 0.055" in block
+    assert "x_right_col" in block or "x_col=x_right_col" in block or "_teach_right_col_x" in block
+    assert (
+        "0.092 if _c9_now else 0.078" in block
+        or "0.062 if _c9_now else 0.055" in block
+        or "min_gap=(ymax - ymin) * 0.055" in block
+    )
     assert "900.0" not in block[block.index("_place_live_right_labels") :]
-    # 遠窗 xlim 跟最長軸（費半可晚於加權）；舊寫 n+8.6，現況 n_axis+8.6
-    assert "n_axis + 8.6" in block or "n + 8.6" in block
-    assert "right=0.978" in block or "right=0.98" in block
+    # 遠窗 xlim 走 _teach_xlim_right（定長滾動右欄 pad）；不准再寫死 n+8.6／right=0.90
+    assert "_teach_xlim_right" in block
+    assert "n_axis + 8.6" not in block
+    assert "right=0.978" in block or "right=0.98" in block or "subplots_adjust" in block
     assert "right=0.90" not in block
     assert "_extend_us_ohlc_past_twii" in block or "_extend_us_ohlc_past_twii" in src
     assert "_FAR_SOX_MIN_BODY_FRAC" in src
-    assert "facecolors=\"none\"" in block or "facecolors='none'" in block
-    # 浪名：high 在尖上、low 在尖下，不准左右蓋住縮圖K
+    # 末根矛點改 _spear_ring（遠窗不再用 facecolors=none 空心 scatter）
+    assert "_spear_ring" in block
+    # 浪名：tip=high 整盒在尖上、tip=low 在尖下（與右欄現況標分開）
     pin = src[src.index("def _pin_pivot_name") : src.index("def _c_path_label_xy")]
     assert '"high"' in pin and '"bottom"' in pin
     assert '"low"' in pin and '"top"' in pin
-    assert "不准蓋住縮圖K" in pin or "整盒不准蓋住縮圖K" in pin
+    assert "整盒在高點上方" in pin or "tip=high" in pin
     assert 'tip="high"' in block and 'tip="low"' in block
     # 大結構：⑤起4/1／⑤終6/23／大A底／大B末；近窗細分另淡標
     assert '"大A底' in block and '"大B末' in block
@@ -621,10 +705,10 @@ def test_biaoke_pred_label_no_fake_prob():
 
     px = _px(44210.0)
     assert _biaoke_pred_label(44210.0) == f"飆預測{px}"
-    assert _biaoke_pred_label(44210.0, "未到") == f"飆預測{px}未到"
+    assert _biaoke_pred_label(44210.0, "未到") == f"飆預測{px}・未到"
     # 不准假％：沒傳機率就不帶
     assert "%" not in _biaoke_pred_label(44210.0, "未到")
-    assert _biaoke_pred_label(44210.0, "未到", prob=80.0) == f"飆預測{px}未到（80%機率）"
+    assert _biaoke_pred_label(44210.0, "未到", prob=80.0) == f"飆預測{px}・未到（80%機率）"
 
 
 def test_wave_now_ladder_big_to_small():
@@ -768,19 +852,19 @@ def test_thesis_pred_c9_band_and_38000_broke():
     assert "劇本一上沿" in roles
     pack = {"pred_levels": pred}
     tips = _tw_tip_anchors(pack)
+    # C9 兩沿改走底帶；不准進 tip 裸梯。舊劇本一 35000／38000 也不准當下一錨
     assert all(abs(t - 38000) > 1 and abs(t - 35000) > 1 for t in tips)
-    assert any(abs(t - 37300) < 1 for t in tips)
-    assert any(abs(t - 35500) < 1 for t in tips)
+    assert all(abs(t - 37300) > 1 and abs(t - 35500) > 1 for t in tips)
     from biaoke_level_learn import _px
 
     br = _tw_pred_break_tag(38000.0, [45000.0], pack=pack, role="劇本一上沿")
     assert br == "已破"
-    assert _biaoke_pred_label(38000.0, br) == f"飆預測{_px(38000)}已破"
+    assert _biaoke_pred_label(38000.0, br) == f"飆預測{_px(38000)}・已破"
     notes = _tw_pred_right_notes(
         pack, n=10, lows=[45000.0], tip_skip=set(), bars=None
     )
     texts = " ".join(str(n.get("text") or "") for n in notes)
-    assert f"{_px(38000)}已破" in texts
+    assert f"{_px(38000)}・已破" in texts or f"{_px(38000)}已破" in texts
     assert _px(37300) in texts and _px(35500) in texts
     # 有 C9 區：舊 35000 劇本一下沿不准再出現在右標
     assert _px(35000) not in texts
@@ -851,17 +935,32 @@ def test_thesis_pred_foot2_band_supersedes_c9():
     assert zone is not None and zone[2] == "foot2"
     assert abs(zone[0] - 37000) < 1 and abs(zone[1] - 37500) < 1
     tips = _tw_tip_anchors(pack)
-    assert any(abs(t - 37500) < 1 for t in tips)
-    assert any(abs(t - 37000) < 1 for t in tips)
+    # 改口兩沿改走底帶；不准進 tip 裸梯（也不准再掛舊 C9 端）
+    assert all(abs(t - 37500) > 1 and abs(t - 37000) > 1 for t in tips)
     assert all(abs(t - 35500) > 1 and abs(t - 37300) > 1 for t in tips)
+    # key_levels 殘留舊 35000／38000 也不准再當虛線下一錨
+    tips2 = _tw_tip_anchors(
+        {
+            **pack,
+            "key_levels": {
+                "pred_tw_38000": 38000.0,
+                "pred_tw_35000": 35000.0,
+                "pred_tw_37500": 37500.0,
+                "pred_tw_37000": 37000.0,
+            },
+        }
+    )
+    assert all(abs(t - 38000) > 1 and abs(t - 35000) > 1 for t in tips2)
+    # key_levels 裡的改口兩沿同樣不准進 tip 裸梯（底帶已畫）
+    assert all(abs(t - 37500) > 1 and abs(t - 37000) > 1 for t in tips2)
     br = _tw_pred_break_tag(38000.0, [45000.0], pack=pack, role="劇本一上沿")
     assert br == "已破"
-    assert _biaoke_pred_label(38000.0, br) == f"飆預測{_px(38000)}已破"
+    assert _biaoke_pred_label(38000.0, br) == f"飆預測{_px(38000)}・已破"
     notes = _tw_pred_right_notes(
         pack, n=10, lows=[45000.0], tip_skip=set(), bars=None
     )
     texts = " ".join(str(n.get("text") or "") for n in notes)
-    assert f"{_px(38000)}已破" in texts
+    assert f"{_px(38000)}・已破" in texts or f"{_px(38000)}已破" in texts
     assert _px(37500) in texts and _px(37000) in texts
     assert _px(35500) not in texts
     import biaoke_level_learn as bll
@@ -1142,6 +1241,81 @@ def test_thesis_follows_latest_biaoke_post_up_to_query(tmp_path):
     assert "主跌" in (after.get("snippet") or after.get("thesis") or "")
 
 
+def test_bb_dual_path_thesis_beats_earlier_foot2(tmp_path):
+    """後文 5波跌完走B-b／九波雙軌（說話時間晚）壓前文第二隻腳；抓取時差不准倒序。"""
+    import sqlite3
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_level_learn import (
+        _latest_level_thesis,
+        _text_has_bb_dual_path,
+        _thesis_pred_levels,
+        ensure_tables,
+        render_oral_dual_path_schematic,
+    )
+
+    db = str(tmp_path / "bbdual.db")
+    ensure_tables(db)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS biaoke_posts("
+        "id TEXT PRIMARY KEY, date TEXT, time TEXT, kind TEXT, text TEXT)"
+    )
+    foot2 = (
+        "目前應該看不到37000以下，我夜盤來看應該跌完了居多。"
+        "低點應該最多37000-37500可能性非常高。"
+        "最安全是買反彈之後拉回1-2轉1-3-1，也就是第二隻腳。"
+    )
+    main = (
+        "大盤底部判斷訊號。由台指期來看大盤，星期五夜盤已經破壞最後一組3-5下跌脈動。"
+        "星期五最低點位37837，已經非常接近4/23低點37164。"
+        "這也是波浪理論5波跌完走B-b，也有可能會破37837，但是假跌破買點。"
+        "因為第二組下跌是走5波，當然不排除走9波擴延，非常有可能有效跌破"
+        "2/26第一波高點35579，則殺到3/31低點31705。"
+    )
+    # 較早：第二隻腳；較晚：雙軌主文（即使 updated_at 顛倒，也只認 date+time）
+    conn.execute(
+        "INSERT INTO biaoke_posts(id, date, time, kind, text) VALUES (?,?,?,?,?)",
+        ("187881236:c1", "2026-11-07", "00:13", "reply", foot2),
+    )
+    conn.execute(
+        "INSERT INTO biaoke_posts(id, date, time, kind, text) VALUES (?,?,?,?,?)",
+        ("188039214", "2026-11-08", "12:01", "post", main),
+    )
+    conn.commit()
+    conn.close()
+    assert _text_has_bb_dual_path(main)
+    tz = ZoneInfo("Asia/Taipei")
+    th = _latest_level_thesis(
+        db, as_of="20261108", now=datetime(2026, 11, 8, 13, 30, tzinfo=tz)
+    )
+    assert "B-b" in (th.get("thesis") or "")
+    assert "九波" in (th.get("thesis") or "")
+    assert "第二隻腳" not in (th.get("thesis") or "")
+    assert "37837" in (th.get("snippet_full") or th.get("snippet") or "")
+    pred = _thesis_pred_levels(th.get("snippet_full") or "", db)
+    roles = {str(r.get("role")): float(r["level"]) for r in (pred.get("tw") or [])}
+    assert abs(roles.get("五波末／週五低", 0) - 37837) < 1
+    assert abs(roles.get("九波備線破位", 0) - 35579) < 1
+    assert abs(roles.get("九波備線深殺", 0) - 31705) < 1
+    out = str(tmp_path / "oral.png")
+    got = render_oral_dual_path_schematic(out, snip=main)
+    assert got and __import__("os").path.isfile(got)
+
+
+def test_oral_dual_path_uses_bundled_cjk_font():
+    """口述雙軌圖必須走打包 NotoSansTC；系統 CJK 缺／TTC 選錯＝話筒豆腐「字」。"""
+    import inspect
+
+    from biaoke_level_learn import render_oral_dual_path_schematic
+
+    src = inspect.getsource(render_oral_dual_path_schematic)
+    assert "wayne_navigator" in src
+    assert "_fp" in src
+    assert "NotoSansTC" in src or "wayne_navigator import _fp" in src
+
+
 def test_same_day_fake_break_reply_merges_into_main_chrono(tmp_path):
     """11/5 短回『假跌破』依時間序併進主文；不准短回蓋掉 C3-5 主文當唯一題旨。"""
     import sqlite3
@@ -1269,8 +1443,9 @@ def test_far_teach_rolls_left_when_over_max():
 
 
 def test_far_teach_extends_left_for_vol_sr_date():
-    """大量撐壓日若被滾動裁掉 → 左側自動拉到該日，最右仍＝最新。"""
+    """大量撐壓日若被滾動裁掉 → 左側可略拉回，但硬卡 soft，不准無限變瘦。"""
     from biaoke_level_learn import (
+        _FAR_TEACH_EXTEND_SOFT,
         _FAR_TEACH_MAX_BARS,
         _far_teach_bars_keeping_vol_sr,
         _far_teach_roll_bars,
@@ -1299,13 +1474,17 @@ def test_far_teach_extends_left_for_vol_sr_date():
         keep_ymds=(),  # 只測撐壓日拉長，不強制浪階日
     )
     assert (sr.get("primary") or {}).get("date") == "20260020"
-    assert got[0]["date"] == "20260020"
     assert got[-1]["date"] == rows[-1]["date"]
-    assert len(got) > _FAR_TEACH_MAX_BARS
+    # 可略超 max，但硬卡 soft（尖點滾出改由帶／右欄承接）
+    assert len(got) <= _FAR_TEACH_EXTEND_SOFT
+    assert len(got) >= _FAR_TEACH_MAX_BARS
+    # 拉回後若仍裝得下撐壓日 → 最左＝該日；否則硬滾後最左晚於該日
+    if len(rows) - 19 <= _FAR_TEACH_EXTEND_SOFT:
+        assert got[0]["date"] == "20260020"
 
 
 def test_far_teach_keep_wave_floor_and_vol_sr():
-    """浪階起點＋更早撐壓日：左側取最早需求，最右仍最新。"""
+    """浪階／撐壓可略拉左，硬卡 soft；最右仍最新（不准無限變瘦）。"""
     from biaoke_level_learn import _far_teach_bars_keeping_vol_sr
 
     rows = []
@@ -1325,10 +1504,179 @@ def test_far_teach_keep_wave_floor_and_vol_sr():
         max_bars=80,
         vol_lookback=199,
         keep_ymds=("20260030",),
+        extend_soft=100,
     )
     assert (sr.get("primary") or {}).get("date") == "20260015"
-    assert got[0]["date"] == "20260015"  # 撐壓早於 keep → 取更早
     assert got[-1]["date"] == rows[-1]["date"]
+    assert len(got) <= 100
+    # soft=100 裝不下從 day15 起的 186 根 → 硬滾；裝得下才最左＝撐壓日
+    if len(rows) - 14 <= 100:
+        assert got[0]["date"] == "20260015"
+
+
+def test_teach_stamp_edge_and_last_date_neon_helpers():
+    """開盤螢光邊／收盤黑邊；末日刻度色碼存在。"""
+    from biaoke_level_learn import (
+        _TEACH_LAST_DATE_NEON,
+        _TEACH_RIGHT_SOFT_CAP,
+        _TEACH_STAMP_AX_X_MAX,
+        _TEACH_STAMP_AX_Y_MIN,
+        _TEACH_STAMP_EDGE_CLOSED,
+        _TEACH_STAMP_EDGE_LIVE,
+        _TEACH_STAMP_EDGE_TX_LIVE,
+        _clear_teach_stamp_pin_xy,
+        _left_sr_label_xy,
+        _teach_stamp_edge,
+    )
+
+    assert _teach_stamp_edge(live=True, kind="tw") == _TEACH_STAMP_EDGE_LIVE
+    assert _teach_stamp_edge(live=False, kind="tw") == _TEACH_STAMP_EDGE_CLOSED
+    assert _teach_stamp_edge(live=True, kind="sox") == _TEACH_STAMP_EDGE_LIVE
+    assert _teach_stamp_edge(live=True, kind="tx") == _TEACH_STAMP_EDGE_TX_LIVE
+    assert _teach_stamp_edge(live=False, kind="tx") == _TEACH_STAMP_EDGE_CLOSED
+    assert _TEACH_LAST_DATE_NEON.startswith("#")
+    assert int(_TEACH_RIGHT_SOFT_CAP) >= 4
+    assert float(_TEACH_STAMP_AX_Y_MIN) <= 0.72
+    assert float(_TEACH_STAMP_AX_X_MAX) >= 0.50
+
+    class _Ax:
+        def get_xlim(self):
+            return (0.0, 100.0)
+
+        def get_ylim(self):
+            return (0.0, 1000.0)
+
+    ax = _Ax()
+    # 左上戳區 → 右移出戳
+    xx, yy, ha = _clear_teach_stamp_pin_xy(ax, 10.0, 950.0, ha="center")
+    assert xx >= 100.0 * float(_TEACH_STAMP_AX_X_MAX)
+    assert ha == "left"
+    # 右下安全區不動
+    xx2, yy2, ha2 = _clear_teach_stamp_pin_xy(ax, 80.0, 200.0, ha="center")
+    assert abs(xx2 - 80.0) < 1e-9 and abs(yy2 - 200.0) < 1e-9 and ha2 == "center"
+    # 左欄頂價：避戳右移（要過戳右緣）
+    x_lab, need = _left_sr_label_xy(ax, 950.0, avoid_top_left_stamp=True)
+    assert need and x_lab >= float(_TEACH_STAMP_AX_X_MAX)
+    x_ok, need_ok = _left_sr_label_xy(ax, 200.0, avoid_top_left_stamp=True)
+    assert not need_ok and abs(x_ok - 0.01) < 1e-9
+    # 費半青帶註不准再貼左上跟戳互壓（說明改走標題）
+    import inspect
+
+    from biaoke_level_learn import _paint_sox_thesis_preds, _render_twii_far_dark
+
+    sox_src = inspect.getsource(_paint_sox_thesis_preds)
+    assert "axhspan" in sox_src
+    assert "0.96" not in sox_src or "band_lab" in sox_src
+    assert "青＝已破" in sox_src
+    assert "不准再在左上貼字" in sox_src or "_ = band_lab" in sox_src
+    # 題旨無費半點仍回費C今右標
+    empty_now = _paint_sox_thesis_preds(
+        type(
+            "A",
+            (),
+            {
+                "axhspan": lambda *a, **k: None,
+                "text": lambda *a, **k: None,
+                "axvline": lambda *a, **k: None,
+            },
+        )(),
+        bars=[],
+        sox_o=[],
+        sox_h=[],
+        sox_l=[],
+        sox_c=[],
+        pack={"pred_levels": {"sox": []}},
+        fp=lambda *a, **k: None,
+        i_now=3,
+        n=4,
+        ymin=8000,
+        ymax=16000,
+        now_y=9000.0,
+        now_lab="費C今9,000",
+        place=False,
+    )
+    assert empty_now and "費C今" in str(empty_now[0].get("text"))
+    far_src = inspect.getsource(_render_twii_far_dark)
+    assert "_sox_struct_right" in far_src
+    assert "費大量壓" in far_src
+    assert "電⑤終" in far_src and "電A低" in far_src and "電B末" in far_src
+    assert "大結構⑤／A／B" in far_src
+
+
+def test_teach_roll_from_floor_and_right_gutter():
+    """近／超近：地板＋定長滾動；右欄現況 X 相對末K固定；尖點可 clamp。"""
+    from biaoke_level_learn import (
+        _TEACH_RIGHT_GUTTER,
+        _clamp_macro_wave_to_window,
+        _teach_right_col_x,
+        _teach_roll_from_floor,
+        _teach_xlim_right,
+        _twii_macro_wave_anchors,
+    )
+
+    rows = [{"date": f"2026{i:04d}", "close": float(i)} for i in range(1, 201)]
+    # 地板在第 50 根（0-based 49）；max=80 → 滾到最右 80
+    got = _teach_roll_from_floor(rows, floor_i=49, max_bars=80)
+    assert len(got) == 80
+    assert got[-1]["date"] == rows[-1]["date"]
+    assert got[0]["date"] == rows[-80]["date"]
+    # 未滿 max：從地板起
+    short = _teach_roll_from_floor(rows[:60], floor_i=49, max_bars=80)
+    assert short[0]["date"] == rows[49]["date"]
+    assert short[-1]["date"] == rows[59]["date"]
+    # 右欄現況槽：n 變大時仍＝末根＋固定 gutter（相對圖右穩定）
+    assert _teach_right_col_x(110) == 110 + _TEACH_RIGHT_GUTTER
+    assert _teach_right_col_x(152) == 152 + _TEACH_RIGHT_GUTTER
+    assert _teach_xlim_right(152) >= 152 + 10.2
+    # clamp：完整柱有錨 → 滾動窗仍能對上 A／B／C
+    full = []
+    for i in range(1, 250):
+        d = f"2026{i:04d}"
+        full.append(
+            {
+                "date": d,
+                "open": 100.0,
+                "high": 120.0,
+                "low": 80.0,
+                "close": 100.0,
+                "volume": 1.0,
+            }
+        )
+    # 塞真實浪階日（函式認 yyyymmdd）
+    def _put(ymd, high=120.0, low=80.0):
+        for r in full:
+            if str(r["date"]) == ymd:
+                r["high"] = high
+                r["low"] = low
+                return
+
+    for y in ("20260401", "20260623", "20260729", "20261006", "20261015"):
+        _put(y)
+    # 用真實日期列
+    real = []
+    from datetime import date, timedelta
+
+    d0 = date(2026, 3, 1)
+    while d0 <= date(2026, 11, 6):
+        if d0.weekday() < 5:
+            real.append(
+                {
+                    "date": d0.strftime("%Y%m%d"),
+                    "open": 100.0,
+                    "high": 120.0,
+                    "low": 80.0,
+                    "close": 100.0,
+                    "volume": 1.0,
+                }
+            )
+        d0 += timedelta(days=1)
+    mac = _twii_macro_wave_anchors(real)
+    assert mac is not None
+    rolled = _teach_roll_from_floor(real, floor_i=0, max_bars=100)
+    clamped = _clamp_macro_wave_to_window(mac, rolled)
+    assert clamped is not None
+    assert clamped["i_now"] == len(rolled) - 1
+    assert clamped["i_alow"] < clamped["i_b_end"] <= clamped["i_c"]
 
 
 def test_teach_vol_sr_title_bit_has_next_layer():
@@ -1431,11 +1779,71 @@ def test_far_paint_wires_sox_yahoo_inject_and_stamp_uses_pair():
     assert "_us_real_close_pair(sox," in src
     assert '_sox_chg_tip = {\n            "close": float(_sox_last_repaint["c"])' not in src
     assert '"close": float(_tip_close)' in src
-    # tip／黃框釘真實美股日；盤中只認 live_session=1；填日不畫假K
+    # tip／黃框釘真實美股日；盤中只認現金 regular；填日不畫假K
     assert "_sox_axis_index_for_ymd" in src
     assert 'int((_sox_live or {}).get("live_session") or 0) == 1' in src
+    assert "_sox_cash_session_live(_query_now_from_pack(pack))" in src
+    assert "_resolve_tx_after_hours_tip(db_path, pack)" in src
+    assert "not _tx_night_live" in src
     assert "_sox_real_days" in src
     assert "not in _sox_real_days" in src
+
+
+def test_ensure_paint_live_sox_rejects_post_overlay(monkeypatch):
+    """美股盤後即使 live_session=1，也不准寫進 pack.live_sox 蓋官方收。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_level_learn import _ensure_paint_live_sox
+
+    post_bar = {
+        "date": "20261106",
+        "open": 9495.0,
+        "high": 9627.0,
+        "low": 9221.0,
+        "close": 9474.0,
+        "volume": 0,
+        "live_session": 1,
+        "session_phase": "post",
+    }
+    monkeypatch.setattr(
+        "us_overnight.fetch_live_sox_display_bar",
+        lambda now=None, force=False: dict(post_bar),
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._sox_cash_session_live",
+        lambda now=None: False,
+    )
+    pack: dict = {"live_sox": {"close": 9999.0, "live_session": 1}}
+    out = _ensure_paint_live_sox(
+        pack, now=datetime(2026, 11, 7, 6, 30, tzinfo=ZoneInfo("Asia/Taipei"))
+    )
+    assert out is None
+    assert pack.get("live_sox") is None
+
+
+def test_teach_tip_snapshots_match_gates_stale_kit():
+    """三窗 tip 一口：價／日／盤中旗不一致 → 不准回退舊圖。"""
+    from biaoke_level_learn import teach_tip_snapshots_match
+
+    base = {
+        "tw_asof": "20261106",
+        "tw_close": 39701.64,
+        "tw_live": 0,
+        "sox_asof": "20261106",
+        "sox_close": 9390.25,
+        "sox_live": 0,
+        "tx_asof": "20261106",
+        "tx_close": 38936.0,
+        "tx_live": 0,
+    }
+    assert teach_tip_snapshots_match(base, dict(base))
+    stale_sox = dict(base, sox_close=9474.0)
+    assert not teach_tip_snapshots_match(base, stale_sox)
+    bad_day = dict(base, tx_asof="20261105")
+    assert not teach_tip_snapshots_match(base, bad_day)
+    assert not teach_tip_snapshots_match(base, {})
+    assert not teach_tip_snapshots_match(base, None)
 
 
 def test_sox_axis_index_for_ymd_prefers_tw_then_extra():
@@ -1736,7 +2144,8 @@ def test_reconcile_sox_last_close_patches_stale_intraday(tmp_path, monkeypatch):
             }
 
     fake_us = types.ModuleType("us_overnight")
-    fake_us.us_tape_phase = lambda *_a, **_k: "closed"
+    # 只在同日盤後（post）修盤中殘值；週末 overnight 不准蓋
+    fake_us.us_tape_phase = lambda *_a, **_k: "post"
     monkeypatch.setitem(sys.modules, "us_overnight", fake_us)
     fake_req = types.ModuleType("requests")
     fake_req.get = lambda *_a, **_k: _Resp()
@@ -1752,6 +2161,10 @@ def test_reconcile_sox_last_close_patches_stale_intraday(tmp_path, monkeypatch):
     assert close is not None
     assert abs(float(close[0]) - 9011.1376953125) < 0.01
     assert float(close[1]) < -12.0
+
+    # overnight（週末）不准改庫
+    fake_us.us_tape_phase = lambda *_a, **_k: "overnight"
+    assert m._reconcile_us_index_last_close(str(db), sym="SOX", yid="^SOX") is False
 
 
 def test_far_twii_macro_wave5_apr_to_jun_and_big_a_729():
@@ -1787,27 +2200,38 @@ def test_far_twii_macro_wave5_apr_to_jun_and_big_a_729():
     pack = _build_live_pack(
         db, now=datetime(2026, 11, 1, 13, 0, tzinfo=ZoneInfo("Asia/Taipei"))
     )
-    bars = _twii_bars_for_teach(db, 400, pack)
-    if len(bars) < 80:
+    bars_full = _twii_bars_for_teach(db, 400, pack)
+    if len(bars_full) < 80:
         pytest.skip("twii bars too short")
+    # 現況：大結構在完整柱算，再 clamp 進定長窗（窗可能裁掉 4/1，尖點釘左緣）
+    mac_full = _twii_macro_wave_anchors(bars_full)
+    assert mac_full, "macro anchors must resolve on full teach bars"
     bars, _sr = _far_teach_bars_keeping_vol_sr(
-        list(bars),
+        list(bars_full),
         max_bars=_FAR_TEACH_MAX_BARS,
         vol_lookback=_FAR_TEACH_VOL_LOOKBACK,
         keep_ymds=("20260331", "20260401"),
     )
-    mac = _twii_macro_wave_anchors(bars)
-    assert mac, "macro anchors must stay after vol-SR left-extend"
-    assert _ymd(bars[int(mac["i5_start"])].get("date")) in ("20260331", "20260401")
-    assert _ymd(bars[int(mac["i5_end"])].get("date")) == "20260623"
-    assert _ymd(bars[int(mac["i_alow"])].get("date")) in ("20260728", "20260729")
-    lows = [float(r.get("low") or 0) for r in bars]
-    i729 = int(mac["i_alow"])
-    i5e = int(mac["i5_end"])
+    from biaoke_level_learn import _clamp_macro_wave_to_window
+
+    mac = _clamp_macro_wave_to_window(mac_full, bars)
+    assert mac, "macro anchors must clamp into vol-SR window"
+    assert _ymd(bars_full[int(mac_full["i5_start"])].get("date")) in (
+        "20260331",
+        "20260401",
+    )
+    assert _ymd(bars_full[int(mac_full["i5_end"])].get("date")) == "20260623"
+    assert _ymd(bars_full[int(mac_full["i_alow"])].get("date")) in (
+        "20260728",
+        "20260729",
+    )
+    lows_full = [float(r.get("low") or 0) for r in bars_full]
+    i729 = int(mac_full["i_alow"])
+    i5e = int(mac_full["i5_end"])
     # 窗內最低可在四月 → 大A底仍釘 7/29，不准用 min
-    i_min = min(range(0, i5e + 1), key=lambda i: lows[i])
-    assert _ymd(bars[i_min].get("date")) < "20260701"
-    assert abs(float(lows[i729]) - 39384.85) < 2.0
+    i_min = min(range(0, i5e + 1), key=lambda i: lows_full[i])
+    assert _ymd(bars_full[i_min].get("date")) < "20260701"
+    assert abs(float(lows_full[i729]) - 39384.85) < 2.0
 
 
 def test_thesis_and_ladder_say_big_abc_not_wave5_from_july():
@@ -2121,6 +2545,7 @@ def test_latest_teach_kit_reads_paths(tmp_path):
     assert kit["micro_path"] == str(micro)
     assert kit["us_path"] == ""
     assert "C" in kit["thesis"]
+    assert kit.get("teach_tip") == {}
 
 
 def test_latest_teach_kit_skips_missing_files(tmp_path):
@@ -2427,6 +2852,177 @@ def test_merge_live_sox_display_bar_overlays_session():
     assert int(out[-1].get("live_session") or 0) == 1
 
 
+def test_merge_live_sox_skips_when_not_live_session():
+    """週末休市 live_session=0：不准把盤後殘價蓋進顯示柱當收盤。"""
+    from biaoke_level_learn import _merge_live_sox_display_bar
+
+    bars = [
+        {
+            "date": "20261106",
+            "open": 9495.0,
+            "high": 9627.0,
+            "low": 9221.0,
+            "close": 9390.25,
+            "volume": 0,
+        }
+    ]
+    stale = {
+        "date": "20261106",
+        "open": 9495.0,
+        "high": 9627.0,
+        "low": 9221.0,
+        "close": 9474.0,
+        "volume": 0,
+        "live_session": 0,
+        "session_phase": "overnight",
+    }
+    out = _merge_live_sox_display_bar(bars, stale)
+    assert len(out) == 1
+    assert abs(float(out[-1]["close"]) - 9390.25) < 1e-6
+
+
+def test_weekend_tx_tip_uses_official_night_not_mis(tmp_path, monkeypatch):
+    """週日白天：戳＝已齊週五夜（週一標 40298），昨收＝日盤結算；不准 MIS 冒充盤中。
+
+    崩盤夜 38936 仍在庫內但不能蓋過更新的週五夜。煙霧 CI 用暫存庫。
+    """
+    import sqlite3
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_level_learn import (
+        _ensure_paint_live_tx,
+        _resolve_tx_after_hours_tip,
+        _tx_night_rows_on_evening_axis,
+    )
+
+    db = tmp_path / "tx_tip.db"
+    conn = sqlite3.connect(str(db))
+    conn.execute(
+        """
+        CREATE TABLE futures_daily (
+            date TEXT, symbol TEXT, session TEXT, contract_month TEXT,
+            open REAL, high REAL, low REAL, close REAL, settlement REAL,
+            volume INTEGER, open_interest INTEGER, pct_change REAL,
+            source TEXT, updated_at TEXT,
+            PRIMARY KEY (date, symbol, session)
+        )
+        """
+    )
+    conn.executemany(
+        """
+        INSERT INTO futures_daily(
+            date, symbol, session, contract_month, open, high, low, close,
+            settlement, volume, open_interest, pct_change, source, updated_at
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """,
+        [
+            (
+                "20261106",
+                "TX",
+                "night",
+                "202611",
+                41990.0,
+                42298.0,
+                38799.0,
+                38936.0,
+                38936.0,
+                89296,
+                0,
+                -7.57,
+                "taifex",
+                "t",
+            ),
+            (
+                "20261106",
+                "TX",
+                "regular",
+                "202611",
+                38888.0,
+                40690.0,
+                37694.0,
+                39786.0,
+                39652.0,
+                1,
+                0,
+                -5.27,
+                "taifex",
+                "t",
+            ),
+            # 週五夜官方標週一（與期交所 OpenAPI 一致）
+            (
+                "20261109",
+                "TX",
+                "night",
+                "202611",
+                39742.0,
+                40845.0,
+                39129.0,
+                40298.0,
+                40298.0,
+                69882,
+                0,
+                1.63,
+                "taifex",
+                "t",
+            ),
+        ],
+    )
+    conn.commit()
+    conn.close()
+
+    # 週末仍不准把 MIS 當盤中 live；戳走庫內已齊夜盤
+    import market_ticker
+
+    monkeypatch.setattr(
+        market_ticker,
+        "fetch_tx_live",
+        lambda **_k: {
+            "close": 99999.0,
+            "ref": 39652.0,
+            "update_time": "11:40:00",
+            "pct_change": 9.99,
+        },
+    )
+
+    tz = ZoneInfo("Asia/Taipei")
+    pack = {"query_at": datetime(2026, 11, 8, 11, 40, tzinfo=tz).isoformat()}
+    assert _ensure_paint_live_tx(pack, now=datetime(2026, 11, 8, 11, 40, tzinfo=tz)) is None
+    assert pack.get("live_tx") is None
+    tip = _resolve_tx_after_hours_tip(str(db), pack)
+    assert tip is not None
+    assert abs(float(tip["close"]) - 40298.0) < 1.0
+    # 昨收＝日盤結算 39652（對齊話筒 CRefPrice），不是收盤 39786
+    assert abs(float(tip.get("prev") or 0) - 39652.0) < 1.0
+    # asof＝夜盤起日週五，才能對上加權軸末根
+    assert str(tip.get("asof") or "") == "20261106"
+    assert not tip.get("clock")
+    # 起日映射：崩盤夜→週四；週五夜→週五
+    mapped = _tx_night_rows_on_evening_axis(
+        [
+            {
+                "date": "20261106",
+                "open": 41990.0,
+                "high": 42298.0,
+                "low": 38799.0,
+                "close": 38936.0,
+                "volume": 89296,
+            },
+            {
+                "date": "20261109",
+                "open": 39742.0,
+                "high": 40845.0,
+                "low": 39129.0,
+                "close": 40298.0,
+                "volume": 69882,
+            },
+        ]
+    )
+    by_d = {r["date"]: r["close"] for r in mapped}
+    assert by_d.get("20261105") == 38936.0
+    assert by_d.get("20261106") == 40298.0
+
+
 def test_near_micro_right_notes_follow_tip_anchors():
     """近／超近右欄飆預測錨跟 tip_anchors，不准寫死 45546／44210。"""
     from biaoke_level_learn import _render_twii_live_dark, _render_twii_super_near_dark
@@ -2470,14 +3066,15 @@ def test_near_micro_follow_far_c9_twii_presentation():
     assert "float(i5e) + 7.0" in near
     assert "_teach_eight_wave_inset_wh" in near
     assert "0.62" in near
-    assert "width) * 0.15" in near
+    assert "width) * 0.55" in near  # 九波靠右，區帶兩標靠左齊頭
     assert "35500.0" in near
     assert "_near_major_date_labs" in near
-    # C7／C8 字標多餘（右欄已有 C-7轉C-8今）；圓點仍留
+    # C7 字標必釘浪點；C8 只留細圈（右欄已有 C-7轉C-8今）
     path_src = inspect.getsource(
         __import__("biaoke_level_learn", fromlist=["_paint_c9_ext_k_path"])._paint_c9_ext_k_path
     )
-    assert 'lab in {"C7", "C8"}' in path_src or "lab in {'C7', 'C8'}" in path_src
+    assert 'pin_labs = {"C1", "C3", "C5", "C6", "C7"}' in path_src or "C7" in path_src
+    assert 'lab == "C8"' in path_src or "lab == 'C8'" in path_src
     # 超近改回日K；60 分函式仍留著但不當主路
     assert "_render_twii_super_near_c9_60m" not in micro
     assert "_c9_now_step_label()" in micro
@@ -2511,7 +3108,9 @@ def test_finish_last_twii_used_by_near_and_micro():
     assert "_twii_bars_for_teach" in micro
     assert "_twii_bars_for_teach" in far
     src = inspect.getsource(_finish_last_twii_candle)
-    assert "facecolors=\"none\"" in src or "facecolors='none'" in src
+    # 末根改白邊實心K＋_spear_ring 細圈（不再用 facecolors=none 空心 scatter）
+    assert "_spear_ring" in src
+    assert "edgecolor=\"#ffffff\"" in src or "edgecolor='#ffffff'" in src
 
 
 def test_place_live_right_labels_keeps_c4_c5_now():
@@ -2541,9 +3140,238 @@ def test_place_live_right_labels_keeps_c4_c5_now():
         fp=_fp,
         level_dash=True,
         min_gap=(52000 - 39000) * 0.055,
+        nudge=True,  # 相容參數；不准因此漂離真價
     )
     texts = [t.get_text() for t in ax.texts]
+    # 標籤 Y 鎖真價：文字中心＝note['y']；虛線同水平（不准上下漂）
+    by_txt = {t.get_text(): t for t in ax.texts}
+    for note in notes:
+        if note["text"] not in by_txt:
+            continue
+        assert abs(float(by_txt[note["text"]].get_position()[1]) - float(note["y"])) < 1e-6
+        assert by_txt[note["text"]].get_va() == "center"
+    for line in ax.lines:
+        xs = [float(x) for x in line.get_xdata()]
+        ys = [float(y) for y in line.get_ydata()]
+        assert len(ys) >= 2 and abs(ys[0] - ys[-1]) < 1e-6  # 水平虛線
+        # 不准豎折／斜折接標（虛線 Y 必須對上某個標籤中心）
+        assert abs(xs[0] - xs[-1]) > 0.2  # 不是豎線
+        assert any(abs(ys[0] - float(t.get_position()[1])) < 1e-6 for t in ax.texts)
+    # 原始碼鎖死：不准再啟 nudge 上下撐開 draw_ys
+    import inspect
+    from biaoke_level_learn import _place_live_right_labels as _pl
+
+    src = inspect.getsource(_pl)
+    assert "y_draw = float(y_true)" in src
+    assert "draw_ys[i] = ceiling" not in src
+    assert "不再上下微挪" in src or "不准把字盒挪離真價" in src
     plt.close(fig)
     assert any("c4細" in t for t in texts), texts
     assert any("c5細" in t for t in texts), texts
     assert any(t.startswith("今") for t in texts), texts
+
+
+def test_paint_left_sr_label_locks_va_center():
+    """左欄價標鎖 va=center；標前短虛線與標籤同一水平真價。"""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from biaoke_level_learn import _paint_left_sr_label
+    from wayne_navigator import _fp
+
+    fig, ax = plt.subplots()
+    ax.set_ylim(40000, 50000)
+    _paint_left_sr_label(
+        ax,
+        45677.0,
+        "大量壓 45,677",
+        fp=_fp,
+        color="#ffe082",
+        edge="#ffeb3b",
+        va="bottom",  # 呼叫端即使傳 bottom 也鎖 center
+        avoid_top_left_stamp=True,
+    )
+    assert len(ax.texts) == 1
+    assert ax.texts[0].get_va() == "center"
+    assert abs(float(ax.texts[0].get_position()[1]) - 45677.0) < 1e-6
+    plt.close(fig)
+
+
+def test_far_tx_now_rail_deferred_until_tip_fixed():
+    """遠窗電子盤現價虛線：tip 校完才畫；釘最後真K，水平接到標籤。"""
+    import inspect
+    from biaoke_level_learn import _paint_tx_now_price_rail, _render_twii_far_dark
+
+    far = inspect.getsource(_render_twii_far_dark)
+    rail = inspect.getsource(_paint_tx_now_price_rail)
+    assert "rail_pending" in far
+    assert far.index("rail_pending") < far.index("_paint_tx_now_price_rail(") or far.count(
+        "_paint_tx_now_price_rail"
+    ) >= 1
+    assert "x_label" in rail
+    assert "clip_on=False" in rail
+    assert "va=\"center\"" in rail or "va='center'" in rail
+    # 點字盤＝夜盤收／盤中真價；盤中白底螢光黃框（不准紫／紅實心）
+    assert "收盤" in rail and "盤中" in rail
+    assert "_TEACH_STAMP_FACE" in rail
+    assert "_teach_stamp_edge" in rail
+    assert 'fc="#0b0f14"' not in rail or "_TEACH_STAMP_FACE" in rail
+    assert "最佳買點／" in far  # 日盤右欄文案
+    assert 'f"最佳買點／{_px(37837)}"' not in far  # 電盤不准再 append
+    assert "37164" not in far  # 4/23 對照不進電盤右欄
+    # 6/9 primary 右標＋虛線拿掉（不准再 append 電盤大量* 文案）
+    assert "電盤大量壓" not in far and "電盤大量撐" not in far
+    assert far.count("電盤下一層") >= 2  # next-layer 仍可留
+    assert "_paint_tx_now_price_rail" in far  # 現價軌仍在電盤
+    # 近／超近雙軌當令跟遠窗日盤：不准再塞青撐壓
+    from biaoke_level_learn import _render_twii_live_dark, _render_twii_super_near_dark
+    near = inspect.getsource(_render_twii_live_dark)
+    micro = inspect.getsource(_render_twii_super_near_dark)
+    assert "_skip_cyan_sr" in near
+    assert "not (bool(_c9_micro) or bool(_wb_edges_m))" in micro
+
+
+def test_week_bot_zone_and_dual_pred_from_thesis():
+    """原文 37100~39000 黃底帶＋右欄只留最佳買點37837／深殺31705。"""
+    from biaoke_level_learn import (
+        _ensure_teach_pack_preds,
+        _paint_ai_end_zone_band,
+        _paint_c9_low_zone_band,
+        _thesis_pred_levels,
+        _tw_active_low_zone,
+        _tw_ai_end_zone,
+        _tw_pred_right_notes,
+    )
+
+    snip = (
+        "星期五最低點位37837，已經非常接近4/23低點37164，"
+        "如果下周前三天再出現當天K棒最低點在37100~39000之間再爆一次巨量，"
+        "也有可能會破37837，但是假跌破買點。"
+        "不排除走9波擴延，有效跌破2/26第一波高點35579，則殺到3/31低點31705。"
+    )
+    pred = _thesis_pred_levels(snip, "")
+    tw = pred.get("tw") or []
+    levels = {round(float(r["level"]), 1) for r in tw}
+    assert {37837.0, 37164.0, 35579.0, 31705.0, 39000.0, 37100.0} <= levels
+    buy = next(r for r in tw if abs(float(r["level"]) - 37837.0) < 1)
+    assert "最佳買點" in str(buy.get("label") or "")
+    pack = {
+        "thesis": "主線五波跌完走B-b・備線九波擴延",
+        "snippet_full": snip,
+        "pred_levels": pred,
+    }
+    zone = _tw_active_low_zone(pack)
+    assert zone and zone[2] == "week_bot"
+    assert abs(zone[0] - 37100.0) < 1 and abs(zone[1] - 39000.0) < 1
+    ai_z = _tw_ai_end_zone(pack)
+    assert ai_z and abs(ai_z[0] - 31705.0) < 1 and abs(ai_z[1] - 35579.0) < 1
+    notes = _tw_pred_right_notes(pack, n=80, lows=[37837.0], tip_skip=set())
+    texts = " ".join(n["text"] for n in notes)
+    assert "37,837" in texts and "最佳買點" in texts
+    assert "35,579" in texts and "上緣" in texts  # 深殺帶上緣
+    assert "31,705" in texts
+    # 右欄刪：39,000／37,164（改走黃底帶）；35579 必留上緣
+    assert "39,000" not in texts and "37,164" not in texts
+    src = open("biaoke_level_learn.py", encoding="utf-8").read()
+    assert "_paint_ai_end_zone_band" in src
+    assert src.count("_paint_ai_end_zone_band(ax") >= 4
+    assert "ffeb3b" in src  # 下週底部黃框
+    assert "_zone_label_x_clear_of_inset" in src  # 兩標清過九波縮圖右緣才齊頭可見
+    assert "_reserve_zone_label_avoid" in src  # 區帶大標佔位，尖點不准坐進框
+    assert "_TEACH_ZONE_LABEL_PAD = 0.18" in src  # 縮小 pad，不准蓋 A末／7/29
+    assert 'tip="high"' in src  # 近窗大A末在尖點上方，不准 tip=low 鑽黃框
+    assert "zorder=7" in src  # 區帶大標低於尖點浪名
+    assert 'x_base=0.13' in src  # 左欄壓／撐錯欄，Y 接近不准互壓
+    assert "_TEACH_ZONE_LABEL_X_MICRO = 0.22" in src  # 超近黃標清過左欄撐
+    assert "_y_inside_pred_zone_bands" in src  # 下一層左標不准進黃／紫帶紅圈互壓
+    assert "excluded.as_of!=biaoke_open_day_paints.as_of" in src  # as_of 更新必清未重渲窗路徑
+    assert callable(_paint_c9_low_zone_band) and callable(_paint_ai_end_zone_band)
+    # 空 pack 也能補
+    slim = _ensure_teach_pack_preds("data/wayne_market.db", {"thesis": "B-b"})
+    assert ((slim.get("pred_levels") or {}).get("tw") or [])
+
+
+def test_prev_valid_close_and_friday_color_vs_prev():
+    """倒數第二根（周五）漲跌色只認昨收；K／量同色；缺昨收不准改比開收翻紅。"""
+    from decision_card_signals import candle_up_taiwan
+    from biaoke_level_learn import _LIVE_DOWN, _LIVE_UP, _prev_valid_close
+
+    closes = [41574.72, 39701.64, 41661.7]
+    opens = [42666.13, 38915.76, 40347.28]
+    # 周五＝index 1：相對周四收下跌 → 綠
+    prev = _prev_valid_close(closes, 1, opens=opens)
+    assert prev == 41574.72
+    assert candle_up_taiwan(closes[1], prev, opens[1]) is False
+    assert (_LIVE_UP if candle_up_taiwan(closes[1], prev, opens[1]) else _LIVE_DOWN) == _LIVE_DOWN
+    # 周一相對周五上漲 → 紅
+    prev_m = _prev_valid_close(closes, 2, opens=opens)
+    assert candle_up_taiwan(closes[2], prev_m, opens[2]) is True
+    # 中間插 NaN／0 空格仍跳到上一有效收
+    closes_gap = [41574.72, float("nan"), 0.0, 39701.64]
+    assert _prev_valid_close(closes_gap, 3, opens=[1, 1, 1, 1]) == 41574.72
+
+
+def test_c9_path_pins_c7_near_swing():
+    """C7 字標必進 pin_labs；貼尖點（小 pad／clear_dy）；C8 仍只留圈。"""
+    import inspect
+
+    from biaoke_level_learn import _paint_c9_ext_k_path
+
+    src = inspect.getsource(_paint_c9_ext_k_path)
+    assert "C7" in src
+    assert 'pin_labs = {"C1", "C3", "C5", "C6", "C7"}' in src
+    assert 'lab == "C8"' in src
+    assert "pad_x=0.38 if lab == \"C7\"" in src or "pad_x=0.38" in src
+    assert "160.0 if lab == \"C7\"" in src  # C7 垂直上限，遠窗不准漂幾百點
+
+
+def test_paint_tx_now_rail_mid_session_white_neon():
+    """電盤現價點字盤：盤中白底＋螢光黃框；收盤白底黑框。"""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    from biaoke_level_learn import (
+        _TEACH_STAMP_EDGE_CLOSED,
+        _TEACH_STAMP_EDGE_LIVE,
+        _TEACH_STAMP_FACE,
+        _paint_tx_now_price_rail,
+    )
+    from wayne_navigator import _fp
+
+    fig, ax = plt.subplots()
+    ax.set_xlim(0, 10)
+    ax.set_ylim(40000, 42000)
+    _paint_tx_now_price_rail(
+        ax, px=41076.0, tip_i=8, fp=_fp, live=True, asof_ymd="20261109"
+    )
+    assert ax.texts, "rail should paint stamp text"
+    bb = ax.texts[0].get_bbox_patch()
+    assert bb is not None
+    assert str(bb.get_facecolor()[:3])  # exists
+    # facecolor white-ish
+    fc = bb.get_facecolor()
+    assert fc[0] > 0.9 and fc[1] > 0.9 and fc[2] > 0.9
+    ec = bb.get_edgecolor()
+    # fluorescent yellow edge
+    assert abs(ec[0] - 1.0) < 0.05 and abs(ec[1] - 1.0) < 0.05 and ec[2] < 0.15
+    plt.close(fig)
+
+    fig2, ax2 = plt.subplots()
+    ax2.set_xlim(0, 10)
+    ax2.set_ylim(40000, 42000)
+    _paint_tx_now_price_rail(
+        ax2, px=41662.0, tip_i=8, fp=_fp, live=False, asof_ymd="20261109"
+    )
+    bb2 = ax2.texts[0].get_bbox_patch()
+    fc2 = bb2.get_facecolor()
+    assert fc2[0] > 0.9 and fc2[1] > 0.9 and fc2[2] > 0.9
+    ec2 = bb2.get_edgecolor()
+    # closed = dark/black edge
+    assert ec2[0] < 0.2 and ec2[1] < 0.2 and ec2[2] < 0.2
+    plt.close(fig2)
+    assert _TEACH_STAMP_FACE.lower() in ("#ffffff", "#fff", "white")
+    assert _TEACH_STAMP_EDGE_LIVE.lower() in ("#ffff00", "#ff0", "yellow")
+    assert _TEACH_STAMP_EDGE_CLOSED.startswith("#")
