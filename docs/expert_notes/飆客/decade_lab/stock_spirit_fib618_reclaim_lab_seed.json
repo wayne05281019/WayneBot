@@ -1,0 +1,32 @@
+{
+  "version": "stock_spirit_fib618_reclaim_lab_v1",
+  "tz": "Asia/Taipei",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "promote_lookup": false,
+  "gate_passed": false,
+  "keep": "v106",
+  "entry": "SPIRIT_pull_fib618",
+  "parents": [
+    "stock_spirit_pull_fib_reclaim_bias_lab_decision.json"
+  ],
+  "hypothesis_zh": "pull_fib×reclaim OOS≈0.78；leader×reclaim≈0.89但n=17；收緊 FIB_near_618 抬 wr 並保 n≥20",
+  "sell": "hi20_or_desync",
+  "next": "done OOS no beat keep; next SPIRIT_strict×reclaim / keep v106",
+  "status": "plain_delta_only_keep_v106",
+  "as_of": "2026-11-10T02:37:27+08:00",
+  "best_candidate": {
+    "leg": "spirit_fib618_confirm",
+    "entry": "SPIRIT_pull_fib618",
+    "variant": "reclaim_and_bias_lt8",
+    "kind": "vs_plain",
+    "oos_wr": 0.7574468085106383,
+    "oos_d": 137,
+    "plain_oos_wr": 0.7326440177252584,
+    "plain_oos_d": 223,
+    "delta_oos_wr": 0.024802790785379836,
+    "beats_v106_early_keep_oos": false,
+    "beats_v106_fast_keep_oos": false
+  },
+  "shared_vs_keep": []
+}
