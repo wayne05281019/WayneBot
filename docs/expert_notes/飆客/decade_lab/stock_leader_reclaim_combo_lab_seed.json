@@ -1,6 +1,6 @@
 {
   "version": "stock_leader_reclaim_combo_lab_v1",
-  "status": "seeded_awaiting_oos",
+  "status": "blocked_missing_spirit_stack",
   "tz": "Asia/Taipei",
   "phone_sync": "blocked",
   "buy_signal": false,
@@ -22,5 +22,7 @@
     "leader_reclaim_and_vol_1p5"
   ],
   "sell": "hi20_or_desync",
-  "next": "跑 scripts/decade_lab_stock_leader_reclaim_combo_lab.py；n≥20 且贏 keep 才談替換"
+  "next": "跑 scripts/decade_lab_stock_leader_reclaim_combo_lab.py；n≥20 且贏 keep 才談替換",
+  "as_of": "2026-11-09T23:25:22+08:00",
+  "best_candidate": null
 }
