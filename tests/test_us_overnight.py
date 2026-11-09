@@ -96,7 +96,9 @@ def test_weekend_sox_live_bar_is_official_close_not_extended():
     live = fetch_live_sox_display_bar(sunday, force=True)
     assert live is not None
     assert int(live.get("live_session") or 0) == 0
-    # 2026-11-06 官方收 9390.25（Yahoo 日K）；盤後殘約 9474 不准進來
+    # as_of=11/8 週末 → 上一美股開市日 11/06；不准拿到之後的 11/09 柱
+    assert str(live.get("date") or "") == "20261106"
+    # 2026-11-06 官方收 9390.25（Yahoo 日K）；盤後殘／後續日收不准進來
     assert abs(float(live["close"]) - 9390.25) < 1.0
 
 

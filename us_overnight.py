@@ -363,12 +363,38 @@ def fetch_live_sox_display_bar(
         lows = qblock.get("low") or []
         closes = qblock.get("close") or []
         vols = qblock.get("volume") or []
-        # 休市黃框只認日K官方收；meta／盤後殘價不准蓋
-        cash_close = _as_float(closes[-1]) if closes else None
+        stamps = block.get("timestamp") or []
+        expected = expected_us_print_session(now)
+        # 依 as_of／expected 選日K：週末查詢不准拿後來新開的柱（例：11/8 查卻拿到 11/9）
+        idx = -1
+        if stamps:
+            for i, raw_ts in enumerate(stamps):
+                try:
+                    ymd = datetime.fromtimestamp(int(raw_ts), tz=NY).strftime("%Y%m%d")
+                except Exception:
+                    continue
+                if expected and ymd <= expected:
+                    idx = i
+                elif not expected:
+                    idx = i
+        if idx < 0 and closes:
+            idx = len(closes) - 1
+        if idx < 0:
+            return None
+        # 休市黃框只認該日K官方收；meta／盤後殘價／後續交易日柱不准蓋
+        cash_close = _as_float(closes[idx]) if idx < len(closes) else None
         last_px = cash_close
         if last_px is None or last_px <= 0:
             last_px = _as_float(meta.get("regularMarketPrice"))
-        if not us_closed:
+        bar_session = ""
+        try:
+            bar_session = datetime.fromtimestamp(int(stamps[idx]), tz=NY).strftime(
+                "%Y%m%d"
+            )
+        except Exception:
+            bar_session = expected or ""
+        meta_same_day = (not expected) or (bar_session == expected)
+        if not us_closed and meta_same_day:
             meta_px = _as_float(meta.get("regularMarketPrice"))
             if meta_px is not None and meta_px > 0:
                 last_px = meta_px
@@ -379,37 +405,41 @@ def fetch_live_sox_display_bar(
         # 盤前：Yahoo meta.preMarketPrice（指數有才用；仍須 >=500）
         # 週末／全日休市不准盤前殘價
         pre_from_meta = False
-        if phase == "overnight" and not us_closed:
+        if phase == "overnight" and not us_closed and meta_same_day:
             pre_px = _as_float(meta.get("preMarketPrice"))
             if pre_px is not None and pre_px >= 500:
                 last_px = float(pre_px)
                 pre_from_meta = True
-        o = _as_float(opens[-1]) if opens else None
-        h = _as_float(highs[-1]) if highs else None
-        lo = _as_float(lows[-1]) if lows else None
+        o = _as_float(opens[idx]) if idx < len(opens) else None
+        h = _as_float(highs[idx]) if idx < len(highs) else None
+        lo = _as_float(lows[idx]) if idx < len(lows) else None
         if o is None or o <= 0:
-            o = _as_float(meta.get("regularMarketOpen")) or last_px
-        day_hi = _as_float(meta.get("regularMarketDayHigh"))
-        day_lo = _as_float(meta.get("regularMarketDayLow"))
-        if day_hi is not None and day_hi > 0:
+            if meta_same_day and not us_closed:
+                o = _as_float(meta.get("regularMarketOpen")) or last_px
+            else:
+                o = last_px
+        day_hi = _as_float(meta.get("regularMarketDayHigh")) if meta_same_day else None
+        day_lo = _as_float(meta.get("regularMarketDayLow")) if meta_same_day else None
+        if not us_closed and day_hi is not None and day_hi > 0:
             h = max(h or 0, day_hi, last_px, o)
         else:
             h = max(h or 0, last_px, o)
-        if day_lo is not None and day_lo > 0:
+        if not us_closed and day_lo is not None and day_lo > 0:
             lo = min(x for x in (lo, day_lo, last_px, o) if x and x > 0)
         else:
             lo = min(x for x in (lo, last_px, o) if x and x > 0)
-        vol = float(vols[-1] or 0) if vols else 0.0
-        ts = int(meta.get("regularMarketTime") or 0)
-        if not ts and (block.get("timestamp") or []):
-            ts = int(block["timestamp"][-1])
+        vol = float(vols[idx] or 0) if idx < len(vols) else 0.0
+        ts = int(stamps[idx]) if stamps else 0
+        if not ts and meta_same_day:
+            ts = int(meta.get("regularMarketTime") or 0)
         if not ts:
             return None
         session = datetime.fromtimestamp(ts, tz=NY).strftime("%Y%m%d")
-        expected = expected_us_print_session(now)
-        if expected and session != expected and not force:
+        if expected and session != expected and not force and not us_closed:
             # 抓到的日不是此刻該有的美股交易日 → 不當盤中疊柱
             return None
+        if expected and us_closed:
+            session = expected
         soxx_vol = 0.0
         try:
             time.sleep(0.05)
@@ -420,11 +450,30 @@ def fetch_live_sox_display_bar(
             if s_res:
                 sq = ((s_res[0].get("indicators") or {}).get("quote") or [{}])[0]
                 sv = sq.get("volume") or []
-                if sv:
-                    soxx_vol = float(sv[-1] or 0)
+                sts = s_res[0].get("timestamp") or []
+                s_idx = -1
+                if sts and expected:
+                    for i, raw_ts in enumerate(sts):
+                        try:
+                            ymd = datetime.fromtimestamp(int(raw_ts), tz=NY).strftime(
+                                "%Y%m%d"
+                            )
+                        except Exception:
+                            continue
+                        if ymd <= expected:
+                            s_idx = i
+                if s_idx < 0 and sv:
+                    s_idx = len(sv) - 1
+                if s_idx >= 0 and s_idx < len(sv):
+                    soxx_vol = float(sv[s_idx] or 0)
                 sm = s_res[0].get("meta") or {}
                 mv = _as_float(sm.get("regularMarketVolume"))
-                if mv is not None and mv > soxx_vol:
+                if (
+                    mv is not None
+                    and mv > soxx_vol
+                    and meta_same_day
+                    and not us_closed
+                ):
                     soxx_vol = float(mv)
         except Exception:
             logger.debug("SOXX 量代理略過", exc_info=True)
@@ -470,6 +519,14 @@ def fetch_live_sox_display_bar(
             live_flag = 0
             if cash_close is not None and cash_close > 0:
                 last_px = float(cash_close)
+            # 休市顯示柱鎖在 expected／該日 OHLC，不准被後續日 meta 拉歪
+            o = _as_float(opens[idx]) if idx < len(opens) else last_px
+            h = _as_float(highs[idx]) if idx < len(highs) else last_px
+            lo = _as_float(lows[idx]) if idx < len(lows) else last_px
+            if o is None or o <= 0:
+                o = last_px
+            h = max(h or 0, last_px, o)
+            lo = min(x for x in (lo, last_px, o) if x and x > 0)
         return {
             "date": session,
             "open": float(o),
