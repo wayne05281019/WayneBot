@@ -3933,22 +3933,42 @@ def test_paint_c3_group12_span_labels_wired():
     src = inspect.getsource(m)
     # def + 遠窗／C波60分備援／c9_60m 等呼叫（超近優先 _paint_huang_c60_structure）
     assert src.count("_paint_c3_group12_span_labels(") >= 4
+    from biaoke_level_learn import (
+        _paint_huang_c_degree_path,
+        _resolve_huang_c_daily_spans,
+        _vertical_upright_label,
+    )
+
     src_fn = inspect.getsource(_paint_c3_group12_span_labels)
     assert "C1 下跌" in src_fn
-    assert "C2 中繼整理" in src_fn
+    assert "C2 中繼" in src_fn
     assert "C3 下跌" in src_fn
     assert "C4 反彈" in src_fn
     assert "示意：C3下降壓" in src_fn
     assert "日盤已過" in src_fn
-    assert "20261006" in src_fn
-    assert "20261018" in src_fn
-    assert "20261028" in src_fn
+    assert "_vertical_upright_label" in src_fn
+    assert "rotation=0" in src_fn  # 直排仍正立，不准旋轉歪頭
     assert "y_band" in src_fn  # 標貼近底緣，不准只貼天空
-    assert "豎虛線刪" in src_fn or "不准再畫豎虛線" in src_fn or "只留四色底" in src_fn
     assert "axvline" not in src_fn  # 日盤 C1–C4 也不准豎虛線
     assert "#f5f5f5" in src_fn  # C3 下降壓示意改細白
     assert "【第一組】" not in src_fn
     assert "示意：第二組C3下降壓" not in src_fn
+    assert _vertical_upright_label("C1 下跌") == "C\n1\n下\n跌"
+    assert _vertical_upright_label("C2 中繼") == "C\n2\n中\n繼"
+    # 紫折四段＝底色起迄
+    path_src = inspect.getsource(_paint_huang_c_degree_path)
+    assert "xs" in path_src and "ys" in path_src
+    res_src = inspect.getsource(_resolve_huang_c_daily_spans)
+    assert "20261006" in res_src and "20261018" in res_src and "20261028" in res_src
+    far = inspect.getsource(
+        __import__("biaoke_level_learn", fromlist=["_render_twii_far_dark"])._render_twii_far_dark
+    )
+    near = inspect.getsource(
+        __import__(
+            "biaoke_level_learn", fromlist=["_render_twii_live_dark"]
+        )._render_twii_live_dark
+    )
+    assert "_paint_huang_c_degree_path" in far and "_paint_huang_c_degree_path" in near
 
 
 def test_huang_c60_window_caps_x_keeps_latest():
