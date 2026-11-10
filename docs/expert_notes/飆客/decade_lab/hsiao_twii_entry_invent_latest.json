@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-11-10T06:03:00+0800",
+  "as_of": "2026-11-10T07:01:22+0800",
   "tz": "Asia/Taipei",
   "track": "market_tw",
   "pot": "hsiao_twii_entry_invent",
@@ -85,8 +85,8 @@
     },
     {
       "entry_preset": "A5_index_dense",
-      "n_trades": 50,
-      "n_entry_days": 21,
+      "n_trades": 48,
+      "n_entry_days": 20,
       "entry_days": [
         "20060220",
         "20060504",
@@ -97,28 +97,27 @@
         "20141110",
         "20151002",
         "20161020",
+        "20170112",
         "20170209",
-        "20171012",
+        "20170712",
         "20180604",
-        "20200623",
-        "20201105",
-        "20210507",
-        "20210715",
+        "20200427",
+        "20210312",
         "20230101",
         "20230726",
         "20241011",
         "20251222",
         "20260612"
       ],
-      "total_return": -0.007242563366938737,
-      "max_drawdown": -0.04917690246720141,
+      "total_return": -0.03264237034788153,
+      "max_drawdown": -0.05533977306147697,
       "n_bars": 5210,
       "has_entries": true
     },
     {
       "entry_preset": "A6_index_quality",
-      "n_trades": 24,
-      "n_entry_days": 9,
+      "n_trades": 27,
+      "n_entry_days": 10,
       "entry_days": [
         "20060504",
         "20061013",
@@ -127,19 +126,20 @@
         "20140526",
         "20180103",
         "20191211",
-        "20230101",
+        "20201109",
+        "20230322",
         "20260112"
       ],
-      "total_return": -0.042279283196747786,
-      "max_drawdown": -0.06124188798865915,
+      "total_return": -0.02322334244610924,
+      "max_drawdown": -0.054356546931737304,
       "n_bars": 5210,
       "has_entries": true
     }
   ],
   "pick_lab_only": {
     "entry_preset": "A5_index_dense",
-    "n_trades": 50,
-    "n_entry_days": 21,
+    "n_trades": 48,
+    "n_entry_days": 20,
     "entry_days": [
       "20060220",
       "20060504",
@@ -150,21 +150,20 @@
       "20141110",
       "20151002",
       "20161020",
+      "20170112",
       "20170209",
-      "20171012",
+      "20170712",
       "20180604",
-      "20200623",
-      "20201105",
-      "20210507",
-      "20210715",
+      "20200427",
+      "20210312",
       "20230101",
       "20230726",
       "20241011",
       "20251222",
       "20260612"
     ],
-    "total_return": -0.007242563366938737,
-    "max_drawdown": -0.04917690246720141,
+    "total_return": -0.03264237034788153,
+    "max_drawdown": -0.05533977306147697,
     "n_bars": 5210,
     "has_entries": true
   },
@@ -193,9 +192,9 @@
       "total_return": -0.0008737679200931936
     },
     "A5_index_dense": {
-      "n_entry_days": 21,
-      "n_trades": 50,
-      "total_return": -0.007242563366938737,
+      "n_entry_days": 20,
+      "n_trades": 48,
+      "total_return": -0.03264237034788153,
       "gate_n20": true,
       "beat_a0": false
     },
@@ -211,9 +210,9 @@
       "total_return": -0.0008737679200931936
     },
     "A6_index_quality": {
-      "n_entry_days": 9,
-      "n_trades": 24,
-      "total_return": -0.042279283196747786,
+      "n_entry_days": 10,
+      "n_trades": 27,
+      "total_return": -0.02322334244610924,
       "gate_n20": false,
       "beat_a0": false
     },
@@ -224,9 +223,9 @@
   },
   "cand_vs_a0": {
     "entry_preset": "A6_index_quality",
-    "n_entry_days": 9,
-    "n_trades": 24,
-    "total_return": -0.042279283196747786,
+    "n_entry_days": 10,
+    "n_trades": 27,
+    "total_return": -0.02322334244610924,
     "gate_n20": false,
     "beat_a0": false,
     "years_ok": true,

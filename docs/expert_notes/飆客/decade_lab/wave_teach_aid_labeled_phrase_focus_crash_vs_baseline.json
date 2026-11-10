@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-11-10T06:02:33+0800",
+  "as_of": "2026-11-10T07:03:19+0800",
   "tz": "Asia/Taipei",
   "track": "market_tw",
   "pot": "wave_teach_aid_labeled",
@@ -8,21 +8,21 @@
   "WAVE_NEURONS_MATCH": false,
   "purpose_zh": "phrase_focus_crash invent vs loose；非 drop-in；未過閘不換",
   "labeled_with_his": {
-    "rows": 749,
+    "rows": 750,
     "n_decided": 18,
     "hit": 8,
     "miss": 10,
     "hit_rate": 0.4444444444444444,
-    "n_with_named": 596,
-    "n_night_touched": 367
+    "n_with_named": 607,
+    "n_night_touched": 371
   },
   "labeled_in_timeline_seal": {
-    "rows": 20,
+    "rows": 21,
     "n_decided": 18,
     "hit": 8,
     "miss": 10,
     "hit_rate": 0.4444444444444444,
-    "n_with_named": 20,
+    "n_with_named": 21,
     "n_night_touched": 17
   },
   "by_timeline_phase": {
@@ -36,12 +36,12 @@
       "n_night_touched": 3
     },
     "confirm": {
-      "rows": 1,
+      "rows": 2,
       "n_decided": 1,
-      "hit": 1,
-      "miss": 0,
-      "hit_rate": 1.0,
-      "n_with_named": 1,
+      "hit": 0,
+      "miss": 1,
+      "hit_rate": 0.0,
+      "n_with_named": 2,
       "n_night_touched": 0
     },
     "crash": {
@@ -56,9 +56,9 @@
     "guidance": {
       "rows": 4,
       "n_decided": 4,
-      "hit": 1,
-      "miss": 3,
-      "hit_rate": 0.25,
+      "hit": 2,
+      "miss": 2,
+      "hit_rate": 0.5,
       "n_with_named": 4,
       "n_night_touched": 4
     },
@@ -68,8 +68,8 @@
       "hit": 0,
       "miss": 0,
       "hit_rate": null,
-      "n_with_named": 576,
-      "n_night_touched": 350
+      "n_with_named": 586,
+      "n_night_touched": 354
     },
     "warn": {
       "rows": 4,

@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-11-10T06:03:00+0800",
+  "as_of": "2026-11-10T07:01:22+0800",
   "tz": "Asia/Taipei",
   "track": "market_tw",
   "pot": "hsiao_twii_entry_invent",
@@ -35,9 +35,9 @@
       "total_return": -0.0008737679200931936
     },
     "A5_index_dense": {
-      "n_entry_days": 21,
-      "n_trades": 50,
-      "total_return": -0.007242563366938737,
+      "n_entry_days": 20,
+      "n_trades": 48,
+      "total_return": -0.03264237034788153,
       "gate_n20": true,
       "beat_a0": false
     },
@@ -53,9 +53,9 @@
       "total_return": -0.0008737679200931936
     },
     "A6_index_quality": {
-      "n_entry_days": 9,
-      "n_trades": 24,
-      "total_return": -0.042279283196747786,
+      "n_entry_days": 10,
+      "n_trades": 27,
+      "total_return": -0.02322334244610924,
       "gate_n20": false,
       "beat_a0": false
     },

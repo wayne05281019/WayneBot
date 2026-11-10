@@ -100,9 +100,9 @@ CRASH_PHASE_TAGS = frozenset(
     {"warn", "guidance", "crash", "candidate", "confirm"}
 )
 # 續收墊：急跌相位 end 往後延 N 個開市日（仍止於下一相位 start 前；抬 n→≥20）
-# 2026-11-10：3→7，confirm 後近窗硬用語日續收（10/23 Yahoo close 空＝缺柱不捏）
+# 2026-11-10：3→7；confirm 後未來開市日多缺柱，再墊只堆缺柱不抬 decided
 CRASH_PAD_OPEN_DAYS = 7
-# crash 子窗近窗加寬：本機急跌窗文偏稀，用較寬 near 讓硬用語跨開市日銜接（仍非 drop-in）
+# crash 子窗近窗加寬：本機急跌窗文偏稀；near>7 曾抬 n 但 matched 轉負，維持 7 續收
 CRASH_NEAR_OPEN_DAYS = 7
 SCORE_MODES = ("baseline", "tight", "phrase_focus", "phrase_focus_crash")
 
