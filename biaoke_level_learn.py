@@ -5031,11 +5031,11 @@ def _paint_c3_vs_41760_legend(ax, *, fp, pack: Optional[Dict[str, Any]] = None) 
         ax.text(
             0.015,
             0.14,
-            "色帶＝黃培碩60分大段→映日K：\n"
+            "色帶＝60分大段→映日K：\n"
             "青 C1 下跌 10/6→10/18（49968→46170）\n"
             "橙 C2 中繼整理 →10/28（47060）\n"
             "紫 C3 下跌 10/29→週五低 37837\n"
-            "綠 C4 反彈 週一起（日飆大：過C3下降壓）\n"
+            "綠 C4 反彈 週一起（過C3下降壓）\n"
             "粉虛＝C3下降壓示意（日盤已過・無報價）\n"
             "41,500＝至少回測｜37,837絕對不破",
             transform=ax.transAxes,
@@ -15133,7 +15133,7 @@ def _render_twii_c_wave_60_dark(
     fig.text(
         0.03,
         0.972,
-        f"{which}・60分C波（定長滾・最新K｜不含大B）｜黃培碩C1–C4映60分＋日飆大口頭｜非買訊",
+        f"{which}・60分C波（定長滾・最新K｜不含大B）｜C1–C4映60分｜非買訊",
         fontproperties=_fp(12, "bold"),
         color=_LIVE_TEXT,
         ha="left",
@@ -17453,7 +17453,7 @@ def render_oral_dual_path_schematic(
     )
 
     fig.suptitle(
-        "飆大口述結構對照（說明用・非買訊）｜與三窗同口・後文壓前文",
+        "口述結構對照（說明用・非買訊）｜與三窗同口・後文壓前文",
         color="#eceff1",
         y=0.98,
         fontproperties=_fp(14, "bold"),

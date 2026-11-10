@@ -4052,6 +4052,10 @@ def test_huang_c60_anchors_and_wave_paint_wired():
     assert "C4白細①～⑤" not in c60
     assert "白細C4" in c60 or "C4白細" in c60
     assert "_window_huang_c60_rows" in c60
+    # 圖上標題不准寫人名／飆大（使用者 2026-11-10）
+    title_lns = [ln for ln in c60.splitlines() if "60分C波（定長滾" in ln]
+    assert title_lns, "missing 60分C波 title"
+    assert all("黃培碩" not in ln and "飆大" not in ln for ln in title_lns)
 
 
 def test_teach_vol_sr_preview_below_next_layer_60m():
