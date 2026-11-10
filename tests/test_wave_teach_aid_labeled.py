@@ -6,8 +6,10 @@ import json
 from pathlib import Path
 
 from scripts.decade_lab_wave_teach_aid_labeled import (
+    CRASH_NEAR_OPEN_DAYS,
     CRASH_PAD_OPEN_DAYS,
     CRASH_PHASE_TAGS,
+    NEAR_OPEN_DAYS,
     OUT_DIR,
     SCORE_MODES,
     _focus_phrases,
@@ -257,6 +259,7 @@ def test_phrase_focus_crash_mode_registered():
     assert "crash" in CRASH_PHASE_TAGS
     assert "stock_hunt_note" not in CRASH_PHASE_TAGS
     assert CRASH_PAD_OPEN_DAYS >= 1
+    assert CRASH_NEAR_OPEN_DAYS >= NEAR_OPEN_DAYS
 
 
 def test_pad_crash_phase_windows_extends_end_without_crossing_next():
