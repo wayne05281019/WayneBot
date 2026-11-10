@@ -209,7 +209,7 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "_paint_window_dual_zones" in c60_blk
     assert "_load_twii60_day_rows" in c60_blk
     assert "不含大B" in c60_blk
-    assert "_paint_c3_group12_span_labels" in c60_blk
+    assert "_paint_huang_c60_structure" in c60_blk
     assert "教具②近窗特寫" in near_blk
     assert "_render_twii_c_wave_60_dark" not in near_blk
     assert "_render_twii_c_wave_60_dark" in micro_blk
@@ -3536,7 +3536,7 @@ def test_near_micro_follow_far_c9_twii_presentation():
     assert "_render_twii_c_wave_60_dark" in micro
     assert "不含大B" in c60
     assert "_C_WAVE_60_SINCE_YMD" in c60 or "20261006" in c60
-    assert "_paint_c3_group12_span_labels" in c60
+    assert "_paint_huang_c60_structure" in c60
     assert "nudge=True" in c60
     # C7 字標路徑仍在（遠／九波用）
     path_src = inspect.getsource(
@@ -3888,7 +3888,7 @@ def test_paint_c3_group12_span_labels_wired():
     import biaoke_level_learn as m
 
     src = inspect.getsource(m)
-    # def + 遠窗／C波60分／c9_60m 等呼叫（超近走 _render_twii_c_wave_60_dark；近窗回日K）
+    # def + 遠窗／C波60分備援／c9_60m 等呼叫（超近優先 _paint_huang_c60_structure）
     assert src.count("_paint_c3_group12_span_labels(") >= 4
     src_fn = inspect.getsource(_paint_c3_group12_span_labels)
     assert "C1 下跌" in src_fn
@@ -3903,6 +3903,34 @@ def test_paint_c3_group12_span_labels_wired():
     assert "y_band" in src_fn  # 標在底色下半，不准只貼天空
     assert "【第一組】" not in src_fn
     assert "示意：第二組C3下降壓" not in src_fn
+
+
+def test_huang_c60_anchors_and_wave_paint_wired():
+    """超近60分：錨對 49968／46170／47060／37837；有藍紅折線，底色跟轉折。"""
+    import inspect
+
+    from biaoke_level_learn import (
+        _load_twii60_day_rows,
+        _paint_huang_c60_structure,
+        _render_twii_c_wave_60_dark,
+        _resolve_huang_c60_anchors,
+    )
+
+    rows = _load_twii60_day_rows("data/wayne_market.db", since_ymd="20261006")
+    if len(rows) >= 16:
+        anc = _resolve_huang_c60_anchors(rows)
+        assert anc.get("ok") is True
+        assert abs(float(anc["y1"]) - 49968.0) < 30
+        assert abs(float(anc["y1e"]) - 46170.0) < 30
+        assert abs(float(anc["y2"]) - 47060.0) < 30
+        assert abs(float(anc["y3"]) - 37837.0) < 30
+        assert int(anc["i1"]) < int(anc["i1e"]) < int(anc["i2"]) < int(anc["i3"])
+        red = anc.get("red") or []
+        assert any("④" in str(p[2]) for p in red)
+    c60 = inspect.getsource(_render_twii_c_wave_60_dark)
+    assert "_paint_huang_c60_structure" in c60
+    assert "次級4壓" in inspect.getsource(_paint_huang_c60_structure)
+    assert "(1)" in inspect.getsource(_paint_huang_c60_structure)
 
 
 def test_retest_41500_oral_beats_unpriced_pressure_wait(tmp_path):
