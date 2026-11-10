@@ -5371,96 +5371,121 @@ def _huang_c60_c3_segments(
     y2: float,
     y3: float,
 ) -> List[Tuple[int, float, str]]:
-    """C3 內段折點：①走完第一大段下跌才轉②（不准小反彈提早結束①）。
+    """C3 內段①～⑤（對黃培碩手繪）：④＝43135、⑤＝37837。
 
-    骨架：大波幅鎖定 ①低／②高；②→底之間再補 ③低／④高（有才畫）。
+    ①須走完第一大段下跌才轉②（不准在 44726 小反彈提早結束①）。
+    ①～⑤全在 C3＝(3) 下跌內；不准把這組浪號畫到 C4。
     """
     if not rows or int(i3) <= int(i2):
         return []
-    # 第一段：波幅門檻拉高，略過 44726 這類小反彈
-    coarse = _huang_c60_alt_swings(
-        rows, int(i2), int(i3), start="h", min_swing=1000.0, force_end="l"
+    out: List[Tuple[int, float, str]] = [(int(i2), float(y2), "")]
+    # ④／⑤先釘死（手繪紅圈④＝43135、⑤＝37837＝大段(3)底）
+    i4 = _nearest_bar_idx_by_price(
+        rows, 43135.0, field="high", lo=int(i2) + 1, hi=int(i3), tol=40.0
     )
-    if len(coarse) < 2:
-        return [
-            (int(i2), float(y2), ""),
-            (int(i3), float(y3), ""),
-        ]
-    # coarse 期望：起高 → ①低 → ②高 → … → 底
-    out: List[Tuple[int, float, str]] = []
-    out.append((int(coarse[0][0]), float(coarse[0][1]), ""))
-    # 找第一個低＝①
-    i_one = None
-    for ii, yy, _lab in coarse[1:]:
-        if float(yy) < float(y2) - 800:
-            # 確認是低點：比前後 coarse 點更像下跌端
-            out.append((int(ii), float(yy), "①"))
-            i_one = int(ii)
-            break
-    if i_one is None:
-        # 退：仍連到底，不硬標①
-        if coarse[-1][0] != out[-1][0]:
-            out.append((int(coarse[-1][0]), float(coarse[-1][1]), ""))
+    if i4 is None or int(i4) <= int(i2) or int(i4) >= int(i3):
+        out.append((int(i3), float(y3), "⑤"))
         return out
-    # ①後第一個高＝②（優先靠近 43135）
-    i_two = _nearest_bar_idx_by_price(
-        rows, 43135.0, field="high", lo=int(i_one) + 1, hi=int(i3) + 1, tol=80.0
+    y4 = float(rows[int(i4)].get("high") or 0)
+    # ③＝④之前最低（約 41856）
+    i_w3: Optional[int] = None
+    y_w3 = float("inf")
+    for i in range(int(i2) + 1, int(i4)):
+        try:
+            lo = float(rows[i].get("low") or 0)
+        except (TypeError, ValueError):
+            continue
+        if 0 < lo < y_w3:
+            y_w3, i_w3 = lo, i
+    if i_w3 is None or y_w3 >= float(y2) - 500:
+        out.extend(
+            [
+                (int(i4), float(y4), "④"),
+                (int(i3), float(y3), "⑤"),
+            ]
+        )
+        return out
+    # ①②：①須至少跌過起點→③跌幅的一半，略過 44726 這類淺低
+    min_drop = max(1800.0, 0.48 * (float(y2) - float(y_w3)))
+    fine = _huang_c60_alt_swings(
+        rows, int(i2), int(i_w3), start="h", min_swing=650.0, force_end="l"
     )
-    y_two = None
-    if i_two is not None:
-        y_two = float(rows[int(i_two)].get("high") or 0)
-    else:
-        for ii, yy, _lab in coarse:
+    i_one: Optional[int] = None
+    y_one = 0.0
+    for ii, yy, _lab in fine[1:]:
+        if int(ii) >= int(i_w3):
+            break
+        lo_v = float(rows[int(ii)].get("low") or 0)
+        cand = float(lo_v if lo_v > 0 else yy)
+        if cand <= float(y2) - min_drop:
+            i_one, y_one = int(ii), cand
+            break
+    i_two: Optional[int] = None
+    y_two = 0.0
+    if i_one is not None:
+        out.append((int(i_one), float(y_one), "①"))
+        for ii, yy, _lab in fine:
             if int(ii) <= int(i_one):
                 continue
-            # coarse 裡下一個高
-            if float(yy) > float(rows[int(i_one)].get("low") or 0) + 400:
-                # verify it's a high relative to neighbors
+            if int(ii) >= int(i_w3):
+                break
+            hi_v = float(rows[int(ii)].get("high") or 0)
+            cand = float(hi_v if hi_v > 0 else yy)
+            if cand >= float(y_one) + 400:
+                i_two, y_two = int(ii), cand
+                break
+        if i_two is None:
+            # 退：①→③之間最高當②
+            best_i, best_h = None, 0.0
+            for i in range(int(i_one) + 1, int(i_w3)):
                 try:
-                    h = float(rows[int(ii)].get("high") or 0)
+                    h = float(rows[i].get("high") or 0)
                 except (TypeError, ValueError):
                     continue
-                if abs(h - float(yy)) < 1 or h >= float(yy):
-                    i_two = int(ii)
-                    y_two = float(h if h > 0 else yy)
-                    break
-    if i_two is not None and y_two is not None:
-        out.append((int(i_two), float(y_two), "②"))
-        # ②→底：細波補 ③低／④高
-        fine = _huang_c60_alt_swings(
-            rows,
-            int(i_two),
-            int(i3),
-            start="h",
-            min_swing=400.0,
-            force_end="l",
-        )
-        # fine[0]=②高；其後低＝③、高＝④、最後＝底
-        saw3 = False
-        saw4 = False
-        for ii, yy, _lab in fine[1:]:
-            if int(ii) >= int(i3):
-                break
-            kind_is_low = float(yy) <= float(y_two) - 200 and (
-                float(rows[int(ii)].get("low") or 0) <= float(yy) + 1
-                or abs(float(rows[int(ii)].get("low") or 0) - float(yy)) < 2
-            )
-            # 用柱本身高低判斷
-            lo_v = float(rows[int(ii)].get("low") or 0)
-            hi_v = float(rows[int(ii)].get("high") or 0)
-            if not saw3 and abs(lo_v - float(yy)) <= abs(hi_v - float(yy)):
-                out.append((int(ii), float(lo_v if lo_v > 0 else yy), "③"))
-                saw3 = True
-                continue
-            if saw3 and not saw4 and abs(hi_v - float(yy)) <= abs(lo_v - float(yy)):
-                if float(hi_v) > float(out[-1][1]) + 150:
-                    out.append((int(ii), float(hi_v if hi_v > 0 else yy), "④"))
-                    saw4 = True
-    # 終點底
-    if out[-1][0] != int(i3):
-        out.append((int(i3), float(y3), ""))
-    else:
-        out[-1] = (int(i3), float(y3), out[-1][2])
+                if h > best_h:
+                    best_h, best_i = h, i
+            if best_i is not None and best_h >= float(y_one) + 400:
+                i_two, y_two = int(best_i), float(best_h)
+        if i_two is not None:
+            out.append((int(i_two), float(y_two), "②"))
+    out.append((int(i_w3), float(y_w3), "③"))
+    out.append((int(i4), float(y4), "④"))
+    out.append((int(i3), float(y3), "⑤"))
+    return out
+
+
+def _huang_c60_c4_segments(
+    rows: Sequence[Dict[str, Any]],
+    i3: int,
+    y3: float,
+) -> List[Tuple[int, float, str]]:
+    """C4 反彈折點：只連官方柱高低，不准標①～⑤。
+
+    手繪紅折＝見底後反彈測次級4壓（≈43135）；浪號①～⑤只屬於 C3。
+    """
+    out: List[Tuple[int, float, str]] = [(int(i3), float(y3), "")]
+    if not rows or int(i3) >= len(rows) - 1:
+        return out
+    i_end = len(rows) - 1
+    # 優先接到次級4壓附近的高（≈43135）；沒有就接到窗末最高
+    i_press = _nearest_bar_idx_by_price(
+        rows, 43135.0, field="high", lo=int(i3) + 1, tol=40.0
+    )
+    if i_press is not None and int(i_press) > int(i3):
+        i_end = int(i_press)
+    swings = _huang_c60_alt_swings(
+        rows, int(i3), int(i_end), start="l", min_swing=450.0, force_end="h"
+    )
+    for ii, yy, _lab in swings[1:]:
+        # 全部不標浪號（手繪 C4 無①～⑤）
+        out.append((int(ii), float(yy), ""))
+    if out[-1][0] != int(i_end):
+        try:
+            h = float(rows[int(i_end)].get("high") or 0)
+        except (TypeError, ValueError):
+            h = 0.0
+        if h > 0:
+            out.append((int(i_end), float(h), ""))
     return out
 
 
@@ -5469,8 +5494,8 @@ def _resolve_huang_c60_anchors(
 ) -> Dict[str, Any]:
     """黃培碩 60 分大段錨：只認官方柱對上他圖上的轉折價。
 
-    (1) 49968→46170　(2)中繼框 46170~47060　(3)內段折線→37837
-    C4 白細浪線錨點→43135 次級4壓。
+    (1) 49968→46170　(2)中繼框 46170~47060　(3)內①～⑤→37837
+    C4 白細反彈折（不標①～⑤）；次級4壓≈43135。
     """
     out: Dict[str, Any] = {"ok": False}
     if not rows or len(rows) < 16:
@@ -5491,76 +5516,20 @@ def _resolve_huang_c60_anchors(
     y1e = float(rows[int(i1e)].get("low") or 0)
     y2 = float(rows[int(i2)].get("high") or 0)
     y3 = float(rows[int(i3)].get("low") or 0)
-    # C3 內段：①不准提早在小反彈結束——先用大波幅鎖定第一段低，再補②③④
+    # C3 內①～⑤：④＝43135、⑤＝37837；①不准在 44726 提早轉②
     c3_seg = _huang_c60_c3_segments(rows, int(i2), int(i3), y2=y2, y3=y3)
-    # C4：底→第一段反彈高→回檔低→次高→再低→43135 次級4
-    c4: List[Tuple[int, float, str]] = [(int(i3), y3, "底")]
-    i_r1 = None
-    y_r1 = 0.0
-    for i in range(int(i3) + 1, min(len(rows), int(i3) + 12)):
-        try:
-            h = float(rows[i].get("high") or 0)
-            h_prev = float(rows[i - 1].get("high") or 0) if i - 1 >= 0 else 0.0
-            h_next = (
-                float(rows[i + 1].get("high") or 0) if i + 1 < len(rows) else 0.0
-            )
-        except (TypeError, ValueError):
-            continue
-        if h <= y3 + 400:
-            continue
-        local = h >= h_prev and (h_next <= 0 or h >= h_next)
-        if local:
-            i_r1 = i
-            y_r1 = h
-            break
-    if i_r1 is not None and y_r1 > y3 + 400:
-        c4.append((int(i_r1), float(y_r1), "①"))
-        i_r2 = None
-        y_r2 = float("inf")
-        for i in range(int(i_r1) + 1, min(len(rows), int(i_r1) + 12)):
-            try:
-                lo = float(rows[i].get("low") or 0)
-                h = float(rows[i].get("high") or 0)
-            except (TypeError, ValueError):
-                continue
-            if h > y_r1 + 80:
-                break
-            if 0 < lo < y_r2:
-                y_r2 = lo
-                i_r2 = i
-        if i_r2 is not None and y_r2 < y_r1 - 150:
-            c4.append((int(i_r2), float(y_r2), "②"))
-            i_r4 = _nearest_bar_idx_by_price(
-                rows, 43135.0, field="high", lo=int(i_r2), tol=40.0
-            )
-            i_r3 = None
-            y_r3 = 0.0
-            end3 = int(i_r4) if i_r4 is not None else len(rows)
-            for i in range(int(i_r2) + 1, end3):
-                try:
-                    h = float(rows[i].get("high") or 0)
-                except (TypeError, ValueError):
-                    continue
-                if h > y_r3 and h < 43050:
-                    y_r3 = h
-                    i_r3 = i
-            if i_r3 is not None and y_r3 > y_r2 + 200:
-                c4.append((int(i_r3), float(y_r3), "③"))
-                i_dip = None
-                y_dip = float("inf")
-                for i in range(int(i_r3) + 1, end3):
-                    try:
-                        lo = float(rows[i].get("low") or 0)
-                    except (TypeError, ValueError):
-                        continue
-                    if 0 < lo < y_dip:
-                        y_dip = lo
-                        i_dip = i
-                if i_dip is not None and y_dip < y_r3 - 120:
-                    c4.append((int(i_dip), float(y_dip), ""))
-            if i_r4 is not None:
-                y4 = float(rows[int(i_r4)].get("high") or 0)
-                c4.append((int(i_r4), float(y4), "④"))
+    # C4 反彈折：不標浪號；壓力線用次級4（C3④價）
+    c4 = _huang_c60_c4_segments(rows, int(i3), float(y3))
+    y_press = 43135.0
+    four = next((p for p in c3_seg if p[2] == "④"), None)
+    if four is not None:
+        y_press = float(four[1])
+    else:
+        i_p = _nearest_bar_idx_by_price(
+            rows, 43135.0, field="high", lo=int(i2), hi=int(i3) + 1, tol=40.0
+        )
+        if i_p is not None:
+            y_press = float(rows[int(i_p)].get("high") or 43135.0)
     out.update(
         {
             "ok": True,
@@ -5575,6 +5544,7 @@ def _resolve_huang_c60_anchors(
             "c2_box": (float(y1e), float(y2)),
             "c3_seg": c3_seg,
             "c4": c4,
+            "c4_press": float(y_press),
             # 舊鍵相容
             "red": c4,
         }
@@ -5589,7 +5559,7 @@ def _paint_huang_c60_structure(
     fp,
     pack: Optional[Dict[str, Any]] = None,
 ) -> bool:
-    """超近窗 60 分：底色對轉折＋C2上下虛框＋C3內段藍折＋C4白細浪錨。
+    """超近窗 60 分：底色對轉折＋C2上下虛框＋C3內①～⑤藍折＋C4紅折（不標浪號）。
 
     對黃培碩手繪；不是買訊。折線／錨只連官方柱真高低。
     """
@@ -5764,7 +5734,8 @@ def _paint_huang_c60_structure(
         ((i1, y1), "(1)", True),
         ((i1e, y1e), "46170", False),
         ((i2, y2), "(2)", True),
-        ((i3, y3), "(3)", False),
+        # 底＝C3⑤，浪號交給內段⑤；這裡只留點，避免 (3) 與⑤互壓
+        ((i3, y3), "", False),
     ):
         ax.scatter(
             [ii],
@@ -5787,7 +5758,7 @@ def _paint_huang_c60_structure(
             dx=0.9,
         )
 
-    # C3 內段各波藍折線＋①②③④（標在側邊）
+    # C3 內段藍折＋①②③④⑤（④＝43135、⑤＝37837；標在側邊，不准壓K／折線）
     c3_seg = list(anc.get("c3_seg") or [])
     if len(c3_seg) >= 3:
         _poly(
@@ -5810,10 +5781,16 @@ def _paint_huang_c60_structure(
                 linewidths=0.8,
             )
             high = lab in {"②", "④"}
+            # ④加價；⑤加價（對手繪）
+            text = lab
+            if lab == "④":
+                text = f"④ {_px(float(yy))}"
+            elif lab == "⑤":
+                text = f"⑤ {_px(float(yy))}"
             _wave_lab(
                 ii,
                 yy,
-                lab,
+                text,
                 high=high,
                 face="#0d47a1",
                 edge="#90caf9",
@@ -5822,7 +5799,7 @@ def _paint_huang_c60_structure(
                 dx=0.7,
             )
 
-    # C4：白細浪線＋錨點（對齊 white_thin／矛點）
+    # C4：白細反彈折（對齊手繪紅折路徑）— 不准標①～⑤
     c4 = list(anc.get("c4") or anc.get("red") or [])
     if len(c4) >= 2:
         xs = [float(p[0]) for p in c4]
@@ -5830,7 +5807,7 @@ def _paint_huang_c60_structure(
         ax.plot(
             xs,
             ys,
-            color="#0b0f14",
+            color="#b71c1c",
             lw=2.05,
             zorder=7.55,
             solid_capstyle="round",
@@ -5839,58 +5816,60 @@ def _paint_huang_c60_structure(
         ax.plot(
             xs,
             ys,
-            color="#f5f5f5",
+            color="#ff5252",
             lw=1.15,
             zorder=7.6,
             solid_capstyle="round",
             solid_joinstyle="round",
         )
         for ii, yy, lab in c4:
-            hot = "④" in str(lab) or lab == "底"
-            _spear_ring(ax, float(ii), float(yy), color="#ffffff", zorder=8.6, hot=hot)
-            if not lab:
-                continue
-            high = lab in {"①", "③", "④"} or "④" in str(lab)
-            _wave_lab(
-                ii,
-                yy,
-                lab,
-                high=high,
-                face="#ffffff",
-                edge="#9e9e9e",
-                fg="#111111",
-                fs=7.8,
-                dx=0.75,
-            )
-        i4 = next((p for p in c4 if "④" in str(p[2])), None)
-        if i4 is not None:
-            ax.axhline(
-                float(i4[1]),
-                color="#ff1744",
-                lw=1.45,
-                ls=(0, (6, 2)),
-                alpha=0.9,
-                zorder=6.2,
-            )
-            # 標在右欄外側，不准壓水平虛線／白折線
-            ax.text(
-                float(n) + 0.35,
-                float(i4[1]) + span_y * 0.012,
-                f"次級4壓 {_px(float(i4[1]))}",
-                ha="left",
-                va="bottom",
-                fontproperties=fp(8.0, "bold"),
-                color="#ff1744",
-                zorder=45,
-                bbox={
-                    "boxstyle": "round,pad=0.16",
-                    "facecolor": "#fff59d",
-                    "edgecolor": "#ff1744",
-                    "linewidth": 1.0,
-                    "alpha": 0.92,
-                },
-                clip_on=False,
-            )
+            _spear_ring(ax, float(ii), float(yy), color="#ff8a80", zorder=8.6, hot=False)
+            # lab 應為空；就算舊資料帶浪號也不畫（①～⑤只屬於 C3）
+            if lab and lab not in {"①", "②", "③", "④", "⑤", "底"} and "⑤" not in str(lab):
+                _wave_lab(
+                    ii,
+                    yy,
+                    str(lab),
+                    high=True,
+                    face="#ffffff",
+                    edge="#9e9e9e",
+                    fg="#111111",
+                    fs=7.8,
+                    dx=0.75,
+                )
+    # 次級4壓＝C3④價（≈43135）；水平虛線＋右側標，不准壓折線
+    y_press = anc.get("c4_press")
+    if y_press is None:
+        four = next((p for p in c3_seg if p[2] == "④"), None)
+        if four is not None:
+            y_press = float(four[1])
+    if y_press is not None:
+        ax.axhline(
+            float(y_press),
+            color="#ff1744",
+            lw=1.45,
+            ls=(0, (6, 2)),
+            alpha=0.9,
+            zorder=6.2,
+        )
+        ax.text(
+            float(n) + 0.35,
+            float(y_press) + span_y * 0.012,
+            f"次級4壓 {_px(float(y_press))}",
+            ha="left",
+            va="bottom",
+            fontproperties=fp(8.0, "bold"),
+            color="#ff1744",
+            zorder=45,
+            bbox={
+                "boxstyle": "round,pad=0.16",
+                "facecolor": "#fff59d",
+                "edgecolor": "#ff1744",
+                "linewidth": 1.0,
+                "alpha": 0.92,
+            },
+            clip_on=False,
+        )
     return True
 
 
@@ -14587,7 +14566,7 @@ def _render_twii_c_wave_60_dark(
             fig.text(
                 0.03,
                 0.918,
-                "藍(1)(2)(3)+C3內①②③④｜橙虛C2上下框｜白細C4錨｜次級4壓≈43135｜非買訊",
+                "藍(1)(2)(3)+C3內①～⑤｜橙虛C2上下框｜紅C4反彈｜次級4壓≈43135｜非買訊",
                 fontproperties=_fp(8.0, "bold"),
                 color="#90caf9",
                 ha="left",
@@ -14677,7 +14656,7 @@ def _render_twii_c_wave_60_dark(
     fig.text(
         0.03,
         0.945,
-        "軸＝加權日盤60分｜藍(1)(2)(3)+C3內段｜C2上下虛框｜C4白細錨｜底色對轉折價"
+        "軸＝加權日盤60分｜藍(1)(2)(3)+C3內①～⑤｜C2上下虛框｜C4紅折｜次級4壓≈43135"
         + vol_note,
         fontproperties=_fp(9, "bold"),
         color="#ce93d8",

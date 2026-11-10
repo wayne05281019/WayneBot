@@ -3906,7 +3906,7 @@ def test_paint_c3_group12_span_labels_wired():
 
 
 def test_huang_c60_anchors_and_wave_paint_wired():
-    """超近60分：C2上下虛框、C3內段①②③④、C4白細錨；轉折價對齊。"""
+    """超近60分：C2上下虛框、C3內①～⑤、C4紅折不標浪號；轉折價對齊手繪。"""
     import inspect
 
     from biaoke_level_learn import (
@@ -3929,23 +3929,40 @@ def test_huang_c60_anchors_and_wave_paint_wired():
         assert abs(float(box[0]) - 46170.0) < 30
         assert abs(float(box[1]) - 47060.0) < 30
         c3 = anc.get("c3_seg") or []
-        assert len(c3) >= 4
+        labs3 = [str(p[2]) for p in c3]
+        # ①～⑤全在 C3；④＝43135、⑤＝37837
+        for lab in ("①", "②", "③", "④", "⑤"):
+            assert lab in labs3, labs3
         one = next(p for p in c3 if p[2] == "①")
-        # ①須走完第一大段（約41856），不准停在 44726 小反彈
-        assert float(one[1]) <= 43000
-        assert abs(float(one[1]) - 41856.0) < 120
+        two = next(p for p in c3 if p[2] == "②")
+        three = next(p for p in c3 if p[2] == "③")
+        four = next(p for p in c3 if p[2] == "④")
+        five = next(p for p in c3 if p[2] == "⑤")
+        # ①不准停在 44726 小反彈（須更深）
+        assert float(one[1]) < 44500
+        assert int(one[0]) < int(two[0]) < int(three[0]) < int(four[0]) < int(five[0])
+        assert abs(float(three[1]) - 41856.0) < 120
+        assert abs(float(four[1]) - 43135.0) < 40
+        assert abs(float(five[1]) - 37837.0) < 30
+        # C4 反彈折：不標①～⑤
         c4 = anc.get("c4") or []
-        assert any("④" in str(p[2]) for p in c4)
+        assert len(c4) >= 2
+        labs4 = [str(p[2]) for p in c4]
+        assert not any(x in {"①", "②", "③", "④", "⑤"} for x in labs4), labs4
+        assert abs(float(anc.get("c4_press") or 0) - 43135.0) < 40
     paint = inspect.getsource(_paint_huang_c60_structure)
     assert "中繼上" in paint and "中繼下" in paint
     assert "alpha=0.07" in paint  # 底色再淺
     assert "_wave_lab" in paint  # 標籤側邊讓開折線／K
     assert "c3_seg" in paint
-    assert "_spear_ring" in paint and "#f5f5f5" in paint
+    assert "_spear_ring" in paint
     assert "次級4壓" in paint
+    assert "⑤壓" not in paint  # 不准再把 C3④ 誤標成 C4⑤壓
     c60 = inspect.getsource(_render_twii_c_wave_60_dark)
     assert "_paint_huang_c60_structure" in c60
     assert "fig.text" in c60  # 說明不進主圖
+    assert "次級4壓" in c60
+    assert "C4白細①～⑤" not in c60
 
 
 def test_retest_41500_oral_beats_unpriced_pressure_wait(tmp_path):
