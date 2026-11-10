@@ -190,9 +190,11 @@ def test_ensure_thin_respects_ttl_not_force(tmp_path, monkeypatch):
     cover = filing_month_coverage(db, "202609")
     assert cover["thin"] is True
     calls = {"n": 0}
-    # 清掉他測留下的 TTL，否則第一次就被 skip
+    # 清掉他測留下的 TTL／薄檔期背景佔槽，否則第一次就被 skip
     fund_mod._FILING_SYNC_STATE["monthly_ym"] = ""
     fund_mod._FILING_SYNC_STATE["monthly_at"] = 0.0
+    fund_mod._FILING_SYNC_STATE["thin_bg_ym"] = ""
+    fund_mod._FILING_SYNC_STATE["thin_bg_at"] = 0.0
 
     def fake_mops(yyyymm):
         calls["n"] += 1
