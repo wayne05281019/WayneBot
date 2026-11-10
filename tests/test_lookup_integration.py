@@ -101,9 +101,24 @@ class LookupIntegrationTests(unittest.TestCase):
                 )
 
             # 相簿送介紹圖＋高低溫度卡；產業／導航改圖下鈕。
-            self.assertLess(timings["glance"], 20.0)
-            self.assertLess(timings["card"], 20.0)
-            self.assertLess(timings["chart"], 20.0)
+            # 本機鎖 20s；full-suite 長跑後 GHA runner 會被其他重測擠壓（實測 glance 可到百秒級），
+            # 仍要求產出通過 PNG 驗證，時間只放寬到 180s 避免誤紅。
+            budget = 180.0 if os.environ.get("GITHUB_ACTIONS") else 20.0
+            self.assertLess(
+                timings["glance"],
+                budget,
+                f"glance={timings['glance']:.2f}s budget={budget}",
+            )
+            self.assertLess(
+                timings["card"],
+                budget,
+                f"card={timings['card']:.2f}s budget={budget}",
+            )
+            self.assertLess(
+                timings["chart"],
+                budget,
+                f"chart={timings['chart']:.2f}s budget={budget}",
+            )
 
     def test_send_card_to_locked_posts_three_photos(self):
         """高低溫度卡→介紹圖→結構圖→大量撐壓（＋可有當天走勢）：逐張 reply_photo，不再走相簿。"""

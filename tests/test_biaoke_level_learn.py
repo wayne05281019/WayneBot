@@ -1269,6 +1269,23 @@ def test_tx_align_no_ffill_fake_duplicate_candle():
     assert math.isnan(a["low"][2])
 
 
+def test_axis_pivot_price_snaps_leading_nan():
+    """窗左緣台開美休＝NaN 時，費半浪線端點就近有限柱；不准整段浪線消失。"""
+    import math
+
+    from biaoke_level_learn import _axis_pivot_price, _nearest_finite_axis_idx
+
+    closes = [float("nan"), 9599.0, 9647.0, 9909.0]
+    highs = [float("nan"), 9612.0, 9721.0, 10000.0]
+    lows = [float("nan"), 9462.0, 9569.0, 9800.0]
+    assert _nearest_finite_axis_idx(closes, 0) == 1
+    hit = _axis_pivot_price(highs, lows, closes, 0, tip="low")
+    assert hit is not None
+    assert hit[0] == 1
+    assert abs(hit[1] - 9462.0) < 1e-6
+    assert math.isfinite(hit[1])
+
+
 def test_press_level_break_uses_high_not_crash_low():
     """台指壓力破位看高點向上穿；不准因急跌低點就標已破。"""
     from biaoke_level_learn import _tw_pred_break_tag, _tw_pred_right_notes
@@ -1485,7 +1502,7 @@ def test_bb_dual_path_thesis_beats_earlier_foot2(tmp_path):
 
 
 def test_stop_low_confirm_thesis_beats_older_bb_dual_and_c9(tmp_path):
-    """11/9 止跌／C3-5＋1 4確認壓 11/8 雙軌；不准舊 9波備線整段蓋最新題旨。"""
+    """11/9 止跌後文＋夜下降壓改口壓 11/8 雙軌；不准舊 9波備線／再測假跌破當令。"""
     import sqlite3
     from datetime import datetime
     from zoneinfo import ZoneInfo
@@ -1493,6 +1510,7 @@ def test_stop_low_confirm_thesis_beats_older_bb_dual_and_c9(tmp_path):
     from biaoke_level_learn import (
         _latest_level_thesis,
         _text_has_bb_dual_path,
+        _text_has_c3_pressure_break,
         _text_has_c9_extension,
         _text_has_stop_low_confirm,
         _thesis_pred_levels,
@@ -1541,26 +1559,105 @@ def test_stop_low_confirm_thesis_beats_older_bb_dual_and_c9(tmp_path):
     assert _text_has_stop_low_confirm(morning)
     assert _text_has_stop_low_confirm(evening)
     tz = ZoneInfo("Asia/Taipei")
+    # 11/9 夜下降壓改口口頭補缺：壓掉「一定再測／假跌破」
     th = _latest_level_thesis(
         db, as_of="20261109", now=datetime(2026, 11, 9, 22, 0, tzinfo=tz)
     )
     thesis = th.get("thesis") or ""
     wait = th.get("wait_struct") or ""
     snip = th.get("snippet_full") or th.get("snippet") or ""
-    assert "確認上週五低" in thesis or "1 4重疊" in thesis
+    assert "過C3下降壓" in thesis or "不再假跌破" in thesis
     assert "B-b" not in thesis
     assert "九波" not in thesis
     assert "第二隻腳" not in thesis
-    assert "41760" in wait or "41760" in snip
-    assert "再測週五低" in wait or "假跌破" in wait
+    assert "回測下降" in wait or "清洗籌碼" in wait
+    assert "一定再測週五低" not in wait
     assert "35579" not in snip
     pred = _thesis_pred_levels(snip, db)
     roles = {str(r.get("role")): float(r["level"]) for r in (pred.get("tw") or [])}
-    assert abs(roles.get("台指壓力", 0) - 41760) < 1
     assert "九波備線破位" not in roles
+    fri = next(
+        (r for r in (pred.get("tw") or []) if abs(float(r["level"]) - 37837) < 1),
+        None,
+    )
+    if fri is not None:
+        assert "不再假跌破" in str(fri.get("tag") or "") or "不再假跌破" in str(
+            fri.get("label") or ""
+        )
     ladder = _wave_now_ladder(th)
-    assert "止跌確認" in (ladder.get("now") or "")
+    assert "已過C3下降壓" in (ladder.get("now") or "")
+    assert "不再假跌破" in (ladder.get("now_line") or "")
+    assert "再測週五低" not in (ladder.get("now") or "")
     assert "B-b" not in (ladder.get("now") or "")
+    assert _text_has_c3_pressure_break(
+        "夜盤已經過第二組整組 C3的下降壓力線，上周五低點也不可能假跌破了，"
+        "但今天下半場到明後天一定會有拉回回測下降壓力線。"
+    )
+    assert not _text_has_c3_pressure_break(evening)
+    assert not _text_has_c3_pressure_break(
+        "接下來則看下跌1及下跌4所形成的下降壓力線，明天或後天是否能越過(約49200)"
+    )
+
+
+def test_pressure_break_real_post_beats_stop_retest(tmp_path):
+    """真文第4點：夜盤過C3下降壓 → 週五低不再假跌破；壓掉再測假跌破。"""
+    import sqlite3
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_level_learn import (
+        _latest_level_thesis,
+        _text_has_c3_pressure_break,
+        _thesis_pred_levels,
+        _wave_now_ladder,
+        ensure_tables,
+    )
+
+    db = str(tmp_path / "pb.db")
+    ensure_tables(db)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS biaoke_posts("
+        "id TEXT PRIMARY KEY, date TEXT, time TEXT, kind TEXT, text TEXT)"
+    )
+    full = (
+        "夜盤已經過第二組下降壓力線，高價股風向球創意密切關注\n"
+        "1. 這周大盤一定會有2000~3000點大震盪，今天立刻達標。\n"
+        "2. 不相信我大盤止跌，頂多在測一次低破星期五低點假跌破我都已經說的非常清楚。\n"
+        "3. 現在就是要趁大盤再一次回測大跌，辨識出真正會漲的股票。\n"
+        "4. 夜盤已經過第二組整組 C3的下降壓力線，上周五低點也不可能假跌破了，"
+        "但今天下半場到明後天一定會有拉回回測下降壓力線，順便清洗籌碼的時候，"
+        "這個時候直接投入股市資金可達5~6成。星期五最低點位37837。"
+    )
+    conn.execute(
+        "INSERT INTO biaoke_posts(id, date, time, kind, text) VALUES (?,?,?,?,?)",
+        ("188138405", "2026-11-09", "19:20", "post", full),
+    )
+    conn.commit()
+    conn.close()
+    assert _text_has_c3_pressure_break(full)
+    tz = ZoneInfo("Asia/Taipei")
+    th = _latest_level_thesis(
+        db, as_of="20261110", now=datetime(2026, 11, 10, 10, 0, tzinfo=tz)
+    )
+    wait = th.get("wait_struct") or ""
+    thesis = th.get("thesis") or ""
+    assert "不再假跌破" in thesis or "過C3下降壓" in thesis
+    # 11/10 後文口頭會併入「至少回測41500／絕對不破」；仍不准回退「一定再測假跌破」
+    assert "41500" in wait or "回測下降" in wait
+    assert "一定再測週五低" not in wait
+    snip = th.get("snippet_full") or th.get("snippet") or ""
+    pred = _thesis_pred_levels(snip, db)
+    fri = next(
+        (r for r in (pred.get("tw") or []) if abs(float(r["level"]) - 37837) < 1),
+        None,
+    )
+    assert fri is not None
+    fri_lab = str(fri.get("label") or "")
+    assert ("不再假跌破" in fri_lab) or ("絕對不破" in fri_lab)
+    assert "再測週五" not in fri_lab
+    ladder = _wave_now_ladder(th)
+    assert "已過C3下降壓" in (ladder.get("now") or "")
 
 
 def test_oral_dual_path_uses_bundled_cjk_font():
@@ -3662,3 +3759,135 @@ def test_tip_anchors_empty_on_stop_confirm_no_old_45546():
     )
     assert "台指壓力" in lab
     assert "飆預測" not in lab
+
+
+def test_paint_c3_group12_span_labels_wired():
+    """教導用：三窗要掛第一組／第二組＝C3 跨度標（對圖用）。"""
+    import inspect
+
+    from biaoke_level_learn import _paint_c3_group12_span_labels
+    import biaoke_level_learn as m
+
+    src = inspect.getsource(m)
+    assert src.count("_paint_c3_group12_span_labels(") >= 5  # def + 4 call sites
+    src_fn = inspect.getsource(_paint_c3_group12_span_labels)
+    assert "【第一組】" in src_fn
+    assert "【第二組】" in src_fn
+    assert "C3主跌" in src_fn
+    assert "示意：第二組C3下降壓" in src_fn
+    assert "y_sky" in src_fn  # 大標貼價欄天空，不准貼底被量欄蓋
+
+
+def test_retest_41500_oral_beats_unpriced_pressure_wait(tmp_path):
+    """11/10 口頭：至少回測41500／絕對不破週五低；右標與等待句要有價。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_level_learn import (
+        _RETEST_41500_ORAL_SNIP,
+        _active_oral_now_line,
+        _latest_level_thesis,
+        _text_has_retest_41500,
+        _thesis_pred_levels,
+        _upsert_snap,
+        ensure_tables,
+    )
+
+    snip = (
+        "應該至少回測到41500，絕對不會破上星期五低點。"
+        "星期五最低點位37837。"
+        "夜盤已經過第二組整組 C3的下降壓力線，上周五低點也不可能假跌破了，"
+        "但今天下半場到明後天一定會有拉回回測下降壓力線。"
+    )
+    assert _text_has_retest_41500(snip)
+    preds = _thesis_pred_levels(snip)
+    tw = preds.get("tw") or []
+    hit415 = [r for r in tw if abs(float(r.get("level") or 0) - 41500.0) < 0.6]
+    hit378 = [r for r in tw if abs(float(r.get("level") or 0) - 37837.0) < 0.6]
+    assert hit415 and "至少回測" in str(hit415[0].get("label") or "")
+    assert hit378 and (
+        "絕對不破" in str(hit378[0].get("label") or "")
+        or "不再假跌破" in str(hit378[0].get("label") or "")
+    )
+    db = str(tmp_path / "t.db")
+    ensure_tables(db)
+    _upsert_snap(
+        db,
+        post_id="oral-retest-41500",
+        as_of="20261110",
+        post_date="2026-11-10",
+        post_time="11:48",
+        snippet=_RETEST_41500_ORAL_SNIP,
+        chart_path="",
+    )
+    tz = ZoneInfo("Asia/Taipei")
+    th = _latest_level_thesis(
+        db, as_of="20261110", now=datetime(2026, 11, 10, 12, 0, tzinfo=tz)
+    ) or {}
+    wait = str(th.get("wait_struct") or "")
+    assert "41500" in wait
+    assert "絕對不破" in wait or "37837" in wait
+    pack = {
+        "thesis": th.get("thesis"),
+        "wait_struct": wait,
+        "snippet_full": snip,
+        "snippet": snip,
+        "pred_levels": preds,
+    }
+    oral = _active_oral_now_line(pack)
+    assert "41500" in oral
+    assert "絕對不破" in oral or "37837" in oral
+
+
+def test_pressure_break_labels_split_slant_vs_41760():
+    """下降壓改口當令：誠實寫『口述C3下降壓・圖上未標』≠水平41760。"""
+    from biaoke_level_learn import (
+        _active_oral_now_line,
+        _format_tw_pred_note,
+        _pack_pressure_break_on,
+        _thesis_pred_levels,
+        _wave_now_ladder,
+    )
+
+    pack = {
+        "thesis": "大A→大B→大C｜夜盤過C3下降壓・週五低不再假跌破（預估）",
+        "wait_struct": (
+            "水平台指壓41760（≠那條口述下降壓）；"
+            "拉回回測下降壓力線（口述斜線・圖上未標C3／無報價）；清洗籌碼；非買訊"
+        ),
+        "snippet_full": (
+            "夜盤已經過第二組整組 C3的下降壓力線，上周五低點也不可能假跌破了，"
+            "但今天下半場到明後天一定會有拉回回測下降壓力線；台指壓力41760"
+        ),
+        "snippet": "過C3下降壓；不再假跌破；回測下降壓力線；41760",
+        "pred_levels": {
+            "tw": [
+                {
+                    "level": 41760.0,
+                    "role": "台指壓力",
+                    "tag": "未到",
+                    "label": "台指壓力／41,760｜≠口述下降壓",
+                }
+            ]
+        },
+    }
+    assert _pack_pressure_break_on(pack)
+    oral = _active_oral_now_line(pack)
+    assert "未標C3" in oral or "無報價" in oral
+    assert "口述" in oral
+    assert "41760" in oral
+    lab = _format_tw_pred_note(
+        41760.0, pack=pack, lows=[37837.0], highs=[41600.0]
+    )
+    assert "台指壓力" in lab
+    assert "≠口述下降壓" in lab
+    ladder = _wave_now_ladder(pack)
+    now_line = str(ladder.get("now_line") or "")
+    assert "未標C3" in now_line or "口述" in now_line
+    preds = _thesis_pred_levels(
+        "夜盤過C3下降壓；不再假跌破；回測下降壓力線；台指壓力41760"
+    )
+    tw = preds.get("tw") or []
+    hit = [r for r in tw if abs(float(r.get("level") or 0) - 41760.0) < 0.6]
+    assert hit
+    assert "≠口述下降壓" in str(hit[0].get("label") or "")
