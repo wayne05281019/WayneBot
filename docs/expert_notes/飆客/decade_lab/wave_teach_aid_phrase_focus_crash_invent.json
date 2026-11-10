@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-11-10T06:02:33+0800",
+  "as_of": "2026-11-10T07:03:19+0800",
   "tz": "Asia/Taipei",
   "track": "market_tw",
   "pot": "wave_teach_aid_deepen",
@@ -39,21 +39,21 @@
     "decision_zh": "phrase_focus_crash＝硬用語∩急跌時間線相位子窗；教具對照，不換 loose"
   },
   "labeled_with_his": {
-    "rows": 749,
+    "rows": 750,
     "n_decided": 18,
     "hit": 8,
     "miss": 10,
     "hit_rate": 0.4444444444444444,
-    "n_with_named": 596,
-    "n_night_touched": 367
+    "n_with_named": 607,
+    "n_night_touched": 371
   },
   "labeled_in_timeline_seal": {
-    "rows": 20,
+    "rows": 21,
     "n_decided": 18,
     "hit": 8,
     "miss": 10,
     "hit_rate": 0.4444444444444444,
-    "n_with_named": 20,
+    "n_with_named": 21,
     "n_night_touched": 17
   },
   "matched_day_vs_loose": {
