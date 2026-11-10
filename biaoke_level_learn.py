@@ -8433,6 +8433,9 @@ _FAR_TEACH_EXTEND_SOFT = 168  # 僅大量撐壓／下一層可略超；硬上限
 _FAR_TEACH_VOL_LOOKBACK = 200
 _NEAR_TEACH_MAX_BARS = 130  # 近窗：⑤起地板；滿長後滾（A／B／C 仍優先留窗）
 _MICRO_TEACH_MAX_BARS = 55  # 超近：B／C 特寫定長
+# 黃培碩 60 分 C 波：定長滾（K 寬穩定）；soft 僅為 C3 底還在窗內可略超
+_HUANG_C60_MAX_BARS = 150
+_HUANG_C60_SOFT_MAX = 168
 _TEACH_RIGHT_GUTTER = 2.55  # 右欄現況相對末K的固定槽（bar 單位）
 _TEACH_RIGHT_XLIM_PAD = 10.2  # xlim 右側固定留白（bar 單位）
 
@@ -8493,6 +8496,45 @@ def _teach_roll_from_floor(
     if len(window) > cap:
         return window[-cap:]
     return window
+
+
+def _window_huang_c60_rows(
+    rows: Sequence[Dict[str, Any]],
+    *,
+    max_bars: int = _HUANG_C60_MAX_BARS,
+    soft_max: int = _HUANG_C60_SOFT_MAX,
+) -> List[Dict[str, Any]]:
+    """黃培碩 60 分超近窗：定長滾動，x 軸不無限拉長。
+
+    - 未滿 max：從 C1 起畫到最新（教具鎖死最新縮圖K）
+    - 滿了：進一根刪最左，K 寬穩定
+    - C3 底還會被硬滾切掉時，允許略超 soft 把 C3 留在窗內
+    - soft 仍裝不下＝硬滾；滾出的浪標不釘幽靈（對不到錨就退日界色帶）
+    """
+    full = list(rows or [])
+    n = len(full)
+    cap = max(40, int(max_bars or _HUANG_C60_MAX_BARS))
+    soft = max(cap, int(soft_max or _HUANG_C60_SOFT_MAX))
+    if n <= cap:
+        return full
+    anc = _resolve_huang_c60_anchors(full)
+    if not anc.get("ok"):
+        return full[-cap:]
+    i1 = int(anc["i1"])
+    i3 = int(anc["i3"])
+    body = full[i1:]
+    if len(body) <= cap:
+        return body
+    rolled = body[-cap:]
+    # rolled 在 full 的起點
+    start = i1 + len(body) - cap
+    if start <= i3:
+        return rolled
+    # C3 底已在硬窗左側 → soft 略拉左
+    soft_start = max(i1, n - soft)
+    if soft_start <= i3:
+        return full[soft_start:]
+    return rolled
 
 
 def _far_teach_roll_bars(
@@ -14498,9 +14540,13 @@ def _render_twii_c_wave_60_dark(
         fetch_yahoo_minutes("0050", "60", db_path)
     except Exception:
         pass
-    rows = _load_twii60_day_rows(db_path, since_ymd=_C_WAVE_60_SINCE_YMD)
-    if len(rows) < 16:
+    rows_full = _load_twii60_day_rows(db_path, since_ymd=_C_WAVE_60_SINCE_YMD)
+    if len(rows_full) < 16:
         return ""
+    # 定長滾動：新60分K進來不把 x 軸無限拉長；永遠留最新根
+    rows = _window_huang_c60_rows(rows_full)
+    if len(rows) < 16:
+        rows = rows_full
     # 日K只給白底戳／對照，不准把大B日柱拉進60分軸
     daily_all = _twii_bars_for_teach(db_path, 80, pack) or []
     daily = [b for b in daily_all if _ymd(b.get("date")) >= _C_WAVE_60_SINCE_YMD]
@@ -14650,7 +14696,7 @@ def _render_twii_c_wave_60_dark(
     fig.text(
         0.03,
         0.972,
-        f"{which}・60分C波（10/6起・不含大B）｜黃培碩C1–C4映60分＋日飆大口頭｜非買訊",
+        f"{which}・60分C波（定長滾・最新K｜不含大B）｜黃培碩C1–C4映60分＋日飆大口頭｜非買訊",
         fontproperties=_fp(12, "bold"),
         color=_LIVE_TEXT,
         ha="left",

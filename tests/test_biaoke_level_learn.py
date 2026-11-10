@@ -3905,6 +3905,39 @@ def test_paint_c3_group12_span_labels_wired():
     assert "示意：第二組C3下降壓" not in src_fn
 
 
+def test_huang_c60_window_caps_x_keeps_latest():
+    """60分C波定長滾：超過上限刪最左；末根永遠是最新縮圖K。"""
+    from biaoke_level_learn import (
+        _HUANG_C60_MAX_BARS,
+        _HUANG_C60_SOFT_MAX,
+        _load_twii60_day_rows,
+        _window_huang_c60_rows,
+    )
+
+    rows = _load_twii60_day_rows("data/wayne_market.db", since_ymd="20261006")
+    if len(rows) < 16:
+        return
+    # 未滿上限＝整段
+    win0 = _window_huang_c60_rows(rows, max_bars=max(len(rows) + 5, 40))
+    assert len(win0) == len(rows)
+    assert win0[-1]["ts"] == rows[-1]["ts"]
+    # 人工拉長超過 soft：仍≤soft，且末根＝最新
+    extra = []
+    base = dict(rows[-1])
+    for i in range(_HUANG_C60_SOFT_MAX + 40):
+        b = dict(base)
+        b["ts"] = f"2099010{i % 10}0900"
+        b["date"] = f"2099010{i % 10}"
+        b["close"] = float(base.get("close") or 0) + i
+        extra.append(b)
+    long_rows = list(rows) + extra
+    win = _window_huang_c60_rows(long_rows)
+    assert len(win) <= _HUANG_C60_SOFT_MAX
+    assert len(win) <= max(_HUANG_C60_SOFT_MAX, _HUANG_C60_MAX_BARS)
+    assert win[-1]["ts"] == long_rows[-1]["ts"]
+    assert win[-1]["close"] == long_rows[-1]["close"]
+
+
 def test_huang_c60_anchors_and_wave_paint_wired():
     """超近60分：C2上下虛框、C3內①～⑤、C4白細折不標浪號；轉折價對齊手繪。"""
     import inspect
@@ -3914,6 +3947,7 @@ def test_huang_c60_anchors_and_wave_paint_wired():
         _paint_huang_c60_structure,
         _render_twii_c_wave_60_dark,
         _resolve_huang_c60_anchors,
+        _window_huang_c60_rows,
     )
 
     rows = _load_twii60_day_rows("data/wayne_market.db", since_ymd="20261006")
@@ -3967,6 +4001,7 @@ def test_huang_c60_anchors_and_wave_paint_wired():
     assert "次級4壓" in c60
     assert "C4白細①～⑤" not in c60
     assert "白細C4" in c60 or "C4白細" in c60
+    assert "_window_huang_c60_rows" in c60
 
 
 def test_retest_41500_oral_beats_unpriced_pressure_wait(tmp_path):
