@@ -8323,13 +8323,13 @@ def _paint_next_layer_vol_zone(
     pack: Optional[Dict[str, Any]] = None,
     ts_lab: str = "",
 ) -> None:
-    """下一層大量區灰帶（對齊結構圖下一層；暗底教具可讀）。"""
+    """下一層大量區＝半透明白橫帶（對黃帶現在撐壓；暗底教具可讀）。"""
     y0, y1 = float(low), float(high)
     if y1 <= y0:
         return
     day_tag = _teach_vol_day_tag(date_lab, ts_lab)
-    # 與下週底黃帶大幅重疊時只留灰底邊緣感、不准蓋黃地色（黃帶 zorder 更高）
-    ax.axhspan(y0, y1, facecolor="#90a4ae", alpha=0.20, zorder=0.45)
+    # 下一層壓／撐區：半透明白（使用者鎖）；量柱藍標仍對這層
+    ax.axhspan(y0, y1, facecolor="#ffffff", alpha=0.24, zorder=0.45)
     if not labels:
         return
     # 壓／撐落在飆預測黃／紫帶內 → 不准畫左標（紅圈互壓）
@@ -8337,12 +8337,12 @@ def _paint_next_layer_vol_zone(
         _paint_left_sr_label(
             ax,
             y1,
-            f"{day_tag}下一層壓 {_px(y1)}",
+            f"白帶 {day_tag}下一層壓 {_px(y1)}",
             fp=fp,
-            color="#cfd8dc",
-            edge="#78909c",
+            color="#fafafa",
+            edge="#eeeeee",
             va="bottom",
-            fontsize=8.5,
+            fontsize=10.5,
             avoid_top_left_stamp=avoid_top_left_stamp,
             x_base=0.01,
         )
@@ -8350,12 +8350,12 @@ def _paint_next_layer_vol_zone(
         _paint_left_sr_label(
             ax,
             y0,
-            f"{day_tag}下一層撐 {_px(y0)}",
+            f"白帶 {day_tag}下一層撐 {_px(y0)}",
             fp=fp,
-            color="#cfd8dc",
-            edge="#78909c",
+            color="#fafafa",
+            edge="#eeeeee",
             va="top",
-            fontsize=8.5,
+            fontsize=10.5,
             avoid_top_left_stamp=avoid_top_left_stamp,
             x_base=0.13,
         )
@@ -8832,11 +8832,11 @@ def _vol_sr_index_on_axis(
     )
 
 
-# 遠窗各欄豎導：黃＝當前大量撐壓日K；亮桃＝下一層大量日K（不准跨欄共用加權日）
-_VOL_SR_GUIDE_PRIMARY = "#ffeb3b"
-_VOL_SR_GUIDE_NEXT = "#ff8aa0"  # 亮桃紅
+# 遠窗各欄豎導：黃＝當前大量撐壓日K；藍＝下一層大量日K（對齊量欄藍柱／灰帶；不准跨欄共用加權日）
+_VOL_SR_GUIDE_PRIMARY = "#f9a825"
+_VOL_SR_GUIDE_NEXT = "#42a5f5"
 _VOL_SR_CANDLE_PRIMARY = "#ffd54f"
-_VOL_SR_CANDLE_NEXT = "#ff8aa0"
+_VOL_SR_CANDLE_NEXT = "#42a5f5"
 
 
 def _teach_vol_sr_title_bit(
@@ -9229,10 +9229,10 @@ def _paint_teach_vol_layer_bars(
     bars: Optional[Sequence[Dict[str, Any]]] = None,
     fp: Any = None,
 ) -> None:
-    """量欄對應方式對齊查股大量圖：色柱＋上緣空帶掛標＋虛線指到柱。
+    """量欄對應黃／灰兩橫帶：色柱＋上緣空帶大標＋虛線指柱（對齊大量圖、要看得清）。
 
-    本層爆大量＝黃；下一層最大量＝藍；下一層次大量＝淺藍。
-    標文帶月日／幾點（60分），一眼對到價圖同一根豎導／黃灰帶。
+    黃帶＝本層爆大量柱；白帶＝下一層最大量柱（次大量另標）。
+    標文寫死「黃帶／白帶」＋月日幾點，下面找柱＝上面找帶。
     """
     if axv is None or not vols:
         return
@@ -9258,8 +9258,8 @@ def _paint_teach_vol_layer_bars(
             return f"{v:,.0f}"
         return f"{v:.0f}"
 
-    # (index, bar_color, edge, ink, label)
-    marks: List[Tuple[int, str, str, str, str]] = []
+    # (index, bar_color, edge, ink, label, fontsize)
+    marks: List[Tuple[int, str, str, str, str, float]] = []
     if _ok(i_primary):
         ii = int(i_primary)
         marks.append(
@@ -9268,7 +9268,8 @@ def _paint_teach_vol_layer_bars(
                 "#f9a825",
                 "#ffecb3",
                 "#ffe082",
-                f"這根＝爆大量 {_tag(ii)}　{_vol_txt(ii)}".strip(),
+                f"黃帶←爆大量 {_tag(ii)}　{_vol_txt(ii)}".strip(),
+                10.5,
             )
         )
     if _ok(i_next):
@@ -9279,7 +9280,8 @@ def _paint_teach_vol_layer_bars(
                 "#42a5f5",
                 "#90caf9",
                 "#90caf9",
-                f"下一層最大量 {_tag(ii)}　{_vol_txt(ii)}".strip(),
+                f"白帶←下一層最大 {_tag(ii)}　{_vol_txt(ii)}".strip(),
+                10.5,
             )
         )
     if _ok(i_next_2nd) and (
@@ -9292,26 +9294,26 @@ def _paint_teach_vol_layer_bars(
                 "#80cbc4",
                 "#b2dfdb",
                 "#b2dfdb",
-                f"下一層次大量 {_tag(ii)}　{_vol_txt(ii)}".strip(),
+                f"白帶次大量 {_tag(ii)}　{_vol_txt(ii)}".strip(),
+                9.0,
             )
         )
     if not marks:
         return
 
-    # 上緣空帶（對齊大量圖：標掛頂下，不准壓柱）
-    y_top = float(peak) / 0.68
+    # 上緣空帶加寬：兩大標並排仍清楚（對齊大量圖空帶邏輯）
+    y_top = float(peak) / 0.58
     axv.set_ylim(0, float(y_top))
-    lab_y_hi = float(y_top) * 0.975
-    lab_y_mid = float(y_top) * 0.90
-    lab_y_lo = float(y_top) * 0.825
+    lab_y_hi = float(y_top) * 0.978
+    lab_y_mid = float(y_top) * 0.905
+    lab_y_lo = float(y_top) * 0.830
 
     seen: set = set()
-    placed: List[Tuple[float, float]] = []  # (tx, ty) for sep
+    placed: List[Tuple[float, float]] = []
 
     def _pick_tx(anchor: int, prefer_right: bool) -> Tuple[float, str]:
-        """水平錯開標盒；優先離開柱頂，對齊大量圖左右掃。"""
         trials: List[Tuple[float, str]] = []
-        for off in (3.5, 6.0, 9.0, 12.0, 16.0, 22.0):
+        for off in (4.0, 7.0, 10.0, 14.0, 18.0, 24.0):
             if prefer_right:
                 trials.append((min(float(n) - 1.0, float(anchor) + off), "left"))
                 trials.append((max(0.5, float(anchor) - off), "right"))
@@ -9322,14 +9324,14 @@ def _paint_teach_vol_layer_bars(
         for tx, ha in trials:
             score = abs(float(tx) - float(anchor)) * 0.02
             for px, _py in placed:
-                score += max(0.0, 14.0 - abs(float(tx) - float(px))) * 2.0
+                score += max(0.0, 16.0 - abs(float(tx) - float(px))) * 2.2
             if best is None or score < best[0]:
                 best = (score, float(tx), str(ha))
         if best is None:
             return float(anchor) + 4.0, "left"
         return best[1], best[2]
 
-    for k, (ii, face, edge, ink, lab) in enumerate(marks):
+    for k, (ii, face, edge, ink, lab, fsz) in enumerate(marks):
         if ii in seen:
             continue
         seen.add(ii)
@@ -9337,27 +9339,26 @@ def _paint_teach_vol_layer_bars(
             ii,
             vals[ii],
             color=face,
-            width=0.76,
+            edgecolor="#ffffff",
+            linewidth=1.05,
+            width=0.88,
             zorder=6,
-            alpha=0.96,
-            linewidth=0,
+            alpha=0.98,
         )
         if fp is None or not lab:
             continue
-        # 三標：上／中／下空帶；左右依先後錯開
         if k == 0:
             ty = lab_y_hi
-            prefer_right = True
+            prefer_right = False  # 黃帶柱偏左：標往左長較清
         elif k == 1:
-            ty = lab_y_mid if len(marks) >= 3 else lab_y_hi
-            prefer_right = False
+            ty = lab_y_mid
+            prefer_right = True
         else:
             ty = lab_y_lo
             prefer_right = True
         tx, ha = _pick_tx(ii, prefer_right=prefer_right)
-        # 兩標仍太近 → 強制上下錯開
         for px, py in placed:
-            if abs(float(tx) - float(px)) < 12.0 and abs(float(ty) - float(py)) < float(y_top) * 0.05:
+            if abs(float(tx) - float(px)) < 14.0 and abs(float(ty) - float(py)) < float(y_top) * 0.06:
                 ty = lab_y_lo if ty >= lab_y_mid else lab_y_mid
         placed.append((float(tx), float(ty)))
         axv.annotate(
@@ -9365,24 +9366,24 @@ def _paint_teach_vol_layer_bars(
             xy=(float(ii), float(vals[ii])),
             xytext=(float(tx), float(ty)),
             color=ink,
-            fontproperties=fp(8.2, "bold"),
+            fontproperties=fp(float(fsz), "bold"),
             ha=str(ha),
             va="top",
             zorder=12,
             annotation_clip=False,
             clip_on=False,
             bbox=dict(
-                boxstyle="round,pad=0.16",
+                boxstyle="round,pad=0.22",
                 facecolor="#0b0f14",
                 edgecolor=edge,
-                linewidth=0.9,
-                alpha=0.96,
+                linewidth=1.25,
+                alpha=0.97,
             ),
             arrowprops=dict(
                 arrowstyle="-",
                 color=edge,
-                lw=0.95,
-                linestyle=(0, (2.4, 1.8)),
+                lw=1.35,
+                linestyle=(0, (2.2, 1.5)),
                 shrinkA=2,
                 shrinkB=3,
             ),
@@ -9454,18 +9455,18 @@ def _paint_vol_sr_day_guides(
         ax.axvline(
             float(i_primary),
             color=_VOL_SR_GUIDE_PRIMARY,
-            lw=1.15,
-            ls=(0, (4, 2)),
-            alpha=0.90,
+            lw=1.85,
+            ls=(0, (3.5, 1.6)),
+            alpha=0.98,
             zorder=5,
         )
     if i_next is not None and (i_primary is None or int(i_next) != int(i_primary)):
         ax.axvline(
             float(i_next),
             color=_VOL_SR_GUIDE_NEXT,
-            lw=1.15,
-            ls=(0, (3, 2)),
-            alpha=0.88,
+            lw=1.85,
+            ls=(0, (3.0, 1.6)),
+            alpha=0.96,
             zorder=5,
         )
 
@@ -9844,31 +9845,31 @@ def _paint_max_vol_hl_zone(
     if y1 <= y0:
         return
     day_tag = _teach_vol_day_tag(date_lab, ts_lab)
-    # 只留淺黃底，不准上下虛線框（框會跟K攪糊）；對齊交易日靠豎虛線＋金K＋左標月日
-    ax.axhspan(y0, y1, facecolor="#ffeb3b", alpha=0.18, zorder=0.5)
+    # 黃帶加醒目：跟量欄黃柱／豎導同一套，一眼對「現在撐壓」
+    ax.axhspan(y0, y1, facecolor="#ffeb3b", alpha=0.28, zorder=0.5)
     if not labels:
         return
     _paint_left_sr_label(
         ax,
         y1,
-        f"{day_tag}大量壓 {_px(y1)}",
+        f"黃帶 {day_tag}大量壓 {_px(y1)}",
         fp=fp,
-        color="#ffe082",
-        edge="#ffeb3b",
+        color="#fff59d",
+        edge="#f9a825",
         va="bottom",
-        fontsize=9,
+        fontsize=10.5,
         avoid_top_left_stamp=avoid_top_left_stamp,
         x_base=0.01,
     )
     _paint_left_sr_label(
         ax,
         y0,
-        f"{day_tag}大量撐 {_px(y0)}",
+        f"黃帶 {day_tag}大量撐 {_px(y0)}",
         fp=fp,
-        color="#ffe082",
-        edge="#ffeb3b",
+        color="#fff59d",
+        edge="#f9a825",
         va="top",
-        fontsize=9,
+        fontsize=10.5,
         avoid_top_left_stamp=avoid_top_left_stamp,
         x_base=0.13,  # 與壓錯欄，Y 接近時不准互壓
     )
@@ -15024,10 +15025,11 @@ def _render_twii_c_wave_60_dark(
     fig, (ax, axv) = plt.subplots(
         2,
         1,
-        figsize=(15.6, 9.6 if kind == "near" else 10.2),
+        figsize=(15.6, 10.6 if kind == "near" else 11.2),
         dpi=NAV_CHART_DPI,
         sharex=True,
-        gridspec_kw=dict(height_ratios=(5.5, 1.35), hspace=0.10),
+        # 量欄加高：黃／灰帶對應的爆大量標要一眼讀得清
+        gridspec_kw=dict(height_ratios=(5.0, 2.35), hspace=0.12),
     )
     fig.patch.set_facecolor(_LIVE_BG)
     _style_live_ax(ax, axv)
@@ -15110,7 +15112,7 @@ def _render_twii_c_wave_60_dark(
             fig.text(
                 0.03,
                 0.918,
-                "藍(1)(2)(3)+C3內①～⑤｜白細C4｜灰下一層｜量對齊大量圖：黃爆大量／藍下一層最大／次大｜非買訊",
+                "黃帶＝現在撐壓｜白帶＝下一層｜量黃／藍柱＝各帶那根60分K（月日幾點）｜非買訊",
                 fontproperties=_fp(8.0, "bold"),
                 color="#90caf9",
                 ha="left",

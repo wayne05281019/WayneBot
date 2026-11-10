@@ -4100,23 +4100,30 @@ def test_teach_vol_sr_preview_below_next_layer_60m():
         fp=_fp,
     )
     texts = " ".join(t.get_text() for t in axv.texts)
-    # 對齊大量圖口吻：這根＝爆大量／下一層最大量／次大量＋月日幾點
-    assert "這根＝爆大量" in texts and "11/5 09:00" in texts
-    assert "下一層最大量" in texts and "11/6 10:00" in texts
-    assert "下一層次大量" in texts and "11/6 11:00" in texts
+    # 兩橫帶各自對一根量柱：黃帶←爆大量／白帶←下一層最大（＋次大量）
+    assert "黃帶←爆大量" in texts and "11/5 09:00" in texts
+    assert "白帶←下一層最大" in texts and "11/6 10:00" in texts
+    assert "白帶次大量" in texts and "11/6 11:00" in texts
     # 上緣空帶：ylim 高於最大柱
-    assert float(axv.get_ylim()[1]) > max(vols) * 1.2
+    assert float(axv.get_ylim()[1]) > max(vols) * 1.3
     plt.close(fig)
 
     import inspect
+    from biaoke_level_learn import _paint_max_vol_hl_zone, _paint_next_layer_vol_zone
     from biaoke_level_learn import _paint_teach_vol_layer_bars as _pv
     from biaoke_level_learn import _render_twii_c_wave_60_dark
 
     paint_src = inspect.getsource(_pv)
-    assert "arrowprops" in paint_src and "這根＝爆大量" in paint_src
+    assert "arrowprops" in paint_src and "黃帶←爆大量" in paint_src
+    assert "白帶←下一層最大" in paint_src
     assert "#f9a825" in paint_src and "#42a5f5" in paint_src
+    yel = inspect.getsource(_paint_max_vol_hl_zone)
+    nxt = inspect.getsource(_paint_next_layer_vol_zone)
+    assert "黃帶" in yel and "fontsize=10.5" in yel
+    assert 'facecolor="#ffffff"' in nxt and "白帶" in nxt and "fontsize=10.5" in nxt
     c60 = inspect.getsource(_render_twii_c_wave_60_dark)
     assert "_paint_teach_vol_layer_bars" in c60
+    assert "2.35" in c60  # 量欄加高
 
 
 def test_teach_vol_sr_60m_label_shows_bar_hhmm():
