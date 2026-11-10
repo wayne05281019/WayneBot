@@ -1029,6 +1029,8 @@ def catch_up_missed_jobs(now=None) -> None:
         return
     need_fuse = scheduler_owns("fuse") and mins >= 16 * 60 + 30
     need_morning = scheduler_owns("morning") and mins >= 6 * 60 + 30
+    # 台北 14:30：黃培碩對讀飆大畫線（開市日；非買訊）
+    need_huang = scheduler_owns("huang_teach") and mins >= (14 * 60 + 30)
     # 雙時段比價（原 12:45 midday）已永久停用：不准補跑、不准再寄。
     need_evening = scheduler_owns("evening") and mins >= 20 * 60
     # 準點／過 21:00：補寄。另：盤後基準日名單不是現行藍▲掃（card_lz_paint）
@@ -1057,11 +1059,38 @@ def catch_up_missed_jobs(now=None) -> None:
         except Exception:
             logger.exception("補跑 dc_sf_silent 失敗（不擋）")
     if not any(
-        (need_fuse, need_morning, need_evening, need_winrate, need_open_check)
+        (
+            need_fuse,
+            need_morning,
+            need_evening,
+            need_winrate,
+            need_open_check,
+            need_huang,
+        )
     ):
         # 平日重開也要確保最新完整日有海選快取（例如 pipeline success 但 sessions 被清掉）。
         _ensure_screen_cache(runner)
         return
+    if need_huang:
+        try:
+            from tw_holidays import closed_tw_session
+
+            closed_huang = closed_tw_session(now=now, db_path=runner.db_path)
+        except Exception:
+            closed_huang = None
+        if closed_huang is not None:
+            logger.info(
+                "補跑：今日台股休市 %s，跳過黃培碩對讀畫線",
+                closed_huang.get("ymd"),
+            )
+        else:
+            logger.info("補跑：已過台灣 14:30，若黃培碩對讀畫線沒成功就補跑")
+            try:
+                from huang_teach_sync import run_huang_teach_sync
+
+                run_huang_teach_sync(runner.db_path, skip_if_done=True, now=now)
+            except Exception:
+                logger.exception("補跑 huang_teach 失敗（不擋）")
     if need_open_check:
         logger.info("補跑：已過台灣 02:45，若深夜開盤查核沒落檔就補跑")
         try:
@@ -1302,6 +1331,15 @@ def run_scheduled_job(kind: str) -> None:
             runner.run_nightly_open_check()
         except Exception:
             logger.exception("排程 open_check 失敗（不擋）")
+    elif kind == "huang_teach":
+        # 台北 14:30：黃培碩當日片（若有）對讀飆大→教導三窗畫線；非買訊、不寄話筒
+        try:
+            from huang_teach_sync import run_huang_teach_sync
+
+            run_huang_teach_sync(runner.db_path, skip_if_done=True)
+        except Exception:
+            logger.exception("排程 huang_teach 失敗（不擋）")
+        return
     else:
         runner.run_increment_job(skip_if_done=True, notify=push)
     if kind in ("morning", "fuse", "evening", "winrate", "typhoon", "open_check"):
@@ -1347,6 +1385,7 @@ def start_daily_scheduler():
             (2, 45, "open_check"),
             (3, 0, "dc_sf_silent"),
             (6, 30, "morning"),
+            (14, 30, "huang_teach"),  # 黃培碩當日片對讀飆大→教導畫線（開市日）
             (16, 30, "fuse"),
             (20, 0, "evening"),
             (21, 0, "winrate"),

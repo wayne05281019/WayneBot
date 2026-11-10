@@ -96,6 +96,8 @@ _SPARSE_SLOTS: Tuple[Tuple[str, int, int], ...] = (
     ("pre", 7 * 60 + 50, 8 * 60 + 40),
     ("mid", 11 * 60, 11 * 60 + 50),
     ("close", 13 * 60 + 15, 13 * 60 + 45),
+    # 14:30 黃培碩對讀飆大→教導畫線（開市日；與 main 排程 huang_teach 對齊）
+    ("huang", 14 * 60 + 25, 14 * 60 + 55),
     ("after", 16 * 60 + 30, 20 * 60 + 50),  # 盤後～夜盤前
     ("night", 21 * 60, 22 * 60 + 30),  # 夜盤中段一眼
 )
@@ -3076,7 +3078,7 @@ def _latest_level_thesis(
         # 斜線回測 ≠ 水平台指壓41760；11/10 後文釘至少回測 41500／絕對不破週五低
         thesis = "大A→大B→大C｜夜盤過C3下降壓・週五低不再假跌破（預估）"
         wait_bits = [
-            "拉回回測下降壓力線（口述斜線・圖上未標C3／無報價）",
+            "拉回回測下降壓力線（口述斜線・圖上紫帶C3・粉虛下降壓示意／無報價）",
             "清洗籌碼",
             "資金可5~6成",
         ]
@@ -4871,17 +4873,19 @@ def _pack_pressure_break_on(pack: Optional[Dict[str, Any]] = None) -> bool:
 
 
 def _paint_c3_vs_41760_legend(ax, *, fp, pack: Optional[Dict[str, Any]] = None) -> None:
-    """三窗加權價欄：下降壓改口當令時白底寫死『斜線≠41760』，不准兩件混讀。"""
+    """三窗加權價欄：黃培碩大三段 C1／C2／C3 色帶對照（方法脈絡；價位仍跟飆大口頭）。"""
     if ax is None or fp is None or not _pack_pressure_break_on(pack):
         return
     try:
         ax.text(
             0.015,
             0.14,
-            "看頂部大標＋豎線色帶：\n"
-            "青【第一組】10/8→10/19初跌\n"
-            "紫【第二組】＝C3主跌→週五低\n"
-            "粉虛斜線＝C3下降壓示意(無報價)\n"
+            "色帶＝黃培碩60分大段→映日K：\n"
+            "青 C1 下跌 10/6→10/18（49968→46170）\n"
+            "橙 C2 中繼整理 →10/28（47060）\n"
+            "紫 C3 下跌 10/29→週五低 37837\n"
+            "綠 C4 反彈 週一起（日飆大：過C3下降壓）\n"
+            "粉虛＝C3下降壓示意（日盤已過・無報價）\n"
             "41,500＝至少回測｜37,837絕對不破",
             transform=ax.transAxes,
             ha="left",
@@ -4912,12 +4916,16 @@ def _paint_c3_group12_span_labels(
     lows: Optional[Sequence[float]] = None,
     highs: Optional[Sequence[float]] = None,
 ) -> None:
-    """三窗加權：教導用標出「第一組／第二組＝C3」跨度＋示意下降壓斜線。
+    """三窗加權：黃培碩60分大段映到日K（C1～C4）＋C3下降壓示意。
 
-    對得上他文＋官方柱才畫（教導＝讓人對圖，不是發明報價當買訊）：
-    - 第一組初跌＝10/8～10/19（他原文）
-    - 第二組＝其後主跌＝C3，落底＝C3-5／上週五低 37837
-    - C3下降壓示意＝第二組內兩個遞減高點連線（無報價；標「示意」）
+    時框差：話筒／三窗＝日飆大；黃培碩今天圖＝60分K。色帶是把60分大段
+    落到官方日柱跨度，不是把60分小波一對一畫進日K。
+    - C1 下跌＝10/6 高 49968 → 10/18 低 46170（一組賣動結束）
+    - C2 中繼整理＝其後整理 → 10/28 高 47060（中繼框頂）
+    - C3 下跌＝10/29 起 → 週五低 37837（第三大段；內含細微五波在60分）
+    - C4 反彈＝週一往上、週二延續（日飆大：過C3下降壓／不再假跌破）
+    - C3 內遞減高點連線＝下降壓示意（無報價）；日盤已過一眼可見
+    標在底色接近下半部；不准發明報價當買訊。
     """
     if ax is None or fp is None or not bars:
         return
@@ -4936,32 +4944,39 @@ def _paint_c3_group12_span_labels(
         or _text_has_stop_low_confirm(blob)
         or "C3-5" in blob
         or "第二組" in blob
+        or "C1" in blob
+        or "次級" in blob
     ):
         return
-    i1s = _bar_index_by_ymd(bars, "20261008")
-    i1e = _bar_index_by_ymd(bars, "20261019")
-    if i1s is None:
-        i1s = _bar_index_by_ymd(bars, "20261007")
-    if i1e is None:
-        i1e = _bar_index_by_ymd(bars, "20261020")
-    i_fri = _bar_index_by_ymd(bars, "20261106")
-    if i_fri is None:
-        i_fri = _bar_index_by_ymd(bars, "20261107")
-    if i_fri is None:
-        # 找不到週五低柱就不硬畫第二組尾
-        for ii, _b in enumerate(bars):
+
+    def _idx(ymd: str, *alts: str) -> Optional[int]:
+        got = _bar_index_by_ymd(bars, ymd)
+        if got is not None:
+            return int(got)
+        for a in alts:
+            got = _bar_index_by_ymd(bars, a)
+            if got is not None:
+                return int(got)
+        return None
+
+    # 黃培碩大三段日界（官方柱）
+    i_c1s = _idx("20261006", "20261007")
+    i_c1e = _idx("20261018", "20261019", "20261020")
+    i_c2e = _idx("20261028", "20261027", "20261029")
+    i_fri = _idx("20261106", "20261107")
+    if i_fri is None and lows is not None:
+        for ii, _lv in enumerate(lows):
             try:
-                if lows and ii < len(lows) and abs(float(lows[ii]) - 37837.0) < 1.0:
+                if abs(float(_lv) - 37837.0) < 1.0:
                     i_fri = ii
                     break
-            except (TypeError, ValueError, IndexError):
+            except (TypeError, ValueError):
                 continue
     try:
         y0, y1 = ax.get_ylim()
         span_y = max(float(y1) - float(y0), 1.0)
-        # 大標貼價欄上方天空（貼底會被量欄蓋掉，對不到）
-        y_sky = float(y1) - span_y * 0.035
-        y_sky2 = float(y1) - span_y * 0.12
+        # 標在底色接近下半部（使用者指定）；略高於量欄
+        y_band = float(y0) + span_y * 0.22
     except Exception:
         return
 
@@ -4969,94 +4984,103 @@ def _paint_c3_group12_span_labels(
         ax.axvline(
             float(xi),
             color=color,
-            lw=2.4,
+            lw=2.2,
             ls=(0, (4, 2)),
-            alpha=0.98,
+            alpha=0.95,
             zorder=5.5,
         )
 
+    def _span_band(
+        i_a: int,
+        i_b: int,
+        *,
+        face: str,
+        edge: str,
+        label: str,
+        fg: str,
+    ) -> None:
+        if int(i_b) < int(i_a):
+            return
+        x_a, x_b = float(i_a) - 0.45, float(i_b) + 0.45
+        ax.axvspan(
+            x_a,
+            x_b,
+            facecolor=face,
+            alpha=0.22,
+            zorder=1.05,
+            linewidth=0,
+        )
+        _vbound(x_a, edge)
+        _vbound(x_b, edge)
+        ax.text(
+            (float(i_a) + float(i_b)) * 0.5,
+            y_band,
+            label,
+            ha="center",
+            va="center",
+            fontproperties=fp(11.5, "bold"),
+            color=fg,
+            zorder=42,
+            linespacing=1.1,
+            bbox={
+                "boxstyle": "round,pad=0.42",
+                "facecolor": face,
+                "edgecolor": "#ffffff",
+                "linewidth": 2.2,
+                "alpha": 0.96,
+            },
+            clip_on=False,
+        )
+
     try:
-        if i1s is not None and i1e is not None and int(i1e) >= int(i1s):
-            x1a, x1b = float(i1s) - 0.45, float(i1e) + 0.45
-            ax.axvspan(
-                x1a,
-                x1b,
-                facecolor="#00e5ff",
-                alpha=0.20,
-                zorder=1.05,
-                linewidth=0,
+        # C1：49968→46170 一組賣動
+        if i_c1s is not None and i_c1e is not None:
+            _span_band(
+                i_c1s,
+                i_c1e,
+                face="#00e5ff",
+                edge="#00bcd4",
+                label="C1 下跌",
+                fg="#00363a",
             )
-            _vbound(float(i1s) - 0.45, "#00e5ff")
-            _vbound(float(i1e) + 0.45, "#00e5ff")
-            # 頂部超大標：這段青帶＝第一組
-            ax.text(
-                (float(i1s) + float(i1e)) * 0.5,
-                y_sky,
-                "【第一組】初跌  10/8→10/19",
-                ha="center",
-                va="top",
-                fontproperties=fp(12.5, "bold"),
-                color="#00363a",
-                zorder=42,
-                linespacing=1.1,
-                bbox={
-                    "boxstyle": "round,pad=0.50",
-                    "facecolor": "#00e5ff",
-                    "edgecolor": "#ffffff",
-                    "linewidth": 2.4,
-                    "alpha": 0.98,
-                },
-                clip_on=False,
+        # C2：中繼整理 →47060
+        i_c2s = (int(i_c1e) + 1) if i_c1e is not None else _idx("20261019", "20261020")
+        if i_c2s is not None and i_c2e is not None and int(i_c2e) >= int(i_c2s):
+            _span_band(
+                int(i_c2s),
+                int(i_c2e),
+                face="#ffb74d",
+                edge="#ef6c00",
+                label="C2 中繼整理",
+                fg="#3e2723",
             )
-        # 第二組：第一組結束後 → 週五低（C3／C3-5 落底）
-        if i1e is not None and i_fri is not None and int(i_fri) > int(i1e):
-            i2s = int(i1e) + 1
+        # C3：47060 起跌 → 週五低 37837
+        i_c3s = (int(i_c2e) + 1) if i_c2e is not None else _idx("20261029", "20261030")
+        if i_c3s is not None and i_fri is not None and int(i_fri) >= int(i_c3s):
             i_fri_i = int(i_fri)
-            x2a, x2b = float(i2s) - 0.45, float(i_fri_i) + 0.45
-            ax.axvspan(
-                x2a,
-                x2b,
-                facecolor="#ea80fc",
-                alpha=0.20,
-                zorder=1.05,
-                linewidth=0,
+            i_c3s_i = int(i_c3s)
+            _span_band(
+                i_c3s_i,
+                i_fri_i,
+                face="#ea80fc",
+                edge="#6a1b9a",
+                label="C3 下跌",
+                fg="#ffffff",
             )
-            _vbound(float(i2s) - 0.45, "#ea80fc")
-            _vbound(float(i_fri_i) + 0.45, "#ea80fc")
-            ax.text(
-                (float(i2s) + float(i_fri_i)) * 0.5,
-                y_sky2,
-                "【第二組】＝C3主跌 → 週五低",
-                ha="center",
-                va="top",
-                fontproperties=fp(12.5, "bold"),
-                color="#ffffff",
-                zorder=42,
-                linespacing=1.1,
-                bbox={
-                    "boxstyle": "round,pad=0.50",
-                    "facecolor": "#6a1b9a",
-                    "edgecolor": "#ffffff",
-                    "linewidth": 2.4,
-                    "alpha": 0.98,
-                },
-                clip_on=False,
-            )
-            # 週五低＝第二組終點：箭頭從天空釘到低點柱
-            _fri_y = float(y0) + span_y * 0.22
+            _fri_y = float(y0) + span_y * 0.12
             if lows is not None and i_fri_i < len(lows):
                 try:
                     _fri_y = float(lows[i_fri_i])
                 except (TypeError, ValueError):
                     pass
             ax.annotate(
-                "第二組終點＝C3-5／週五低",
+                "C3底＝週五低 37837",
                 xy=(float(i_fri_i), _fri_y),
-                xytext=(float(i_fri_i), float(y1) - span_y * 0.26),
+                xytext=(float(i_fri_i), float(y1) - span_y * 0.18),
                 textcoords="data",
                 ha="center",
                 va="top",
-                fontproperties=fp(10.0, "bold"),
+                fontproperties=fp(9.5, "bold"),
                 color="#111111",
                 zorder=43,
                 arrowprops={
@@ -5067,18 +5091,18 @@ def _paint_c3_group12_span_labels(
                     "shrinkB": 2,
                 },
                 bbox={
-                    "boxstyle": "round,pad=0.38",
+                    "boxstyle": "round,pad=0.36",
                     "facecolor": "#ffd54f",
                     "edgecolor": "#111111",
-                    "linewidth": 1.8,
+                    "linewidth": 1.7,
                     "alpha": 0.98,
                 },
                 clip_on=False,
             )
-            # 教導用：第二組內遞減高點連線＝C3下降壓示意（無報價；標示意）
+            # C3 內遞減高點連線＝下降壓示意；延到週五後讓日盤「已過」一眼可見
             if highs is not None and len(highs) > i_fri_i:
                 hi_pts: List[Tuple[int, float]] = []
-                for ii in range(i2s, i_fri_i + 1):
+                for ii in range(i_c3s_i, i_fri_i + 1):
                     try:
                         hv = float(highs[ii])
                     except (TypeError, ValueError, IndexError):
@@ -5086,7 +5110,7 @@ def _paint_c3_group12_span_labels(
                     if hv > 0:
                         hi_pts.append((ii, hv))
                 if len(hi_pts) >= 4:
-                    mid = i2s + max(2, (i_fri_i - i2s) // 2)
+                    mid = i_c3s_i + max(2, (i_fri_i - i_c3s_i) // 2)
                     left = [p for p in hi_pts if p[0] <= mid]
                     right = [p for p in hi_pts if p[0] > mid]
                     if left and right:
@@ -5098,7 +5122,7 @@ def _paint_c3_group12_span_labels(
                             x2, y_b = float(p2[0]), float(p2[1])
                             if x2 > x1:
                                 slope = (y_b - y_a) / (x2 - x1)
-                                x_end = float(min(len(bars) - 1, i_fri_i + 3))
+                                x_end = float(min(len(bars) - 1, max(i_fri_i + 4, len(bars) - 1)))
                                 y_end = y_a + slope * (x_end - x1)
                                 ax.plot(
                                     [x1, x_end],
@@ -5112,7 +5136,7 @@ def _paint_c3_group12_span_labels(
                                 ax.text(
                                     x_end,
                                     y_end,
-                                    "示意：第二組C3下降壓\n（口述・無報價）",
+                                    "示意：C3下降壓\n（日盤已過・無報價）",
                                     ha="left",
                                     va="bottom",
                                     fontproperties=fp(8.0, "bold"),
@@ -5128,8 +5152,20 @@ def _paint_c3_group12_span_labels(
                                     },
                                     clip_on=False,
                                 )
+            # C4：週五底後反彈（週一往上、週二延續；對飆大過C3下降壓）
+            i_c4s = i_fri_i + 1
+            i_c4e = len(bars) - 1
+            if i_c4e >= i_c4s:
+                _span_band(
+                    i_c4s,
+                    i_c4e,
+                    face="#69f0ae",
+                    edge="#00c853",
+                    label="C4 反彈",
+                    fg="#003300",
+                )
     except Exception:
-        logger.debug("第一組／第二組跨度標略過", exc_info=True)
+        logger.debug("黃培碩 C1／C2／C3／C4 跨度標略過", exc_info=True)
 
 
 def _teach_cyan_band_title_bit(
@@ -5180,7 +5216,7 @@ def _active_oral_now_line(pack: Optional[Dict[str, Any]] = None) -> str:
                 line = "水平台指壓41760（≠41500）；" + line
             return line
         line = (
-            "他說已過C3下降壓（口述斜線・圖上未標C3／無報價）；"
+            "他說已過C3下降壓（口述斜線・圖上紫帶C3・粉虛下降壓示意／無報價）；"
             "週五低不再假跌破；拉回再測那條下降壓"
         )
         if "41760" in blob or "台指壓" in blob:
@@ -10067,7 +10103,7 @@ def _wave_now_ladder(pack: Optional[Dict[str, Any]] = None, *, blob: str = "") -
                 oral_now = "水平台指壓41760（≠41500）；" + oral_now
         else:
             oral_now = (
-                "他說已過C3下降壓（口述斜線・圖上未標C3／無報價）；"
+                "他說已過C3下降壓（口述斜線・圖上紫帶C3・粉虛下降壓示意／無報價）；"
                 "週五低不再假跌破；拉回再測那條下降壓"
             )
             if "41760" in text:
@@ -13330,7 +13366,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         va="top",
     )
     _pb_bit = (
-        "｜他說C3下降壓＝口述斜線（圖上未標C3／無報價）≠水平41760｜紫線＝大C路徑"
+        "｜他說C3下降壓＝口述斜線（圖上紫帶C3・粉虛下降壓示意／無報價）≠水平41760｜紫線＝大C路徑"
         if _pack_pressure_break_on(pack)
         else ""
     )
@@ -15465,7 +15501,7 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
             hierarchy = f"{hierarchy}\n{_pb_oral}"
         geom_line = (
             "日K小波①～⑤＝柱上細讀（輔）；"
-            "口述主＝C3下降壓（圖上未標C3／無報價）≠水平41760；紫線＝大C路徑"
+            "口述主＝C3下降壓（圖上紫帶C3・粉虛下降壓示意／無報價）≠水平41760；紫線＝大C路徑"
         )
     elif deg_his == "第二隻腳" or "第二隻腳" in hierarchy or "37000~37500" in hierarchy:
         if "看不到37000" not in hierarchy and "夜盤" not in hierarchy:

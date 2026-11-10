@@ -3813,7 +3813,7 @@ def test_tip_anchors_empty_on_stop_confirm_no_old_45546():
 
 
 def test_paint_c3_group12_span_labels_wired():
-    """教導用：三窗要掛第一組／第二組＝C3 跨度標（對圖用）。"""
+    """教導用：三窗掛黃培碩大三段 C1／C2／C3 底色＋下半標。"""
     import inspect
 
     from biaoke_level_learn import _paint_c3_group12_span_labels
@@ -3822,11 +3822,18 @@ def test_paint_c3_group12_span_labels_wired():
     src = inspect.getsource(m)
     assert src.count("_paint_c3_group12_span_labels(") >= 5  # def + 4 call sites
     src_fn = inspect.getsource(_paint_c3_group12_span_labels)
-    assert "【第一組】" in src_fn
-    assert "【第二組】" in src_fn
-    assert "C3主跌" in src_fn
-    assert "示意：第二組C3下降壓" in src_fn
-    assert "y_sky" in src_fn  # 大標貼價欄天空，不准貼底被量欄蓋
+    assert "C1 下跌" in src_fn
+    assert "C2 中繼整理" in src_fn
+    assert "C3 下跌" in src_fn
+    assert "C4 反彈" in src_fn
+    assert "示意：C3下降壓" in src_fn
+    assert "日盤已過" in src_fn
+    assert "20261006" in src_fn
+    assert "20261018" in src_fn
+    assert "20261028" in src_fn
+    assert "y_band" in src_fn  # 標在底色下半，不准只貼天空
+    assert "【第一組】" not in src_fn
+    assert "示意：第二組C3下降壓" not in src_fn
 
 
 def test_retest_41500_oral_beats_unpriced_pressure_wait(tmp_path):
@@ -3904,7 +3911,7 @@ def test_pressure_break_labels_split_slant_vs_41760():
         "thesis": "大A→大B→大C｜夜盤過C3下降壓・週五低不再假跌破（預估）",
         "wait_struct": (
             "水平台指壓41760（≠那條口述下降壓）；"
-            "拉回回測下降壓力線（口述斜線・圖上未標C3／無報價）；清洗籌碼；非買訊"
+            "拉回回測下降壓力線（口述斜線・圖上紫帶C3・粉虛下降壓示意／無報價）；清洗籌碼；非買訊"
         ),
         "snippet_full": (
             "夜盤已經過第二組整組 C3的下降壓力線，上周五低點也不可能假跌破了，"

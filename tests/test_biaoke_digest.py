@@ -1266,7 +1266,7 @@ def test_format_teach_brief_pressure_break_beats_fake_retest(monkeypatch):
             ),
             "wait_struct": (
                 "水平台指壓41760（≠那條口述下降壓）；"
-                "拉回回測下降壓力線（口述斜線・圖上未標C3／無報價）；"
+                "拉回回測下降壓力線（口述斜線・圖上紫帶C3・粉虛下降壓示意／無報價）；"
                 "清洗籌碼；資金可5~6成；非買訊"
             ),
             "chart_as_of": "20261110",
