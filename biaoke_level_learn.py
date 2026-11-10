@@ -3016,12 +3016,12 @@ def _latest_level_thesis(
         # 斜線回測 ≠ 水平台指壓41760：兩件寫清，不准混成一點
         thesis = "大A→大B→大C｜夜盤過C3下降壓・週五低不再假跌破（預估）"
         wait_bits = [
-            "拉回回測下降壓力線（斜線・無報價）",
+            "拉回回測下降壓力線（口述斜線・圖上未標C3／無報價）",
             "清洗籌碼",
             "資金可5~6成",
         ]
         if has_41760:
-            wait_bits.insert(0, "水平台指壓41760（≠下降壓線）")
+            wait_bits.insert(0, "水平台指壓41760（≠那條口述下降壓）")
         wait_bits.append("非買訊")
         wait = "；".join(wait_bits)
     elif has_stop_confirm:
@@ -4797,8 +4797,8 @@ def _paint_c3_vs_41760_legend(ax, *, fp, pack: Optional[Dict[str, Any]] = None) 
         ax.text(
             0.015,
             0.14,
-            "①C3下降壓＝斜線回測（無報價）\n"
-            "②台指壓41,760＝水平價（≠①）",
+            "①他說C3下降壓＝口述斜線（無報價・圖上未標C3）\n"
+            "②台指壓41,760＝水平價｜紫線＝大C路徑≠①",
             transform=ax.transAxes,
             ha="left",
             va="bottom",
@@ -4835,7 +4835,7 @@ def _teach_cyan_band_title_bit(
     ):
         return (
             f"青＝位階帶{_px(_sup_c)}～{_px(_res_c) if _res_c is not None else '—'}｜"
-            f"41,760＝台指壓（≠下降壓線）"
+            f"41,760＝台指壓（≠口述C3下降壓）"
         )
     return (
         f"青＝飆預測{_px(_sup_c) if _sup_c is not None else '—'}～"
@@ -4858,11 +4858,11 @@ def _active_oral_now_line(pack: Optional[Dict[str, Any]] = None) -> str:
     if _pack_pressure_break_on(pack) or _text_has_c3_pressure_break(blob):
         # 寫死兩件分開：斜線回測 ≠ 水平41760
         line = (
-            "C3下降壓＝斜線回測（無報價）；"
-            "週五低不再假跌破；拉回回測下降壓線"
+            "他說已過C3下降壓（口述斜線・圖上未標C3／無報價）；"
+            "週五低不再假跌破；拉回再測那條下降壓"
         )
         if "41760" in blob or "台指壓" in blob:
-            line = "水平台指壓41760（≠下降壓線）；" + line
+            line = "水平台指壓41760（≠那條口述下降壓）；" + line
         return line
     if _text_has_stop_low_confirm(blob) or "確認上週五低" in thesis:
         line = "C3-5＋1 4重疊・確認上週五低＝最低；一定再測週五低，破＝假跌破觀察"
@@ -6114,7 +6114,7 @@ def _format_tw_pred_note(
         lab = f"台指壓力／{_px(level)}・{br}"
         # 下降壓改口當令：水平41760 不准被讀成 C3 下降壓線
         if _pack_pressure_break_on(pack):
-            lab = f"{lab}｜≠下降壓線"
+            lab = f"{lab}｜≠口述下降壓"
         return lab
     return _biaoke_pred_label(float(level), br)
 
@@ -6351,7 +6351,7 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
         if _text_has_c3_pressure_break(s) or (
             "不再假跌破" in s and re.search(r"下降壓", s)
         ):
-            _lab41760 = f"{_lab41760}｜≠下降壓線"
+            _lab41760 = f"{_lab41760}｜≠口述下降壓"
         _add(
             "tw",
             level=41760.0,
@@ -9618,11 +9618,11 @@ def _wave_now_ladder(pack: Optional[Dict[str, Any]] = None, *, blob: str = "") -
     # 下降壓改口／止跌確認／雙軌／改口第二隻腳／9波擴延：話筒／超近說明用人話，不准只丟代號
     if "止跌確認・已過C3下降壓" in steps or has_pressure_ladder:
         oral_now = (
-            "C3下降壓＝斜線回測（無報價）；"
-            "週五低不再假跌破；拉回回測下降壓線"
+            "他說已過C3下降壓（口述斜線・圖上未標C3／無報價）；"
+            "週五低不再假跌破；拉回再測那條下降壓"
         )
         if "41760" in text:
-            oral_now = "水平台指壓41760（≠下降壓線）；" + oral_now
+            oral_now = "水平台指壓41760（≠那條口述下降壓）；" + oral_now
         one_line = "現在：止跌確認・已過C3下降壓（預估）"
         now_line = (
             oral_now
@@ -10870,7 +10870,7 @@ def _tw_pred_right_notes(
                 # 壓力位保留原文角色，不准改寫成「飆預測・已破」（低點誤破）
                 text = f"台指壓力／{_px(lv)}・{br}"
                 if _pack_pressure_break_on(pack):
-                    text = f"{text}｜≠下降壓線"
+                    text = f"{text}｜≠口述下降壓"
             else:
                 text = _biaoke_pred_label(lv, br)
         else:
@@ -10939,6 +10939,7 @@ def _tw_pred_right_notes(
             if (
                 "／" in text
                 or "・" in text
+                or "≠口述下降壓" in text
                 or "≠下降壓線" in text
                 or role.startswith("九波")
                 or "五波" in role
@@ -12852,7 +12853,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         va="top",
     )
     _pb_bit = (
-        "｜①斜線＝C3下降壓（無報價）≠②水平41760"
+        "｜他說C3下降壓＝口述斜線（圖上未標C3／無報價）≠水平41760｜紫線＝大C路徑"
         if _pack_pressure_break_on(pack)
         else ""
     )
@@ -14967,11 +14968,11 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         or "不再假跌破" in hierarchy
     ):
         _pb_oral = _active_oral_now_line(pack)
-        if "≠下降壓線" not in hierarchy and "斜線回測" not in hierarchy:
+        if "未標C3" not in hierarchy and "口述下降壓" not in hierarchy:
             hierarchy = f"{hierarchy}\n{_pb_oral}"
         geom_line = (
             "日K小波①～⑤＝柱上細讀（輔）；"
-            "口述主＝C3下降壓斜線回測（無報價）≠水平41760"
+            "口述主＝C3下降壓（圖上未標C3／無報價）≠水平41760；紫線＝大C路徑"
         )
     elif deg_his == "第二隻腳" or "第二隻腳" in hierarchy or "37000~37500" in hierarchy:
         if "看不到37000" not in hierarchy and "夜盤" not in hierarchy:
