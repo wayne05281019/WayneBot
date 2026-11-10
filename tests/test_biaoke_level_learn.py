@@ -3944,15 +3944,32 @@ def test_paint_c3_group12_span_labels_wired():
     assert "C2 中繼" in src_fn
     assert "C3 下跌" in src_fn
     assert "C4 反彈" in src_fn
-    assert "示意：C3下降壓" not in src_fn  # 字標已刪，只留細白線
+    assert "示意：C3下降壓" not in src_fn  # 字標已刪
     assert "C3底＝週五低 37837" not in src_fn  # 併右欄，不准黃箭重複
     assert "_vertical_upright_label" in src_fn
     assert "rotation=0" in src_fn  # 直排仍正立，不准旋轉歪頭
     assert "y_band" in src_fn  # 標貼近底緣，不准只貼天空
     assert "axvline" not in src_fn  # 日盤 C1–C4 也不准豎虛線
-    assert "#f5f5f5" in src_fn  # C3 下降壓示意改細白
+    assert "#f5f5f5" not in src_fn  # 白虛下降壓示意線已整段刪
+    assert "ax.plot" not in src_fn  # 跨度函式只留底色／直標，不准再畫斜線
     assert "【第一組】" not in src_fn
     assert "示意：第二組C3下降壓" not in src_fn
+    near_src = inspect.getsource(
+        __import__(
+            "biaoke_level_learn", fromlist=["_render_twii_live_dark"]
+        )._render_twii_live_dark
+    )
+    # 近窗紫虛細 c4→c5 線＋兩端點已刪（右欄字可留）
+    assert "ls=(0, (2.2, 1.6))" not in near_src
+    assert "[i4, i5c]" not in near_src
+    assert "[y4, y5c]" not in near_src
+    # 近／遠窗預估紫虛線＋端點矛圈也不再畫（tip 仍算）
+    assert "draw=False" in near_src
+    far_src = inspect.getsource(
+        __import__("biaoke_level_learn", fromlist=["_render_twii_far_dark"])._render_twii_far_dark
+    )
+    assert "draw=False" in far_src
+    assert "annotate=False" in far_src  # 量欄不准再疊「最大量」字標
     assert _vertical_upright_label("C1 下跌") == "C\n1\n下\n跌"
     assert _vertical_upright_label("C2 中繼") == "C\n2\n中\n繼"
     # 紫折四段＝底色起迄

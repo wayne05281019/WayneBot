@@ -1349,11 +1349,12 @@ def _teach_query_clock(
     return f"{_teach_session_phase_word(dt)} {hm}"
 
 
-# 教具查詢戳：白底；開盤／盤中＝螢光邊；收盤／盤前／休市＝黑邊
-_TEACH_STAMP_EDGE = "#ffff00"  # 加權／費半盤中螢光黃（相容舊讀）
+# 教具查詢戳：白底；開盤／盤中＝螢光綠框（#ffff00 霓虹邊）；收盤／盤前／休市＝黑邊
+# 話筒口頭「螢光綠框」＝這條霓虹邊，不准改紅／紫實心底
+_TEACH_STAMP_EDGE = "#ffff00"
 _TEACH_STAMP_EDGE_LIVE = "#ffff00"
 _TEACH_STAMP_EDGE_CLOSED = "#111111"
-# 遠窗台指電子盤：盤中也螢光黃（與加權／費半點字盤同規：白底＋螢光黃框）；收盤黑邊
+# 遠窗台指電子盤：盤中同規白底＋螢光綠框；收盤黑邊
 _TEACH_STAMP_EDGE_TX = "#ffff00"
 _TEACH_STAMP_EDGE_TX_LIVE = "#ffff00"
 # 三欄縮圖K底「末日」刻度：盤中螢光黃綠；收盤／盤前＝一般白字
@@ -5183,9 +5184,10 @@ def _paint_c3_group12_span_labels(
     lows: Optional[Sequence[float]] = None,
     highs: Optional[Sequence[float]] = None,
 ) -> None:
-    """三窗加權：60分大段映到日K（C1～C4）＋C3下降壓示意。
+    """三窗加權：60分大段映到日K（C1～C4）。
 
     標＝直排正立（一字一行，不准旋轉歪頭）；底色四段；紫折另函對齊。
+    不准再畫 C3 白虛下降壓示意線。
     """
     if ax is None or fp is None or not bars:
         return
@@ -5259,48 +5261,7 @@ def _paint_c3_group12_span_labels(
         )
         _span_band(i3, i3e, face="#ea80fc", edge="#6a1b9a", label="C3 下跌", fg="#ffffff")
         # C3／週五低標併右欄「週五低／37,837」；不准再黃箭重複掛一顆
-        if highs is not None and len(highs) > i3e:
-            hi_pts: List[Tuple[int, float]] = []
-            for ii in range(i3, i3e + 1):
-                try:
-                    hv = float(highs[ii])
-                except (TypeError, ValueError, IndexError):
-                    continue
-                if hv > 0:
-                    hi_pts.append((ii, hv))
-            if len(hi_pts) >= 4:
-                mid = i3 + max(2, (i3e - i3) // 2)
-                left = [p for p in hi_pts if p[0] <= mid]
-                right = [p for p in hi_pts if p[0] > mid]
-                if left and right:
-                    p1 = max(left, key=lambda p: p[1])
-                    right_down = [p for p in right if p[1] < p1[1] - 50.0]
-                    if right_down:
-                        p2 = max(right_down, key=lambda p: p[1])
-                        x1, y_a = float(p1[0]), float(p1[1])
-                        x2, y_b = float(p2[0]), float(p2[1])
-                        if x2 > x1:
-                            slope = (y_b - y_a) / (x2 - x1)
-                            x_end = float(min(len(bars) - 1, max(i3e + 4, len(bars) - 1)))
-                            y_end = y_a + slope * (x_end - x1)
-                            ax.plot(
-                                [x1, x_end],
-                                [y_a, y_end],
-                                color="#0b0f14",
-                                lw=1.55,
-                                zorder=6.45,
-                                solid_capstyle="round",
-                            )
-                            ax.plot(
-                                [x1, x_end],
-                                [y_a, y_end],
-                                color="#f5f5f5",
-                                lw=0.9,
-                                ls=(0, (5, 2)),
-                                zorder=6.5,
-                                solid_capstyle="round",
-                            )
-                            # 下降壓字標已刪（線仍留）；使用者 2026-11-11
+        # 白虛下降壓示意線／端點已刪（使用者 2026-11-11：兩張圖白虛＋紫虛＋兩點都取消）
         if i_now >= i4:
             _span_band(
                 i4, i_now, face="#69f0ae", edge="#00c853", label="C4 反彈", fg="#003300"
@@ -9272,20 +9233,29 @@ def _paint_teach_vol_layer_bars(
         )
         if fp is None or not lab:
             continue
-        # 柱頂正中上方；兩標若相鄰則一上一下錯開，仍在 ylim 內
+        # 柱頂正中上方；兩標同日或鄰近 → 左／右錯開＋一上一下，不准互壓
         y_lab = h + float(peak) * 0.06
         if y_lab > float(y_top) * 0.92:
             y_lab = float(y_top) * 0.88
-        # 若與另一標同區，較右者略抬
-        if len(marks) == 2 and ii == marks[1][0] and abs(int(marks[0][0]) - int(ii)) <= 3:
-            y_lab = min(float(y_top) * 0.94, h + float(peak) * 0.18)
+        x_lab = float(ii)
+        ha_lab = "center"
+        if len(marks) == 2 and abs(int(marks[0][0]) - int(marks[1][0])) <= 4:
+            left_i = min(int(marks[0][0]), int(marks[1][0]))
+            if ii == left_i:
+                x_lab = float(ii) - 0.55
+                ha_lab = "right"
+                y_lab = min(float(y_top) * 0.90, h + float(peak) * 0.10)
+            else:
+                x_lab = float(ii) + 0.55
+                ha_lab = "left"
+                y_lab = min(float(y_top) * 0.96, h + float(peak) * 0.22)
         axv.text(
-            float(ii),
+            float(x_lab),
             float(y_lab),
             lab,
             fontproperties=fp(10.5, "bold"),
             color=ink,
-            ha="center",
+            ha=ha_lab,
             va="bottom",
             zorder=12,
             clip_on=True,
@@ -9309,8 +9279,13 @@ def _paint_vol_bars_max_yellow(
     fp: Any,
     title: str = "量",
     date_lab: str = "",
+    annotate: bool = True,
 ) -> Optional[int]:
-    """日量柱；窗內最大量那根改黃色並標「最大量＋月日」。回傳最大量索引（＝當日K同一格）。"""
+    """日量柱；窗內最大量那根改黃色；可選標「最大量＋月日」。
+
+    annotate=False：只上色柱（遠窗另有黃／白短標時不准再疊「最大量」字造成互壓）。
+    回傳最大量索引（＝當日K同一格）。
+    """
     n = len(vols)
     if n == 0 or axv is None:
         return None
@@ -9322,7 +9297,7 @@ def _paint_vol_bars_max_yellow(
         up = candle_up(closes[i], prev_c, o_i)
         color = "#ffeb3b" if i_max is not None and i == i_max else (_LIVE_UP if up else _LIVE_DOWN)
         axv.bar(i, vals[i], color=color, width=0.68, zorder=3, alpha=0.95 if color == "#ffeb3b" else 0.88)
-    if i_max is not None and vals[i_max] > 0:
+    if annotate and i_max is not None and vals[i_max] > 0 and fp is not None:
         tip = f"最大量 {_md(date_lab)}" if _ymd(date_lab) else "最大量"
         axv.annotate(
             tip,
@@ -13783,7 +13758,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     c_sub = _c_subwave_anchors_vs_biaoke60(
         highs, lows, bars, i_c=i_c, i_now=i_now
     )
-    # 遠窗：有官方 C1…C8 轉折才走分色虛線；否則仍畫粉虛線。字改右欄
+    # 遠窗：預估紫／暗虛線＋端點已刪（使用者 2026-11-11）；tip 仍算 xlim／右欄
     tip = _paint_c_forecast(
         ax,
         i_now=i_now,
@@ -13795,20 +13770,18 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         keep_left_of_right=True,
         show_label=False,
         anchors=tip_anchors,
-        draw=not (_c9_now and len(_c9_pivots_far) >= 3),
+        draw=False,
     )
     fut_x = float(tip.get("fut_x") or fut_x)
-    # 矛點細圈；9波時末日已有 C7／C8 細圈，不准再疊「今」雙圈
+    # 矛點細圈；9波時末日已有 C7／C8 細圈；今紫圈也不再疊（對齊近窗）
     _macro_spear = [
         (i5s, y5s, "#40c4ff"),
         (i5e, y5e, "#40c4ff"),
         (i_alow, y_alow, "#ff8a80"),
         (i_b_end, y_b_end, "#ffd54f"),
     ]
-    if not (_c9_now and len(_c9_pivots_far) >= 3):
-        _macro_spear.append((i_now, y_now, "#ea80fc"))
     for ii, yy, col in _macro_spear:
-        _spear_ring(ax, ii, yy, color=col, zorder=8, hot=(col == "#ea80fc"))
+        _spear_ring(ax, ii, yy, color=col, zorder=8, hot=False)
     # 末根加權K參數先記；xlim／右標之後再蓋回（與費半同：不准被裁／壓掉）
     _tw_span = max(highs) - min(lows) if highs and lows else 0.0
     _tw_min_body = max(
@@ -14090,6 +14063,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         fp=_fp,
         title="加權量",
         date_lab=_ymd(bars[i_vmax].get("date")) if i_vmax is not None else "",
+        annotate=False,  # 短標改由黃／白層級標；不准再疊「最大量」互壓
     )
     _set_upright_ylabel(axv, "加權量", fp=_fp, color=_LIVE_MUTED, fontsize=9)
     # 加權 10/15 黃豎線只畫加權價＋量；不准延伸到費半／電子盤（各自爆大量日不同）
@@ -15387,6 +15361,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     c_sub = _c_subwave_anchors_vs_biaoke60(
         highs, lows, bars, i_c=i_c, i_now=i_now
     )
+    # 預估紫／暗虛線＋端點矛圈已刪（使用者 2026-11-11 圈選）；tip 仍算給 xlim／右欄
     tip = _paint_c_forecast(
         ax,
         i_now=i_now,
@@ -15396,32 +15371,11 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         fp=_fp,
         n=n,
         keep_left_of_right=True,
-        show_label=not bool(c_sub.get("ok"))
-        and not (_c9_near_now and len(_c9_pivots_near) >= 3),
+        show_label=False,
         anchors=tip_anchors,
-        draw=not (_c9_near_now and len(_c9_pivots_near) >= 3),
+        draw=False,
     )
-    if c_sub.get("ok") and not (_c9_near_now and len(_c9_pivots_near) >= 3):
-        i4, y4 = int(c_sub["i_c4_hi"]), float(c_sub["y_c4"])
-        i5c, y5c = int(c_sub["i_c5_lo"]), float(c_sub["y_c5"])
-        ax.plot(
-            [i4, i5c],
-            [y4, y5c],
-            color="#ce93d8",
-            lw=1.35,
-            ls=(0, (2.2, 1.6)),
-            alpha=0.92,
-            zorder=6.5,
-        )
-        ax.scatter(
-            [i4, i5c],
-            [y4, y5c],
-            s=36,
-            c="#ce93d8",
-            zorder=8,
-            edgecolors="#fff",
-            linewidths=0.5,
-        )
+    # 紫虛細 c4→c5 線＋兩端點已刪；今矛圈也不再疊（與預估端點成兩紫點）
     for ii, yy, col in (
         (i5s, y5s, "#40c4ff"),
         (i5e, y5e, "#40c4ff"),
@@ -15429,9 +15383,6 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         (i_b_end, y_b_end, "#ffd54f"),
     ):
         _spear_ring(ax, ii, yy, color=col, zorder=8, hot=True)
-    _spear_ring(
-        ax, float(i_now) + 0.38, y_now, color="#ea80fc", zorder=8, hot=True
-    )
     span = max(ymax - ymin, 1.0)
     ax.axvline(i_c, color="#ea80fc", lw=0.95, ls=(0, (2, 2)), alpha=0.8, zorder=5)
     # 先定 ylim／xlim 再釘浪名：右欄固定 pad；尖點跟 K 走
