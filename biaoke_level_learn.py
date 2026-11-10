@@ -5649,9 +5649,9 @@ def _paint_huang_c60_structure(
     fp,
     pack: Optional[Dict[str, Any]] = None,
 ) -> bool:
-    """超近窗 60 分：底色對轉折＋C2上下虛框＋C3內①～⑤藍折＋C4白細折（不標浪號）。
+    """超近窗 60 分：C1–C4 四色底＋C2上下虛框＋C3內①～⑤藍折＋C4白細折（不標浪號）。
 
-    對黃培碩手繪；不是買訊。折線／錨只連官方柱真高低。
+    段界只靠四色底，不准再畫豎虛線（多餘）。不是買訊。折線／錨只連官方柱真高低。
     """
     if ax is None or fp is None or not rows:
         return False
@@ -5675,7 +5675,7 @@ def _paint_huang_c60_structure(
     try:
         y0, y1_ax = ax.get_ylim()
         span_y = max(float(y1_ax) - float(y0), 1.0)
-        # 段名貼近底緣，不准壓折線／K／虛線
+        # 段名貼近底緣，不准壓折線／K
         y_band = float(y0) + span_y * 0.055
     except Exception:
         return False
@@ -5683,6 +5683,8 @@ def _paint_huang_c60_structure(
     def _span(ia: int, ib: int, face: str, edge: str, label: str, fg: str) -> None:
         if int(ib) < int(ia):
             return
+        # 只要色底＋段名；豎虛線刪（四色已分界）
+        _ = edge
         ax.axvspan(
             float(ia) - 0.45,
             float(ib) + 0.45,
@@ -5690,12 +5692,6 @@ def _paint_huang_c60_structure(
             alpha=0.07,
             zorder=0.8,
             linewidth=0,
-        )
-        ax.axvline(
-            float(ia) - 0.45, color=edge, lw=1.2, ls=(0, (4, 2)), alpha=0.55, zorder=5.0
-        )
-        ax.axvline(
-            float(ib) + 0.45, color=edge, lw=1.2, ls=(0, (4, 2)), alpha=0.55, zorder=5.0
         )
         ax.text(
             (float(ia) + float(ib)) * 0.5,

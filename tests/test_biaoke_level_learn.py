@@ -4031,6 +4031,11 @@ def test_huang_c60_anchors_and_wave_paint_wired():
     assert "#f5f5f5" in paint  # C4 白細折
     assert "次級4壓" in paint
     assert "⑤壓" not in paint  # 不准再把 C3④ 誤標成 C4⑤壓
+    # C1–C4 只靠四色底分界；_span 不准再畫豎虛線
+    span_blk = paint[paint.index("def _span") : paint.index("def _poly")]
+    assert "axvspan" in span_blk
+    assert "axvline" not in span_blk
+    assert "豎虛線刪" in paint or "不准再畫豎虛線" in paint
     c60 = inspect.getsource(_render_twii_c_wave_60_dark)
     assert "_paint_huang_c60_structure" in c60
     assert "fig.text" in c60  # 說明不進主圖
