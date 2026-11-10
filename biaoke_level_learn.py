@@ -4826,11 +4826,11 @@ def _paint_c3_vs_41760_legend(ax, *, fp, pack: Optional[Dict[str, Any]] = None) 
         ax.text(
             0.015,
             0.14,
-            "①青帶＝第一組初跌(10/8～10/19)\n"
-            "②紫帶＝第二組＝C3主跌→C3-5／週五低\n"
-            "③C3下降壓＝連②高點的口述斜線(無報價)\n"
-            "④至少回測41,500｜絕對不破週五低\n"
-            "⑤41,760＝水平台指壓｜折線紫＝大C路徑≠③",
+            "看頂部大標＋豎線色帶：\n"
+            "青【第一組】10/8→10/19初跌\n"
+            "紫【第二組】＝C3主跌→週五低\n"
+            "粉虛斜線＝C3下降壓示意(無報價)\n"
+            "41,500＝至少回測｜37,837絕對不破",
             transform=ax.transAxes,
             ha="left",
             va="bottom",
@@ -4906,36 +4906,53 @@ def _paint_c3_group12_span_labels(
                 continue
     try:
         y0, y1 = ax.get_ylim()
-        y_top = float(y1) - (float(y1) - float(y0)) * 0.045
-        y_mid = float(y1) - (float(y1) - float(y0)) * 0.11
+        span_y = max(float(y1) - float(y0), 1.0)
+        # 大標貼價欄上方天空（貼底會被量欄蓋掉，對不到）
+        y_sky = float(y1) - span_y * 0.035
+        y_sky2 = float(y1) - span_y * 0.12
     except Exception:
         return
+
+    def _vbound(xi: float, color: str) -> None:
+        ax.axvline(
+            float(xi),
+            color=color,
+            lw=2.4,
+            ls=(0, (4, 2)),
+            alpha=0.98,
+            zorder=5.5,
+        )
+
     try:
         if i1s is not None and i1e is not None and int(i1e) >= int(i1s):
+            x1a, x1b = float(i1s) - 0.45, float(i1e) + 0.45
             ax.axvspan(
-                float(i1s) - 0.45,
-                float(i1e) + 0.45,
-                facecolor="#80deea",
-                alpha=0.10,
+                x1a,
+                x1b,
+                facecolor="#00e5ff",
+                alpha=0.20,
                 zorder=1.05,
                 linewidth=0,
             )
+            _vbound(float(i1s) - 0.45, "#00e5ff")
+            _vbound(float(i1e) + 0.45, "#00e5ff")
+            # 頂部超大標：這段青帶＝第一組
             ax.text(
                 (float(i1s) + float(i1e)) * 0.5,
-                y_top,
-                "第一組初跌\n10/8～10/19",
+                y_sky,
+                "【第一組】初跌  10/8→10/19",
                 ha="center",
                 va="top",
-                fontproperties=fp(8.0, "bold"),
-                color="#e0f7fa",
-                zorder=34,
-                linespacing=1.15,
+                fontproperties=fp(12.5, "bold"),
+                color="#00363a",
+                zorder=42,
+                linespacing=1.1,
                 bbox={
-                    "boxstyle": "round,pad=0.28",
-                    "facecolor": "#006064",
-                    "edgecolor": "#80deea",
-                    "linewidth": 1.2,
-                    "alpha": 0.92,
+                    "boxstyle": "round,pad=0.50",
+                    "facecolor": "#00e5ff",
+                    "edgecolor": "#ffffff",
+                    "linewidth": 2.4,
+                    "alpha": 0.98,
                 },
                 clip_on=False,
             )
@@ -4943,63 +4960,66 @@ def _paint_c3_group12_span_labels(
         if i1e is not None and i_fri is not None and int(i_fri) > int(i1e):
             i2s = int(i1e) + 1
             i_fri_i = int(i_fri)
+            x2a, x2b = float(i2s) - 0.45, float(i_fri_i) + 0.45
             ax.axvspan(
-                float(i2s) - 0.45,
-                float(i_fri_i) + 0.45,
-                facecolor="#ce93d8",
-                alpha=0.10,
+                x2a,
+                x2b,
+                facecolor="#ea80fc",
+                alpha=0.20,
                 zorder=1.05,
                 linewidth=0,
             )
+            _vbound(float(i2s) - 0.45, "#ea80fc")
+            _vbound(float(i_fri_i) + 0.45, "#ea80fc")
             ax.text(
                 (float(i2s) + float(i_fri_i)) * 0.5,
-                y_mid,
-                "第二組＝C3主跌\n落底C3-5／週五低",
+                y_sky2,
+                "【第二組】＝C3主跌 → 週五低",
                 ha="center",
                 va="top",
-                fontproperties=fp(8.0, "bold"),
-                color="#f3e5f5",
-                zorder=34,
-                linespacing=1.15,
+                fontproperties=fp(12.5, "bold"),
+                color="#ffffff",
+                zorder=42,
+                linespacing=1.1,
                 bbox={
-                    "boxstyle": "round,pad=0.28",
-                    "facecolor": "#4a148c",
-                    "edgecolor": "#ce93d8",
-                    "linewidth": 1.2,
-                    "alpha": 0.92,
+                    "boxstyle": "round,pad=0.50",
+                    "facecolor": "#6a1b9a",
+                    "edgecolor": "#ffffff",
+                    "linewidth": 2.4,
+                    "alpha": 0.98,
                 },
                 clip_on=False,
             )
-            # 週五低柱頂再釘一次，方便對 37837 右標
-            _fri_y = y_mid
+            # 週五低＝第二組終點：箭頭從天空釘到低點柱
+            _fri_y = float(y0) + span_y * 0.22
             if lows is not None and i_fri_i < len(lows):
                 try:
                     _fri_y = float(lows[i_fri_i])
                 except (TypeError, ValueError):
-                    _fri_y = y_mid
+                    pass
             ax.annotate(
-                "第二組末＝C3-5",
+                "第二組終點＝C3-5／週五低",
                 xy=(float(i_fri_i), _fri_y),
-                xytext=(float(i_fri_i), y_mid - (float(y1) - float(y0)) * 0.08),
+                xytext=(float(i_fri_i), float(y1) - span_y * 0.26),
                 textcoords="data",
                 ha="center",
                 va="top",
-                fontproperties=fp(7.5, "bold"),
-                color="#ffd54f",
-                zorder=35,
+                fontproperties=fp(10.0, "bold"),
+                color="#111111",
+                zorder=43,
                 arrowprops={
                     "arrowstyle": "->",
                     "color": "#ffd54f",
-                    "lw": 1.1,
+                    "lw": 2.0,
                     "shrinkA": 0,
                     "shrinkB": 2,
                 },
                 bbox={
-                    "boxstyle": "round,pad=0.22",
-                    "facecolor": "#311b92",
-                    "edgecolor": "#ffd54f",
-                    "linewidth": 1.1,
-                    "alpha": 0.92,
+                    "boxstyle": "round,pad=0.38",
+                    "facecolor": "#ffd54f",
+                    "edgecolor": "#111111",
+                    "linewidth": 1.8,
+                    "alpha": 0.98,
                 },
                 clip_on=False,
             )
@@ -5014,17 +5034,14 @@ def _paint_c3_group12_span_labels(
                     if hv > 0:
                         hi_pts.append((ii, hv))
                 if len(hi_pts) >= 4:
-                    # 前半最高、後半次高且更低 → 下降壓示意兩點
                     mid = i2s + max(2, (i_fri_i - i2s) // 2)
                     left = [p for p in hi_pts if p[0] <= mid]
                     right = [p for p in hi_pts if p[0] > mid]
                     if left and right:
                         p1 = max(left, key=lambda p: p[1])
-                        # 後半取低於 p1 的最高（真下降）
                         right_down = [p for p in right if p[1] < p1[1] - 50.0]
                         if right_down:
                             p2 = max(right_down, key=lambda p: p[1])
-                            # 線延伸到週五後一截，方便對「夜盤已過」
                             x1, y_a = float(p1[0]), float(p1[1])
                             x2, y_b = float(p2[0]), float(p2[1])
                             if x2 > x1:
@@ -5035,7 +5052,7 @@ def _paint_c3_group12_span_labels(
                                     [x1, x_end],
                                     [y_a, y_end],
                                     color="#ff80ab",
-                                    lw=2.0,
+                                    lw=2.4,
                                     ls=(0, (5, 2)),
                                     zorder=6.5,
                                     solid_capstyle="round",
@@ -5046,16 +5063,16 @@ def _paint_c3_group12_span_labels(
                                     "示意：第二組C3下降壓\n（口述・無報價）",
                                     ha="left",
                                     va="bottom",
-                                    fontproperties=fp(7.2, "bold"),
+                                    fontproperties=fp(8.0, "bold"),
                                     color="#fce4ec",
                                     zorder=35,
                                     linespacing=1.1,
                                     bbox={
-                                        "boxstyle": "round,pad=0.22",
+                                        "boxstyle": "round,pad=0.28",
                                         "facecolor": "#880e4f",
                                         "edgecolor": "#ff80ab",
-                                        "linewidth": 1.1,
-                                        "alpha": 0.92,
+                                        "linewidth": 1.3,
+                                        "alpha": 0.94,
                                     },
                                     clip_on=False,
                                 )

@@ -3770,9 +3770,12 @@ def test_paint_c3_group12_span_labels_wired():
 
     src = inspect.getsource(m)
     assert src.count("_paint_c3_group12_span_labels(") >= 5  # def + 4 call sites
-    assert "第一組初跌" in inspect.getsource(_paint_c3_group12_span_labels)
-    assert "第二組＝C3主跌" in inspect.getsource(_paint_c3_group12_span_labels)
-    assert "示意：第二組C3下降壓" in inspect.getsource(_paint_c3_group12_span_labels)
+    src_fn = inspect.getsource(_paint_c3_group12_span_labels)
+    assert "【第一組】" in src_fn
+    assert "【第二組】" in src_fn
+    assert "C3主跌" in src_fn
+    assert "示意：第二組C3下降壓" in src_fn
+    assert "y_sky" in src_fn  # 大標貼價欄天空，不准貼底被量欄蓋
 
 
 def test_retest_41500_oral_beats_unpriced_pressure_wait(tmp_path):
