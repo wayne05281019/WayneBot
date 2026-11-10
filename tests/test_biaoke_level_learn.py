@@ -1553,11 +1553,18 @@ def test_stop_low_confirm_thesis_beats_older_bb_dual_and_c9(tmp_path):
     assert "第二隻腳" not in thesis
     assert "41760" in wait or "41760" in snip
     assert "再測週五低" in wait or "假跌破" in wait
-    assert "35579" not in snip
+    assert "37837" in wait  # 排版／右欄錨：口頭週五低要帶數字
+    assert "35579" not in snip  # 本則題旨不准被舊備線正文蓋掉
     pred = _thesis_pred_levels(snip, db)
     roles = {str(r.get("role")): float(r["level"]) for r in (pred.get("tw") or [])}
     assert abs(roles.get("台指壓力", 0) - 41760) < 1
-    assert "九波備線破位" not in roles
+    # 排版席：週五低＋AI結束帶可從近窗真文補回；仍不准開九波路徑標
+    assert abs(roles.get("五波末／週五低", 0) - 37837) < 1
+    assert abs(roles.get("九波備線破位", 0) - 35579) < 1
+    assert abs(roles.get("九波備線深殺", 0) - 31705) < 1
+    from biaoke_level_learn import _c9_extension_active
+
+    assert not _c9_extension_active({**th, "pred_levels": pred})
     ladder = _wave_now_ladder(th)
     assert "止跌確認" in (ladder.get("now") or "")
     assert "B-b" not in (ladder.get("now") or "")

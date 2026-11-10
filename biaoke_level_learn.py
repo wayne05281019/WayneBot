@@ -2989,7 +2989,7 @@ def _latest_level_thesis(
         # 他最新：C3-5＋1 4重疊／確認週五低＝最低；再測・假跌破（說明用・非買訊）
         thesis = "大A→大B→大C｜C3-5＋1 4重疊・確認上週五低＝最低（預估）"
         wait_bits = [
-            "一定再測週五低",
+            "一定再測週五低37837",
             "破＝假跌破觀察",
         ]
         if has_41760:
@@ -6109,6 +6109,19 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
             tag=tag,
             label=lab,
         )
+    # 止跌確認口頭「再測／假跌破星期五低」常不寫 37837 數字 → 仍釘週五低排版錨
+    # （右欄／區帶席；不准當九波路徑；不准發明別價）
+    elif _text_has_stop_low_confirm(s) and re.search(
+        r"星期五低|上週五低|再測|假跌破", s
+    ):
+        _add(
+            "tw",
+            level=37837.0,
+            ref_ymd="20261106",
+            role="五波末／週五低",
+            tag="再測／假跌破",
+            label=f"再測週五低／{_px(37837)}",
+        )
     if re.search(r"37164", s):
         _add(
             "tw",
@@ -6351,6 +6364,50 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
             tag="未到",
             label=f"費半{_px(lv)}",
         )
+
+    # 止跌確認本則常不寫 35579／31705：從近期真文補回 AI 結束觀察帶排版錨
+    # （右欄＋紫底帶；_c9_extension_active 仍因止跌鎖 False，不准開 C1…C9）
+    if _text_has_stop_low_confirm(s) and db_path:
+        have_tw = {round(float(r["level"]), 1) for r in out["tw"]}
+        need_ai = (round(35579.0, 1) not in have_tw) or (
+            round(31705.0, 1) not in have_tw
+        )
+        if need_ai:
+            prior = ""
+            try:
+                conn = sqlite3.connect(str(db_path), timeout=15.0)
+                try:
+                    rows = conn.execute(
+                        "SELECT text FROM biaoke_posts "
+                        "WHERE text LIKE '%35579%' AND text LIKE '%31705%' "
+                        "ORDER BY date DESC, time DESC LIMIT 3"
+                    ).fetchall()
+                finally:
+                    conn.close()
+                prior = " ".join(str(r[0] or "") for r in rows)
+            except Exception:
+                logger.debug("止跌補 AI 結束帶略過", exc_info=True)
+                prior = ""
+            if re.search(r"35579", prior) and re.search(r"31705", prior):
+                if round(35579.0, 1) not in have_tw:
+                    _add(
+                        "tw",
+                        level=35579.0,
+                        ref_ymd="20260226",
+                        role="九波備線破位",
+                        tag="未到",
+                        label=f"AI結束上緣／{_px(35579)}",
+                    )
+                    have_tw.add(round(35579.0, 1))
+                if round(31705.0, 1) not in have_tw:
+                    _add(
+                        "tw",
+                        level=31705.0,
+                        ref_ymd="20260331",
+                        role="九波備線深殺",
+                        tag="未到",
+                        label=f"AI結束深殺／{_px(31705)}",
+                    )
 
     # 庫內最新費半價：9865 已破就掛 2/25 8498（盤中 live 在 prepare 再刷一次）
     return _refresh_sox_pred_cascade(out, db_path)
