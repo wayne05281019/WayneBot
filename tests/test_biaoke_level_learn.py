@@ -1269,6 +1269,23 @@ def test_tx_align_no_ffill_fake_duplicate_candle():
     assert math.isnan(a["low"][2])
 
 
+def test_axis_pivot_price_snaps_leading_nan():
+    """窗左緣台開美休＝NaN 時，費半浪線端點就近有限柱；不准整段浪線消失。"""
+    import math
+
+    from biaoke_level_learn import _axis_pivot_price, _nearest_finite_axis_idx
+
+    closes = [float("nan"), 9599.0, 9647.0, 9909.0]
+    highs = [float("nan"), 9612.0, 9721.0, 10000.0]
+    lows = [float("nan"), 9462.0, 9569.0, 9800.0]
+    assert _nearest_finite_axis_idx(closes, 0) == 1
+    hit = _axis_pivot_price(highs, lows, closes, 0, tip="low")
+    assert hit is not None
+    assert hit[0] == 1
+    assert abs(hit[1] - 9462.0) < 1e-6
+    assert math.isfinite(hit[1])
+
+
 def test_press_level_break_uses_high_not_crash_low():
     """台指壓力破位看高點向上穿；不准因急跌低點就標已破。"""
     from biaoke_level_learn import _tw_pred_break_tag, _tw_pred_right_notes
