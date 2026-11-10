@@ -5270,12 +5270,106 @@ def _nearest_bar_idx_by_price(
     return int(best_i)
 
 
+def _huang_c60_alt_swings(
+    rows: Sequence[Dict[str, Any]],
+    i_a: int,
+    i_b: int,
+    *,
+    start: str = "h",
+    min_swing: float = 700.0,
+    force_end: str = "",
+) -> List[Tuple[int, float, str]]:
+    """官方柱交替高低折點（只連真高低；min_swing 以下不另起一段）。"""
+    if not rows or int(i_b) <= int(i_a):
+        return []
+    hs = [float((r or {}).get("high") or 0) for r in rows]
+    ls = [float((r or {}).get("low") or 0) for r in rows]
+    ia, ib = int(i_a), int(i_b)
+    pts: List[Tuple[int, str, float]] = []
+    if str(start).lower().startswith("h"):
+        pts.append((ia, "h", hs[ia]))
+        want = "l"
+    else:
+        pts.append((ia, "l", ls[ia]))
+        want = "h"
+    i = ia + 1
+    ms = float(min_swing)
+    while i <= ib:
+        if want == "l":
+            best, bestv = i, ls[i]
+            j = i
+            locked = False
+            while j <= ib:
+                if ls[j] <= bestv:
+                    bestv, best = ls[j], j
+                if hs[j] >= bestv + ms and j > best:
+                    pts.append((best, "l", bestv))
+                    want = "h"
+                    i = best + 1
+                    locked = True
+                    break
+                j += 1
+            if not locked:
+                if best != pts[-1][0]:
+                    pts.append((best, "l", bestv))
+                break
+        else:
+            best, bestv = i, hs[i]
+            j = i
+            locked = False
+            while j <= ib:
+                if hs[j] >= bestv:
+                    bestv, best = hs[j], j
+                if ls[j] <= bestv - ms and j > best:
+                    pts.append((best, "h", bestv))
+                    want = "l"
+                    i = best + 1
+                    locked = True
+                    break
+                j += 1
+            if not locked:
+                if best != pts[-1][0]:
+                    pts.append((best, "h", bestv))
+                break
+    end_k = str(force_end or "").lower()
+    if end_k.startswith("l"):
+        if pts[-1][0] != ib:
+            if pts[-1][1] == "l":
+                if ls[ib] <= pts[-1][2]:
+                    pts[-1] = (ib, "l", ls[ib])
+            else:
+                pts.append((ib, "l", ls[ib]))
+        elif ls[ib] < pts[-1][2]:
+            pts[-1] = (ib, "l", ls[ib])
+    elif end_k.startswith("h"):
+        if pts[-1][0] != ib:
+            if pts[-1][1] == "h":
+                if hs[ib] >= pts[-1][2]:
+                    pts[-1] = (ib, "h", hs[ib])
+            else:
+                pts.append((ib, "h", hs[ib]))
+    # 折線保留全部交替點；①②③④只釘「相對大」的四個內轉折（避免小震盪搶標）
+    moves: List[Tuple[float, int]] = []
+    for idx in range(1, max(1, len(pts) - 1)):
+        moves.append((abs(float(pts[idx][2]) - float(pts[idx - 1][2])), idx))
+    moves.sort(key=lambda t: t[0], reverse=True)
+    label_idx = {
+        j: lab
+        for lab, (_mag, j) in zip(["①", "②", "③", "④"], sorted(moves[:4], key=lambda t: t[1]))
+    }
+    out: List[Tuple[int, float, str]] = []
+    for idx, (ii, kind, yy) in enumerate(pts):
+        out.append((int(ii), float(yy), str(label_idx.get(idx) or "")))
+    return out
+
+
 def _resolve_huang_c60_anchors(
     rows: Sequence[Dict[str, Any]],
 ) -> Dict[str, Any]:
     """黃培碩 60 分大段錨：只認官方柱對上他圖上的轉折價。
 
-    (1) 49968→46170　(2)→47060　(3)→37837　紅反彈→43135 次級4壓。
+    (1) 49968→46170　(2)中繼框 46170~47060　(3)內段折線→37837
+    C4 白細浪線錨點→43135 次級4壓。
     """
     out: Dict[str, Any] = {"ok": False}
     if not rows or len(rows) < 16:
@@ -5296,9 +5390,12 @@ def _resolve_huang_c60_anchors(
     y1e = float(rows[int(i1e)].get("low") or 0)
     y2 = float(rows[int(i2)].get("high") or 0)
     y3 = float(rows[int(i3)].get("low") or 0)
-    # 紅反彈折點：底→第一段反彈高→回檔低→次高→再低→43135 次級4
-    # ①＝見底後「第一個」明顯高（不准拿後面更高點冒充第一段）
-    red: List[Tuple[int, float, str]] = [(int(i3), y3, "底")]
+    # C3 內段：自 47060 起交替高低至 37837
+    c3_seg = _huang_c60_alt_swings(
+        rows, int(i2), int(i3), start="h", min_swing=700.0, force_end="l"
+    )
+    # C4：底→第一段反彈高→回檔低→次高→再低→43135 次級4
+    c4: List[Tuple[int, float, str]] = [(int(i3), y3, "底")]
     i_r1 = None
     y_r1 = 0.0
     for i in range(int(i3) + 1, min(len(rows), int(i3) + 12)):
@@ -5312,15 +5409,13 @@ def _resolve_huang_c60_anchors(
             continue
         if h <= y3 + 400:
             continue
-        # 局部高：不低於前後；或開盤第一根急拉後下一根已矮
         local = h >= h_prev and (h_next <= 0 or h >= h_next)
         if local:
             i_r1 = i
             y_r1 = h
             break
     if i_r1 is not None and y_r1 > y3 + 400:
-        red.append((int(i_r1), float(y_r1), "①"))
-        # ①後回檔低（在再創更高前）
+        c4.append((int(i_r1), float(y_r1), "①"))
         i_r2 = None
         y_r2 = float("inf")
         for i in range(int(i_r1) + 1, min(len(rows), int(i_r1) + 12)):
@@ -5335,11 +5430,10 @@ def _resolve_huang_c60_anchors(
                 y_r2 = lo
                 i_r2 = i
         if i_r2 is not None and y_r2 < y_r1 - 150:
-            red.append((int(i_r2), float(y_r2), "②"))
+            c4.append((int(i_r2), float(y_r2), "②"))
             i_r4 = _nearest_bar_idx_by_price(
                 rows, 43135.0, field="high", lo=int(i_r2), tol=40.0
             )
-            # 中間次高（<43135）＝③
             i_r3 = None
             y_r3 = 0.0
             end3 = int(i_r4) if i_r4 is not None else len(rows)
@@ -5352,7 +5446,7 @@ def _resolve_huang_c60_anchors(
                     y_r3 = h
                     i_r3 = i
             if i_r3 is not None and y_r3 > y_r2 + 200:
-                red.append((int(i_r3), float(y_r3), "③"))
+                c4.append((int(i_r3), float(y_r3), "③"))
                 i_dip = None
                 y_dip = float("inf")
                 for i in range(int(i_r3) + 1, end3):
@@ -5364,10 +5458,10 @@ def _resolve_huang_c60_anchors(
                         y_dip = lo
                         i_dip = i
                 if i_dip is not None and y_dip < y_r3 - 120:
-                    red.append((int(i_dip), float(y_dip), ""))
+                    c4.append((int(i_dip), float(y_dip), ""))
             if i_r4 is not None:
                 y4 = float(rows[int(i_r4)].get("high") or 0)
-                red.append((int(i_r4), float(y4), "④壓"))
+                c4.append((int(i_r4), float(y4), "④"))
     out.update(
         {
             "ok": True,
@@ -5379,7 +5473,11 @@ def _resolve_huang_c60_anchors(
             "y2": y2,
             "i3": int(i3),
             "y3": y3,
-            "red": red,
+            "c2_box": (float(y1e), float(y2)),
+            "c3_seg": c3_seg,
+            "c4": c4,
+            # 舊鍵相容
+            "red": c4,
         }
     )
     return out
@@ -5392,13 +5490,13 @@ def _paint_huang_c60_structure(
     fp,
     pack: Optional[Dict[str, Any]] = None,
 ) -> bool:
-    """超近窗 60 分：底色跟轉折價對齊＋藍(1)(2)(3)／紅反彈折線（對黃培碩手繪）。
+    """超近窗 60 分：底色對轉折＋C2上下虛框＋C3內段藍折＋C4白細浪錨。
 
-    不是買訊。價位仍跟飆大口頭；折線只連官方柱對得上的轉折。
+    對黃培碩手繪；不是買訊。折線／錨只連官方柱真高低。
     """
     if ax is None or fp is None or not rows:
         return False
-    _ = pack  # 超近窗教黃培碩結構＝必畫；價位口頭仍由右欄／戳處理
+    _ = pack
     anc = _resolve_huang_c60_anchors(rows)
     if not anc.get("ok"):
         return False
@@ -5429,150 +5527,236 @@ def _paint_huang_c60_structure(
             float(ia) - 0.45,
             float(ib) + 0.45,
             facecolor=face,
-            alpha=0.20,
+            alpha=0.18,
             zorder=1.05,
             linewidth=0,
         )
-        ax.axvline(float(ia) - 0.45, color=edge, lw=1.8, ls=(0, (4, 2)), alpha=0.9, zorder=5.4)
-        ax.axvline(float(ib) + 0.45, color=edge, lw=1.8, ls=(0, (4, 2)), alpha=0.9, zorder=5.4)
+        ax.axvline(
+            float(ia) - 0.45, color=edge, lw=1.6, ls=(0, (4, 2)), alpha=0.85, zorder=5.4
+        )
+        ax.axvline(
+            float(ib) + 0.45, color=edge, lw=1.6, ls=(0, (4, 2)), alpha=0.85, zorder=5.4
+        )
         ax.text(
             (float(ia) + float(ib)) * 0.5,
             y_band,
             label,
             ha="center",
             va="center",
-            fontproperties=fp(11.0, "bold"),
+            fontproperties=fp(10.5, "bold"),
             color=fg,
             zorder=42,
             bbox={
-                "boxstyle": "round,pad=0.38",
+                "boxstyle": "round,pad=0.34",
                 "facecolor": face,
                 "edgecolor": "#ffffff",
-                "linewidth": 2.0,
-                "alpha": 0.95,
+                "linewidth": 1.8,
+                "alpha": 0.94,
             },
             clip_on=False,
         )
 
-    # 底色＝轉折對轉折（不准再用缺日的日曆末日硬拉）
+    def _poly(xs: Sequence[float], ys: Sequence[float], *, edge: str, face: str, lw: float) -> None:
+        ax.plot(
+            list(xs),
+            list(ys),
+            color=edge,
+            lw=lw + 1.15,
+            zorder=7.2,
+            solid_capstyle="round",
+            solid_joinstyle="round",
+        )
+        ax.plot(
+            list(xs),
+            list(ys),
+            color=face,
+            lw=lw,
+            zorder=7.3,
+            solid_capstyle="round",
+            solid_joinstyle="round",
+        )
+
+    # 底色＝轉折對轉折
     _span(i1, i1e, "#00e5ff", "#00bcd4", "C1＝(1)下跌", "#00363a")
     _span(i1e + 1, i2, "#ffb74d", "#ef6c00", "C2＝(2)中繼", "#3e2723")
-    _span(i2 + 1, i3, "#ea80fc", "#6a1b9a", "C3＝(3)下跌", "#ffffff")
+    _span(i2, i3, "#ea80fc", "#6a1b9a", "C3＝(3)下跌", "#ffffff")
     if n - 1 >= i3 + 1:
         _span(i3 + 1, n - 1, "#69f0ae", "#00c853", "C4 反彈", "#003300")
 
-    # 藍折線 (1)(2)(3)
+    # C2 中繼：上下震盪區間虛線（46170~47060）
+    box = anc.get("c2_box") or (y1e, y2)
+    y_box_lo, y_box_hi = float(box[0]), float(box[1])
+    x_box0, x_box1 = float(i1e) - 0.2, float(i2) + 0.2
+    for yy, tag in ((y_box_hi, "中繼上"), (y_box_lo, "中繼下")):
+        ax.plot(
+            [x_box0, x_box1],
+            [yy, yy],
+            color="#ff6f00",
+            lw=1.7,
+            ls=(0, (5, 2)),
+            alpha=0.98,
+            zorder=6.4,
+        )
+        ax.text(
+            (x_box0 + x_box1) * 0.5,
+            float(yy) + (span_y * 0.012 if tag.endswith("上") else -span_y * 0.012),
+            f"{tag} {_px(yy)}",
+            ha="center",
+            va="bottom" if tag.endswith("上") else "top",
+            fontproperties=fp(7.8, "bold"),
+            color="#ffe0b2",
+            zorder=41,
+            bbox={
+                "boxstyle": "round,pad=0.18",
+                "facecolor": "#e65100",
+                "edgecolor": "#ffcc80",
+                "linewidth": 0.9,
+                "alpha": 0.92,
+            },
+            clip_on=False,
+        )
+
+    # 大段藍折 (1)(2)(3) 骨架
     blue_xy = [(i1, y1), (i1e, y1e), (i2, y2), (i3, y3)]
-    ax.plot(
+    _poly(
         [p[0] for p in blue_xy],
         [p[1] for p in blue_xy],
-        color="#0d47a1",
-        lw=3.4,
-        zorder=7.2,
-        solid_capstyle="round",
-        solid_joinstyle="round",
-    )
-    ax.plot(
-        [p[0] for p in blue_xy],
-        [p[1] for p in blue_xy],
-        color="#42a5f5",
-        lw=2.2,
-        zorder=7.3,
-        solid_capstyle="round",
-        solid_joinstyle="round",
+        edge="#0d47a1",
+        face="#42a5f5",
+        lw=2.0,
     )
     for (ii, yy), lab in (
         ((i1, y1), "(1)"),
         ((i1e, y1e), "46170"),
-        ((i2, y2), "(2)\n47060"),
-        ((i3, y3), "(3)\n37837"),
+        ((i2, y2), "(2)"),
+        ((i3, y3), "(3)"),
     ):
         ax.scatter(
             [ii],
             [yy],
-            s=42,
+            s=40,
             c="#42a5f5",
             zorder=8.2,
             edgecolors="#0d47a1",
-            linewidths=1.1,
+            linewidths=1.0,
         )
         ax.text(
             float(ii),
-            float(yy) + (span_y * 0.035 if lab.startswith("(") and "37837" not in lab else -span_y * 0.04),
+            float(yy)
+            + (
+                span_y * 0.032
+                if lab in {"(1)", "(2)"}
+                else -span_y * 0.038
+            ),
             lab,
             ha="center",
-            va="bottom" if "37837" not in lab and not lab.startswith("46170") else "top",
-            fontproperties=fp(9.5, "bold"),
+            va="bottom" if lab in {"(1)", "(2)"} else "top",
+            fontproperties=fp(9.2, "bold"),
             color="#e3f2fd",
             zorder=43,
             bbox={
-                "boxstyle": "round,pad=0.28",
+                "boxstyle": "round,pad=0.24",
                 "facecolor": "#1565c0",
                 "edgecolor": "#90caf9",
-                "linewidth": 1.2,
+                "linewidth": 1.0,
                 "alpha": 0.95,
             },
             clip_on=False,
         )
 
-    # 紅反彈折線＋43135 次級4壓
-    red = list(anc.get("red") or [])
-    if len(red) >= 2:
-        ax.plot(
-            [p[0] for p in red],
-            [p[1] for p in red],
-            color="#b71c1c",
-            lw=3.2,
-            zorder=7.4,
-            solid_capstyle="round",
-            solid_joinstyle="round",
+    # C3 內段各波藍折線＋①②③④
+    c3_seg = list(anc.get("c3_seg") or [])
+    if len(c3_seg) >= 3:
+        _poly(
+            [p[0] for p in c3_seg],
+            [p[1] for p in c3_seg],
+            edge="#0d47a1",
+            face="#90caf9",
+            lw=1.55,
         )
-        ax.plot(
-            [p[0] for p in red],
-            [p[1] for p in red],
-            color="#ff5252",
-            lw=2.0,
-            zorder=7.5,
-            solid_capstyle="round",
-            solid_joinstyle="round",
-        )
-        for ii, yy, lab in red:
+        for ii, yy, lab in c3_seg:
             if not lab:
                 continue
             ax.scatter(
                 [ii],
                 [yy],
-                s=36,
-                c="#ff5252",
-                zorder=8.3,
-                edgecolors="#b71c1c",
-                linewidths=1.0,
+                s=28,
+                c="#90caf9",
+                zorder=8.35,
+                edgecolors="#0d47a1",
+                linewidths=0.9,
             )
             ax.text(
                 float(ii),
-                float(yy) + span_y * 0.028,
+                float(yy) + span_y * 0.02,
                 lab,
                 ha="center",
                 va="bottom",
-                fontproperties=fp(9.0, "bold"),
-                color="#ffebee",
+                fontproperties=fp(8.4, "bold"),
+                color="#e3f2fd",
                 zorder=44,
                 bbox={
-                    "boxstyle": "round,pad=0.24",
-                    "facecolor": "#c62828",
-                    "edgecolor": "#ff8a80",
-                    "linewidth": 1.1,
-                    "alpha": 0.95,
+                    "boxstyle": "round,pad=0.16",
+                    "facecolor": "#0d47a1",
+                    "edgecolor": "#90caf9",
+                    "linewidth": 0.9,
+                    "alpha": 0.94,
                 },
                 clip_on=False,
             )
-        # 次級4壓力水平
-        i4 = next((p for p in red if "④" in str(p[2])), None)
+
+    # C4：白細浪線＋錨點（對齊 white_thin／矛點）
+    c4 = list(anc.get("c4") or anc.get("red") or [])
+    if len(c4) >= 2:
+        xs = [float(p[0]) for p in c4]
+        ys = [float(p[1]) for p in c4]
+        ax.plot(
+            xs,
+            ys,
+            color="#0b0f14",
+            lw=2.05,
+            zorder=7.55,
+            solid_capstyle="round",
+            solid_joinstyle="round",
+        )
+        ax.plot(
+            xs,
+            ys,
+            color="#f5f5f5",
+            lw=1.15,
+            zorder=7.6,
+            solid_capstyle="round",
+            solid_joinstyle="round",
+        )
+        for ii, yy, lab in c4:
+            hot = "④" in str(lab) or lab == "底"
+            _spear_ring(ax, float(ii), float(yy), color="#ffffff", zorder=8.6, hot=hot)
+            if not lab:
+                continue
+            ax.text(
+                float(ii),
+                float(yy) + span_y * 0.026,
+                lab,
+                ha="center",
+                va="bottom",
+                fontproperties=fp(8.6, "bold"),
+                color="#111111",
+                zorder=46,
+                bbox={
+                    "boxstyle": "round,pad=0.2",
+                    "facecolor": "#ffffff",
+                    "edgecolor": "#bdbdbd",
+                    "linewidth": 1.0,
+                    "alpha": 0.96,
+                },
+                clip_on=False,
+            )
+        i4 = next((p for p in c4 if "④" in str(p[2])), None)
         if i4 is not None:
             ax.axhline(
                 float(i4[1]),
                 color="#ff1744",
-                lw=1.6,
+                lw=1.55,
                 ls=(0, (6, 2)),
                 alpha=0.95,
                 zorder=6.2,
@@ -5583,14 +5767,14 @@ def _paint_huang_c60_structure(
                 f"次級4壓 {_px(float(i4[1]))}",
                 ha="right",
                 va="bottom",
-                fontproperties=fp(8.5, "bold"),
+                fontproperties=fp(8.4, "bold"),
                 color="#ff1744",
                 zorder=45,
                 bbox={
-                    "boxstyle": "round,pad=0.22",
+                    "boxstyle": "round,pad=0.2",
                     "facecolor": "#fff59d",
                     "edgecolor": "#ff1744",
-                    "linewidth": 1.2,
+                    "linewidth": 1.15,
                     "alpha": 0.96,
                 },
                 clip_on=False,
@@ -14290,10 +14474,11 @@ def _render_twii_c_wave_60_dark(
             ax.text(
                 0.015,
                 0.14,
-                "折線＝黃培碩60分大段：\n"
-                "藍(1)49968→46170　(2)→47060　(3)→37837\n"
-                "紅＝反彈；黃標次級4壓≈43135\n"
-                "底色跟轉折價對齊｜非買訊",
+                "折線＝黃培碩60分：\n"
+                "藍(1)(2)(3)＋C3內①②③④\n"
+                "橙虛＝C2中繼上下框\n"
+                "白細＝C4浪線＋錨；次級4壓≈43135\n"
+                "非買訊",
                 transform=ax.transAxes,
                 ha="left",
                 va="bottom",
@@ -14394,7 +14579,7 @@ def _render_twii_c_wave_60_dark(
     fig.text(
         0.03,
         0.945,
-        "軸＝加權日盤60分｜藍折(1)(2)(3)＋紅反彈｜底色跟49968／46170／47060／37837對齊"
+        "軸＝加權日盤60分｜藍(1)(2)(3)+C3內段｜C2上下虛框｜C4白細錨｜底色對轉折價"
         + vol_note,
         fontproperties=_fp(9, "bold"),
         color="#ce93d8",

@@ -3906,7 +3906,7 @@ def test_paint_c3_group12_span_labels_wired():
 
 
 def test_huang_c60_anchors_and_wave_paint_wired():
-    """超近60分：錨對 49968／46170／47060／37837；有藍紅折線，底色跟轉折。"""
+    """超近60分：C2上下虛框、C3內段①②③④、C4白細錨；轉折價對齊。"""
     import inspect
 
     from biaoke_level_learn import (
@@ -3925,12 +3925,21 @@ def test_huang_c60_anchors_and_wave_paint_wired():
         assert abs(float(anc["y2"]) - 47060.0) < 30
         assert abs(float(anc["y3"]) - 37837.0) < 30
         assert int(anc["i1"]) < int(anc["i1e"]) < int(anc["i2"]) < int(anc["i3"])
-        red = anc.get("red") or []
-        assert any("④" in str(p[2]) for p in red)
+        box = anc.get("c2_box") or (0, 0)
+        assert abs(float(box[0]) - 46170.0) < 30
+        assert abs(float(box[1]) - 47060.0) < 30
+        c3 = anc.get("c3_seg") or []
+        assert len(c3) >= 4
+        assert any(p[2] == "①" for p in c3)
+        c4 = anc.get("c4") or []
+        assert any("④" in str(p[2]) for p in c4)
+    paint = inspect.getsource(_paint_huang_c60_structure)
+    assert "中繼上" in paint and "中繼下" in paint
+    assert "c3_seg" in paint
+    assert "_spear_ring" in paint and "#f5f5f5" in paint
+    assert "次級4壓" in paint
     c60 = inspect.getsource(_render_twii_c_wave_60_dark)
     assert "_paint_huang_c60_structure" in c60
-    assert "次級4壓" in inspect.getsource(_paint_huang_c60_structure)
-    assert "(1)" in inspect.getsource(_paint_huang_c60_structure)
 
 
 def test_retest_41500_oral_beats_unpriced_pressure_wait(tmp_path):
