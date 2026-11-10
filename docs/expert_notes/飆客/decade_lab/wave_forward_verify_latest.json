@@ -1,0 +1,72 @@
+{
+  "as_of_taipei": "2026-11-10T09:50:00+08:00",
+  "verify_day": "20261109",
+  "job": "timer_market-forward-verify-20261110",
+  "today_job_done": true,
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "certainty": false,
+  "segment_numbers": "REQUIRED",
+  "official": {
+    "twii_20261109": {
+      "o": 40347.28125,
+      "h": 42349.359375,
+      "l": 40347.28125,
+      "c": 41661.7,
+      "v": 12160731.0
+    },
+    "tx_regular_20261109": {
+      "o": 40099.0,
+      "h": 42317.0,
+      "l": 39996.0,
+      "c": 41423.0,
+      "v": 94766
+    },
+    "friday_low_twii": 37837.05,
+    "friday_low_tx": 37694.0,
+    "pressure": 41760.0
+  },
+  "paths": [
+    {
+      "id": "P1_must_retest_friday",
+      "verdict": "未發生／遞延",
+      "segments_provisional": [
+        {"label": "C3-5", "role": "上週五低仍為他認定底", "level": 37837.05},
+        {"label": "B-a", "role": "11/09強彈", "note": "TWII H42349／TX H42317"},
+        {"label": "B-b", "role": "回測週五低未啟動", "level": 37837.05}
+      ],
+      "evidence_zh": "TWII L40347、TX L39996 皆遠高於 37837／37694；未再測週五低。"
+    },
+    {
+      "id": "P2_41760_still_cap",
+      "verdict": "盤中刺穿／收未站穩＝蓋未轉撐",
+      "segments_provisional": [
+        {"label": "B-a_cap", "role": "41760 台指盤中刺穿、收盤收回", "level": 41760.0}
+      ],
+      "evidence_zh": "TX H42317≥41760、C41423<41760；TWII H42349、C41661.7<41760。壓轉撐未成立。"
+    },
+    {
+      "id": "P3_fake_break_board_zone",
+      "verdict": "未觸發",
+      "segments_provisional": [
+        {"label": "B-b_spike", "role": "未戳週五低"},
+        {"label": "B-b_reclaim", "role": "無"}
+      ],
+      "evidence_zh": "未破週五低，假跌破不計分。"
+    }
+  ],
+  "miss_analysis": {
+    "expected_segments": ["C3-5", "B-a挑戰41760", "B-b回測週五低"],
+    "actual_path": "B-a強彈刺穿41760後收回；未走B-b",
+    "unexpected_level": "台指高見42317（超過41760）；未見到週五低區",
+    "which_segment_broke": "B-b（當日未啟動）；B-a_cap『不過壓』同日敘事偏弱（有刺穿）",
+    "rule_patch": "『不過41760→很快再測週五低』：盤中刺穿但收未站穩時，回測時序可遞延，不准當日強制計B-b必發生",
+    "two_diff": {
+      "vs_biaoke_zh": "他：不過壓轉撐→再測週五低。11/09：台指盤中過41760、收未站穩，且未測週五低＝『很快再測』同日未兌現。",
+      "vs_official_zh": "官方台指 O40099/H42317/L39996/C41423；加權 O40347/H42349/L40347/C41661.7。"
+    }
+  },
+  "cycle8_review_zh": "暫定仍大C後反彈B-a；C3-5底候選未被再測。不准升新五波1。非買訊。",
+  "next_infer": "wave_forward_infer_20261111.json（等11/10日盤收再鎖）",
+  "jan_backfill_status": "UNBLOCKED_after_this_verify"
+}
