@@ -9238,10 +9238,10 @@ def _paint_teach_vol_layer_bars(
     bars: Optional[Sequence[Dict[str, Any]]] = None,
     fp: Any = None,
 ) -> None:
-    """量欄只掛兩標：黃帶一根、白帶一根；次大量只上色不掛字（防互壓）。
+    """量欄兩根色柱＋柱頂正上方短標（完整在軸內，不准裁半句）。
 
-    標盒固定左上／右上，短虛線垂直指柱頂，不准斜線交叉。
-    短文：黃 11/5 09:00／白 11/6 10:00 —— 對上面橫帶。
+    黃＝現在撐壓那根；藍＝下一層那根。次大量不上色不上標（多餘）。
+    文案只要「黃 11/5 09:00」「白 11/6 10:00」——不寫張數（張數會把標裁掉）。
     """
     if axv is None or not vols:
         return
@@ -9249,6 +9249,7 @@ def _paint_teach_vol_layer_bars(
     n = len(vals)
     rows = list(bars or [])
     peak = max(vals) if any(v > 0 for v in vals) else 1.0
+    _ = i_next_2nd  # 明確不用：第三根會擠、會裁
 
     def _ok(i: Optional[int]) -> bool:
         return i is not None and 0 <= int(i) < n and vals[int(i)] > 0
@@ -9259,94 +9260,56 @@ def _paint_teach_vol_layer_bars(
             return _teach_vol_day_tag(r.get("date"), r.get("ts")).strip()
         return ""
 
-    # 次大量：只加色柱，不掛第三標（縮圖互壓＝不清楚）
-    if _ok(i_next_2nd) and (
-        i_next is None or int(i_next_2nd) != int(i_next)
-    ):
-        ii = int(i_next_2nd)
-        axv.bar(
-            ii,
-            vals[ii],
-            color="#80cbc4",
-            edgecolor="#e0f2f1",
-            linewidth=0.8,
-            width=0.82,
-            zorder=5.5,
-            alpha=0.95,
-        )
-
-    # 只兩標：黃帶／白帶
-    callouts: List[Tuple[int, str, str, str, str]] = []
+    marks: List[Tuple[int, str, str, str]] = []
     if _ok(i_primary):
         ii = int(i_primary)
-        callouts.append(
-            (ii, "#f9a825", "#ffe082", "#fff59d", f"黃 {_tag(ii)}")
-        )
-    if _ok(i_next) and (
-        i_primary is None or int(i_next) != int(i_primary)
-    ):
+        marks.append((ii, "#f9a825", "#fff59d", f"黃 {_tag(ii)}"))
+    if _ok(i_next) and (i_primary is None or int(i_next) != int(i_primary)):
         ii = int(i_next)
-        callouts.append(
-            (ii, "#42a5f5", "#90caf9", "#e3f2fd", f"白 {_tag(ii)}")
-        )
-    if not callouts and not _ok(i_next_2nd):
+        marks.append((ii, "#42a5f5", "#e3f2fd", f"白 {_tag(ii)}"))
+    if not marks:
         return
 
-    y_top = float(peak) / 0.62
+    # 柱頂標要完整：ylim 留足空帶；標用 text 貼柱頂，clip 在軸內
+    y_top = float(peak) * 1.55
     axv.set_ylim(0, float(y_top))
-    lab_y = float(y_top) * 0.97
-
-    for k, (ii, face, edge, ink, lab) in enumerate(callouts):
+    for ii, face, ink, lab in marks:
+        h = float(vals[ii])
         axv.bar(
             ii,
-            vals[ii],
+            h,
             color=face,
             edgecolor="#ffffff",
-            linewidth=1.2,
+            linewidth=1.15,
             width=0.92,
             zorder=6,
             alpha=0.99,
         )
-        if fp is None:
+        if fp is None or not lab:
             continue
-        # 黃在左、白在右：固定座，虛線幾乎直下指柱，不准交叉
-        if k == 0 or (len(callouts) == 1 and int(ii) < n * 0.55):
-            tx = max(0.8, float(ii) - 1.2)
-            ha = "right" if float(ii) > 6 else "left"
-            if ha == "left":
-                tx = float(ii) + 0.6
-        else:
-            tx = min(float(n) - 1.0, float(ii) + 1.2)
-            ha = "left" if float(ii) < n - 8 else "right"
-            if ha == "right":
-                tx = float(ii) - 0.6
-        # 柱頂上方短標：先直上再橫移，連接線用兩段感（annotate 單線但 tx≈ii）
-        axv.annotate(
+        # 柱頂正中上方；兩標若相鄰則一上一下錯開，仍在 ylim 內
+        y_lab = h + float(peak) * 0.06
+        if y_lab > float(y_top) * 0.92:
+            y_lab = float(y_top) * 0.88
+        # 若與另一標同區，較右者略抬
+        if len(marks) == 2 and ii == marks[1][0] and abs(int(marks[0][0]) - int(ii)) <= 3:
+            y_lab = min(float(y_top) * 0.94, h + float(peak) * 0.18)
+        axv.text(
+            float(ii),
+            float(y_lab),
             lab,
-            xy=(float(ii), float(vals[ii])),
-            xytext=(float(tx), float(lab_y)),
+            fontproperties=fp(10.5, "bold"),
             color=ink,
-            fontproperties=fp(11.0, "bold"),
-            ha=str(ha),
-            va="top",
+            ha="center",
+            va="bottom",
             zorder=12,
-            annotation_clip=False,
-            clip_on=False,
+            clip_on=True,
             bbox=dict(
-                boxstyle="round,pad=0.28",
+                boxstyle="round,pad=0.22",
                 facecolor="#0b0f14",
-                edgecolor=edge,
-                linewidth=1.4,
+                edgecolor=face,
+                linewidth=1.2,
                 alpha=0.98,
-            ),
-            arrowprops=dict(
-                arrowstyle="-",
-                color=edge,
-                lw=1.5,
-                linestyle=(0, (2.0, 1.4)),
-                shrinkA=1,
-                shrinkB=2,
-                connectionstyle="angle,angleA=0,angleB=90,rad=0",
             ),
         )
 

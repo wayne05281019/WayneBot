@@ -4099,13 +4099,19 @@ def test_teach_vol_sr_preview_below_next_layer_60m():
         bars=rows,
         fp=_fp,
     )
-    texts = " ".join(t.get_text() for t in axv.texts)
-    # 只兩標：黃／白＋月日幾點；次大量不上第三字標
-    assert "黃" in texts and "11/5 09:00" in texts
-    assert "白" in texts and "11/6 10:00" in texts
-    assert "白帶次大量" not in texts
-    assert "黃帶←" not in texts  # 短標，不准長句互壓
-    assert float(axv.get_ylim()[1]) > max(vols) * 1.2
+    texts = [t.get_text() for t in axv.texts]
+    joined = " ".join(texts)
+    # 柱頂短標完整：黃／白＋月日幾點；不准長句、不准張數、不准第三標
+    assert any(t.startswith("黃 ") and "11/5 09:00" in t for t in texts), texts
+    assert any(t.startswith("白 ") and "11/6 10:00" in t for t in texts), texts
+    assert "162,418" not in joined and "204,404" not in joined
+    assert "次大量" not in joined and "黃帶←" not in joined
+    assert float(axv.get_ylim()[1]) >= max(vols) * 1.4
+    # 標在軸內（x 對柱、y 低於 ylim）
+    for t in axv.texts:
+        x, y = t.get_position()
+        assert 0 <= float(x) < len(vols)
+        assert 0 <= float(y) <= float(axv.get_ylim()[1]) + 1e-6
     plt.close(fig)
 
     import inspect
@@ -4114,10 +4120,8 @@ def test_teach_vol_sr_preview_below_next_layer_60m():
     from biaoke_level_learn import _render_twii_c_wave_60_dark
 
     paint_src = inspect.getsource(_pv)
-    assert "arrowprops" in paint_src
-    assert 'f"黃 {_tag(ii)}"' in paint_src or "黃 {_tag" in paint_src
-    assert 'f"白 {_tag(ii)}"' in paint_src or "白 {_tag" in paint_src
-    assert "次大量：只加色柱" in paint_src or "不上第三標" in paint_src or "不掛第三標" in paint_src
+    assert "axv.text" in paint_src and "clip_on=True" in paint_src
+    assert "annotate" not in paint_src  # 不准再用會裁邊的斜線標
     assert "#f9a825" in paint_src and "#42a5f5" in paint_src
     yel = inspect.getsource(_paint_max_vol_hl_zone)
     nxt = inspect.getsource(_paint_next_layer_vol_zone)
@@ -4125,7 +4129,6 @@ def test_teach_vol_sr_preview_below_next_layer_60m():
     assert 'facecolor="#ffffff"' in nxt and "白帶" in nxt and "axhline" in nxt
     c60 = inspect.getsource(_render_twii_c_wave_60_dark)
     assert "_paint_teach_vol_layer_bars" in c60
-    assert "2.35" in c60  # 量欄加高
 
 
 def test_teach_vol_sr_60m_label_shows_bar_hhmm():
