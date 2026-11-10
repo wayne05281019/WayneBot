@@ -3906,7 +3906,7 @@ def test_paint_c3_group12_span_labels_wired():
 
 
 def test_huang_c60_anchors_and_wave_paint_wired():
-    """超近60分：C2上下虛框、C3內①～⑤、C4紅折不標浪號；轉折價對齊手繪。"""
+    """超近60分：C2上下虛框、C3內①～⑤、C4白細折不標浪號；轉折價對齊手繪。"""
     import inspect
 
     from biaoke_level_learn import (
@@ -3956,6 +3956,7 @@ def test_huang_c60_anchors_and_wave_paint_wired():
     assert "_wave_lab" in paint  # 標籤側邊讓開折線／K
     assert "c3_seg" in paint
     assert "_spear_ring" in paint
+    assert "#f5f5f5" in paint  # C4 白細折
     assert "次級4壓" in paint
     assert "⑤壓" not in paint  # 不准再把 C3④ 誤標成 C4⑤壓
     c60 = inspect.getsource(_render_twii_c_wave_60_dark)
@@ -3963,6 +3964,7 @@ def test_huang_c60_anchors_and_wave_paint_wired():
     assert "fig.text" in c60  # 說明不進主圖
     assert "次級4壓" in c60
     assert "C4白細①～⑤" not in c60
+    assert "白細C4" in c60 or "C4白細" in c60
 
 
 def test_retest_41500_oral_beats_unpriced_pressure_wait(tmp_path):

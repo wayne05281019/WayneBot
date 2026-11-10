@@ -5461,7 +5461,7 @@ def _huang_c60_c4_segments(
 ) -> List[Tuple[int, float, str]]:
     """C4 反彈折點：只連官方柱高低，不准標①～⑤。
 
-    手繪紅折＝見底後反彈測次級4壓（≈43135）；浪號①～⑤只屬於 C3。
+    見底後反彈測次級4壓（≈43135）；浪號①～⑤只屬於 C3；畫面上用白細折。
     """
     out: List[Tuple[int, float, str]] = [(int(i3), float(y3), "")]
     if not rows or int(i3) >= len(rows) - 1:
@@ -5559,7 +5559,7 @@ def _paint_huang_c60_structure(
     fp,
     pack: Optional[Dict[str, Any]] = None,
 ) -> bool:
-    """超近窗 60 分：底色對轉折＋C2上下虛框＋C3內①～⑤藍折＋C4紅折（不標浪號）。
+    """超近窗 60 分：底色對轉折＋C2上下虛框＋C3內①～⑤藍折＋C4白細折（不標浪號）。
 
     對黃培碩手繪；不是買訊。折線／錨只連官方柱真高低。
     """
@@ -5799,7 +5799,7 @@ def _paint_huang_c60_structure(
                 dx=0.7,
             )
 
-    # C4：白細反彈折（對齊手繪紅折路徑）— 不准標①～⑤
+    # C4：白細反彈折（路徑對手繪；線色用白）— 不准標①～⑤
     c4 = list(anc.get("c4") or anc.get("red") or [])
     if len(c4) >= 2:
         xs = [float(p[0]) for p in c4]
@@ -5807,7 +5807,7 @@ def _paint_huang_c60_structure(
         ax.plot(
             xs,
             ys,
-            color="#b71c1c",
+            color="#0b0f14",
             lw=2.05,
             zorder=7.55,
             solid_capstyle="round",
@@ -5816,14 +5816,14 @@ def _paint_huang_c60_structure(
         ax.plot(
             xs,
             ys,
-            color="#ff5252",
+            color="#f5f5f5",
             lw=1.15,
             zorder=7.6,
             solid_capstyle="round",
             solid_joinstyle="round",
         )
         for ii, yy, lab in c4:
-            _spear_ring(ax, float(ii), float(yy), color="#ff8a80", zorder=8.6, hot=False)
+            _spear_ring(ax, float(ii), float(yy), color="#ffffff", zorder=8.6, hot=False)
             # lab 應為空；就算舊資料帶浪號也不畫（①～⑤只屬於 C3）
             if lab and lab not in {"①", "②", "③", "④", "⑤", "底"} and "⑤" not in str(lab):
                 _wave_lab(
@@ -14566,7 +14566,7 @@ def _render_twii_c_wave_60_dark(
             fig.text(
                 0.03,
                 0.918,
-                "藍(1)(2)(3)+C3內①～⑤｜橙虛C2上下框｜紅C4反彈｜次級4壓≈43135｜非買訊",
+                "藍(1)(2)(3)+C3內①～⑤｜橙虛C2上下框｜白細C4反彈｜次級4壓≈43135｜非買訊",
                 fontproperties=_fp(8.0, "bold"),
                 color="#90caf9",
                 ha="left",
@@ -14656,7 +14656,7 @@ def _render_twii_c_wave_60_dark(
     fig.text(
         0.03,
         0.945,
-        "軸＝加權日盤60分｜藍(1)(2)(3)+C3內①～⑤｜C2上下虛框｜C4紅折｜次級4壓≈43135"
+        "軸＝加權日盤60分｜藍(1)(2)(3)+C3內①～⑤｜C2上下虛框｜C4白細折｜次級4壓≈43135"
         + vol_note,
         fontproperties=_fp(9, "bold"),
         color="#ce93d8",
