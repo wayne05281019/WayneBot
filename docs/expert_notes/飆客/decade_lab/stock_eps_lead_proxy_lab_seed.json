@@ -1,0 +1,13 @@
+{
+  "version": "stock_eps_lead_proxy_lab_v1",
+  "status": "blocked_thin_qi_overlap",
+  "gate_passed": false,
+  "as_of": "2026-11-10T20:37:06+08:00",
+  "best_candidate": null,
+  "shared_vs_keep": [],
+  "promote_lookup": false,
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "next": "季報史不足無法對質；下一刀優先補已公告多季 EPS 或改試同業價量領先；不准發明未公告 EPS、不准改話筒",
+  "note_zh": "已公告季 EPS QoQ 轉佳＋價量；不准發明未公告 EPS"
+}
