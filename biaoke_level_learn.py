@@ -8323,13 +8323,22 @@ def _paint_next_layer_vol_zone(
     pack: Optional[Dict[str, Any]] = None,
     ts_lab: str = "",
 ) -> None:
-    """下一層大量區＝半透明白橫帶（對黃帶現在撐壓；暗底教具可讀）。"""
+    """下一層大量區＝半透明白橫帶＋白虛線上下緣（暗底也要看得出邊界）。"""
     y0, y1 = float(low), float(high)
     if y1 <= y0:
         return
     day_tag = _teach_vol_day_tag(date_lab, ts_lab)
-    # 下一層壓／撐區：半透明白（使用者鎖）；量柱藍標仍對這層
-    ax.axhspan(y0, y1, facecolor="#ffffff", alpha=0.24, zorder=0.45)
+    # 半透明白底＋上下白虛線：暗底不再糊成一塊灰
+    ax.axhspan(y0, y1, facecolor="#ffffff", alpha=0.20, zorder=0.45)
+    for yy in (y0, y1):
+        ax.axhline(
+            float(yy),
+            color="#f5f5f5",
+            lw=1.15,
+            ls=(0, (3.2, 2.0)),
+            alpha=0.92,
+            zorder=1.1,
+        )
     if not labels:
         return
     # 壓／撐落在飆預測黃／紫帶內 → 不准畫左標（紅圈互壓）
@@ -8339,8 +8348,8 @@ def _paint_next_layer_vol_zone(
             y1,
             f"白帶 {day_tag}下一層壓 {_px(y1)}",
             fp=fp,
-            color="#fafafa",
-            edge="#eeeeee",
+            color="#ffffff",
+            edge="#bdbdbd",
             va="bottom",
             fontsize=10.5,
             avoid_top_left_stamp=avoid_top_left_stamp,
@@ -8352,8 +8361,8 @@ def _paint_next_layer_vol_zone(
             y0,
             f"白帶 {day_tag}下一層撐 {_px(y0)}",
             fp=fp,
-            color="#fafafa",
-            edge="#eeeeee",
+            color="#ffffff",
+            edge="#bdbdbd",
             va="top",
             fontsize=10.5,
             avoid_top_left_stamp=avoid_top_left_stamp,
@@ -9229,10 +9238,10 @@ def _paint_teach_vol_layer_bars(
     bars: Optional[Sequence[Dict[str, Any]]] = None,
     fp: Any = None,
 ) -> None:
-    """量欄對應黃／灰兩橫帶：色柱＋上緣空帶大標＋虛線指柱（對齊大量圖、要看得清）。
+    """量欄只掛兩標：黃帶一根、白帶一根；次大量只上色不掛字（防互壓）。
 
-    黃帶＝本層爆大量柱；白帶＝下一層最大量柱（次大量另標）。
-    標文寫死「黃帶／白帶」＋月日幾點，下面找柱＝上面找帶。
+    標盒固定左上／右上，短虛線垂直指柱頂，不准斜線交叉。
+    短文：黃 11/5 09:00／白 11/6 10:00 —— 對上面橫帶。
     """
     if axv is None or not vols:
         return
@@ -9250,142 +9259,94 @@ def _paint_teach_vol_layer_bars(
             return _teach_vol_day_tag(r.get("date"), r.get("ts")).strip()
         return ""
 
-    def _vol_txt(i: int) -> str:
-        v = float(vals[i] or 0)
-        if v <= 0:
-            return ""
-        if v >= 1000:
-            return f"{v:,.0f}"
-        return f"{v:.0f}"
-
-    # (index, bar_color, edge, ink, label, fontsize)
-    marks: List[Tuple[int, str, str, str, str, float]] = []
-    if _ok(i_primary):
-        ii = int(i_primary)
-        marks.append(
-            (
-                ii,
-                "#f9a825",
-                "#ffecb3",
-                "#ffe082",
-                f"黃帶←爆大量 {_tag(ii)}　{_vol_txt(ii)}".strip(),
-                10.5,
-            )
-        )
-    if _ok(i_next):
-        ii = int(i_next)
-        marks.append(
-            (
-                ii,
-                "#42a5f5",
-                "#90caf9",
-                "#90caf9",
-                f"白帶←下一層最大 {_tag(ii)}　{_vol_txt(ii)}".strip(),
-                10.5,
-            )
-        )
+    # 次大量：只加色柱，不掛第三標（縮圖互壓＝不清楚）
     if _ok(i_next_2nd) and (
         i_next is None or int(i_next_2nd) != int(i_next)
     ):
         ii = int(i_next_2nd)
-        marks.append(
-            (
-                ii,
-                "#80cbc4",
-                "#b2dfdb",
-                "#b2dfdb",
-                f"白帶次大量 {_tag(ii)}　{_vol_txt(ii)}".strip(),
-                9.0,
-            )
+        axv.bar(
+            ii,
+            vals[ii],
+            color="#80cbc4",
+            edgecolor="#e0f2f1",
+            linewidth=0.8,
+            width=0.82,
+            zorder=5.5,
+            alpha=0.95,
         )
-    if not marks:
+
+    # 只兩標：黃帶／白帶
+    callouts: List[Tuple[int, str, str, str, str]] = []
+    if _ok(i_primary):
+        ii = int(i_primary)
+        callouts.append(
+            (ii, "#f9a825", "#ffe082", "#fff59d", f"黃 {_tag(ii)}")
+        )
+    if _ok(i_next) and (
+        i_primary is None or int(i_next) != int(i_primary)
+    ):
+        ii = int(i_next)
+        callouts.append(
+            (ii, "#42a5f5", "#90caf9", "#e3f2fd", f"白 {_tag(ii)}")
+        )
+    if not callouts and not _ok(i_next_2nd):
         return
 
-    # 上緣空帶加寬：兩大標並排仍清楚（對齊大量圖空帶邏輯）
-    y_top = float(peak) / 0.58
+    y_top = float(peak) / 0.62
     axv.set_ylim(0, float(y_top))
-    lab_y_hi = float(y_top) * 0.978
-    lab_y_mid = float(y_top) * 0.905
-    lab_y_lo = float(y_top) * 0.830
+    lab_y = float(y_top) * 0.97
 
-    seen: set = set()
-    placed: List[Tuple[float, float]] = []
-
-    def _pick_tx(anchor: int, prefer_right: bool) -> Tuple[float, str]:
-        trials: List[Tuple[float, str]] = []
-        for off in (4.0, 7.0, 10.0, 14.0, 18.0, 24.0):
-            if prefer_right:
-                trials.append((min(float(n) - 1.0, float(anchor) + off), "left"))
-                trials.append((max(0.5, float(anchor) - off), "right"))
-            else:
-                trials.append((max(0.5, float(anchor) - off), "right"))
-                trials.append((min(float(n) - 1.0, float(anchor) + off), "left"))
-        best = None
-        for tx, ha in trials:
-            score = abs(float(tx) - float(anchor)) * 0.02
-            for px, _py in placed:
-                score += max(0.0, 16.0 - abs(float(tx) - float(px))) * 2.2
-            if best is None or score < best[0]:
-                best = (score, float(tx), str(ha))
-        if best is None:
-            return float(anchor) + 4.0, "left"
-        return best[1], best[2]
-
-    for k, (ii, face, edge, ink, lab, fsz) in enumerate(marks):
-        if ii in seen:
-            continue
-        seen.add(ii)
+    for k, (ii, face, edge, ink, lab) in enumerate(callouts):
         axv.bar(
             ii,
             vals[ii],
             color=face,
             edgecolor="#ffffff",
-            linewidth=1.05,
-            width=0.88,
+            linewidth=1.2,
+            width=0.92,
             zorder=6,
-            alpha=0.98,
+            alpha=0.99,
         )
-        if fp is None or not lab:
+        if fp is None:
             continue
-        if k == 0:
-            ty = lab_y_hi
-            prefer_right = False  # 黃帶柱偏左：標往左長較清
-        elif k == 1:
-            ty = lab_y_mid
-            prefer_right = True
+        # 黃在左、白在右：固定座，虛線幾乎直下指柱，不准交叉
+        if k == 0 or (len(callouts) == 1 and int(ii) < n * 0.55):
+            tx = max(0.8, float(ii) - 1.2)
+            ha = "right" if float(ii) > 6 else "left"
+            if ha == "left":
+                tx = float(ii) + 0.6
         else:
-            ty = lab_y_lo
-            prefer_right = True
-        tx, ha = _pick_tx(ii, prefer_right=prefer_right)
-        for px, py in placed:
-            if abs(float(tx) - float(px)) < 14.0 and abs(float(ty) - float(py)) < float(y_top) * 0.06:
-                ty = lab_y_lo if ty >= lab_y_mid else lab_y_mid
-        placed.append((float(tx), float(ty)))
+            tx = min(float(n) - 1.0, float(ii) + 1.2)
+            ha = "left" if float(ii) < n - 8 else "right"
+            if ha == "right":
+                tx = float(ii) - 0.6
+        # 柱頂上方短標：先直上再橫移，連接線用兩段感（annotate 單線但 tx≈ii）
         axv.annotate(
             lab,
             xy=(float(ii), float(vals[ii])),
-            xytext=(float(tx), float(ty)),
+            xytext=(float(tx), float(lab_y)),
             color=ink,
-            fontproperties=fp(float(fsz), "bold"),
+            fontproperties=fp(11.0, "bold"),
             ha=str(ha),
             va="top",
             zorder=12,
             annotation_clip=False,
             clip_on=False,
             bbox=dict(
-                boxstyle="round,pad=0.22",
+                boxstyle="round,pad=0.28",
                 facecolor="#0b0f14",
                 edgecolor=edge,
-                linewidth=1.25,
-                alpha=0.97,
+                linewidth=1.4,
+                alpha=0.98,
             ),
             arrowprops=dict(
                 arrowstyle="-",
                 color=edge,
-                lw=1.35,
-                linestyle=(0, (2.2, 1.5)),
-                shrinkA=2,
-                shrinkB=3,
+                lw=1.5,
+                linestyle=(0, (2.0, 1.4)),
+                shrinkA=1,
+                shrinkB=2,
+                connectionstyle="angle,angleA=0,angleB=90,rad=0",
             ),
         )
 

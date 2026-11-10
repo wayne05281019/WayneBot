@@ -4100,12 +4100,12 @@ def test_teach_vol_sr_preview_below_next_layer_60m():
         fp=_fp,
     )
     texts = " ".join(t.get_text() for t in axv.texts)
-    # 兩橫帶各自對一根量柱：黃帶←爆大量／白帶←下一層最大（＋次大量）
-    assert "黃帶←爆大量" in texts and "11/5 09:00" in texts
-    assert "白帶←下一層最大" in texts and "11/6 10:00" in texts
-    assert "白帶次大量" in texts and "11/6 11:00" in texts
-    # 上緣空帶：ylim 高於最大柱
-    assert float(axv.get_ylim()[1]) > max(vols) * 1.3
+    # 只兩標：黃／白＋月日幾點；次大量不上第三字標
+    assert "黃" in texts and "11/5 09:00" in texts
+    assert "白" in texts and "11/6 10:00" in texts
+    assert "白帶次大量" not in texts
+    assert "黃帶←" not in texts  # 短標，不准長句互壓
+    assert float(axv.get_ylim()[1]) > max(vols) * 1.2
     plt.close(fig)
 
     import inspect
@@ -4114,13 +4114,15 @@ def test_teach_vol_sr_preview_below_next_layer_60m():
     from biaoke_level_learn import _render_twii_c_wave_60_dark
 
     paint_src = inspect.getsource(_pv)
-    assert "arrowprops" in paint_src and "黃帶←爆大量" in paint_src
-    assert "白帶←下一層最大" in paint_src
+    assert "arrowprops" in paint_src
+    assert 'f"黃 {_tag(ii)}"' in paint_src or "黃 {_tag" in paint_src
+    assert 'f"白 {_tag(ii)}"' in paint_src or "白 {_tag" in paint_src
+    assert "次大量：只加色柱" in paint_src or "不上第三標" in paint_src or "不掛第三標" in paint_src
     assert "#f9a825" in paint_src and "#42a5f5" in paint_src
     yel = inspect.getsource(_paint_max_vol_hl_zone)
     nxt = inspect.getsource(_paint_next_layer_vol_zone)
     assert "黃帶" in yel and "fontsize=10.5" in yel
-    assert 'facecolor="#ffffff"' in nxt and "白帶" in nxt and "fontsize=10.5" in nxt
+    assert 'facecolor="#ffffff"' in nxt and "白帶" in nxt and "axhline" in nxt
     c60 = inspect.getsource(_render_twii_c_wave_60_dark)
     assert "_paint_teach_vol_layer_bars" in c60
     assert "2.35" in c60  # 量欄加高
