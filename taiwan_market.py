@@ -4736,6 +4736,7 @@ def format_taiwan_market_brief_html(
         ]
         return "\n".join(x for x in nums if x)
     fr_light = _falling_risk_light(int(snap.get("falling_risk") or 0))
+    chg5_txt = f"{float(snap.get('chg5_pct') or 0):+.2f}%"
     nums = [
         "＝＝台灣加權指數研究＝＝",
         f"{_brief_lab('收盤')}　{_page_b(snap['close'])}",
@@ -4746,7 +4747,7 @@ def format_taiwan_market_brief_html(
         ),
         *pack_phone_bits(
             f"{_brief_lab('日')}　{_page_b(_fmt_signed_pct(snap.get('chg1_pct')))}",
-            f"{_brief_lab('5日')}　{_page_b(f'{float(snap.get('chg5_pct') or 0):+.2f}%')}",
+            f"{_brief_lab('5日')}　{_page_b(chg5_txt)}",
             f"{_brief_lab('20日')}　{_page_b(_fmt_signed_pct(snap.get('chg20_pct')))}",
         ),
         *pack_phone_bits(

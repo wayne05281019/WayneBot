@@ -2441,6 +2441,86 @@ def test_release_stale_same_day_receipt_still_blocks(tmp_path, monkeypatch):
     assert runner.release_stale_morning_delivery_for_open_day("screen-20261104") is False
 
 
+def test_force_rescue_user_miss_reissue_clears_same_day_receipt(tmp_path, monkeypatch):
+    """§14：話筒回報沒收到 → force_reissue 清同日回執並重跑早報。"""
+    import sqlite3
+
+    from config import taipei_stamp
+    from main_runner import MainRunner
+    from pipeline_delivery import load_push_delivery, record_push_delivery
+    from wayne_db import ensure_core_schema
+
+    path = str(tmp_path / "user-miss.db")
+    ensure_core_schema(path)
+    record_push_delivery(
+        path,
+        "screen-20261110",
+        kind="morning-winrate",
+        n_ok=2,
+        notes="morning-winrate n=8",
+        delivered_at=taipei_stamp(),
+    )
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "INSERT OR REPLACE INTO pipeline_runs VALUES (?,?,?,?)",
+        ("screen-20261110", "2026-11-11T06:32:59+08:00", "success", "morning-winrate"),
+    )
+    conn.commit()
+    conn.close()
+
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = path
+    runner.today_str = "20261111"
+    runner.token = "x"
+    runner.chat_id = "111"
+    monkeypatch.setattr(
+        "import_health.latest_complete_quote_date", lambda *_a, **_k: "20261110"
+    )
+    monkeypatch.setattr(
+        runner, "should_yield_to_db_heavy_window", lambda now=None, fuse_only=False: False
+    )
+    monkeypatch.setattr(runner, "morning_claim_is_fresh_running", lambda: False)
+    monkeypatch.setattr(runner, "demote_orphaned_increment_claims", lambda force=False: 0)
+    monkeypatch.setattr(runner, "demote_orphaned_morning_claims", lambda force=False: 0)
+
+    calls = {"n": 0, "pin": ""}
+
+    def _morning(*_a, **_k):
+        calls["n"] += 1
+        calls["pin"] = str((__import__("os").environ.get("WAYNE_MORNING_PIN_AS_OF") or ""))
+        runner._mark_pipeline("success", "morning-winrate", run_date="screen-20261110")
+        return True
+
+    monkeypatch.setattr(runner, "run_morning_screen", _morning)
+
+    out = runner.force_rescue_morning(force_reissue=True)
+    assert out.get("reissued_user_miss") is True
+    assert out.get("force_reissue") is True
+    assert out.get("reissue_cleared") is True
+    assert calls["n"] == 1
+    assert calls["pin"] == "20261110"
+    assert out.get("ok") is True
+    assert runner.pipeline_status("screen-20261110") == "success"
+    # 預設路徑不准清同日回執（另建一顆已寄鍵）
+    record_push_delivery(
+        path,
+        "screen-20261110",
+        kind="morning-winrate",
+        n_ok=2,
+        notes="morning-winrate n=8",
+        delivered_at=taipei_stamp(),
+    )
+    runner._mark_pipeline("success", "morning-winrate", run_date="screen-20261110")
+    before = load_push_delivery(path, "screen-20261110") or {}
+    assert before.get("kind") == "morning-winrate"
+    calls["n"] = 0
+    out_default = runner.force_rescue_morning()
+    assert out_default.get("reissued_user_miss") is not True
+    after = load_push_delivery(path, "screen-20261110") or {}
+    assert after.get("kind") == "morning-winrate"
+    assert calls["n"] == 1
+
+
 def test_force_rescue_yields_to_fuse_window(monkeypatch):
     """16:25–17:00 開市日：force-morning 讓路盤後融合。"""
     from datetime import datetime
