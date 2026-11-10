@@ -880,6 +880,39 @@ def _fill_missing_twii_open_days_from_db(
     return merged
 
 
+def _sanitize_bar_ohlc(row: Dict[str, Any]) -> Dict[str, Any]:
+    """缺 high／low／open 時用 close 補；不准留下 0 高低下使末K隱形（量柱還在）。"""
+    out = dict(row or {})
+    try:
+        c = float(out.get("close") or 0)
+    except (TypeError, ValueError):
+        c = 0.0
+    if c <= 0:
+        return out
+    try:
+        o = float(out.get("open") or 0)
+    except (TypeError, ValueError):
+        o = 0.0
+    if o <= 0:
+        o = c
+    try:
+        h = float(out.get("high") or 0)
+    except (TypeError, ValueError):
+        h = 0.0
+    try:
+        lo = float(out.get("low") or 0)
+    except (TypeError, ValueError):
+        lo = 0.0
+    if h <= 0:
+        h = max(o, c)
+    if lo <= 0:
+        lo = min(o, c)
+    h = max(h, o, c)
+    lo = min(lo, o, c)
+    out["open"], out["high"], out["low"], out["close"] = o, h, lo, c
+    return out
+
+
 def _twii_bars_for_teach(
     db_path: str, n: int, pack: Optional[Dict[str, Any]] = None
 ) -> List[Dict[str, Any]]:
@@ -891,11 +924,15 @@ def _twii_bars_for_teach(
     from biaoke_wave import _load_twii_bars
 
     bars = list(_load_twii_bars(db_path, n=n, teach=True) or [])
+    if bars:
+        _ensure_twii_prev_close_day(db_path, _ymd(bars[-1].get("date")))
+        # 同步後重讀，把缺的前收開市日補進軸
+        bars = list(_load_twii_bars(db_path, n=n, teach=True) or [])
     bars = _fill_missing_twii_open_days_from_db(db_path, bars)
     live = (pack or {}).get("live_twii") if isinstance(pack, dict) else None
     if live:
         bars = _merge_live_twii_display_bar(bars, live)
-    return bars
+    return [_sanitize_bar_ohlc(r) for r in bars]
 
 
 def _ensure_teach_index_bars(db_path: str) -> None:
@@ -1367,36 +1404,47 @@ def _prev_bar_close(
 ) -> Optional[float]:
     """前一個交易日收。
 
-    圖軸若漏掉開市日（例如缺 11/06），倒數第二根會變成更早那天 → 漲跌％／點數全錯。
-    有 db 時以台股開市曆對 index_daily 補正確前收；沒庫才退回 bars 內前一根有收。
+    只認「末日的嚴格前一個開市日」收。圖軸／庫若漏那一天，不准改抓更早的
+    bars[-2]（例缺 11/06＋11/09 → 誤用 11/05 → 假 +2.74%／+1,137）。
+    有 db 先讀 index_daily；再只在 bars 裡找 date==期望日前收。
     """
     if not bars:
         return None
     last_d = _ymd((bars[-1] or {}).get("date"))
     expect = _prev_open_ymd(last_d) if last_d else ""
-    if expect and db_path:
+    if not expect:
+        return None
+    if db_path:
         got = _index_daily_close(db_path, symbol, expect)
         if got is not None:
             return got
-    # bars 內找嚴格早於末日的最近一根
-    if last_d:
-        for j in range(len(bars) - 2, -1, -1):
-            d = _ymd((bars[j] or {}).get("date"))
-            if not d or d >= last_d:
-                continue
-            try:
-                v = float((bars[j] or {}).get("close") or 0)
-            except (TypeError, ValueError):
-                continue
-            if v > 0:
-                return v
-    if len(bars) < 2:
-        return None
+    for j in range(len(bars) - 2, -1, -1):
+        d = _ymd((bars[j] or {}).get("date"))
+        if d != expect:
+            continue
+        try:
+            v = float((bars[j] or {}).get("close") or 0)
+        except (TypeError, ValueError):
+            return None
+        return v if v > 0 else None
+    return None
+
+
+def _ensure_twii_prev_close_day(db_path: str, last_ymd: str) -> None:
+    """末日的前一個開市日若庫內沒收 → 短窗再同步官方加權（失敗不擋）。"""
+    expect = _prev_open_ymd(last_ymd)
+    if not db_path or not expect:
+        return
+    if _index_daily_close(db_path, "TWII", expect) is not None:
+        return
+    if _index_daily_close(db_path, "^TWII", expect) is not None:
+        return
     try:
-        v = float(bars[-2].get("close") or 0)
-    except (TypeError, ValueError):
-        return None
-    return v if v > 0 else None
+        from taiwan_market import sync_index_daily
+
+        sync_index_daily(db_path, range_="1mo")
+    except Exception:
+        logger.debug("加權前收缺日短窗同步略過", exc_info=True)
 
 
 # 加權／費半黃框同一字級與框高；費半字少→寬自然較短
@@ -8011,18 +8059,45 @@ def _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_up) ->
     """三窗共用日K＋量：漲跌色只認昨收（candle_up_taiwan）；K／量同根同色。
 
     不准一根用昨收、量柱改比開收；也不准缺昨收就整窗翻色。
+    high／low≤0 時用 open／close 補，不准量柱在、價K隱形。
     """
     n = len(closes)
     min_body = _candle_span_min_body(highs, lows, frac=_LIVE_CANDLE_MIN_BODY_FRAC)
+    import matplotlib.pyplot as plt
+
     for i in range(n):
+        try:
+            c_i = float(closes[i])
+        except (TypeError, ValueError):
+            continue
+        if not (c_i == c_i and c_i > 0):
+            continue
+        try:
+            o_i = float(opens[i]) if i < len(opens) else c_i
+        except (TypeError, ValueError):
+            o_i = c_i
+        if not (o_i == o_i and o_i > 0):
+            o_i = c_i
+        try:
+            h_i = float(highs[i]) if i < len(highs) else max(o_i, c_i)
+        except (TypeError, ValueError):
+            h_i = max(o_i, c_i)
+        try:
+            l_i = float(lows[i]) if i < len(lows) else min(o_i, c_i)
+        except (TypeError, ValueError):
+            l_i = min(o_i, c_i)
+        if not (h_i == h_i and h_i > 0):
+            h_i = max(o_i, c_i)
+        if not (l_i == l_i and l_i > 0):
+            l_i = min(o_i, c_i)
+        h_i = max(h_i, o_i, c_i)
+        l_i = min(l_i, o_i, c_i)
         prev_c = _prev_valid_close(closes, i, opens=opens)
-        up = candle_up(closes[i], prev_c, opens[i])
+        up = candle_up(c_i, prev_c, o_i)
         color = _LIVE_UP if up else _LIVE_DOWN
         # wick/body z 高於底帶、低於空心 tip；末根另蓋回
-        ax.vlines(i, lows[i], highs[i], color=color, linewidth=1.35, zorder=5)
-        y0, y1 = sorted((opens[i], closes[i]))
-        import matplotlib.pyplot as plt
-
+        ax.vlines(i, l_i, h_i, color=color, linewidth=1.35, zorder=5)
+        y0, y1 = sorted((o_i, c_i))
         ax.add_patch(
             plt.Rectangle(
                 (i - 0.34, y0),
@@ -8034,8 +8109,13 @@ def _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_up) ->
                 zorder=6,
             )
         )
-        if axv is not None:
-            axv.bar(i, vols[i], color=color, width=0.68, zorder=3, alpha=0.92)
+        if axv is not None and i < len(vols):
+            try:
+                vv = float(vols[i] or 0)
+            except (TypeError, ValueError):
+                vv = 0.0
+            if vv == vv and vv > 0:
+                axv.bar(i, vv, color=color, width=0.68, zorder=3, alpha=0.92)
 
 
 def _paint_special_candle(
@@ -12558,18 +12638,26 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         _macro_spear.append((i_now, y_now, "#ea80fc"))
     for ii, yy, col in _macro_spear:
         _spear_ring(ax, ii, yy, color=col, zorder=8, hot=(col == "#ea80fc"))
-    # 末根加權K參數先記；等右標畫完再蓋回（避免虛線／字壓掉縮圖K）
+    # 末根加權K參數先記；xlim／右標之後再蓋回（與費半同：不准被裁／壓掉）
     _tw_span = max(highs) - min(lows) if highs and lows else 0.0
     _tw_min_body = max(
         _candle_span_min_body(highs, lows, frac=_LIVE_CANDLE_MIN_BODY_FRAC),
         float(_tw_span) * 0.02,
     )
+    _tw_san = _sanitize_bar_ohlc(
+        {
+            "open": opens[i_now] if i_now < len(opens) else closes[i_now],
+            "high": highs[i_now] if i_now < len(highs) else closes[i_now],
+            "low": lows[i_now] if i_now < len(lows) else closes[i_now],
+            "close": closes[i_now],
+        }
+    )
     _tw_last_repaint = {
         "i": i_now,
-        "o": float(opens[i_now]),
-        "h": float(highs[i_now]),
-        "l": float(lows[i_now]),
-        "c": float(closes[i_now]),
+        "o": float(_tw_san["open"]),
+        "h": float(_tw_san["high"]),
+        "l": float(_tw_san["low"]),
+        "c": float(_tw_san["close"]),
         "prev_c": _prev_valid_close(closes, int(i_now), opens=opens),
         "min_body": float(_tw_min_body),
     }
@@ -12819,25 +12907,6 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         nudge=True,
         fontsize=8.5 if _c9_now else 9.0,
     )
-    # 右標之後蓋回末根加權K（縮圖必見；白邊＋高 z，不准被 tip／虛線吃掉）
-    if _tw_last_repaint:
-        _paint_one_live_candle(
-            ax,
-            int(_tw_last_repaint["i"]),
-            open_=float(_tw_last_repaint["o"]),
-            high=float(_tw_last_repaint["h"]),
-            low=float(_tw_last_repaint["l"]),
-            close=float(_tw_last_repaint["c"]),
-            prev_c=_tw_last_repaint.get("prev_c"),
-            candle_up=candle_up_taiwan,
-            min_body=float(_tw_last_repaint["min_body"]),
-            width=0.86,
-            wick_lw=2.05,
-            z_wick=14,
-            z_body=15,
-            edgecolor="#ffffff",
-            edge_lw=0.9,
-        )
     _set_upright_ylabel(ax, "加權日盤", fp=_fp, color=_LIVE_MUTED, fontsize=10)
 
     # —— 下：加權日量（最大量黃＝與上方同索引當日K對齊）——
@@ -12899,6 +12968,25 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     x_left = -1.35 if need_apr else -0.6
     for a in (axu, axt, ax, axv):
         a.set_xlim(x_left, x_right)
+    # xlim 定完再蓋末根加權K（與費半同序；縮圖必見，不准量在價無）
+    if _tw_last_repaint:
+        _paint_one_live_candle(
+            ax,
+            int(_tw_last_repaint["i"]),
+            open_=float(_tw_last_repaint["o"]),
+            high=float(_tw_last_repaint["h"]),
+            low=float(_tw_last_repaint["l"]),
+            close=float(_tw_last_repaint["c"]),
+            prev_c=_tw_last_repaint.get("prev_c"),
+            candle_up=candle_up_taiwan,
+            min_body=float(_tw_last_repaint["min_body"]),
+            width=0.86,
+            wick_lw=2.05,
+            z_wick=14,
+            z_body=15,
+            edgecolor="#ffffff",
+            edge_lw=0.9,
+        )
     # xlim 定完再蓋末根費半K（避免右標／裁切吃掉周五官方柱）
     # 電子盤／費半黃框與末根同口：先算 tip，休市末K不准停在軸上殘值
     _tx_chg_tip = _resolve_tx_after_hours_tip(db_path, pack)
