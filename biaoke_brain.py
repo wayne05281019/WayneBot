@@ -436,6 +436,7 @@ def volume_first_price(bars: Sequence[Dict[str, Any]], *, lookback: int = 40) ->
         "pct": last.get("pct_change"),
         "vol_now": vol_now,
         "spike_date": _ymd(spike.get("date")),
+        "spike_ts": str(spike.get("ts") or "").strip(),
         "spike_high": hi,
         "spike_low": lo,
         "spike_vol": vol_spike,

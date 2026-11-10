@@ -4040,6 +4040,100 @@ def test_huang_c60_anchors_and_wave_paint_wired():
     assert "_window_huang_c60_rows" in c60
 
 
+def test_teach_vol_sr_60m_label_shows_bar_hhmm():
+    """超近60分大量撐壓標籤要寫清幾點K棒（例 11/5 09:00）；日K不加假時段。"""
+    from biaoke_level_learn import (
+        _paint_max_vol_hl_zone,
+        _resolve_teach_vol_sr,
+        _teach_bar_hhmm,
+        _teach_vol_day_tag,
+        _teach_vol_match_bar_index,
+        _teach_vol_sr_title_bit,
+    )
+
+    assert _teach_bar_hhmm("202611050900") == "09:00"
+    assert _teach_bar_hhmm("202611051330") == "13:30"
+    assert _teach_bar_hhmm("20261105") == ""
+    assert _teach_vol_day_tag("20261105", "202611050900").strip() == "11/5 09:00"
+    assert _teach_vol_day_tag("20261105", "").strip() == "11/5"
+
+    # 同日多根：爆大量在 13:00 → 索引／ts 不准退回 09:00 第一根（≥4 根才進 resolve）
+    rows = [
+        {
+            "date": "20261104",
+            "ts": "202611041300",
+            "open": 98,
+            "high": 102,
+            "low": 96,
+            "close": 100,
+            "volume": 8,
+        },
+        {
+            "date": "20261105",
+            "ts": "202611050900",
+            "open": 100,
+            "high": 110,
+            "low": 90,
+            "close": 105,
+            "volume": 10,
+        },
+        {
+            "date": "20261105",
+            "ts": "202611051300",
+            "open": 105,
+            "high": 150,
+            "low": 80,
+            "close": 120,
+            "volume": 9999,
+        },
+        {
+            "date": "20261106",
+            "ts": "202611060900",
+            "open": 120,
+            "high": 125,
+            "low": 118,
+            "close": 122,
+            "volume": 20,
+        },
+    ]
+    assert (
+        _teach_vol_match_bar_index(
+            rows, ymd="20261105", high=150, low=80, ts="202611051300"
+        )
+        == 2
+    )
+    sr = _resolve_teach_vol_sr(rows, lookback=40)
+    pri = sr.get("primary") or {}
+    assert pri.get("date") == "20261105"
+    assert str(pri.get("ts") or "").startswith("202611051300")
+    assert sr.get("i_primary") == 2
+    assert "09:00" not in _teach_vol_day_tag(pri.get("date"), pri.get("ts"))
+    assert "13:00" in _teach_vol_day_tag(pri.get("date"), pri.get("ts"))
+    bit = _teach_vol_sr_title_bit(sr)
+    assert "13:00" in bit and "大量撐壓" in bit
+
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from wayne_navigator import _fp
+
+    fig, ax = plt.subplots()
+    ax.set_ylim(70, 160)
+    _paint_max_vol_hl_zone(
+        ax,
+        high=150,
+        low=80,
+        date_lab="20261105",
+        ts_lab="202611051300",
+        fp=_fp,
+    )
+    texts = [t.get_text() for t in ax.texts]
+    assert any("11/5 13:00" in t and "大量壓" in t for t in texts), texts
+    assert any("11/5 13:00" in t and "大量撐" in t for t in texts), texts
+    plt.close(fig)
+
+
 def test_retest_41500_oral_beats_unpriced_pressure_wait(tmp_path):
     """11/10 口頭：至少回測41500／絕對不破週五低；右標與等待句要有價。"""
     from datetime import datetime

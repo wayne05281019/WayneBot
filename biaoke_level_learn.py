@@ -112,6 +112,92 @@ def _ymd(raw: Any) -> str:
     return t if len(t) == 8 and t.isdigit() else ""
 
 
+def _teach_bar_hhmm(raw: Any) -> str:
+    """從 60 分 ts／datetime 取 HH:MM；日K無時段 → 空字（標籤只留月日）。"""
+    s = str(raw or "").strip()
+    if not s:
+        return ""
+    digits = "".join(ch for ch in s if ch.isdigit())
+    # 202611050900／20261105090000
+    if len(digits) >= 12:
+        hh, mm = digits[8:10], digits[10:12]
+        try:
+            if 0 <= int(hh) <= 23 and 0 <= int(mm) <= 59:
+                return f"{hh}:{mm}"
+        except ValueError:
+            pass
+    # 2026-11-05 09:00:00／09:00
+    for sep in (" ", "T"):
+        if sep in s:
+            tail = s.split(sep, 1)[1].strip()
+            if len(tail) >= 5 and tail[2] == ":":
+                hh, mm = tail[0:2], tail[3:5]
+                if hh.isdigit() and mm.isdigit():
+                    try:
+                        if 0 <= int(hh) <= 23 and 0 <= int(mm) <= 59:
+                            return f"{hh}:{mm}"
+                    except ValueError:
+                        pass
+            break
+    if len(s) == 5 and s[2] == ":" and s[0:2].isdigit() and s[3:5].isdigit():
+        return s
+    return ""
+
+
+def _teach_vol_day_tag(date_lab: Any, ts_lab: Any = "") -> str:
+    """大量撐壓左標前綴：日K＝「11/5 」；60分＝「11/5 09:00 」（寫清幾點K棒）。"""
+    t = _ymd(date_lab)
+    md = f"{int(t[4:6])}/{int(t[6:8])}" if len(t) == 8 else ""
+    hhmm = _teach_bar_hhmm(ts_lab) or _teach_bar_hhmm(date_lab)
+    if md and hhmm:
+        return f"{md} {hhmm} "
+    if md:
+        return f"{md} "
+    if hhmm:
+        return f"{hhmm} "
+    return ""
+
+
+def _teach_vol_match_bar_index(
+    rows: Sequence[Dict[str, Any]],
+    *,
+    ymd: str,
+    high: float,
+    low: float,
+    ts: str = "",
+) -> Optional[int]:
+    """對到真爆大量棒：60分先認 ts，再同日高低吻合；日K同日即可。不准只抓當日第一根。"""
+    rows = list(rows or [])
+    ts_s = str(ts or "").strip()
+    if ts_s:
+        for i, r in enumerate(rows):
+            rt = str((r or {}).get("ts") or "").strip()
+            if not rt:
+                continue
+            if rt == ts_s or rt[:12] == ts_s[:12]:
+                return int(i)
+    day = _ymd(ymd)
+    if not day:
+        return None
+    hi = float(high or 0)
+    lo = float(low or 0)
+    first: Optional[int] = None
+    for i, r in enumerate(rows):
+        rd = _ymd((r or {}).get("date")) or _ymd((r or {}).get("ts"))
+        if rd != day:
+            continue
+        if first is None:
+            first = int(i)
+        try:
+            rh = float((r or {}).get("high") or 0)
+            rl = float((r or {}).get("low") or 0)
+        except (TypeError, ValueError):
+            continue
+        if hi > 0 and lo > 0 and abs(rh - hi) < 0.05 and abs(rl - lo) < 0.05:
+            return int(i)
+    return first
+
+
 def _px(v: Any) -> str:
     try:
         x = float(v)
@@ -8002,16 +8088,18 @@ def _resolve_teach_vol_sr(
         logger.exception("教具 volume_first 略過")
         vf = {}
     spike_d = _ymd(vf.get("spike_date"))
+    spike_ts = str(vf.get("spike_ts") or "").strip()
     hi = float(vf.get("spike_high") or 0)
     lo = float(vf.get("spike_low") or 0)
     if spike_d and hi > 0 and lo > 0 and hi >= lo:
-        i_pri = None
-        for i, r in enumerate(rows):
-            if _ymd(r.get("date")) == spike_d:
-                i_pri = i
-                break
+        i_pri = _teach_vol_match_bar_index(
+            rows, ymd=spike_d, high=hi, low=lo, ts=spike_ts
+        )
+        if not spike_ts and i_pri is not None:
+            spike_ts = str((rows[int(i_pri)] or {}).get("ts") or "").strip()
         out["primary"] = {
             "date": spike_d,
+            "ts": spike_ts,
             "high": hi,
             "low": lo,
             "volume": float(vf.get("spike_vol") or 0),
@@ -8050,22 +8138,26 @@ def _resolve_teach_vol_sr(
         logger.exception("教具下一層大量區略過")
         nxt = None
     if nxt:
+        nd = _ymd(nxt.get("date"))
+        nhi = float(nxt.get("high") or nxt.get("pressure") or 0)
+        nlo = float(nxt.get("low") or nxt.get("support") or 0)
+        nts = str(nxt.get("ts") or "").strip()
+        i_nx = _teach_vol_match_bar_index(
+            rows, ymd=nd, high=nhi, low=nlo, ts=nts
+        )
+        if not nts and i_nx is not None:
+            nts = str((rows[int(i_nx)] or {}).get("ts") or "").strip()
         out["next"] = {
-            "date": _ymd(nxt.get("date")),
-            "high": float(nxt.get("high") or nxt.get("pressure") or 0),
-            "low": float(nxt.get("low") or nxt.get("support") or 0),
+            "date": nd,
+            "ts": nts,
+            "high": nhi,
+            "low": nlo,
             "direction": str(nxt.get("direction") or ""),
             "label_hold": str(nxt.get("label_hold") or ""),
             "label_press": str(nxt.get("label_press") or ""),
         }
-        nd = _ymd((out["next"] or {}).get("date"))
         if nd and (not out["earliest_ymd"] or nd < out["earliest_ymd"]):
             out["earliest_ymd"] = nd
-        i_nx = None
-        for i, r in enumerate(rows):
-            if _ymd(r.get("date")) == nd:
-                i_nx = i
-                break
         out["i_next"] = i_nx
     return out
 
@@ -8102,13 +8194,13 @@ def _paint_next_layer_vol_zone(
     labels: bool = True,
     avoid_top_left_stamp: bool = False,
     pack: Optional[Dict[str, Any]] = None,
+    ts_lab: str = "",
 ) -> None:
     """下一層大量區灰帶（對齊結構圖下一層；暗底教具可讀）。"""
     y0, y1 = float(low), float(high)
     if y1 <= y0:
         return
-    md = _md(date_lab) if _ymd(date_lab) else ""
-    day_tag = f"{md} " if md else ""
+    day_tag = _teach_vol_day_tag(date_lab, ts_lab)
     # 與下週底黃帶大幅重疊時只留灰底邊緣感、不准蓋黃地色（黃帶 zorder 更高）
     ax.axhspan(y0, y1, facecolor="#90a4ae", alpha=0.20, zorder=0.45)
     if not labels:
@@ -8173,6 +8265,7 @@ def _paint_window_dual_zones(
         i_vmax = max(range(n), key=lambda i: float(vols[i] or 0))
         primary = {
             "date": _ymd(bars[i_vmax].get("date")),
+            "ts": str(bars[i_vmax].get("ts") or ""),
             "high": float(highs[i_vmax]),
             "low": float(lows[i_vmax]),
         }
@@ -8185,6 +8278,7 @@ def _paint_window_dual_zones(
             high=float(primary["high"]),
             low=float(primary["low"]),
             date_lab=str(primary.get("date") or ""),
+            ts_lab=str(primary.get("ts") or ""),
             fp=fp,
             avoid_top_left_stamp=avoid_top_left_stamp,
         )
@@ -8194,6 +8288,7 @@ def _paint_window_dual_zones(
             high=float(nxt["high"]),
             low=float(nxt["low"]),
             date_lab=str(nxt.get("date") or ""),
+            ts_lab=str(nxt.get("ts") or ""),
             fp=fp,
             direction=str(nxt.get("direction") or "below"),
             avoid_top_left_stamp=avoid_top_left_stamp,
@@ -8551,17 +8646,39 @@ def _far_teach_roll_bars(
 def _remap_teach_vol_sr_index(
     sr: Dict[str, Any], bars: Sequence[Dict[str, Any]]
 ) -> Dict[str, Any]:
-    """切片後重算大量撐壓／下一層日索引；日期不在窗內 → i_*=None（底色仍可畫價）。"""
+    """切片後重算大量撐壓／下一層日索引；日期不在窗內 → i_*=None（底色仍可畫價）。
+
+    60分優先對 ts／同日高低；日K仍對 ymd（同日多根取最後一根相容舊行為）。
+    """
     out = dict(sr or {})
     out["i_primary"] = None
     out["i_next"] = None
-    by_ymd = {_ymd(r.get("date")): i for i, r in enumerate(bars or []) if _ymd(r.get("date"))}
-    pd = _ymd(((out.get("primary") or {}) or {}).get("date"))
-    if pd and pd in by_ymd:
-        out["i_primary"] = int(by_ymd[pd])
-    nd = _ymd(((out.get("next") or {}) or {}).get("date"))
-    if nd and nd in by_ymd:
-        out["i_next"] = int(by_ymd[nd])
+    rows = list(bars or [])
+    by_ymd = {_ymd(r.get("date")): i for i, r in enumerate(rows) if _ymd(r.get("date"))}
+    pri = ((out.get("primary") or {}) or {})
+    nxt = ((out.get("next") or {}) or {})
+    pd = _ymd(pri.get("date"))
+    i_pri = _teach_vol_match_bar_index(
+        rows,
+        ymd=pd,
+        high=float(pri.get("high") or 0),
+        low=float(pri.get("low") or 0),
+        ts=str(pri.get("ts") or ""),
+    )
+    if i_pri is None and pd and pd in by_ymd:
+        i_pri = int(by_ymd[pd])
+    out["i_primary"] = i_pri
+    nd = _ymd(nxt.get("date"))
+    i_nx = _teach_vol_match_bar_index(
+        rows,
+        ymd=nd,
+        high=float(nxt.get("high") or 0),
+        low=float(nxt.get("low") or 0),
+        ts=str(nxt.get("ts") or ""),
+    )
+    if i_nx is None and nd and nd in by_ymd:
+        i_nx = int(by_ymd[nd])
+    out["i_next"] = i_nx
     return out
 
 
@@ -8600,20 +8717,24 @@ def _teach_vol_sr_title_bit(
     pri = ((vol_sr or {}).get("primary") or {}) if isinstance(vol_sr, dict) else {}
     nxt = ((vol_sr or {}).get("next") or {}) if isinstance(vol_sr, dict) else {}
     if pri.get("date") and pri.get("high") is not None and pri.get("low") is not None:
+        tag = _teach_vol_day_tag(pri.get("date"), pri.get("ts")).strip()
         bit = (
-            f"黃＝大量撐壓{_md(pri.get('date'))} "
+            f"黃＝大量撐壓{tag} "
             f"{_px(pri.get('high'))}～{_px(pri.get('low'))}"
         )
     elif i_vmax is not None and bars and highs and lows:
+        b = bars[int(i_vmax)]
+        tag = _teach_vol_day_tag(b.get("date"), b.get("ts")).strip()
         bit = (
-            f"黃＝大量撐壓{_md(bars[int(i_vmax)].get('date'))} "
+            f"黃＝大量撐壓{tag} "
             f"{_px(highs[int(i_vmax)])}～{_px(lows[int(i_vmax)])}"
         )
     else:
         bit = "黃＝大量撐壓"
     if nxt.get("date") and nxt.get("high") is not None and nxt.get("low") is not None:
+        ntag = _teach_vol_day_tag(nxt.get("date"), nxt.get("ts")).strip()
         bit += (
-            f"｜亮桃／灰＝下一層{_md(nxt.get('date'))} "
+            f"｜亮桃／灰＝下一層{ntag} "
             f"{_px(nxt.get('high'))}～{_px(nxt.get('low'))}"
         )
     return bit
@@ -9407,18 +9528,18 @@ def _paint_max_vol_hl_zone(
     fp: Any,
     labels: bool = True,
     avoid_top_left_stamp: bool = False,
+    ts_lab: str = "",
 ) -> None:
     """淺黃底＝大量撐壓（爆大量日最高～最低）；底色 zorder 低於K棒。
 
-    左標一定帶交易日月日，跟金K／量柱黃／豎虛線同一日，不准只寫高低不寫日。
+    左標一定帶交易日月日；60分再寫幾點K棒（例 11/5 09:00），跟金K／量柱黃／豎虛線同一根。
     labels=False：只留底色（遠窗電子盤改走右欄疏開，左欄不准再卡一坨）。
     avoid_top_left_stamp：遠窗三白底戳佔左上時，頂部價標右移＋虛線，不准被戳蓋住。
     """
     y0, y1 = float(low), float(high)
     if y1 <= y0:
         return
-    md = _md(date_lab) if _ymd(date_lab) else ""
-    day_tag = f"{md} " if md else ""
+    day_tag = _teach_vol_day_tag(date_lab, ts_lab)
     # 只留淺黃底，不准上下虛線框（框會跟K攪糊）；對齊交易日靠豎虛線＋金K＋左標月日
     ax.axhspan(y0, y1, facecolor="#ffeb3b", alpha=0.18, zorder=0.5)
     if not labels:
@@ -12761,6 +12882,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             high=float(pri["high"]),
             low=float(pri["low"]),
             date_lab=str(pri.get("date") or ""),
+            ts_lab=str(pri.get("ts") or ""),
             fp=_fp,
             avoid_top_left_stamp=True,
         )
@@ -12771,6 +12893,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 high=float(nxt["high"]),
                 low=float(nxt["low"]),
                 date_lab=str(nxt.get("date") or ""),
+                ts_lab=str(nxt.get("ts") or ""),
                 fp=_fp,
                 direction=str(nxt.get("direction") or "below"),
                 avoid_top_left_stamp=True,
@@ -12799,8 +12922,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     _sox_vol_right: List[Dict[str, Any]] = []
     if (sox_vol_sr.get("primary") or {}).get("high"):
         _sp = sox_vol_sr["primary"]
-        _sp_md = _md(_sp.get("date"))
-        _sp_tag = f"{_sp_md} " if _sp_md else ""
+        _sp_tag = _teach_vol_day_tag(_sp.get("date"), _sp.get("ts"))
         _sox_vol_right.append(
             {
                 "x": max(int(n_axis) - 1, 0),
@@ -12944,6 +13066,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             high=float(pri["high"]),
             low=float(pri["low"]),
             date_lab=str(pri.get("date") or ""),
+            ts_lab=str(pri.get("ts") or ""),
             fp=_fp,
             labels=False,
         )
@@ -12954,6 +13077,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 high=float(nxt["high"]),
                 low=float(nxt["low"]),
                 date_lab=str(nxt.get("date") or ""),
+                ts_lab=str(nxt.get("ts") or ""),
                 fp=_fp,
                 direction=str(nxt.get("direction") or "below"),
                 # 左標改走右欄，避免與青帶／即時擠在底段卡住
