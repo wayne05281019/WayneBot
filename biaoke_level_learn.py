@@ -2950,6 +2950,17 @@ def _latest_level_thesis(
                 snip = f"{pb_real} {snip}".strip()
     except Exception:
         logger.debug("下降壓改口題旨覆寫略過", exc_info=True)
+    # 後文：至少回測 41500／絕對不破週五低（11/10 口頭；壓無報價下降壓盯法）
+    try:
+        if cap >= _RETEST_41500_ORAL_AS_OF:
+            _ensure_retest_41500_oral_thesis_snap(db_path, as_of=cap)
+        if cap >= _RETEST_41500_ORAL_AS_OF and not _text_has_retest_41500(snip):
+            snip = f"{_RETEST_41500_ORAL_SNIP} {snip}".strip()
+            post_id = post_id or _RETEST_41500_ORAL_POST_ID
+        elif _text_has_retest_41500(snip) and "41500" not in snip:
+            snip = f"{_RETEST_41500_ORAL_SNIP} {snip}".strip()
+    except Exception:
+        logger.debug("41500 回測口頭題旨覆寫略過", exc_info=True)
     morph_blob = snip + " " + " ".join(str(r["snippet"] or "") for r in (extra or []))
     if post_snip:
         morph_blob = f"{morph_blob} {post_snip}"
@@ -3010,18 +3021,26 @@ def _latest_level_thesis(
     )
     has_c9 = bool(re.search(r"C\s*[-–]\s*9", snip))
     has_41760 = bool(re.search(r"41760", snip))
+    has_41500 = _text_has_retest_41500(snip) or bool(re.search(r"41500", snip))
     # 夜盤第二組落底（C3-5完成）優先於舊 C3-3 題旨；後文改口壓前文
     if has_pressure_break:
         # 他最新改口：夜盤過 C3 下降壓；上週五低不再假跌破；拉回回測下降壓（非買訊）
-        # 斜線回測 ≠ 水平台指壓41760：兩件寫清，不准混成一點
+        # 斜線回測 ≠ 水平台指壓41760；11/10 後文釘至少回測 41500／絕對不破週五低
         thesis = "大A→大B→大C｜夜盤過C3下降壓・週五低不再假跌破（預估）"
         wait_bits = [
             "拉回回測下降壓力線（口述斜線・圖上未標C3／無報價）",
             "清洗籌碼",
             "資金可5~6成",
         ]
+        if has_41500:
+            wait_bits = [
+                "至少回測41500",
+                "絕對不破週五低37837",
+                "拉回回測下降壓力線（口述斜線・無報價）",
+                "清洗籌碼",
+            ]
         if has_41760:
-            wait_bits.insert(0, "水平台指壓41760（≠那條口述下降壓）")
+            wait_bits.insert(0, "水平台指壓41760（≠41500回測／≠口述下降壓）")
         wait_bits.append("非買訊")
         wait = "；".join(wait_bits)
     elif has_stop_confirm:
@@ -4797,8 +4816,11 @@ def _paint_c3_vs_41760_legend(ax, *, fp, pack: Optional[Dict[str, Any]] = None) 
         ax.text(
             0.015,
             0.14,
-            "①他說C3下降壓＝口述斜線（無報價・圖上未標C3）\n"
-            "②台指壓41,760＝水平價｜紫線＝大C路徑≠①",
+            "①青帶＝第一組初跌(10/8～10/19)\n"
+            "②紫帶＝第二組＝C3主跌→C3-5／週五低\n"
+            "③C3下降壓＝連②高點的口述斜線(無報價)\n"
+            "④至少回測41,500｜絕對不破週五低\n"
+            "⑤41,760＝水平台指壓｜折線紫＝大C路徑≠③",
             transform=ax.transAxes,
             ha="left",
             va="bottom",
@@ -4817,6 +4839,218 @@ def _paint_c3_vs_41760_legend(ax, *, fp, pack: Optional[Dict[str, Any]] = None) 
         )
     except Exception:
         logger.debug("下降壓／41760 對照簽略過", exc_info=True)
+
+
+def _paint_c3_group12_span_labels(
+    ax,
+    bars: Sequence[Dict[str, Any]],
+    *,
+    fp,
+    pack: Optional[Dict[str, Any]] = None,
+    lows: Optional[Sequence[float]] = None,
+    highs: Optional[Sequence[float]] = None,
+) -> None:
+    """三窗加權：教導用標出「第一組／第二組＝C3」跨度＋示意下降壓斜線。
+
+    對得上他文＋官方柱才畫（教導＝讓人對圖，不是發明報價當買訊）：
+    - 第一組初跌＝10/8～10/19（他原文）
+    - 第二組＝其後主跌＝C3，落底＝C3-5／上週五低 37837
+    - C3下降壓示意＝第二組內兩個遞減高點連線（無報價；標「示意」）
+    """
+    if ax is None or fp is None or not bars:
+        return
+    # 下降壓／止跌確認當令才畫，避免舊題旨亂貼組號
+    blob = " ".join(
+        str(x or "")
+        for x in (
+            (pack or {}).get("thesis"),
+            (pack or {}).get("snippet_full"),
+            (pack or {}).get("snippet"),
+            (pack or {}).get("wait_struct"),
+        )
+    )
+    if not (
+        _pack_pressure_break_on(pack)
+        or _text_has_stop_low_confirm(blob)
+        or "C3-5" in blob
+        or "第二組" in blob
+    ):
+        return
+    i1s = _bar_index_by_ymd(bars, "20261008")
+    i1e = _bar_index_by_ymd(bars, "20261019")
+    if i1s is None:
+        i1s = _bar_index_by_ymd(bars, "20261007")
+    if i1e is None:
+        i1e = _bar_index_by_ymd(bars, "20261020")
+    i_fri = _bar_index_by_ymd(bars, "20261106")
+    if i_fri is None:
+        i_fri = _bar_index_by_ymd(bars, "20261107")
+    if i_fri is None:
+        # 找不到週五低柱就不硬畫第二組尾
+        for ii, _b in enumerate(bars):
+            try:
+                if lows and ii < len(lows) and abs(float(lows[ii]) - 37837.0) < 1.0:
+                    i_fri = ii
+                    break
+            except (TypeError, ValueError, IndexError):
+                continue
+    try:
+        y0, y1 = ax.get_ylim()
+        y_top = float(y1) - (float(y1) - float(y0)) * 0.045
+        y_mid = float(y1) - (float(y1) - float(y0)) * 0.11
+    except Exception:
+        return
+    try:
+        if i1s is not None and i1e is not None and int(i1e) >= int(i1s):
+            ax.axvspan(
+                float(i1s) - 0.45,
+                float(i1e) + 0.45,
+                facecolor="#80deea",
+                alpha=0.10,
+                zorder=1.05,
+                linewidth=0,
+            )
+            ax.text(
+                (float(i1s) + float(i1e)) * 0.5,
+                y_top,
+                "第一組初跌\n10/8～10/19",
+                ha="center",
+                va="top",
+                fontproperties=fp(8.0, "bold"),
+                color="#e0f7fa",
+                zorder=34,
+                linespacing=1.15,
+                bbox={
+                    "boxstyle": "round,pad=0.28",
+                    "facecolor": "#006064",
+                    "edgecolor": "#80deea",
+                    "linewidth": 1.2,
+                    "alpha": 0.92,
+                },
+                clip_on=False,
+            )
+        # 第二組：第一組結束後 → 週五低（C3／C3-5 落底）
+        if i1e is not None and i_fri is not None and int(i_fri) > int(i1e):
+            i2s = int(i1e) + 1
+            i_fri_i = int(i_fri)
+            ax.axvspan(
+                float(i2s) - 0.45,
+                float(i_fri_i) + 0.45,
+                facecolor="#ce93d8",
+                alpha=0.10,
+                zorder=1.05,
+                linewidth=0,
+            )
+            ax.text(
+                (float(i2s) + float(i_fri_i)) * 0.5,
+                y_mid,
+                "第二組＝C3主跌\n落底C3-5／週五低",
+                ha="center",
+                va="top",
+                fontproperties=fp(8.0, "bold"),
+                color="#f3e5f5",
+                zorder=34,
+                linespacing=1.15,
+                bbox={
+                    "boxstyle": "round,pad=0.28",
+                    "facecolor": "#4a148c",
+                    "edgecolor": "#ce93d8",
+                    "linewidth": 1.2,
+                    "alpha": 0.92,
+                },
+                clip_on=False,
+            )
+            # 週五低柱頂再釘一次，方便對 37837 右標
+            _fri_y = y_mid
+            if lows is not None and i_fri_i < len(lows):
+                try:
+                    _fri_y = float(lows[i_fri_i])
+                except (TypeError, ValueError):
+                    _fri_y = y_mid
+            ax.annotate(
+                "第二組末＝C3-5",
+                xy=(float(i_fri_i), _fri_y),
+                xytext=(float(i_fri_i), y_mid - (float(y1) - float(y0)) * 0.08),
+                textcoords="data",
+                ha="center",
+                va="top",
+                fontproperties=fp(7.5, "bold"),
+                color="#ffd54f",
+                zorder=35,
+                arrowprops={
+                    "arrowstyle": "->",
+                    "color": "#ffd54f",
+                    "lw": 1.1,
+                    "shrinkA": 0,
+                    "shrinkB": 2,
+                },
+                bbox={
+                    "boxstyle": "round,pad=0.22",
+                    "facecolor": "#311b92",
+                    "edgecolor": "#ffd54f",
+                    "linewidth": 1.1,
+                    "alpha": 0.92,
+                },
+                clip_on=False,
+            )
+            # 教導用：第二組內遞減高點連線＝C3下降壓示意（無報價；標示意）
+            if highs is not None and len(highs) > i_fri_i:
+                hi_pts: List[Tuple[int, float]] = []
+                for ii in range(i2s, i_fri_i + 1):
+                    try:
+                        hv = float(highs[ii])
+                    except (TypeError, ValueError, IndexError):
+                        continue
+                    if hv > 0:
+                        hi_pts.append((ii, hv))
+                if len(hi_pts) >= 4:
+                    # 前半最高、後半次高且更低 → 下降壓示意兩點
+                    mid = i2s + max(2, (i_fri_i - i2s) // 2)
+                    left = [p for p in hi_pts if p[0] <= mid]
+                    right = [p for p in hi_pts if p[0] > mid]
+                    if left and right:
+                        p1 = max(left, key=lambda p: p[1])
+                        # 後半取低於 p1 的最高（真下降）
+                        right_down = [p for p in right if p[1] < p1[1] - 50.0]
+                        if right_down:
+                            p2 = max(right_down, key=lambda p: p[1])
+                            # 線延伸到週五後一截，方便對「夜盤已過」
+                            x1, y_a = float(p1[0]), float(p1[1])
+                            x2, y_b = float(p2[0]), float(p2[1])
+                            if x2 > x1:
+                                slope = (y_b - y_a) / (x2 - x1)
+                                x_end = float(min(len(bars) - 1, i_fri_i + 3))
+                                y_end = y_a + slope * (x_end - x1)
+                                ax.plot(
+                                    [x1, x_end],
+                                    [y_a, y_end],
+                                    color="#ff80ab",
+                                    lw=2.0,
+                                    ls=(0, (5, 2)),
+                                    zorder=6.5,
+                                    solid_capstyle="round",
+                                )
+                                ax.text(
+                                    x_end,
+                                    y_end,
+                                    "示意：第二組C3下降壓\n（口述・無報價）",
+                                    ha="left",
+                                    va="bottom",
+                                    fontproperties=fp(7.2, "bold"),
+                                    color="#fce4ec",
+                                    zorder=35,
+                                    linespacing=1.1,
+                                    bbox={
+                                        "boxstyle": "round,pad=0.22",
+                                        "facecolor": "#880e4f",
+                                        "edgecolor": "#ff80ab",
+                                        "linewidth": 1.1,
+                                        "alpha": 0.92,
+                                    },
+                                    clip_on=False,
+                                )
+    except Exception:
+        logger.debug("第一組／第二組跨度標略過", exc_info=True)
 
 
 def _teach_cyan_band_title_bit(
@@ -4856,7 +5090,15 @@ def _active_oral_now_line(pack: Optional[Dict[str, Any]] = None) -> str:
     )
     thesis = str((pack or {}).get("thesis") or "")
     if _pack_pressure_break_on(pack) or _text_has_c3_pressure_break(blob):
-        # 寫死兩件分開：斜線回測 ≠ 水平41760
+        # 寫死分開：斜線口述下降壓 ≠ 水平41760；11/10 後文＝至少回測41500
+        if _text_has_retest_41500(blob) or "41500" in blob:
+            line = (
+                "至少回測41500；絕對不破週五低37837；"
+                "他說已過C3下降壓（口述斜線・無報價）"
+            )
+            if "41760" in blob or "台指壓" in blob:
+                line = "水平台指壓41760（≠41500）；" + line
+            return line
         line = (
             "他說已過C3下降壓（口述斜線・圖上未標C3／無報價）；"
             "週五低不再假跌破；拉回再測那條下降壓"
@@ -4908,6 +5150,33 @@ _PRESSURE_BREAK_ORAL_SNIP = (
     # 釘週五低官方點，讓三窗／右欄標「不再假跌破」對得上 37837
     "星期五最低點位37837。"
 )
+
+# 飆大口頭（已確認・11/10）：拉回至少回測 41500；絕對不破上週五低
+# 後文壓前文：盯價從「無報價下降壓」補上他釘的水平回測至少 41500（≠41760 台指壓）
+_RETEST_41500_ORAL_AS_OF = "20261110"
+_RETEST_41500_ORAL_POST_ID = "oral-retest-41500"
+_RETEST_41500_ORAL_SNIP = (
+    "應該至少回測到41500，絕對不會破上星期五低點。"
+    "星期五最低點位37837。"
+    # 併留下降壓改口脈絡，題旨掃描仍認同一當令
+    "夜盤已經過第二組整組 C3的下降壓力線，上周五低點也不可能假跌破了，"
+    "但今天下半場到明後天一定會有拉回回測下降壓力線。"
+)
+
+
+def _text_has_retest_41500(blob: str) -> bool:
+    """他釘：至少回測 41500；絕對不破上週五低。"""
+    s = str(blob or "")
+    if not s.strip():
+        return False
+    return bool(
+        re.search(r"41500", s)
+        and re.search(
+            r"(?:至少)?回測(?:到)?\s*41500|41500.{0,12}(?:回測|至少)|"
+            r"絕對不(?:會)?破.{0,16}(?:上)?(?:星期)?五.{0,8}低",
+            s,
+        )
+    )
 
 
 def _text_has_c3_pressure_break(blob: str) -> bool:
@@ -5296,6 +5565,28 @@ def _ensure_pressure_break_oral_thesis_snap(db_path: str, *, as_of: str = "") ->
         )
     except Exception:
         logger.debug("補下降壓改口口頭題旨 snap 略過", exc_info=True)
+
+
+def _ensure_retest_41500_oral_thesis_snap(db_path: str, *, as_of: str = "") -> None:
+    """題旨庫補 11/10 口頭：至少回測 41500；絕對不破上週五低。"""
+    if not db_path:
+        return
+    day = _ymd(as_of) or datetime.now(TAIPEI).strftime("%Y%m%d")
+    if not day or day < _RETEST_41500_ORAL_AS_OF:
+        return
+    oral_day = _RETEST_41500_ORAL_AS_OF
+    try:
+        _upsert_snap(
+            db_path,
+            post_id=_RETEST_41500_ORAL_POST_ID,
+            as_of=oral_day,
+            post_date=f"{oral_day[:4]}-{oral_day[4:6]}-{oral_day[6:8]}",
+            post_time="11:48",
+            snippet=_RETEST_41500_ORAL_SNIP,
+            chart_path="",
+        )
+    except Exception:
+        logger.debug("補41500回測口頭題旨 snap 略過", exc_info=True)
 
 
 # 主圖／右下九波縮圖共用色（C1…C9）：奇數浪偏暖紅、偶數浪偏冷青／綠，C7 最醒目，虛線 C9 淡紫
@@ -6088,9 +6379,11 @@ def _tw_level_role(pack: Optional[Dict[str, Any]], level: float) -> str:
                 return str(row.get("role") or "")
         except (TypeError, ValueError):
             continue
-    # 原文壓力位硬釘（題旨有 41760）
+    # 原文壓力位硬釘（題旨有 41760／41500）
     if abs(lv - 41760.0) < 0.6:
         return "台指壓力"
+    if abs(lv - 41500.0) < 0.6:
+        return "至少回測"
     return ""
 
 
@@ -6110,11 +6403,24 @@ def _format_tw_pred_note(
         role=role,
         highs=list(highs or []) if highs is not None else None,
     )
+    if role == "至少回測" or abs(float(level) - 41500.0) < 0.6:
+        return f"至少回測／{_px(level)}・{br}"
     if role == "台指壓力" or abs(float(level) - 41760.0) < 0.6:
         lab = f"台指壓力／{_px(level)}・{br}"
         # 下降壓改口當令：水平41760 不准被讀成 C3 下降壓線
         if _pack_pressure_break_on(pack):
             lab = f"{lab}｜≠口述下降壓"
+        if "41500" in str((pack or {}).get("wait_struct") or "") or _text_has_retest_41500(
+            " ".join(
+                str(x or "")
+                for x in (
+                    (pack or {}).get("thesis"),
+                    (pack or {}).get("snippet"),
+                    (pack or {}).get("wait_struct"),
+                )
+            )
+        ):
+            lab = f"{lab}｜≠41500回測"
         return lab
     return _biaoke_pred_label(float(level), br)
 
@@ -6352,6 +6658,8 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
             "不再假跌破" in s and re.search(r"下降壓", s)
         ):
             _lab41760 = f"{_lab41760}｜≠口述下降壓"
+        if _text_has_retest_41500(s) or re.search(r"41500", s):
+            _lab41760 = f"{_lab41760}｜≠41500回測"
         _add(
             "tw",
             level=41760.0,
@@ -6359,6 +6667,16 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
             role="台指壓力",
             tag="未到",
             label=_lab41760,
+        )
+    # 11/10：至少回測 41500（他原文；≠41760 台指壓、≠無報價下降壓斜線）
+    if re.search(r"41500", s) or _text_has_retest_41500(s):
+        _add(
+            "tw",
+            level=41500.0,
+            ref_ymd="",
+            role="至少回測",
+            tag="未到",
+            label=f"至少回測／{_px(41500)}",
         )
     # 11/8 雙軌點位（只認原文）：37837／37164／35579／31705
     # 右欄：最佳買點 37837＋深殺上緣 35579＋深殺端 31705；39000／37164 改走黃底帶
@@ -6369,7 +6687,10 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
     if _pb_or_stop and not re.search(r"37837", s):
         s = f"{s} 星期五最低點位37837"
     if re.search(r"37837", s):
-        if _text_has_c3_pressure_break(s) or (
+        if _text_has_retest_41500(s) or re.search(r"絕對不(?:會)?破", s):
+            tag = "絕對不破"
+            lab = f"週五低／{_px(37837)}（絕對不破）"
+        elif _text_has_c3_pressure_break(s) or (
             "不再假跌破" in s and re.search(r"下降壓", s)
         ):
             tag = "不再假跌破"
@@ -8737,10 +9058,14 @@ def _place_live_right_labels(
             or "最佳買點" in s
             or "AI結束" in s
             or "五波末" in s
-            # 水平台指壓41760：當令必留，不准被大C今擠掉（≠斜線下降壓）
+            # 水平台指壓41760／至少回測41500：當令必留
             or "台指壓力" in s
             or "41,760" in s
             or "41760" in s
+            or "至少回測" in s
+            or "41,500" in s
+            or "41500" in s
+            or "絕對不破" in s
         ):
             return 0
         # 電盤下一層可丟；一般飆預測次之（已破／C9 已升 0）
@@ -8773,6 +9098,10 @@ def _place_live_right_labels(
                 "台指壓力",
                 "41,760",
                 "41760",
+                "至少回測",
+                "41,500",
+                "41500",
+                "絕對不破",
             )
         )
 
@@ -9617,12 +9946,20 @@ def _wave_now_ladder(pack: Optional[Dict[str, Any]] = None, *, blob: str = "") -
         day_bit = ""
     # 下降壓改口／止跌確認／雙軌／改口第二隻腳／9波擴延：話筒／超近說明用人話，不准只丟代號
     if "止跌確認・已過C3下降壓" in steps or has_pressure_ladder:
-        oral_now = (
-            "他說已過C3下降壓（口述斜線・圖上未標C3／無報價）；"
-            "週五低不再假跌破；拉回再測那條下降壓"
-        )
-        if "41760" in text:
-            oral_now = "水平台指壓41760（≠那條口述下降壓）；" + oral_now
+        if "41500" in text or "至少回測" in text:
+            oral_now = (
+                "至少回測41500；絕對不破週五低37837；"
+                "他說已過C3下降壓（口述斜線・無報價）"
+            )
+            if "41760" in text:
+                oral_now = "水平台指壓41760（≠41500）；" + oral_now
+        else:
+            oral_now = (
+                "他說已過C3下降壓（口述斜線・圖上未標C3／無報價）；"
+                "週五低不再假跌破；拉回再測那條下降壓"
+            )
+            if "41760" in text:
+                oral_now = "水平台指壓41760（≠那條口述下降壓）；" + oral_now
         one_line = "現在：止跌確認・已過C3下降壓（預估）"
         now_line = (
             oral_now
@@ -10866,11 +11203,24 @@ def _tw_pred_right_notes(
                 if tag == "未到"
                 else tag
             )
-            if role == "台指壓力":
+            if role == "至少回測" or abs(lv - 41500.0) < 0.6:
+                text = f"至少回測／{_px(lv)}・{br}"
+            elif role == "台指壓力":
                 # 壓力位保留原文角色，不准改寫成「飆預測・已破」（低點誤破）
                 text = f"台指壓力／{_px(lv)}・{br}"
                 if _pack_pressure_break_on(pack):
                     text = f"{text}｜≠口述下降壓"
+                if _text_has_retest_41500(
+                    " ".join(
+                        str(x or "")
+                        for x in (
+                            (pack or {}).get("thesis"),
+                            (pack or {}).get("snippet"),
+                            (pack or {}).get("wait_struct"),
+                        )
+                    )
+                ):
+                    text = f"{text}｜≠41500回測"
             else:
                 text = _biaoke_pred_label(lv, br)
         else:
@@ -10950,6 +11300,8 @@ def _tw_pred_right_notes(
         # 水平台指壓：白／淺黃，跟紫大C斜線路徑分色
         if role == "台指壓力" or abs(lv - 41760.0) < 0.6:
             col = "#ffe082"
+        elif role == "至少回測" or abs(lv - 41500.0) < 0.6:
+            col = "#80cbc4"
         out.append(
             {
                 "x": x_note,
@@ -10997,6 +11349,11 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     if not mac_full:
         return ""
     keep_ymds: List[str] = ["20260331", "20260401"]
+    # 教導：第一組／第二組跨度日要留在遠窗，才畫得出組別標
+    if _pack_pressure_break_on(pack) or "C3-5" in str(
+        (pack or {}).get("thesis") or ""
+    ):
+        keep_ymds.extend(["20261008", "20261019", "20261106"])
     for row in ((pack or {}).get("pred_levels") or {}).get("sox") or []:
         rd = _ymd(row.get("ref_ymd"))
         if rd:
@@ -12948,6 +13305,10 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     )
     # 下降壓改口當令：加權欄左下寫死斜線≠41760，三窗同口
     _paint_c3_vs_41760_legend(ax, fp=_fp, pack=pack)
+    # 第一組／第二組＝C3：他文＋官方柱對得上的跨度，畫給人對圖（非發明報價）
+    _paint_c3_group12_span_labels(
+        ax, bars, fp=_fp, pack=pack, lows=lows, highs=highs
+    )
     # 腳註多行：thesis＋預測點按｜分行；壓在 x 軸日期下方，不准互疊、不准裁半截
     foot_main = str(
         pack.get("thesis") or "推進⑤＝4/1→6/23｜大A底7/29→大B→大C進行中（預估）"
@@ -13907,6 +14268,9 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         db_path=db_path,
     )
     _paint_c3_vs_41760_legend(ax, fp=_fp, pack=pack)
+    _paint_c3_group12_span_labels(
+        ax, bars, fp=_fp, pack=pack, lows=lows, highs=highs
+    )
     # 單行腳：不准雙行疊字蓋數字
     intent_foot = str(pack.get("intent_note") or pack.get("vol_note") or "")
     intent_one = intent_foot.split("；")[0] if intent_foot else ""
@@ -14502,6 +14866,15 @@ def _render_twii_super_near_c9_60m(
         db_path=db_path,
     )
     _paint_c3_vs_41760_legend(ax, fp=_fp, pack=pack)
+    # 超近60分：用日K欄對組別；60分軸日期可對就畫，對不到就略
+    _paint_c3_group12_span_labels(
+        ax,
+        rows if rows else daily,
+        fp=_fp,
+        pack=pack,
+        lows=lows,
+        highs=highs,
+    )
 
     labs_line = " ".join(
         f"{lab}@{_ymd(rows[i].get('date'))[4:6]}/{_ymd(rows[i].get('date'))[6:8]}"
@@ -15309,6 +15682,9 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         db_path=db_path,
     )
     _paint_c3_vs_41760_legend(ax, fp=_fp, pack=pack)
+    _paint_c3_group12_span_labels(
+        ax, bars, fp=_fp, pack=pack, lows=lows, highs=highs
+    )
     foot_m = str(ladder.get("now_line") or (pack.get("thesis") or ""))
     if _pack_pressure_break_on(pack) or "已過C3下降壓" in foot_m or "不再假跌破" in foot_m:
         foot_m = _active_oral_now_line(pack).replace(" ", "")

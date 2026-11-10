@@ -1643,7 +1643,8 @@ def test_pressure_break_real_post_beats_stop_retest(tmp_path):
     wait = th.get("wait_struct") or ""
     thesis = th.get("thesis") or ""
     assert "不再假跌破" in thesis or "過C3下降壓" in thesis
-    assert "回測下降" in wait
+    # 11/10 後文口頭會併入「至少回測41500／絕對不破」；仍不准回退「一定再測假跌破」
+    assert "41500" in wait or "回測下降" in wait
     assert "一定再測週五低" not in wait
     snip = th.get("snippet_full") or th.get("snippet") or ""
     pred = _thesis_pred_levels(snip, db)
@@ -1652,8 +1653,9 @@ def test_pressure_break_real_post_beats_stop_retest(tmp_path):
         None,
     )
     assert fri is not None
-    assert "不再假跌破" in str(fri.get("label") or "")
-    assert "再測週五" not in str(fri.get("label") or "")
+    fri_lab = str(fri.get("label") or "")
+    assert ("不再假跌破" in fri_lab) or ("絕對不破" in fri_lab)
+    assert "再測週五" not in fri_lab
     ladder = _wave_now_ladder(th)
     assert "已過C3下降壓" in (ladder.get("now") or "")
 
@@ -3757,6 +3759,81 @@ def test_tip_anchors_empty_on_stop_confirm_no_old_45546():
     )
     assert "台指壓力" in lab
     assert "飆預測" not in lab
+
+
+def test_paint_c3_group12_span_labels_wired():
+    """教導用：三窗要掛第一組／第二組＝C3 跨度標（對圖用）。"""
+    import inspect
+
+    from biaoke_level_learn import _paint_c3_group12_span_labels
+    import biaoke_level_learn as m
+
+    src = inspect.getsource(m)
+    assert src.count("_paint_c3_group12_span_labels(") >= 5  # def + 4 call sites
+    assert "第一組初跌" in inspect.getsource(_paint_c3_group12_span_labels)
+    assert "第二組＝C3主跌" in inspect.getsource(_paint_c3_group12_span_labels)
+    assert "示意：第二組C3下降壓" in inspect.getsource(_paint_c3_group12_span_labels)
+
+
+def test_retest_41500_oral_beats_unpriced_pressure_wait(tmp_path):
+    """11/10 口頭：至少回測41500／絕對不破週五低；右標與等待句要有價。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_level_learn import (
+        _RETEST_41500_ORAL_SNIP,
+        _active_oral_now_line,
+        _latest_level_thesis,
+        _text_has_retest_41500,
+        _thesis_pred_levels,
+        _upsert_snap,
+        ensure_tables,
+    )
+
+    snip = (
+        "應該至少回測到41500，絕對不會破上星期五低點。"
+        "星期五最低點位37837。"
+        "夜盤已經過第二組整組 C3的下降壓力線，上周五低點也不可能假跌破了，"
+        "但今天下半場到明後天一定會有拉回回測下降壓力線。"
+    )
+    assert _text_has_retest_41500(snip)
+    preds = _thesis_pred_levels(snip)
+    tw = preds.get("tw") or []
+    hit415 = [r for r in tw if abs(float(r.get("level") or 0) - 41500.0) < 0.6]
+    hit378 = [r for r in tw if abs(float(r.get("level") or 0) - 37837.0) < 0.6]
+    assert hit415 and "至少回測" in str(hit415[0].get("label") or "")
+    assert hit378 and (
+        "絕對不破" in str(hit378[0].get("label") or "")
+        or "不再假跌破" in str(hit378[0].get("label") or "")
+    )
+    db = str(tmp_path / "t.db")
+    ensure_tables(db)
+    _upsert_snap(
+        db,
+        post_id="oral-retest-41500",
+        as_of="20261110",
+        post_date="2026-11-10",
+        post_time="11:48",
+        snippet=_RETEST_41500_ORAL_SNIP,
+        chart_path="",
+    )
+    tz = ZoneInfo("Asia/Taipei")
+    th = _latest_level_thesis(
+        db, as_of="20261110", now=datetime(2026, 11, 10, 12, 0, tzinfo=tz)
+    ) or {}
+    wait = str(th.get("wait_struct") or "")
+    assert "41500" in wait
+    assert "絕對不破" in wait or "37837" in wait
+    pack = {
+        "thesis": th.get("thesis"),
+        "wait_struct": wait,
+        "snippet_full": snip,
+        "snippet": snip,
+        "pred_levels": preds,
+    }
+    oral = _active_oral_now_line(pack)
+    assert "41500" in oral
+    assert "絕對不破" in oral or "37837" in oral
 
 
 def test_pressure_break_labels_split_slant_vs_41760():
