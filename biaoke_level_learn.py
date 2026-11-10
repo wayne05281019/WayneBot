@@ -5649,7 +5649,7 @@ def _paint_huang_c60_structure(
     fp,
     pack: Optional[Dict[str, Any]] = None,
 ) -> bool:
-    """超近窗 60 分：C1–C4 四色底＋C2上下虛框＋C3內①～⑤藍折＋C4白細折（不標浪號）。
+    """超近窗 60 分：C1–C4 四色底＋C2上下虛框＋C3內①～⑤細白折＋C4白細折（不標浪號）。
 
     段界只靠四色底，不准再畫豎虛線（多餘）。不是買訊。折線／錨只連官方柱真高低。
     """
@@ -5807,8 +5807,8 @@ def _paint_huang_c60_structure(
             clip_on=False,
         )
 
-    # 大段藍折 (1)(2)(3) 骨架
-    blue_xy = [(i1, y1), (i1e, y1e), (i2, y2), (i3, y3)]
+    # 大段藍折只畫到 C2＝(2)；不准藍折進 C3（C3 內改細白①～⑤）
+    blue_xy = [(i1, y1), (i1e, y1e), (i2, y2)]
     _poly(
         [p[0] for p in blue_xy],
         [p[1] for p in blue_xy],
@@ -5820,8 +5820,6 @@ def _paint_huang_c60_structure(
         ((i1, y1), "(1)", True),
         ((i1e, y1e), "46170", False),
         ((i2, y2), "(2)", True),
-        # 底＝C3⑤，浪號交給內段⑤；這裡只留點，避免 (3) 與⑤互壓
-        ((i3, y3), "", False),
     ):
         ax.scatter(
             [ii],
@@ -5844,28 +5842,34 @@ def _paint_huang_c60_structure(
             dx=0.9,
         )
 
-    # C3 內段藍折＋①②③④⑤（④＝43135、⑤＝37837；標在側邊，不准壓K／折線）
+    # C3 內段細白折＋①②③④⑤（④＝43135、⑤＝37837；標在側邊，不准壓K／折線）
     c3_seg = list(anc.get("c3_seg") or [])
     if len(c3_seg) >= 3:
-        _poly(
-            [p[0] for p in c3_seg],
-            [p[1] for p in c3_seg],
-            edge="#0d47a1",
-            face="#90caf9",
-            lw=1.55,
+        xs3 = [float(p[0]) for p in c3_seg]
+        ys3 = [float(p[1]) for p in c3_seg]
+        # 細白：深底略細＋白面更細（使用者：C3 區波浪線改細白）
+        ax.plot(
+            xs3,
+            ys3,
+            color="#0b0f14",
+            lw=1.45,
+            zorder=7.45,
+            solid_capstyle="round",
+            solid_joinstyle="round",
+        )
+        ax.plot(
+            xs3,
+            ys3,
+            color="#f5f5f5",
+            lw=0.85,
+            zorder=7.5,
+            solid_capstyle="round",
+            solid_joinstyle="round",
         )
         for ii, yy, lab in c3_seg:
             if not lab:
                 continue
-            ax.scatter(
-                [ii],
-                [yy],
-                s=24,
-                c="#90caf9",
-                zorder=8.35,
-                edgecolors="#0d47a1",
-                linewidths=0.8,
-            )
+            _spear_ring(ax, float(ii), float(yy), color="#ffffff", zorder=8.35, hot=False)
             high = lab in {"②", "④"}
             # ④加價；⑤加價（對手繪）
             text = lab
@@ -5878,9 +5882,9 @@ def _paint_huang_c60_structure(
                 yy,
                 text,
                 high=high,
-                face="#0d47a1",
-                edge="#90caf9",
-                fg="#e3f2fd",
+                face="#eceff1",
+                edge="#90a4ae",
+                fg="#111111",
                 fs=7.8,
                 dx=0.7,
             )

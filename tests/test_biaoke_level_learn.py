@@ -4035,7 +4035,9 @@ def test_huang_c60_anchors_and_wave_paint_wired():
     assert "_wave_lab" in paint  # 標籤側邊讓開折線／K
     assert "c3_seg" in paint
     assert "_spear_ring" in paint
-    assert "#f5f5f5" in paint  # C4 白細折
+    assert "#f5f5f5" in paint  # C3／C4 細白折
+    assert "C3 內段細白折" in paint or "細白折＋①" in paint
+    assert "不准藍折進 C3" in paint
     assert "次級4壓" in paint
     assert "⑤壓" not in paint  # 不准再把 C3④ 誤標成 C4⑤壓
     # C1–C4 只靠四色底分界；_span 不准再畫豎虛線
