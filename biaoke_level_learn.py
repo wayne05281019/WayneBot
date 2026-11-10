@@ -5363,6 +5363,107 @@ def _huang_c60_alt_swings(
     return out
 
 
+def _huang_c60_c3_segments(
+    rows: Sequence[Dict[str, Any]],
+    i2: int,
+    i3: int,
+    *,
+    y2: float,
+    y3: float,
+) -> List[Tuple[int, float, str]]:
+    """C3 內段折點：①走完第一大段下跌才轉②（不准小反彈提早結束①）。
+
+    骨架：大波幅鎖定 ①低／②高；②→底之間再補 ③低／④高（有才畫）。
+    """
+    if not rows or int(i3) <= int(i2):
+        return []
+    # 第一段：波幅門檻拉高，略過 44726 這類小反彈
+    coarse = _huang_c60_alt_swings(
+        rows, int(i2), int(i3), start="h", min_swing=1000.0, force_end="l"
+    )
+    if len(coarse) < 2:
+        return [
+            (int(i2), float(y2), ""),
+            (int(i3), float(y3), ""),
+        ]
+    # coarse 期望：起高 → ①低 → ②高 → … → 底
+    out: List[Tuple[int, float, str]] = []
+    out.append((int(coarse[0][0]), float(coarse[0][1]), ""))
+    # 找第一個低＝①
+    i_one = None
+    for ii, yy, _lab in coarse[1:]:
+        if float(yy) < float(y2) - 800:
+            # 確認是低點：比前後 coarse 點更像下跌端
+            out.append((int(ii), float(yy), "①"))
+            i_one = int(ii)
+            break
+    if i_one is None:
+        # 退：仍連到底，不硬標①
+        if coarse[-1][0] != out[-1][0]:
+            out.append((int(coarse[-1][0]), float(coarse[-1][1]), ""))
+        return out
+    # ①後第一個高＝②（優先靠近 43135）
+    i_two = _nearest_bar_idx_by_price(
+        rows, 43135.0, field="high", lo=int(i_one) + 1, hi=int(i3) + 1, tol=80.0
+    )
+    y_two = None
+    if i_two is not None:
+        y_two = float(rows[int(i_two)].get("high") or 0)
+    else:
+        for ii, yy, _lab in coarse:
+            if int(ii) <= int(i_one):
+                continue
+            # coarse 裡下一個高
+            if float(yy) > float(rows[int(i_one)].get("low") or 0) + 400:
+                # verify it's a high relative to neighbors
+                try:
+                    h = float(rows[int(ii)].get("high") or 0)
+                except (TypeError, ValueError):
+                    continue
+                if abs(h - float(yy)) < 1 or h >= float(yy):
+                    i_two = int(ii)
+                    y_two = float(h if h > 0 else yy)
+                    break
+    if i_two is not None and y_two is not None:
+        out.append((int(i_two), float(y_two), "②"))
+        # ②→底：細波補 ③低／④高
+        fine = _huang_c60_alt_swings(
+            rows,
+            int(i_two),
+            int(i3),
+            start="h",
+            min_swing=400.0,
+            force_end="l",
+        )
+        # fine[0]=②高；其後低＝③、高＝④、最後＝底
+        saw3 = False
+        saw4 = False
+        for ii, yy, _lab in fine[1:]:
+            if int(ii) >= int(i3):
+                break
+            kind_is_low = float(yy) <= float(y_two) - 200 and (
+                float(rows[int(ii)].get("low") or 0) <= float(yy) + 1
+                or abs(float(rows[int(ii)].get("low") or 0) - float(yy)) < 2
+            )
+            # 用柱本身高低判斷
+            lo_v = float(rows[int(ii)].get("low") or 0)
+            hi_v = float(rows[int(ii)].get("high") or 0)
+            if not saw3 and abs(lo_v - float(yy)) <= abs(hi_v - float(yy)):
+                out.append((int(ii), float(lo_v if lo_v > 0 else yy), "③"))
+                saw3 = True
+                continue
+            if saw3 and not saw4 and abs(hi_v - float(yy)) <= abs(lo_v - float(yy)):
+                if float(hi_v) > float(out[-1][1]) + 150:
+                    out.append((int(ii), float(hi_v if hi_v > 0 else yy), "④"))
+                    saw4 = True
+    # 終點底
+    if out[-1][0] != int(i3):
+        out.append((int(i3), float(y3), ""))
+    else:
+        out[-1] = (int(i3), float(y3), out[-1][2])
+    return out
+
+
 def _resolve_huang_c60_anchors(
     rows: Sequence[Dict[str, Any]],
 ) -> Dict[str, Any]:
@@ -5390,10 +5491,8 @@ def _resolve_huang_c60_anchors(
     y1e = float(rows[int(i1e)].get("low") or 0)
     y2 = float(rows[int(i2)].get("high") or 0)
     y3 = float(rows[int(i3)].get("low") or 0)
-    # C3 內段：自 47060 起交替高低至 37837
-    c3_seg = _huang_c60_alt_swings(
-        rows, int(i2), int(i3), start="h", min_swing=700.0, force_end="l"
-    )
+    # C3 內段：①不准提早在小反彈結束——先用大波幅鎖定第一段低，再補②③④
+    c3_seg = _huang_c60_c3_segments(rows, int(i2), int(i3), y2=y2, y3=y3)
     # C4：底→第一段反彈高→回檔低→次高→再低→43135 次級4
     c4: List[Tuple[int, float, str]] = [(int(i3), y3, "底")]
     i_r1 = None
@@ -5516,7 +5615,8 @@ def _paint_huang_c60_structure(
     try:
         y0, y1_ax = ax.get_ylim()
         span_y = max(float(y1_ax) - float(y0), 1.0)
-        y_band = float(y0) + span_y * 0.22
+        # 段名貼近底緣，不准壓折線／K／虛線
+        y_band = float(y0) + span_y * 0.055
     except Exception:
         return False
 
@@ -5527,31 +5627,31 @@ def _paint_huang_c60_structure(
             float(ia) - 0.45,
             float(ib) + 0.45,
             facecolor=face,
-            alpha=0.18,
-            zorder=1.05,
+            alpha=0.07,
+            zorder=0.8,
             linewidth=0,
         )
         ax.axvline(
-            float(ia) - 0.45, color=edge, lw=1.6, ls=(0, (4, 2)), alpha=0.85, zorder=5.4
+            float(ia) - 0.45, color=edge, lw=1.2, ls=(0, (4, 2)), alpha=0.55, zorder=5.0
         )
         ax.axvline(
-            float(ib) + 0.45, color=edge, lw=1.6, ls=(0, (4, 2)), alpha=0.85, zorder=5.4
+            float(ib) + 0.45, color=edge, lw=1.2, ls=(0, (4, 2)), alpha=0.55, zorder=5.0
         )
         ax.text(
             (float(ia) + float(ib)) * 0.5,
             y_band,
             label,
             ha="center",
-            va="center",
-            fontproperties=fp(10.5, "bold"),
+            va="bottom",
+            fontproperties=fp(8.6, "bold"),
             color=fg,
-            zorder=42,
+            zorder=20,
             bbox={
-                "boxstyle": "round,pad=0.34",
+                "boxstyle": "round,pad=0.22",
                 "facecolor": face,
                 "edgecolor": "#ffffff",
-                "linewidth": 1.8,
-                "alpha": 0.94,
+                "linewidth": 1.0,
+                "alpha": 0.72,
             },
             clip_on=False,
         )
@@ -5583,7 +5683,7 @@ def _paint_huang_c60_structure(
     if n - 1 >= i3 + 1:
         _span(i3 + 1, n - 1, "#69f0ae", "#00c853", "C4 反彈", "#003300")
 
-    # C2 中繼：上下震盪區間虛線（46170~47060）
+    # C2 中繼：上下震盪區間虛線（46170~47060）；標在框外左側，不准壓虛線／折線
     box = anc.get("c2_box") or (y1e, y2)
     y_box_lo, y_box_hi = float(box[0]), float(box[1])
     x_box0, x_box1 = float(i1e) - 0.2, float(i2) + 0.2
@@ -5592,26 +5692,61 @@ def _paint_huang_c60_structure(
             [x_box0, x_box1],
             [yy, yy],
             color="#ff6f00",
-            lw=1.7,
+            lw=1.55,
             ls=(0, (5, 2)),
-            alpha=0.98,
+            alpha=0.95,
             zorder=6.4,
         )
         ax.text(
-            (x_box0 + x_box1) * 0.5,
-            float(yy) + (span_y * 0.012 if tag.endswith("上") else -span_y * 0.012),
-            f"{tag} {_px(yy)}",
-            ha="center",
-            va="bottom" if tag.endswith("上") else "top",
-            fontproperties=fp(7.8, "bold"),
+            float(x_box0) - 0.55,
+            float(yy),
+            f"{tag}\n{_px(yy)}",
+            ha="right",
+            va="center",
+            fontproperties=fp(7.2, "bold"),
             color="#ffe0b2",
             zorder=41,
+            linespacing=1.05,
             bbox={
-                "boxstyle": "round,pad=0.18",
+                "boxstyle": "round,pad=0.14",
                 "facecolor": "#e65100",
                 "edgecolor": "#ffcc80",
-                "linewidth": 0.9,
-                "alpha": 0.92,
+                "linewidth": 0.8,
+                "alpha": 0.88,
+            },
+            clip_on=False,
+        )
+
+    def _wave_lab(
+        ii: float,
+        yy: float,
+        lab: str,
+        *,
+        high: bool,
+        face: str,
+        edge: str,
+        fg: str,
+        fs: float = 8.2,
+        dx: float = 0.85,
+    ) -> None:
+        """浪號／錨標：往側邊＋上下讓開折線與K，不准坐在線上。"""
+        if not lab:
+            return
+        ax.text(
+            float(ii) + float(dx),
+            float(yy) + (span_y * 0.018 if high else -span_y * 0.018),
+            lab,
+            ha="left",
+            va="bottom" if high else "top",
+            fontproperties=fp(fs, "bold"),
+            color=fg,
+            zorder=44,
+            bbox={
+                "boxstyle": "round,pad=0.14",
+                "facecolor": face,
+                "edgecolor": edge,
+                "linewidth": 0.85,
+                "alpha": 0.9,
             },
             clip_on=False,
         )
@@ -5625,46 +5760,34 @@ def _paint_huang_c60_structure(
         face="#42a5f5",
         lw=2.0,
     )
-    for (ii, yy), lab in (
-        ((i1, y1), "(1)"),
-        ((i1e, y1e), "46170"),
-        ((i2, y2), "(2)"),
-        ((i3, y3), "(3)"),
+    for (ii, yy), lab, high in (
+        ((i1, y1), "(1)", True),
+        ((i1e, y1e), "46170", False),
+        ((i2, y2), "(2)", True),
+        ((i3, y3), "(3)", False),
     ):
         ax.scatter(
             [ii],
             [yy],
-            s=40,
+            s=34,
             c="#42a5f5",
             zorder=8.2,
             edgecolors="#0d47a1",
-            linewidths=1.0,
+            linewidths=0.9,
         )
-        ax.text(
-            float(ii),
-            float(yy)
-            + (
-                span_y * 0.032
-                if lab in {"(1)", "(2)"}
-                else -span_y * 0.038
-            ),
+        _wave_lab(
+            ii,
+            yy,
             lab,
-            ha="center",
-            va="bottom" if lab in {"(1)", "(2)"} else "top",
-            fontproperties=fp(9.2, "bold"),
-            color="#e3f2fd",
-            zorder=43,
-            bbox={
-                "boxstyle": "round,pad=0.24",
-                "facecolor": "#1565c0",
-                "edgecolor": "#90caf9",
-                "linewidth": 1.0,
-                "alpha": 0.95,
-            },
-            clip_on=False,
+            high=high,
+            face="#1565c0",
+            edge="#90caf9",
+            fg="#e3f2fd",
+            fs=8.6,
+            dx=0.9,
         )
 
-    # C3 內段各波藍折線＋①②③④
+    # C3 內段各波藍折線＋①②③④（標在側邊）
     c3_seg = list(anc.get("c3_seg") or [])
     if len(c3_seg) >= 3:
         _poly(
@@ -5680,29 +5803,23 @@ def _paint_huang_c60_structure(
             ax.scatter(
                 [ii],
                 [yy],
-                s=28,
+                s=24,
                 c="#90caf9",
                 zorder=8.35,
                 edgecolors="#0d47a1",
-                linewidths=0.9,
+                linewidths=0.8,
             )
-            ax.text(
-                float(ii),
-                float(yy) + span_y * 0.02,
+            high = lab in {"②", "④"}
+            _wave_lab(
+                ii,
+                yy,
                 lab,
-                ha="center",
-                va="bottom",
-                fontproperties=fp(8.4, "bold"),
-                color="#e3f2fd",
-                zorder=44,
-                bbox={
-                    "boxstyle": "round,pad=0.16",
-                    "facecolor": "#0d47a1",
-                    "edgecolor": "#90caf9",
-                    "linewidth": 0.9,
-                    "alpha": 0.94,
-                },
-                clip_on=False,
+                high=high,
+                face="#0d47a1",
+                edge="#90caf9",
+                fg="#e3f2fd",
+                fs=7.8,
+                dx=0.7,
             )
 
     # C4：白細浪線＋錨點（對齊 white_thin／矛點）
@@ -5733,49 +5850,44 @@ def _paint_huang_c60_structure(
             _spear_ring(ax, float(ii), float(yy), color="#ffffff", zorder=8.6, hot=hot)
             if not lab:
                 continue
-            ax.text(
-                float(ii),
-                float(yy) + span_y * 0.026,
+            high = lab in {"①", "③", "④"} or "④" in str(lab)
+            _wave_lab(
+                ii,
+                yy,
                 lab,
-                ha="center",
-                va="bottom",
-                fontproperties=fp(8.6, "bold"),
-                color="#111111",
-                zorder=46,
-                bbox={
-                    "boxstyle": "round,pad=0.2",
-                    "facecolor": "#ffffff",
-                    "edgecolor": "#bdbdbd",
-                    "linewidth": 1.0,
-                    "alpha": 0.96,
-                },
-                clip_on=False,
+                high=high,
+                face="#ffffff",
+                edge="#9e9e9e",
+                fg="#111111",
+                fs=7.8,
+                dx=0.75,
             )
         i4 = next((p for p in c4 if "④" in str(p[2])), None)
         if i4 is not None:
             ax.axhline(
                 float(i4[1]),
                 color="#ff1744",
-                lw=1.55,
+                lw=1.45,
                 ls=(0, (6, 2)),
-                alpha=0.95,
+                alpha=0.9,
                 zorder=6.2,
             )
+            # 標在右欄外側，不准壓水平虛線／白折線
             ax.text(
-                float(n) - 0.8,
-                float(i4[1]),
+                float(n) + 0.35,
+                float(i4[1]) + span_y * 0.012,
                 f"次級4壓 {_px(float(i4[1]))}",
-                ha="right",
+                ha="left",
                 va="bottom",
-                fontproperties=fp(8.4, "bold"),
+                fontproperties=fp(8.0, "bold"),
                 color="#ff1744",
                 zorder=45,
                 bbox={
-                    "boxstyle": "round,pad=0.2",
+                    "boxstyle": "round,pad=0.16",
                     "facecolor": "#fff59d",
                     "edgecolor": "#ff1744",
-                    "linewidth": 1.15,
-                    "alpha": 0.96,
+                    "linewidth": 1.0,
+                    "alpha": 0.92,
                 },
                 clip_on=False,
             )
@@ -14470,30 +14582,16 @@ def _render_twii_c_wave_60_dark(
             ax, rows, fp=_fp, pack=pack, lows=lows, highs=highs
         )
     else:
+        # 說明放標題列下方（figure），不准進主圖壓 K／折線／虛線
         try:
-            ax.text(
-                0.015,
-                0.14,
-                "折線＝黃培碩60分：\n"
-                "藍(1)(2)(3)＋C3內①②③④\n"
-                "橙虛＝C2中繼上下框\n"
-                "白細＝C4浪線＋錨；次級4壓≈43135\n"
-                "非買訊",
-                transform=ax.transAxes,
-                ha="left",
-                va="bottom",
+            fig.text(
+                0.03,
+                0.918,
+                "藍(1)(2)(3)+C3內①②③④｜橙虛C2上下框｜白細C4錨｜次級4壓≈43135｜非買訊",
                 fontproperties=_fp(8.0, "bold"),
-                color="#111111",
-                zorder=36,
-                linespacing=1.22,
-                bbox={
-                    "boxstyle": "round,pad=0.36",
-                    "facecolor": "#ffffff",
-                    "edgecolor": "#1565c0",
-                    "linewidth": 1.7,
-                    "alpha": 0.95,
-                },
-                clip_on=False,
+                color="#90caf9",
+                ha="left",
+                va="top",
             )
         except Exception:
             pass

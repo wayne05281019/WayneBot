@@ -3930,16 +3930,22 @@ def test_huang_c60_anchors_and_wave_paint_wired():
         assert abs(float(box[1]) - 47060.0) < 30
         c3 = anc.get("c3_seg") or []
         assert len(c3) >= 4
-        assert any(p[2] == "①" for p in c3)
+        one = next(p for p in c3 if p[2] == "①")
+        # ①須走完第一大段（約41856），不准停在 44726 小反彈
+        assert float(one[1]) <= 43000
+        assert abs(float(one[1]) - 41856.0) < 120
         c4 = anc.get("c4") or []
         assert any("④" in str(p[2]) for p in c4)
     paint = inspect.getsource(_paint_huang_c60_structure)
     assert "中繼上" in paint and "中繼下" in paint
+    assert "alpha=0.07" in paint  # 底色再淺
+    assert "_wave_lab" in paint  # 標籤側邊讓開折線／K
     assert "c3_seg" in paint
     assert "_spear_ring" in paint and "#f5f5f5" in paint
     assert "次級4壓" in paint
     c60 = inspect.getsource(_render_twii_c_wave_60_dark)
     assert "_paint_huang_c60_structure" in c60
+    assert "fig.text" in c60  # 說明不進主圖
 
 
 def test_retest_41500_oral_beats_unpriced_pressure_wait(tmp_path):
