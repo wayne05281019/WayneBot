@@ -5975,19 +5975,17 @@ def _teach_cyan_band_title_bit(
     *,
     pack: Optional[Dict[str, Any]] = None,
 ) -> str:
-    """標題青帶一句：下降壓當令時 41,760 不准寫成飆預測。"""
+    """標題青帶一句；41760 台指壓標已刪，標題也不掛。"""
+    _ = pack
     sr = sr or {}
     _sup_c = sr.get("support")
     _res_c = sr.get("resist")
-    if (
-        _pack_pressure_break_on(pack)
-        and _sup_c is not None
-        and abs(float(_sup_c) - 41760.0) < 1.5
-    ):
-        return (
-            f"青＝位階帶{_px(_sup_c)}～{_px(_res_c) if _res_c is not None else '—'}｜"
-            f"41,760＝台指壓（≠口述C3下降壓）"
-        )
+    # 41760 右標已刪：青帶標題不准再寫這價／台指壓
+    try:
+        if _sup_c is not None and abs(float(_sup_c) - 41760.0) < 1.5:
+            _sup_c = None
+    except (TypeError, ValueError):
+        pass
     return (
         f"青＝飆預測{_px(_sup_c) if _sup_c is not None else '—'}～"
         f"{_px(_res_c) if _res_c is not None else '—'}"
