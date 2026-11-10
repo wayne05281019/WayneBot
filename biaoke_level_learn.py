@@ -5024,38 +5024,9 @@ def _pack_pressure_break_on(pack: Optional[Dict[str, Any]] = None) -> bool:
 
 
 def _paint_c3_vs_41760_legend(ax, *, fp, pack: Optional[Dict[str, Any]] = None) -> None:
-    """三窗加權價欄：黃培碩大三段 C1／C2／C3 色帶對照（方法脈絡；價位仍跟飆大口頭）。"""
-    if ax is None or fp is None or not _pack_pressure_break_on(pack):
-        return
-    try:
-        ax.text(
-            0.015,
-            0.14,
-            "色帶＝60分大段→映日K：\n"
-            "青 C1 下跌 10/6→10/18（49968→46170）\n"
-            "橙 C2 中繼整理 →10/28（47060）\n"
-            "紫 C3 下跌 10/29→週五低 37837\n"
-            "綠 C4 反彈 週一起（過C3下降壓）\n"
-            "粉虛＝C3下降壓示意（日盤已過・無報價）\n"
-            "41,500＝至少回測｜37,837絕對不破",
-            transform=ax.transAxes,
-            ha="left",
-            va="bottom",
-            fontproperties=fp(8.2, "bold"),
-            color="#111111",
-            zorder=36,
-            linespacing=1.25,
-            bbox={
-                "boxstyle": "round,pad=0.38",
-                "facecolor": "#ffffff",
-                "edgecolor": "#7e57c2",
-                "linewidth": 1.85,
-                "alpha": 0.95,
-            },
-            clip_on=False,
-        )
-    except Exception:
-        logger.debug("下降壓／41760 對照簽略過", exc_info=True)
+    """舊色帶說明框已刪（使用者 2026-11-11：直排 C 標已夠，不准再掛對照簽）。"""
+    _ = (ax, fp, pack)
+    return
 
 
 def _vertical_upright_label(text: str) -> str:
@@ -5287,33 +5258,7 @@ def _paint_c3_group12_span_labels(
             i2, i2e, face="#ffb74d", edge="#ef6c00", label="C2 中繼", fg="#3e2723"
         )
         _span_band(i3, i3e, face="#ea80fc", edge="#6a1b9a", label="C3 下跌", fg="#ffffff")
-        _fri_y = float(spans["y3e"])
-        ax.annotate(
-            "C3底＝週五低 37837",
-            xy=(float(i3e), _fri_y),
-            xytext=(float(i3e), float(y1) - span_y * 0.18),
-            textcoords="data",
-            ha="center",
-            va="top",
-            fontproperties=fp(9.5, "bold"),
-            color="#111111",
-            zorder=43,
-            arrowprops={
-                "arrowstyle": "->",
-                "color": "#ffd54f",
-                "lw": 2.0,
-                "shrinkA": 0,
-                "shrinkB": 2,
-            },
-            bbox={
-                "boxstyle": "round,pad=0.36",
-                "facecolor": "#ffd54f",
-                "edgecolor": "#111111",
-                "linewidth": 1.7,
-                "alpha": 0.98,
-            },
-            clip_on=False,
-        )
+        # C3／週五低標併右欄「週五低／37,837」；不准再黃箭重複掛一顆
         if highs is not None and len(highs) > i3e:
             hi_pts: List[Tuple[int, float]] = []
             for ii in range(i3, i3e + 1):
@@ -5355,25 +5300,7 @@ def _paint_c3_group12_span_labels(
                                 zorder=6.5,
                                 solid_capstyle="round",
                             )
-                            ax.text(
-                                x_end,
-                                y_end,
-                                "示意：C3下降壓\n（日盤已過・無報價）",
-                                ha="left",
-                                va="bottom",
-                                fontproperties=fp(7.6, "bold"),
-                                color="#111111",
-                                zorder=35,
-                                linespacing=1.1,
-                                bbox={
-                                    "boxstyle": "round,pad=0.22",
-                                    "facecolor": "#eceff1",
-                                    "edgecolor": "#90a4ae",
-                                    "linewidth": 0.9,
-                                    "alpha": 0.92,
-                                },
-                                clip_on=False,
-                            )
+                            # 下降壓字標已刪（線仍留）；使用者 2026-11-11
         if i_now >= i4:
             _span_band(
                 i4, i_now, face="#69f0ae", edge="#00c853", label="C4 反彈", fg="#003300"
@@ -7657,12 +7584,13 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
     if re.search(r"37837", s):
         if _text_has_retest_41500(s) or re.search(r"絕對不(?:會)?破", s):
             tag = "絕對不破"
-            lab = f"週五低／{_px(37837)}（絕對不破）"
+            # 與圖上 C3 底同一點：右下只留這一顆，不准再黃箭重複
+            lab = f"C3底＝週五低／{_px(37837)}（絕對不破）"
         elif _text_has_c3_pressure_break(s) or (
             "不再假跌破" in s and re.search(r"下降壓", s)
         ):
             tag = "不再假跌破"
-            lab = f"週五低／{_px(37837)}（不再假跌破）"
+            lab = f"C3底＝週五低／{_px(37837)}（不再假跌破）"
         elif _text_has_stop_low_confirm(s):
             tag = "再測／假跌破"
             lab = f"再測週五低／{_px(37837)}"

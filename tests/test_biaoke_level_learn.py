@@ -3944,8 +3944,8 @@ def test_paint_c3_group12_span_labels_wired():
     assert "C2 中繼" in src_fn
     assert "C3 下跌" in src_fn
     assert "C4 反彈" in src_fn
-    assert "示意：C3下降壓" in src_fn
-    assert "日盤已過" in src_fn
+    assert "示意：C3下降壓" not in src_fn  # 字標已刪，只留細白線
+    assert "C3底＝週五低 37837" not in src_fn  # 併右欄，不准黃箭重複
     assert "_vertical_upright_label" in src_fn
     assert "rotation=0" in src_fn  # 直排仍正立，不准旋轉歪頭
     assert "y_band" in src_fn  # 標貼近底緣，不准只貼天空
