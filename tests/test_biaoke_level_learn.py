@@ -3549,6 +3549,22 @@ def test_near_micro_follow_far_c9_twii_presentation():
     assert 'title="九波擴延"' in micro60
 
 
+def test_candle_body_close_anchored_edges():
+    """漲＝收在上緣、跌＝收在下緣；min_body 往另一邊長，今 tip 不准黏錯邊。"""
+    from biaoke_level_learn import _candle_body_y0_height
+
+    bot, h = _candle_body_y0_height(42100.0, 42172.0, 80.0)
+    assert abs((bot + h) - 42172.0) < 1e-6  # 收＝上緣
+    assert h >= 80.0
+    bot2, h2 = _candle_body_y0_height(42200.0, 42172.0, 80.0)
+    assert abs(bot2 - 42172.0) < 1e-6  # 收＝下緣
+    assert h2 >= 80.0
+    # 平盤紅／小實體：收仍在上緣
+    bot3, h3 = _candle_body_y0_height(42711.0, 42711.0, 90.0)
+    assert abs((bot3 + h3) - 42711.0) < 1e-6
+    assert abs(h3 - 90.0) < 1e-6
+
+
 def test_finish_last_twii_used_by_near_and_micro():
     """遠窗末根重畫；近窗日K特寫；超近走 60分C波。"""
     from biaoke_level_learn import (
@@ -3570,6 +3586,9 @@ def test_finish_last_twii_used_by_near_and_micro():
     assert "_tw_last_repaint" in far
     assert "_twii_bars_for_teach" in c60  # 日戳對照
     assert "_load_twii60_day_rows" in c60
+    assert "_finish_last_twii_candle" in c60  # 今 tip 鎖收盤（紅柱上緣）
+    assert "_finish_last_twii_candle" in near  # 近窗日K同規
+    assert "_paint_c3_group12_span_labels" in far and "_paint_c3_group12_span_labels" in near
     assert "0050" in c60 and "量(0050)" in c60
     from biaoke_level_learn import _load_twii60_day_rows as _ld60
 
@@ -3579,6 +3598,23 @@ def test_finish_last_twii_used_by_near_and_micro():
     # 末根改白邊實心K＋_spear_ring 細圈（不再用 facecolors=none 空心 scatter）
     assert "_spear_ring" in src
     assert "edgecolor=\"#ffffff\"" in src or "edgecolor='#ffffff'" in src
+    assert "closes[i_now]" in src  # tip Y＝收盤
+
+
+def test_candle_body_close_anchors_min_body_edge():
+    """漲K：收＝上緣；跌K：收＝下緣；min_body 不准把收盤推到反邊。"""
+    from biaoke_level_learn import _candle_body_y0_height
+
+    # 平盤／小實體紅（收≥開）：tip＝收＝上緣
+    y0, h = _candle_body_y0_height(42100.0, 42172.0, 200.0)
+    assert abs((y0 + h) - 42172.0) < 1e-6
+    assert y0 < 42172.0
+    y0f, hf = _candle_body_y0_height(42172.0, 42172.0, 180.0)
+    assert abs((y0f + hf) - 42172.0) < 1e-6
+    # 跌：收＝下緣
+    y0d, hd = _candle_body_y0_height(42200.0, 42100.0, 250.0)
+    assert abs(y0d - 42100.0) < 1e-6
+    assert (y0d + hd) > 42100.0
 
 
 def test_place_live_right_labels_keeps_c4_c5_now():

@@ -8703,6 +8703,30 @@ def _candle_span_min_body(
     return max(6.0, float(span) * float(frac))
 
 
+def _candle_body_y0_height(open_: float, close: float, min_body: float) -> Tuple[float, float]:
+    """實體 y0／高：收盤鎖在正確邊（漲＝上緣、跌＝下緣）；min_body 往另一邊長。
+
+    舊寫法從 min(開,收) 往上長，小實體／平盤時「今」tip 會黏在紅柱下緣。
+    """
+    try:
+        o = float(open_)
+        c = float(close)
+    except (TypeError, ValueError):
+        return 0.0, max(float(min_body or 0), 1.0)
+    mb = max(float(min_body or 0), 0.0)
+    if c >= o:
+        top = c
+        bot = float(o)
+        if top - bot < mb:
+            bot = top - mb
+        return bot, max(top - bot, mb if mb > 0 else 0.0)
+    bot = c
+    top = float(o)
+    if top - bot < mb:
+        top = bot + mb
+    return bot, max(top - bot, mb if mb > 0 else 0.0)
+
+
 def _paint_one_live_candle(
     ax,
     i: int,
@@ -8743,11 +8767,11 @@ def _paint_one_live_candle(
         wick.set_clip_on(False)
     except Exception:
         pass
-    y0, y1 = sorted((float(open_), float(close)))
+    y0, h_body = _candle_body_y0_height(float(open_), float(close), float(min_body))
     patch = plt.Rectangle(
         (i - width * 0.5, y0),
         width,
-        max(y1 - y0, float(min_body)),
+        h_body,
         facecolor=color,
         edgecolor=ec,
         linewidth=edge_lw,
@@ -8884,12 +8908,12 @@ def _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_up) ->
         color = _LIVE_UP if up else _LIVE_DOWN
         # wick/body z 高於底帶、低於空心 tip；末根另蓋回
         ax.vlines(i, l_i, h_i, color=color, linewidth=1.35, zorder=5)
-        y0, y1 = sorted((o_i, c_i))
+        y0, h_body = _candle_body_y0_height(o_i, c_i, float(min_body))
         ax.add_patch(
             plt.Rectangle(
                 (i - 0.34, y0),
                 0.68,
-                max(y1 - y0, float(min_body)),
+                h_body,
                 facecolor=color,
                 edgecolor=color,
                 linewidth=0.45,
@@ -14666,6 +14690,18 @@ def _render_twii_c_wave_60_dark(
         x_col=x_col,
         nudge=True,
         fontsize=8.5,
+    )
+    # 末根蓋回＋今 tip：Y 鎖收盤（紅柱上緣／綠柱下緣）；不准被浪折蓋掉
+    _finish_last_twii_candle(
+        ax,
+        i_now=int(i_now),
+        opens=opens,
+        highs=highs,
+        lows=lows,
+        closes=closes,
+        candle_up=candle_up_taiwan,
+        ymin=float(ymin),
+        ymax=float(ymax),
     )
     x_right = _teach_xlim_right(
         int(n),
