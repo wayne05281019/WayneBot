@@ -17267,10 +17267,13 @@ def render_oral_dual_path_schematic(
     pack: Optional[Dict[str, Any]] = None,
     snip: str = "",
 ) -> str:
-    """口述雙軌對照圖（主：五波跌完→B-b；備：九波擴延）。說明用・非買訊。
+    """口述雙軌對照圖（已停用・2026-11-11 使用者定版拿掉）。
 
-    未定案前與三窗同口重渲；題旨來源＝說話時間序後文，不准用抓取 updated_at。
+    一律不產檔、不寄話筒。雙軌題旨仍可留在文字／三窗，不准再出這張示意圖。
     """
+    _ = (save_path, pack, snip)
+    return ""
+    # --- 以下保留備查，永不執行 ---
     blob = str(snip or "")
     if not blob and isinstance(pack, dict):
         blob = str(
@@ -17632,38 +17635,8 @@ def paint_open_day_hypothesis(
         us_path = ""
         tx60_path = ""
 
-    # 未定案雙軌：口述對照圖與三窗同口重渲（後文題旨；非買訊）
+    # 口述雙軌對照圖已停用（2026-11-11 定版拿掉）：不准再渲／再寄
     oral_path = ""
-    if mode in {"full", "trio", "far"}:
-        try:
-            oral_snip = str(
-                pack.get("snippet_full")
-                or pack.get("snippet")
-                or thesis
-                or ""
-            )
-            if _text_has_bb_dual_path(oral_snip) or _text_has_bb_dual_path(
-                str(wait_struct or "")
-            ):
-                oral_path = os.path.join(snap_root, f"{slot_id}-oral-path.png")
-                oral_path = (
-                    render_oral_dual_path_schematic(
-                        oral_path, pack=pack, snip=oral_snip
-                    )
-                    or ""
-                )
-                # 最新別名：方便話筒／本機對圖同一口
-                if oral_path:
-                    try:
-                        import shutil
-
-                        latest_oral = os.path.join(snap_root, "oral-dual-path-latest.png")
-                        shutil.copy2(oral_path, latest_oral)
-                    except Exception:
-                        pass
-        except Exception:
-            logger.exception("口述對照圖略過")
-            oral_path = ""
 
     # as_of＝加權末柱顯示日（官方收或盤中／空窗疊加），不准寫日曆 ymd 讓舊圖假裝今天
     chart_as_of = _ymd(pack.get("chart_as_of")) or _twii_chart_as_of(db_path) or ymd
@@ -17842,15 +17815,8 @@ def latest_teach_kit(db_path: str) -> Dict[str, Any]:
         tip = levels.get("_teach_tip") if isinstance(levels, dict) else None
         if isinstance(tip, dict):
             out["teach_tip"] = tip
-        oral = str((levels or {}).get("_oral_path") or "") if isinstance(levels, dict) else ""
-        if oral and os.path.isfile(oral):
-            out["oral_path"] = oral
-        else:
-            # 別名檔：同口最新對照
-            root = _paint_dir(db_path)
-            latest_oral = os.path.join(root, "oral-dual-path-latest.png")
-            if os.path.isfile(latest_oral):
-                out["oral_path"] = latest_oral
+        # 口述雙軌對照圖已停用：不准再從舊檔／別名回填 oral_path
+        out["oral_path"] = ""
     except Exception:
         out["teach_tip"] = {}
     return out
@@ -18067,7 +18033,6 @@ def maybe_push_level_teach_update(
         ("far_path", "遠窗・波浪／切割（非買訊）"),
         ("near_path", "近窗・細微波／量價（非買訊）"),
         ("micro_path", "超近窗・日K小波（非買訊）"),
-        ("oral_path", "口述雙軌對照・主B-b／備九波（非買訊）"),
     ):
         p = str(kit.get(key) or "").strip()
         if p and os.path.isfile(p):
