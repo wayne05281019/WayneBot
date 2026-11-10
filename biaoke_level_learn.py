@@ -3225,6 +3225,70 @@ def _load_tx60_rows(db_path: str, n: int = 80) -> List[Dict[str, Any]]:
     return out
 
 
+def _twii60_vol_proxy_map(db_path: str) -> Dict[str, float]:
+    """加權指數 Yahoo 分量永遠 0；同路個股／ETF 有量。
+
+    用 0050 日盤 60 分對齊 ts 當量能代理（張；Yahoo 已轉張）。
+    不准發明數字：抓不到就不寫。
+    """
+    out: Dict[str, float] = {}
+    if not db_path:
+        return out
+    try:
+        from kline_hop import fetch_yahoo_minutes, load_minute_bars
+
+        try:
+            fetch_yahoo_minutes("0050", "60", db_path)
+        except Exception:
+            pass
+        raw = load_minute_bars("0050", "60", db_path) or []
+    except Exception:
+        return out
+    for b in raw:
+        ts = str(b.get("t") or "")
+        if len(ts) < 12:
+            continue
+        try:
+            v = float(b.get("v") or 0)
+        except (TypeError, ValueError):
+            continue
+        if v <= 0:
+            continue
+        out[ts] = v
+    return out
+
+
+def _attach_twii60_volume_proxy(
+    rows: Sequence[Dict[str, Any]], db_path: str
+) -> List[Dict[str, Any]]:
+    """TWII 60 分列量＝0 時，用 0050 同 ts 真量貼上並標 vol_src。"""
+    if not rows:
+        return []
+    need = any(float(r.get("volume") or 0) <= 0 for r in rows)
+    if not need:
+        return [dict(r) for r in rows]
+    proxy = _twii60_vol_proxy_map(db_path)
+    if not proxy:
+        return [dict(r) for r in rows]
+    out: List[Dict[str, Any]] = []
+    for r in rows:
+        row = dict(r)
+        try:
+            v = float(row.get("volume") or 0)
+        except (TypeError, ValueError):
+            v = 0.0
+        if v > 0:
+            out.append(row)
+            continue
+        ts = str(row.get("ts") or "")
+        pv = float(proxy.get(ts) or 0)
+        if pv > 0:
+            row["volume"] = pv
+            row["vol_src"] = "0050"
+        out.append(row)
+    return out
+
+
 def _load_twii60_day_rows(
     db_path: str,
     *,
@@ -3234,6 +3298,7 @@ def _load_twii60_day_rows(
     """加權日盤 60 分：自 since（含）到 until 日盤收（預設庫內最新）。
 
     只收 09:00–13:30 日盤柱；夜盤／盤後不進超近 9 波窗。價＝官方 minute_bars。
+    量：^TWII 無成交量 → 同 ts 貼 0050 真量（vol_src=0050）；抓不到不假填。
     """
     try:
         from kline_hop import load_minute_bars
@@ -3257,8 +3322,8 @@ def _load_twii60_day_rows(
             hm = int(ts[8:12])
         except ValueError:
             continue
-        # 台股日盤：09:00–13:30
-        if hm < 900 or hm > 1330:
+        # 台股日盤 60 分整點（含 13:30 收）；拒 1 分髒柱混進 interval=60
+        if hm not in (900, 1000, 1100, 1200, 1300, 1330):
             continue
         try:
             out.append(
@@ -3274,7 +3339,7 @@ def _load_twii60_day_rows(
             )
         except (TypeError, ValueError):
             continue
-    return out
+    return _attach_twii60_volume_proxy(out, db_path)
 
 
 def _bar_vol_tags(
@@ -13789,6 +13854,8 @@ def _render_twii_c_wave_60_dark(
         from kline_hop import fetch_yahoo_minutes
 
         fetch_yahoo_minutes("TWII", "60", db_path)
+        # 加權指數無成交量；同路抓 0050 60 分真量當代理（見 _attach_twii60_volume_proxy）
+        fetch_yahoo_minutes("0050", "60", db_path)
     except Exception:
         pass
     rows = _load_twii60_day_rows(db_path, since_ymd=_C_WAVE_60_SINCE_YMD)
@@ -13804,6 +13871,7 @@ def _render_twii_c_wave_60_dark(
     lows = [float(r["low"]) for r in rows]
     closes = [float(r["close"]) for r in rows]
     vols = [float(r["volume"]) for r in rows]
+    vol_proxy = any(str(r.get("vol_src") or "") == "0050" for r in rows)
     i_now = n - 1
     y_now = float(closes[i_now])
     tip_anchors = _tw_tip_anchors(pack)
@@ -13905,7 +13973,11 @@ def _render_twii_c_wave_60_dark(
     ax.set_xlim(-0.35, x_right)
     axv.set_xlim(-0.35, x_right)
     axv.set_ylim(0, (max(vols) if any(vols) else 1) * 1.35)
-    axv.set_ylabel("量", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)
+    axv.set_ylabel(
+        "量(0050)" if vol_proxy else "量",
+        fontproperties=_fp(10, "bold"),
+        color=_LIVE_MUTED,
+    )
     if len(_xticks) > 14:
         keep = list(range(0, len(_xticks) - 1, 2)) + [len(_xticks) - 1]
         _xticks = [_xticks[i] for i in keep]
@@ -13926,10 +13998,12 @@ def _render_twii_c_wave_60_dark(
         ha="left",
         va="top",
     )
+    vol_note = "｜量＝0050同ts代理（加權指數無成交量）" if vol_proxy else ""
     fig.text(
         0.03,
         0.945,
-        "軸＝加權日盤60分｜色帶C1下跌／C2中繼／C3下跌／C4反彈｜粉虛＝C3下降壓示意（日盤已過）",
+        "軸＝加權日盤60分｜色帶C1下跌／C2中繼／C3下跌／C4反彈｜粉虛＝C3下降壓示意（日盤已過）"
+        + vol_note,
         fontproperties=_fp(9, "bold"),
         color="#ce93d8",
         ha="left",
@@ -14001,6 +14075,7 @@ def _render_twii_super_near_c9_60m(
         from kline_hop import fetch_yahoo_minutes
 
         fetch_yahoo_minutes("TWII", "60", db_path)
+        fetch_yahoo_minutes("0050", "60", db_path)
     except Exception:
         pass
     rows = _load_twii60_day_rows(db_path, since_ymd="20261006")

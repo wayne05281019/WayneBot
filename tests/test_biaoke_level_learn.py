@@ -2267,6 +2267,99 @@ def test_soxx_volume_proxy_always_refreshes_near_window():
     assert "substr(ts,1,8)" not in min_src
 
 
+def test_twii60_day_rows_keep_hour_slots_only(tmp_path):
+    """interval=60 若混進 0901 這類 1 分髒柱，日盤窗要丟掉。"""
+    import sqlite3
+
+    from biaoke_level_learn import _load_twii60_day_rows
+    from kline_hop import ensure_minute_bars_table, save_minute_bars
+
+    db = str(tmp_path / "twii60.db")
+    ensure_minute_bars_table(db)
+    save_minute_bars(
+        "TWII",
+        "60",
+        [
+            {"t": "202611100900", "o": 1, "h": 2, "l": 1, "c": 2, "v": 0},
+            {"t": "202611100901", "o": 1, "h": 2, "l": 1, "c": 2, "v": 0},
+            {"t": "202611101000", "o": 1, "h": 2, "l": 1, "c": 2, "v": 0},
+            {"t": "202611101330", "o": 1, "h": 2, "l": 1, "c": 2, "v": 0},
+        ],
+        db,
+        source="test",
+    )
+    # 無 0050 也不准炸
+    rows = _load_twii60_day_rows(db, since_ymd="20261110")
+    assert [r["ts"] for r in rows] == [
+        "202611100900",
+        "202611101000",
+        "202611101330",
+    ]
+
+
+def test_twii60_volume_proxy_from_0050_same_ts(monkeypatch):
+    """^TWII 分量 0 → 同 ts 貼 0050 真量；已有量不蓋；抓不到不假填。"""
+    from biaoke_level_learn import (
+        _attach_twii60_volume_proxy,
+        _load_twii60_day_rows,
+    )
+
+    monkeypatch.setattr(
+        "biaoke_level_learn._twii60_vol_proxy_map",
+        lambda _db: {"202611101000": 30580.0, "202611101100": 31752.0},
+    )
+    rows = [
+        {
+            "date": "20261110",
+            "ts": "202611101000",
+            "open": 1,
+            "high": 2,
+            "low": 1,
+            "close": 2,
+            "volume": 0.0,
+        },
+        {
+            "date": "20261110",
+            "ts": "202611101100",
+            "open": 1,
+            "high": 2,
+            "low": 1,
+            "close": 2,
+            "volume": 0.0,
+        },
+        {
+            "date": "20261110",
+            "ts": "202611101200",
+            "open": 1,
+            "high": 2,
+            "low": 1,
+            "close": 2,
+            "volume": 0.0,
+        },
+        {
+            "date": "20261110",
+            "ts": "202611100900",
+            "open": 1,
+            "high": 2,
+            "low": 1,
+            "close": 2,
+            "volume": 99.0,
+        },
+    ]
+    out = _attach_twii60_volume_proxy(rows, "unused.db")
+    by_ts = {r["ts"]: r for r in out}
+    assert by_ts["202611101000"]["volume"] == 30580.0
+    assert by_ts["202611101000"]["vol_src"] == "0050"
+    assert by_ts["202611101100"]["volume"] == 31752.0
+    assert by_ts["202611101200"]["volume"] == 0.0
+    assert "vol_src" not in by_ts["202611101200"]
+    assert by_ts["202611100900"]["volume"] == 99.0
+    assert "vol_src" not in by_ts["202611100900"]
+    assert "_attach_twii60_volume_proxy" in __import__("inspect").getsource(
+        _load_twii60_day_rows
+    )
+
+
 def test_stamp_md_phase_close_or_intraday_before_numbers():
     """遠窗白底戳：名稱＋M/D收盤｜盤中 查詢當下為HH:MM →價→％→點數。"""
     from datetime import datetime
@@ -3474,6 +3567,10 @@ def test_finish_last_twii_used_by_near_and_micro():
     assert "_tw_last_repaint" in far
     assert "_twii_bars_for_teach" in c60  # 日戳對照
     assert "_load_twii60_day_rows" in c60
+    assert "0050" in c60 and "量(0050)" in c60
+    from biaoke_level_learn import _load_twii60_day_rows as _ld60
+
+    assert "_attach_twii60_volume_proxy" in inspect.getsource(_ld60)
     assert "_twii_bars_for_teach" in far
     src = inspect.getsource(_finish_last_twii_candle)
     # 末根改白邊實心K＋_spear_ring 細圈（不再用 facecolors=none 空心 scatter）
