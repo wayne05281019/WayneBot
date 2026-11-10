@@ -12456,6 +12456,9 @@ def _tw_pred_right_notes(
             continue
         tag = str(row.get("tag") or "")
         role = str(row.get("role") or "")
+        # 41760 台指壓標刪：已破、右欄不再掛（使用者 2026-11-10）
+        if role == "台指壓力" or abs(lv - 41760.0) < 0.6:
+            continue
         # 雙軌當令：右欄留 最佳買點37837＋AI結束上緣35579＋深殺31705；
         # 39,000／37,164 改走黃底帶，不准再佔右欄
         if bb_dual_active and role in {

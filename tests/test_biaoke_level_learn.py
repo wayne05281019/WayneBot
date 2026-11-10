@@ -1336,7 +1336,13 @@ def test_press_level_break_uses_high_not_crash_low():
                         "role": "台指壓力",
                         "tag": "未到",
                         "label": "台指壓力／41,760",
-                    }
+                    },
+                    {
+                        "level": 41500.0,
+                        "role": "至少回測",
+                        "tag": "未到",
+                        "label": "至少回測／41,500",
+                    },
                 ]
             }
         },
@@ -1349,10 +1355,11 @@ def test_press_level_break_uses_high_not_crash_low():
         ],
     )
     blob = " ".join(str(x.get("text") or "") for x in notes)
-    assert "台指壓力" in blob
+    # 41760 台指壓右標已刪；至少回測仍可留
+    assert "台指壓力" not in blob
+    assert "41,760" not in blob
+    assert "至少回測" in blob
     assert "飆預測" not in blob
-    assert "已破" not in blob
-    assert ("未到" in blob) or ("未破" in blob)
 
 
 def test_c9_extension_inactive_on_stop_confirm():
