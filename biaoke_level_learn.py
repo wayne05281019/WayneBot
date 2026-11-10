@@ -4686,6 +4686,16 @@ def _tw_pred_break_tag(
         and _tw_has_c9_low_zone(pack)
     ):
         return "已破"
+    # 拉回「至少回測」目標：只看最近一根有沒有測到；不准拿急跌全程最低誤標已破
+    if role_s == "至少回測" or abs(lv - 41500.0) < 0.6:
+        if lows:
+            try:
+                last_lo = float(lows[-1])
+            except (TypeError, ValueError, IndexError):
+                last_lo = None
+            if last_lo is not None and last_lo <= lv + 80.0:
+                return "已測"
+        return "未到"
     is_press = bool(
         role_s in {"台指壓力", "反彈穿刺", "轉震盪"}
         or ("壓" in role_s and "撐" not in role_s and "低" not in role_s)
