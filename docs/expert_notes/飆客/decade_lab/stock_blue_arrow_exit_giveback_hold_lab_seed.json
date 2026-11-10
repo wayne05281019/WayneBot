@@ -1,0 +1,40 @@
+{
+  "version": "stock_blue_arrow_exit_giveback_hold_lab_v1",
+  "status": "no_beat_keep_phone_stack_blocked",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "keep": "v106",
+  "soft_leader_invent": "off",
+  "entry": "leave_zero_blue_tri",
+  "exit_modes": [
+    "phone_stack",
+    "phone_stack_nogb",
+    "giveback_only",
+    "first_hi20",
+    "sell_desync_cut",
+    "first_hi20_giveback",
+    "sell_desync_giveback",
+    "first_hi20_mh2",
+    "sell_desync_mh2",
+    "first_hi20_giveback_mh2",
+    "sell_desync_giveback_mh2",
+    "hold_max",
+    "random_exit"
+  ],
+  "assist_candidate_keys": [
+    "phone_stack_nogb",
+    "giveback_only",
+    "first_hi20_giveback",
+    "sell_desync_giveback",
+    "first_hi20_mh2",
+    "sell_desync_mh2",
+    "first_hi20_giveback_mh2",
+    "sell_desync_giveback_mh2"
+  ],
+  "giveback": 0.08,
+  "min_hold_used": 2,
+  "gate": "beats phone_stack AND random_exit on BOTH wr and expectancy; n_unique_entry_days>=20",
+  "next_if_random_e_wall": "pause_blue_exit_track_report_blocker",
+  "note_zh": "再生下一版靜默對質種子；本檔只鎖規格不改話筒",
+  "parent_order_merge": "stock_blue_arrow_exit_order_merge_lab"
+}
