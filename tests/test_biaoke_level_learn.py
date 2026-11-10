@@ -4040,6 +4040,85 @@ def test_huang_c60_anchors_and_wave_paint_wired():
     assert "_window_huang_c60_rows" in c60
 
 
+def test_teach_vol_sr_preview_below_next_layer_60m():
+    """未破主撐也預覽往下下一層；60分高低擴成當日全日包絡（對齊遠／近日K）。"""
+    from biaoke_level_learn import (
+        _load_twii60_day_rows,
+        _paint_teach_vol_layer_bars,
+        _resolve_teach_vol_sr,
+        _teach_day_vol_rank_indices,
+        _teach_vol_day_tag,
+        _teach_vol_sr_title_bit,
+    )
+
+    rows = _load_twii60_day_rows("data/wayne_market.db", since_ymd="20261006")
+    if len(rows) < 16:
+        return
+    sr = _resolve_teach_vol_sr(rows, lookback=40, preview_below=True)
+    pri = sr.get("primary") or {}
+    nxt = sr.get("next") or {}
+    assert pri.get("date") == "20261105"
+    assert str(pri.get("ts") or "").startswith("202611050900")
+    assert abs(float(pri.get("high") or 0) - 42873.8) < 1.0
+    assert abs(float(pri.get("low") or 0) - 41866.1) < 1.0
+    # 主撐未破 → preview 下一層仍要有（若往下）
+    assert not pri.get("broke_support")
+    assert nxt.get("date") == "20261106"
+    assert bool(nxt.get("preview")) is True
+    assert abs(float(nxt.get("high") or 0) - 40435.8) < 1.0
+    assert abs(float(nxt.get("low") or 0) - 37837.05) < 1.0  # 全日低，非單根 10:00 低
+    tag = _teach_vol_day_tag(nxt.get("date"), nxt.get("ts"))
+    assert "11/6" in tag
+    assert "10:00" in tag  # 最大量那根
+    bit = _teach_vol_sr_title_bit(sr)
+    assert "下一層" in bit and "37,837" in bit.replace(",", ",")
+    # 下一層同日：最大量 10:00、次大量 11:00
+    rank = _teach_day_vol_rank_indices(rows, "20261106", top_n=2)
+    assert len(rank) >= 2
+    assert str(rows[rank[0]].get("ts") or "").startswith("202611061000")
+    assert str(rows[rank[1]].get("ts") or "").startswith("202611061100")
+    assert sr.get("i_next") == rank[0]
+    assert sr.get("i_next_2nd") == rank[1]
+    assert str(nxt.get("ts_2nd") or "").startswith("202611061100")
+
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from wayne_navigator import _fp
+
+    fig, axv = plt.subplots()
+    vols = [float(r.get("volume") or 0) for r in rows]
+    axv.bar(range(len(vols)), vols, color="#455a64", width=0.68)
+    _paint_teach_vol_layer_bars(
+        axv,
+        vols,
+        i_primary=sr.get("i_primary"),
+        i_next=sr.get("i_next"),
+        i_next_2nd=sr.get("i_next_2nd"),
+        bars=rows,
+        fp=_fp,
+    )
+    texts = " ".join(t.get_text() for t in axv.texts)
+    # 對齊大量圖口吻：這根＝爆大量／下一層最大量／次大量＋月日幾點
+    assert "這根＝爆大量" in texts and "11/5 09:00" in texts
+    assert "下一層最大量" in texts and "11/6 10:00" in texts
+    assert "下一層次大量" in texts and "11/6 11:00" in texts
+    # 上緣空帶：ylim 高於最大柱
+    assert float(axv.get_ylim()[1]) > max(vols) * 1.2
+    plt.close(fig)
+
+    import inspect
+    from biaoke_level_learn import _paint_teach_vol_layer_bars as _pv
+    from biaoke_level_learn import _render_twii_c_wave_60_dark
+
+    paint_src = inspect.getsource(_pv)
+    assert "arrowprops" in paint_src and "這根＝爆大量" in paint_src
+    assert "#f9a825" in paint_src and "#42a5f5" in paint_src
+    c60 = inspect.getsource(_render_twii_c_wave_60_dark)
+    assert "_paint_teach_vol_layer_bars" in c60
+
+
 def test_teach_vol_sr_60m_label_shows_bar_hhmm():
     """超近60分大量撐壓標籤要寫清幾點K棒（例 11/5 09:00）；日K不加假時段。"""
     from biaoke_level_learn import (

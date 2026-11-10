@@ -8055,15 +8055,94 @@ def _teach_vol_rows_merge_deep(
         return face or deep
 
 
+def _teach_rows_have_intraday_ts(rows: Sequence[Dict[str, Any]]) -> bool:
+    """軸上是否為 60 分列（有 HH:MM ts）→ 下一層高低可擴成當日全日包絡對齊日K窗。"""
+    for r in rows or []:
+        if _teach_bar_hhmm((r or {}).get("ts")):
+            return True
+    return False
+
+
+def _teach_day_hl_extremes(
+    rows: Sequence[Dict[str, Any]], ymd: str
+) -> Optional[Tuple[float, float]]:
+    """同交易日全部柱的最高／最低（60分對齊遠／近日K下一層包絡）。"""
+    day = _ymd(ymd)
+    if not day:
+        return None
+    hi = None
+    lo = None
+    for r in rows or []:
+        rd = _ymd((r or {}).get("date")) or _ymd((r or {}).get("ts"))
+        if rd != day:
+            continue
+        try:
+            rh = float((r or {}).get("high") or 0)
+            rl = float((r or {}).get("low") or 0)
+        except (TypeError, ValueError):
+            continue
+        if rh <= 0 or rl <= 0 or rh < rl:
+            continue
+        hi = rh if hi is None else max(hi, rh)
+        lo = rl if lo is None else min(lo, rl)
+    if hi is None or lo is None or hi < lo:
+        return None
+    return (float(hi), float(lo))
+
+
+def _teach_day_max_vol_ts(
+    rows: Sequence[Dict[str, Any]], ymd: str
+) -> str:
+    """同日最大量那根 ts（下一層豎導／標籤寫幾點；0 量略過）。"""
+    ranked = _teach_day_vol_rank_indices(rows, ymd, top_n=1)
+    if not ranked:
+        return ""
+    i = int(ranked[0])
+    if i < 0 or i >= len(rows or []):
+        return ""
+    return str((rows[i] or {}).get("ts") or "").strip()
+
+
+def _teach_day_vol_rank_indices(
+    rows: Sequence[Dict[str, Any]],
+    ymd: str,
+    *,
+    top_n: int = 2,
+) -> List[int]:
+    """同交易日量柱由大到小取前 top_n 索引（0 量略過）；給本層／下一層最大量＋次大量。"""
+    day = _ymd(ymd)
+    if not day or top_n <= 0:
+        return []
+    scored: List[Tuple[float, int]] = []
+    for i, r in enumerate(rows or []):
+        rd = _ymd((r or {}).get("date")) or _ymd((r or {}).get("ts"))
+        if rd != day:
+            continue
+        try:
+            v = float((r or {}).get("volume") or 0)
+        except (TypeError, ValueError):
+            continue
+        if v <= 0:
+            continue
+        scored.append((v, int(i)))
+    if not scored:
+        return []
+    scored.sort(key=lambda t: (-t[0], t[1]))
+    return [i for _v, i in scored[: int(top_n)]]
+
+
 def _resolve_teach_vol_sr(
     bars: Sequence[Dict[str, Any]],
     *,
     lookback: int = 40,
+    preview_below: bool = True,
 ) -> Dict[str, Any]:
     """教具大量撐壓＋下一層（對齊結構圖／大量區規則；不是買訊）。
 
-    primary＝volume_first 仍有效爆大量日高低；破撐／過壓後才掛下一層大量區。
-    下一層在傳入列上 cascade；呼叫端若軸窗短於深窗須先併深窗歷史。
+    primary＝volume_first 仍有效爆大量日高低。
+    下一層：破撐／過壓後 cascade；教具預設未破也預覽往下的次大量區
+    （「若往下會進哪層」），preview=True。60 分軸下一層高低擴成當日全日包絡，
+    與遠／近日K下一層對齊（例 11/6 壓 40,436／撐 37,837）。
     """
     rows = list(bars or [])
     out: Dict[str, Any] = {
@@ -8071,6 +8150,7 @@ def _resolve_teach_vol_sr(
         "next": None,
         "i_primary": None,
         "i_next": None,
+        "i_next_2nd": None,  # 下一層同日次大量柱（量欄標色）
         "earliest_ymd": "",
     }
     if len(rows) < 4:
@@ -8113,6 +8193,7 @@ def _resolve_teach_vol_sr(
         return out
     close = float((rows[-1] or {}).get("close") or 0)
     nxt = None
+    nxt_preview = False
     try:
         if primary.get("broke_support"):
             nxt = find_secondary_vol_zone(
@@ -8134,31 +8215,77 @@ def _resolve_teach_vol_sr(
                 close=close,
                 allow_earlier=True,
             )
+        elif preview_below:
+            # 未破主撐：仍預覽往下次大量區（教具「若往下」；非買訊）
+            nxt = find_secondary_vol_zone(
+                rows,
+                direction="below",
+                ref_lo=float(primary["low"]),
+                exclude_date=str(primary.get("date") or ""),
+                lookback=max(lb, 80),
+                close=close,
+                allow_earlier=True,
+            )
+            nxt_preview = bool(nxt)
     except Exception:
         logger.exception("教具下一層大量區略過")
         nxt = None
+        nxt_preview = False
     if nxt:
         nd = _ymd(nxt.get("date"))
         nhi = float(nxt.get("high") or nxt.get("pressure") or 0)
         nlo = float(nxt.get("low") or nxt.get("support") or 0)
         nts = str(nxt.get("ts") or "").strip()
+        # 60分：下一層改用該日全日高低（對齊遠／近日K包絡；主區仍認單根60分）
+        if nd and _teach_rows_have_intraday_ts(rows):
+            day_hl = _teach_day_hl_extremes(rows, nd)
+            if day_hl:
+                nhi, nlo = float(day_hl[0]), float(day_hl[1])
+            if not nts:
+                nts = _teach_day_max_vol_ts(rows, nd)
         i_nx = _teach_vol_match_bar_index(
             rows, ymd=nd, high=nhi, low=nlo, ts=nts
         )
+        if i_nx is None and nd:
+            # 全日包絡對不到單根高低 → 對最大量那根做豎導
+            if not nts:
+                nts = _teach_day_max_vol_ts(rows, nd)
+            i_nx = _teach_vol_match_bar_index(
+                rows, ymd=nd, high=0.0, low=0.0, ts=nts
+            )
         if not nts and i_nx is not None:
             nts = str((rows[int(i_nx)] or {}).get("ts") or "").strip()
+        # 下一層同日：最大量＋次大量（量柱標色用）
+        rank = _teach_day_vol_rank_indices(rows, nd, top_n=2)
+        i_nx2 = int(rank[1]) if len(rank) >= 2 else None
+        ts_2nd = ""
+        if i_nx2 is not None:
+            ts_2nd = str((rows[int(i_nx2)] or {}).get("ts") or "").strip()
+        # 豎導優先對最大量根；rank[0] 可校正包絡對不齊時的索引
+        if rank and (i_nx is None or int(rank[0]) != int(i_nx)):
+            if nts and str((rows[int(rank[0])] or {}).get("ts") or "").startswith(
+                str(nts)[:12]
+            ):
+                i_nx = int(rank[0])
+            elif not nts:
+                i_nx = int(rank[0])
+                nts = str((rows[int(i_nx)] or {}).get("ts") or "").strip()
         out["next"] = {
             "date": nd,
             "ts": nts,
+            "ts_2nd": ts_2nd,
             "high": nhi,
             "low": nlo,
-            "direction": str(nxt.get("direction") or ""),
-            "label_hold": str(nxt.get("label_hold") or ""),
-            "label_press": str(nxt.get("label_press") or ""),
+            "direction": str(nxt.get("direction") or "below"),
+            # 標籤跟最終高低走（60分全日包絡後不准留單根舊價）
+            "label_hold": f"下一層撐 {_px(nlo)}" if nlo > 0 else str(nxt.get("label_hold") or ""),
+            "label_press": f"下一層壓 {_px(nhi)}" if nhi > 0 else str(nxt.get("label_press") or ""),
+            "preview": bool(nxt_preview),
         }
         if nd and (not out["earliest_ymd"] or nd < out["earliest_ymd"]):
             out["earliest_ymd"] = nd
         out["i_next"] = i_nx
+        out["i_next_2nd"] = i_nx2
     return out
 
 
@@ -8653,6 +8780,7 @@ def _remap_teach_vol_sr_index(
     out = dict(sr or {})
     out["i_primary"] = None
     out["i_next"] = None
+    out["i_next_2nd"] = None
     rows = list(bars or [])
     by_ymd = {_ymd(r.get("date")): i for i, r in enumerate(rows) if _ymd(r.get("date"))}
     pri = ((out.get("primary") or {}) or {})
@@ -8679,6 +8807,12 @@ def _remap_teach_vol_sr_index(
     if i_nx is None and nd and nd in by_ymd:
         i_nx = int(by_ymd[nd])
     out["i_next"] = i_nx
+    if nd:
+        rank = _teach_day_vol_rank_indices(rows, nd, top_n=2)
+        if rank:
+            out["i_next"] = int(rank[0])
+        if len(rank) >= 2:
+            out["i_next_2nd"] = int(rank[1])
     return out
 
 
@@ -9083,6 +9217,176 @@ def _paint_special_candle(
             zorder=7,
         )
     )
+
+
+def _paint_teach_vol_layer_bars(
+    axv,
+    vols: Sequence[float],
+    *,
+    i_primary: Optional[int] = None,
+    i_next: Optional[int] = None,
+    i_next_2nd: Optional[int] = None,
+    bars: Optional[Sequence[Dict[str, Any]]] = None,
+    fp: Any = None,
+) -> None:
+    """量欄對應方式對齊查股大量圖：色柱＋上緣空帶掛標＋虛線指到柱。
+
+    本層爆大量＝黃；下一層最大量＝藍；下一層次大量＝淺藍。
+    標文帶月日／幾點（60分），一眼對到價圖同一根豎導／黃灰帶。
+    """
+    if axv is None or not vols:
+        return
+    vals = [float(v or 0) for v in vols]
+    n = len(vals)
+    rows = list(bars or [])
+    peak = max(vals) if any(v > 0 for v in vals) else 1.0
+
+    def _ok(i: Optional[int]) -> bool:
+        return i is not None and 0 <= int(i) < n and vals[int(i)] > 0
+
+    def _tag(i: int) -> str:
+        if i < len(rows):
+            r = rows[i] or {}
+            return _teach_vol_day_tag(r.get("date"), r.get("ts")).strip()
+        return ""
+
+    def _vol_txt(i: int) -> str:
+        v = float(vals[i] or 0)
+        if v <= 0:
+            return ""
+        if v >= 1000:
+            return f"{v:,.0f}"
+        return f"{v:.0f}"
+
+    # (index, bar_color, edge, ink, label)
+    marks: List[Tuple[int, str, str, str, str]] = []
+    if _ok(i_primary):
+        ii = int(i_primary)
+        marks.append(
+            (
+                ii,
+                "#f9a825",
+                "#ffecb3",
+                "#ffe082",
+                f"這根＝爆大量 {_tag(ii)}　{_vol_txt(ii)}".strip(),
+            )
+        )
+    if _ok(i_next):
+        ii = int(i_next)
+        marks.append(
+            (
+                ii,
+                "#42a5f5",
+                "#90caf9",
+                "#90caf9",
+                f"下一層最大量 {_tag(ii)}　{_vol_txt(ii)}".strip(),
+            )
+        )
+    if _ok(i_next_2nd) and (
+        i_next is None or int(i_next_2nd) != int(i_next)
+    ):
+        ii = int(i_next_2nd)
+        marks.append(
+            (
+                ii,
+                "#80cbc4",
+                "#b2dfdb",
+                "#b2dfdb",
+                f"下一層次大量 {_tag(ii)}　{_vol_txt(ii)}".strip(),
+            )
+        )
+    if not marks:
+        return
+
+    # 上緣空帶（對齊大量圖：標掛頂下，不准壓柱）
+    y_top = float(peak) / 0.68
+    axv.set_ylim(0, float(y_top))
+    lab_y_hi = float(y_top) * 0.975
+    lab_y_mid = float(y_top) * 0.90
+    lab_y_lo = float(y_top) * 0.825
+
+    seen: set = set()
+    placed: List[Tuple[float, float]] = []  # (tx, ty) for sep
+
+    def _pick_tx(anchor: int, prefer_right: bool) -> Tuple[float, str]:
+        """水平錯開標盒；優先離開柱頂，對齊大量圖左右掃。"""
+        trials: List[Tuple[float, str]] = []
+        for off in (3.5, 6.0, 9.0, 12.0, 16.0, 22.0):
+            if prefer_right:
+                trials.append((min(float(n) - 1.0, float(anchor) + off), "left"))
+                trials.append((max(0.5, float(anchor) - off), "right"))
+            else:
+                trials.append((max(0.5, float(anchor) - off), "right"))
+                trials.append((min(float(n) - 1.0, float(anchor) + off), "left"))
+        best = None
+        for tx, ha in trials:
+            score = abs(float(tx) - float(anchor)) * 0.02
+            for px, _py in placed:
+                score += max(0.0, 14.0 - abs(float(tx) - float(px))) * 2.0
+            if best is None or score < best[0]:
+                best = (score, float(tx), str(ha))
+        if best is None:
+            return float(anchor) + 4.0, "left"
+        return best[1], best[2]
+
+    for k, (ii, face, edge, ink, lab) in enumerate(marks):
+        if ii in seen:
+            continue
+        seen.add(ii)
+        axv.bar(
+            ii,
+            vals[ii],
+            color=face,
+            width=0.76,
+            zorder=6,
+            alpha=0.96,
+            linewidth=0,
+        )
+        if fp is None or not lab:
+            continue
+        # 三標：上／中／下空帶；左右依先後錯開
+        if k == 0:
+            ty = lab_y_hi
+            prefer_right = True
+        elif k == 1:
+            ty = lab_y_mid if len(marks) >= 3 else lab_y_hi
+            prefer_right = False
+        else:
+            ty = lab_y_lo
+            prefer_right = True
+        tx, ha = _pick_tx(ii, prefer_right=prefer_right)
+        # 兩標仍太近 → 強制上下錯開
+        for px, py in placed:
+            if abs(float(tx) - float(px)) < 12.0 and abs(float(ty) - float(py)) < float(y_top) * 0.05:
+                ty = lab_y_lo if ty >= lab_y_mid else lab_y_mid
+        placed.append((float(tx), float(ty)))
+        axv.annotate(
+            lab,
+            xy=(float(ii), float(vals[ii])),
+            xytext=(float(tx), float(ty)),
+            color=ink,
+            fontproperties=fp(8.2, "bold"),
+            ha=str(ha),
+            va="top",
+            zorder=12,
+            annotation_clip=False,
+            clip_on=False,
+            bbox=dict(
+                boxstyle="round,pad=0.16",
+                facecolor="#0b0f14",
+                edgecolor=edge,
+                linewidth=0.9,
+                alpha=0.96,
+            ),
+            arrowprops=dict(
+                arrowstyle="-",
+                color=edge,
+                lw=0.95,
+                linestyle=(0, (2.4, 1.8)),
+                shrinkA=2,
+                shrinkB=3,
+            ),
+        )
 
 
 def _paint_vol_bars_max_yellow(
@@ -14727,10 +15031,24 @@ def _render_twii_c_wave_60_dark(
     )
     fig.patch.set_facecolor(_LIVE_BG)
     _style_live_ax(ax, axv)
-    ymin = min([min(lows)] + list(tw_supports)) - 520
+    # 先算大量撐壓／下一層：Y 軸要裝得下灰帶（若往下次層撐）
+    c60_vol_sr = _resolve_teach_vol_sr(rows, lookback=40, preview_below=True)
+    _nxt = (c60_vol_sr.get("next") or {}) if isinstance(c60_vol_sr, dict) else {}
+    _y_floor = [min(lows)] + list(tw_supports)
+    if _nxt.get("low"):
+        try:
+            _y_floor.append(float(_nxt["low"]))
+        except (TypeError, ValueError):
+            pass
+    if _nxt.get("high"):
+        try:
+            _y_floor.append(float(_nxt["high"]))
+        except (TypeError, ValueError):
+            pass
+    ymin = min(_y_floor) - 520
     ymax = max(highs) + 900
     ax.set_ylim(float(ymin), float(ymax))
-    _paint_window_dual_zones(
+    zone = _paint_window_dual_zones(
         ax,
         highs=highs,
         lows=lows,
@@ -14742,6 +15060,7 @@ def _render_twii_c_wave_60_dark(
         resists=tuple(float(v) for v in tip_anchors[:4]) if tip_anchors else (43135.0,),
         skip_label_ys=[float(v) for v in tip_anchors],
         vol_lookback=40,
+        vol_sr=c60_vol_sr,
         avoid_top_left_stamp=True,
         pack=pack,
     )
@@ -14750,6 +15069,33 @@ def _render_twii_c_wave_60_dark(
         ax.axvline(bi - 0.5, color="#37474f", lw=0.7, ls=":", alpha=0.85, zorder=1.2)
         axv.axvline(bi - 0.5, color="#37474f", lw=0.7, ls=":", alpha=0.85, zorder=1.2)
     _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_up_taiwan)
+    # 黃＝主大量日；亮桃＝下一層大量日（與遠／近豎導同色）
+    _i_pri = zone.get("i_vmax")
+    _i_nxt = (c60_vol_sr or {}).get("i_next")
+    _i_nxt2 = (c60_vol_sr or {}).get("i_next_2nd")
+    _paint_vol_sr_mark_on_axis(
+        ax,
+        opens=opens,
+        highs=highs,
+        lows=lows,
+        closes=closes,
+        i_primary=_i_pri,
+        i_next=_i_nxt,
+        fp=_fp,
+        date_primary=str(((c60_vol_sr or {}).get("primary") or {}).get("date") or ""),
+        date_next=str(((c60_vol_sr or {}).get("next") or {}).get("date") or ""),
+    )
+    _paint_vol_sr_day_guides(axv, i_primary=_i_pri, i_next=_i_nxt)
+    # 量柱抓本層最大量＋下一層最大量／次大量
+    _paint_teach_vol_layer_bars(
+        axv,
+        vols,
+        i_primary=_i_pri,
+        i_next=_i_nxt,
+        i_next_2nd=_i_nxt2,
+        bars=rows,
+        fp=_fp,
+    )
     # 黃培碩 60 分：底色跟轉折價對齊＋藍(1)(2)(3)／紅反彈折線（對他手繪）
     painted = _paint_huang_c60_structure(ax, rows, fp=_fp, pack=pack)
     if not painted:
@@ -14764,7 +15110,7 @@ def _render_twii_c_wave_60_dark(
             fig.text(
                 0.03,
                 0.918,
-                "藍(1)(2)(3)+C3內①～⑤｜橙虛C2上下框｜白細C4反彈｜次級4壓≈43135｜非買訊",
+                "藍(1)(2)(3)+C3內①～⑤｜白細C4｜灰下一層｜量對齊大量圖：黃爆大量／藍下一層最大／次大｜非買訊",
                 fontproperties=_fp(8.0, "bold"),
                 color="#90caf9",
                 ha="left",
@@ -14836,7 +15182,9 @@ def _render_twii_c_wave_60_dark(
     # 左緣貼 C 起，不准再留大B空位
     ax.set_xlim(-0.35, x_right)
     axv.set_xlim(-0.35, x_right)
-    axv.set_ylim(0, (max(vols) if any(vols) else 1) * 1.35)
+    # ylim 已由 _paint_teach_vol_layer_bars 留上緣空帶；無標時才備援
+    if axv.get_ylim()[1] <= (max(vols) if any(vols) else 1) * 1.01:
+        axv.set_ylim(0, (max(vols) if any(vols) else 1) * 1.35)
     axv.set_ylabel(
         "量(0050)" if vol_proxy else "量",
         fontproperties=_fp(10, "bold"),
