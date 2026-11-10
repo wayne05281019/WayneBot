@@ -120,3 +120,31 @@ def test_phone_wait_note_huang_window():
     now = datetime(2026, 11, 10, 14, 35, tzinfo=TAIPEI)
     note = phone_schedule_wait_note(now=now)
     assert "黃培碩" in note
+
+
+def test_classify_biaoke_before_huang_is_verify(tmp_path):
+    """飆大發文在 14:30 前 → verify；之後 → compare。"""
+    import sqlite3
+
+    from huang_teach_sync import classify_biaoke_vs_huang
+
+    db = str(tmp_path / "t.db")
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE biaoke_posts(id TEXT, date TEXT, time TEXT, text TEXT)"
+    )
+    conn.executemany(
+        "INSERT INTO biaoke_posts VALUES (?,?,?,?)",
+        [
+            ("a", "20261110", "09:15", "早盤看法"),
+            ("b", "20261110", "11:00", "午前"),
+            ("c", "20261110", "15:10", "黃片後補充"),
+            ("d", "20261110", "14:30", "準點同刻＝比對側"),
+        ],
+    )
+    conn.commit()
+    conn.close()
+    out = classify_biaoke_vs_huang(db, "20261110", video_hm="1430")
+    assert out["verify_n"] == 2
+    assert out["compare_n"] == 2
+    assert out["mode"] == "verify+compare"

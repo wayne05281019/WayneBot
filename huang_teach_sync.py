@@ -1,10 +1,11 @@
-"""台北 14:30：抓黃培碩當日片（若有）→對讀飆大口頭→重渲教導三窗畫線。
+"""台北 14:30：去黃培碩當日片學習／吸收；再依時間與飆大對質。
 
-約束（最高指令）：
-- 時區 Asia/Taipei；只開市日跑
-- 話筒價位／題旨仍跟飆大口頭；黃培碩＝60分方法映到日K，不是買訊
-- 不准發明報價；無片也仍可用既有日界＋飆大題旨重渲（有片再記 meta）
-- 不寄話筒推播（畫線進教導三窗／大盤頁；推播閘另開）
+節奏（使用者鎖死）：
+- 開市日台北 14:30 去黃那邊抓片→學習→吸收（60分方法）
+- 飆大發文在黃片之前 → 用黃來「驗證」飆大已說的
+- 飆大發文在黃片之後 → 拿來「比對」黃剛吸收的
+- 話筒價位仍跟飆大口頭；近／超近 60 分只畫大C（C1–C4）；遠窗日K
+- 不是買訊；不寄話筒推播
 """
 from __future__ import annotations
 
@@ -14,7 +15,7 @@ import os
 import re
 import sqlite3
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 logger = logging.getLogger("wayne.huang_teach")
@@ -24,6 +25,8 @@ PIPELINE_PREFIX = "huang-teach-"
 # 台北 14:30 準點；補跑到 15:20 前仍算這檔
 SLOT_MINUTE = 14 * 60 + 30
 CATCHUP_UNTIL = 15 * 60 + 20
+# 黃片預設對照時刻＝當日 14:30（去學習那一刻）；有 hint 可覆寫
+DEFAULT_VIDEO_HM = "1430"
 
 
 def _ymd(dt: datetime) -> str:
@@ -50,10 +53,24 @@ def ensure_tables(db_path: str) -> None:
                 video_title TEXT DEFAULT '',
                 note TEXT DEFAULT '',
                 paint_ok INTEGER DEFAULT 0,
+                mode TEXT DEFAULT '',
+                verify_n INTEGER DEFAULT 0,
+                compare_n INTEGER DEFAULT 0,
                 updated_at TEXT NOT NULL
             );
             """
         )
+        cols = {
+            str(r[1])
+            for r in conn.execute("PRAGMA table_info(huang_teach_runs)").fetchall()
+        }
+        for col, decl in (
+            ("mode", "TEXT DEFAULT ''"),
+            ("verify_n", "INTEGER DEFAULT 0"),
+            ("compare_n", "INTEGER DEFAULT 0"),
+        ):
+            if col not in cols:
+                conn.execute(f"ALTER TABLE huang_teach_runs ADD COLUMN {col} {decl}")
         conn.commit()
     finally:
         conn.close()
@@ -104,14 +121,18 @@ def _upsert_run(db_path: str, row: Dict[str, Any]) -> None:
         conn.execute(
             """
             INSERT INTO huang_teach_runs(
-                as_of, status, video_id, video_title, note, paint_ok, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                as_of, status, video_id, video_title, note, paint_ok,
+                mode, verify_n, compare_n, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(as_of) DO UPDATE SET
                 status=excluded.status,
                 video_id=excluded.video_id,
                 video_title=excluded.video_title,
                 note=excluded.note,
                 paint_ok=excluded.paint_ok,
+                mode=excluded.mode,
+                verify_n=excluded.verify_n,
+                compare_n=excluded.compare_n,
                 updated_at=excluded.updated_at
             """,
             (
@@ -121,12 +142,97 @@ def _upsert_run(db_path: str, row: Dict[str, Any]) -> None:
                 str(row.get("video_title") or ""),
                 str(row.get("note") or "")[:800],
                 1 if row.get("paint_ok") else 0,
+                str(row.get("mode") or ""),
+                int(row.get("verify_n") or 0),
+                int(row.get("compare_n") or 0),
                 _stamp(),
             ),
         )
         conn.commit()
     finally:
         conn.close()
+
+
+def _hm_norm(raw: Any) -> str:
+    t = re.sub(r"\D", "", str(raw or ""))
+    if len(t) >= 4:
+        return t[:4]
+    if len(t) == 3:
+        return t.zfill(4)
+    return ""
+
+
+def resolve_huang_video_hm(hint: Dict[str, str], *, as_of_ymd: str) -> str:
+    """黃片對照時刻（台北 HHMM）。預設 1430＝去學習的準點；hint 可覆寫。"""
+    for key in ("video_hm", "hm", "time"):
+        hm = _hm_norm(hint.get(key))
+        if hm:
+            return hm
+    title = str(hint.get("video_title") or "")
+    m = re.search(r"(?<!\d)([01]?\d|2[0-3])[:：]?([0-5]\d)(?!\d)", title)
+    if m:
+        return f"{int(m.group(1)):02d}{int(m.group(2)):02d}"
+    _ = as_of_ymd
+    return DEFAULT_VIDEO_HM
+
+
+def classify_biaoke_vs_huang(
+    db_path: str,
+    as_of_ymd: str,
+    *,
+    video_hm: str = DEFAULT_VIDEO_HM,
+) -> Dict[str, Any]:
+    """當日飆大文 vs 黃片時刻：在前＝verify，在後＝compare。
+
+    只數他自己的公開文（biaoke_posts）；空庫＝兩邊都 0。
+    """
+    ymd = str(as_of_ymd or "").strip()
+    hm = _hm_norm(video_hm) or DEFAULT_VIDEO_HM
+    out: Dict[str, Any] = {
+        "video_hm": hm,
+        "verify_n": 0,
+        "compare_n": 0,
+        "mode": "absorb",
+        "verify_ids": [],
+        "compare_ids": [],
+    }
+    if not ymd or not os.path.isfile(db_path):
+        return out
+    try:
+        conn = sqlite3.connect(db_path, timeout=10.0)
+        try:
+            rows = conn.execute(
+                "SELECT id, time, substr(text,1,80) FROM biaoke_posts "
+                "WHERE date=? ORDER BY time, id",
+                (ymd,),
+            ).fetchall()
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return out
+    verify_ids: List[str] = []
+    compare_ids: List[str] = []
+    for pid, tm, _snip in rows:
+        phm = _hm_norm(tm)
+        if not phm:
+            continue
+        if phm < hm:
+            verify_ids.append(str(pid))
+        else:
+            compare_ids.append(str(pid))
+    out["verify_n"] = len(verify_ids)
+    out["compare_n"] = len(compare_ids)
+    out["verify_ids"] = verify_ids[:12]
+    out["compare_ids"] = compare_ids[:12]
+    if verify_ids and compare_ids:
+        out["mode"] = "verify+compare"
+    elif verify_ids:
+        out["mode"] = "verify"
+    elif compare_ids:
+        out["mode"] = "compare"
+    else:
+        out["mode"] = "absorb"
+    return out
 
 
 def _is_open_day(dt: datetime, db_path: str) -> bool:
@@ -206,7 +312,7 @@ def run_huang_teach_sync(
     now: Optional[datetime] = None,
     force_paint: bool = True,
 ) -> Dict[str, Any]:
-    """開市日 14:30 檔：吸飆大 →（有則記黃片）→ 重渲教導三窗。不是買訊。"""
+    """開市日 14:30：吸收黃培碩；飆大在前＝驗證、在後＝比對；再重渲教導窗。非買訊。"""
     from config import get_db_path
 
     path = str(db_path or get_db_path() or "").strip()
@@ -217,6 +323,9 @@ def run_huang_teach_sync(
         "paint_ok": False,
         "video_id": "",
         "status": "",
+        "mode": "",
+        "verify_n": 0,
+        "compare_n": 0,
     }
     if not path:
         out["skipped"] = "no_db"
@@ -239,20 +348,34 @@ def run_huang_teach_sync(
         out["ok"] = True
         return out
 
-    # 先吸飆大，畫線才對得上當日口頭
+    # 先吸飆大庫，才能依發文時刻分驗證／比對
     try:
         from biaoke_ingest import run_biaoke_ingest_quiet
 
         run_biaoke_ingest_quiet()
     except Exception:
-        logger.exception("huang_teach：飆大匯入略過（不擋畫線）")
+        logger.exception("huang_teach：飆大匯入略過（不擋吸收）")
 
     hint = find_huang_video_hint(ymd)
     out["video_id"] = hint.get("video_id") or ""
+    video_hm = resolve_huang_video_hm(hint, as_of_ymd=ymd)
+    timing = classify_biaoke_vs_huang(path, ymd, video_hm=video_hm)
+    out["mode"] = str(timing.get("mode") or "absorb")
+    out["verify_n"] = int(timing.get("verify_n") or 0)
+    out["compare_n"] = int(timing.get("compare_n") or 0)
+
     note_bits = [
-        "黃培碩60分映日K＋飆大口頭；非買訊",
+        "14:30吸收黃培碩（60分方法）；非買訊",
+        f"video_hm={video_hm}",
+        f"mode={out['mode']}",
+        f"verify_n={out['verify_n']}",
+        f"compare_n={out['compare_n']}",
         f"hint={hint.get('source') or 'none'}",
     ]
+    if out["verify_n"]:
+        note_bits.append("飆大在前→用黃驗證")
+    if out["compare_n"]:
+        note_bits.append("飆大在後→與黃比對")
     if hint.get("video_title"):
         note_bits.append(f"title={hint.get('video_title')[:80]}")
 
@@ -272,7 +395,6 @@ def run_huang_teach_sync(
     out["paint_ok"] = paint_ok
     status = "success" if paint_ok else "paint_failed"
     if not hint.get("video_id") and not hint.get("video_title"):
-        # 無片仍可依既有日界＋飆大重渲；記 no_video 但不擋 success
         note_bits.append("no_video_yet")
         if paint_ok:
             status = "success"
@@ -288,6 +410,9 @@ def run_huang_teach_sync(
             "video_title": hint.get("video_title") or "",
             "note": "；".join(note_bits),
             "paint_ok": paint_ok,
+            "mode": out["mode"],
+            "verify_n": out["verify_n"],
+            "compare_n": out["compare_n"],
         },
     )
     _mark_pipeline(path, ymd, status if status == "success" else "error", "；".join(note_bits))

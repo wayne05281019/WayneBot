@@ -127,7 +127,8 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "45546" in src and "44210" in src
     assert "C3-3" in src
     assert "1-4" in src and "動態修正" in src
-    assert "48066" in src or "rule14" in src
+    # 48066／rule14 曾在近窗日K；改 60分C波後仍至少要有 1-4／預估語彙
+    assert "1-4" in src or "rule14" in src or "48066" in src
     assert "預估" in src and ("隨時檢視" in src or "重新修訂" in src)
     assert "_REVISE_MARK" in src
     assert "x_col" in src or "同一右欄" in src or "結構優先" in src
@@ -151,7 +152,8 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "_render_twii_super_near_dark" in src
     assert "_alt_path_needed" in src
     assert "micro_path" in src
-    assert "另前提" in src or "薄荷" in src
+    # 舊超近日K另前提／薄荷線；60分C波後改以共用渲染為準
+    assert "_render_twii_c_wave_60_dark" in src or "另前提" in src or "薄荷" in src
     # 費半主圖：同月日軸，波浪自轉折（不准抄加權 A/B 日）
     assert "_align_us_to_twii_dates" in src
     assert "_sox_abc_anchors_on_axis" in src
@@ -160,7 +162,7 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "_macro_wave_calendar_line" in src
     assert "⑤＝4/1→6/23｜A＝6/23→7/29｜B＝7/29→10/6｜C＝10/6→今" in src
     assert "大B末" in src
-    assert "不准用近B" in src
+    assert "不含大B" in src or "不准用近B" in src
     assert "日K小波" in src
     assert "C內震盪" in src or "C內早" in src
     assert "柱上讀" not in src
@@ -175,65 +177,56 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "_seat_onchart_labels" in src
     assert "maybe_push_level_teach_update" in src
     assert "as_of<=" in src or "chart_as_of" in src
-    assert "C內小波①②（未稱C3）" in src or "日K小波①～⑤（＝縮圖）" in src or "日K小波①②（輔助）" in src
+    assert (
+        "60分C波" in src
+        or "C內小波①②（未稱C3）" in src
+        or "日K小波①～⑤（＝縮圖）" in src
+        or "日K小波①②（輔助）" in src
+    )
     assert "title_bit" in src or "不准寫死 C3-3" in src
     assert "_paint_c_forecast" in src and "_c_forecast_tip" in src
     # 預估端同價改飆預測（續弱才留預估↓）
     assert "_biaoke_pred_label(45546" in src or "飆預測" in src
     assert "預估↓續弱" in src
     assert "_paint_window_dual_zones" in src
-    # 近／超近也要黃＋青雙底色（與遠窗對齊）；三張同套 c4／c5
-    near_blk = src[src.index("def _render_twii_live_dark") : src.index("def _render_twii_super_near_dark")]
-    micro_blk = src[src.index("def _render_twii_super_near_dark") : src.index("def _render_us_compare_dark")]
-    far_blk = src[src.index("def _render_twii_far_dark") : src.index("def _render_twii_live_dark")]
-    assert "_paint_window_dual_zones" in near_blk
-    assert "_paint_window_dual_zones" in micro_blk
-    assert "vol_sr=near_vol_sr" in near_blk or "大量撐壓" in near_blk
-    assert "vol_sr=micro_vol_sr" in micro_blk or "大量撐壓" in micro_blk
+    # 近／超近＝60分C波共用渲染；遠窗仍日K大結構
+    c60_blk = src[
+        src.index("def _render_twii_c_wave_60_dark") : src.index(
+            "def _render_twii_live_dark"
+        )
+    ]
+    near_blk = src[
+        src.index("def _render_twii_live_dark") : src.index(
+            "def _render_twii_super_near_c9_60m"
+        )
+    ]
+    micro_blk = src[
+        src.index("def _render_twii_super_near_dark") : src.index(
+            "def _render_us_compare_dark"
+        )
+    ]
+    far_blk = src[src.index("def _render_twii_far_dark") : src.index("def _render_twii_c_wave_60_dark")]
+    assert "_paint_window_dual_zones" in c60_blk
+    assert "_load_twii60_day_rows" in c60_blk
+    assert "不含大B" in c60_blk
+    assert "_paint_c3_group12_span_labels" in c60_blk
+    assert "_render_twii_c_wave_60_dark" in near_blk
+    assert "_render_twii_c_wave_60_dark" in micro_blk
     assert "_far_teach_bars_keeping_vol_sr" in far_blk
     assert "_paint_next_layer_vol_zone" in far_blk
     assert "SOXX" in far_blk and "大量撐壓" in far_blk
     assert "_c_subwave_anchors_vs_biaoke60" in far_blk
-    assert "_c_subwave_anchors_vs_biaoke60" in near_blk
-    assert "_c_subwave_anchors_vs_biaoke60" in micro_blk
-    # 三張都掛八浪／九波縮圖；近窗跟遠窗細線九段（detail=False）；超近非C9仍可 detail
+    # 遠窗仍掛八浪／九波縮圖
     assert "_paint_eight_wave_inset" in far_blk
-    assert "_paint_eight_wave_inset" in near_blk
-    assert "_paint_eight_wave_inset" in micro_blk
-    assert "detail=False" in near_blk
-    assert 'title="九波擴延"' in near_blk
-    assert "_stamp_ax_x, _stamp_ax_y = 0.02, 0.96" in near_blk
-    assert "avoid_top_left_stamp=True" in near_blk
-    assert "float(i5s) + 7.5" in near_blk  # ⑤起讓過首根K
-    assert "hspace=0.10" in near_blk
-    assert "labs_ax" in near_blk and "labs_axv" in near_blk
-    assert "0.62" in near_blk and "_teach_eight_wave_inset_wh" in near_blk
-    # 近窗九波改靠右下（0.55），讓左半區帶黃／紫標齊頭
-    assert "width) * 0.55" in near_blk
-    assert "35500.0" in near_blk  # 上緣不准碰藍虛線
-    assert "float(i5e) + 7.0" in near_blk  # ⑤末尖右下讓過戳
-    assert "_near_major_date_labs" in near_blk  # 結構日欄間單行
-    assert "_fp(9.5" in near_blk  # 結構日字級略大
-    # 超近窗改回日K：主路不准再轉 60 分
-    assert "_render_twii_super_near_c9_60m" not in micro_blk
-    assert "detail=True" in micro_blk or "detail=False if _c9_micro" in micro_blk
+    assert 'title="九波擴延"' in far_blk
     assert "_twii_macro_wave_anchors" in src
-    assert (
-        "日K小波①～⑤（＝縮圖）" in micro_blk
-        or "日K小波①②（輔助）" in micro_blk
-        or "橙①②僅輔助" in micro_blk
-    )
     assert "_c_teach_flash_pivots" in src
-    assert "flash_pivots=" in micro_blk
     # 浪名釘轉折點同價Y（左右錯開），不准再漂空＋_seat 上推
     assert "_pin_pivot_name" in far_blk
-    assert "_pin_pivot_name" in near_blk
-    assert "_pin_pivot_name" in micro_blk
     assert "_pin_pivot_name" in src
-    # 三張共用白底查詢戳（開盤螢光邊／收盤黑邊；日期／盤中或收／價）
+    # 遠窗＋60分C波共用白底查詢戳
     assert "_paint_teach_query_stamp" in far_blk
-    assert "_paint_teach_query_stamp" in near_blk
-    assert "_paint_teach_query_stamp" in micro_blk
+    assert "_paint_teach_query_stamp" in c60_blk
     assert "def _teach_query_clock" in src
     assert "def _paint_teach_query_stamp" in src
     assert "def _paint_index_last_chg_tip" in src
@@ -307,40 +300,18 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "rail_pending" in far_blk
     assert "_paint_tx_now_price_rail" in far_blk
     assert "費半｜台指電子盤｜加權日盤" in far_blk
-    # 大B末標假突破；近窗白底戳改主圖框內左上（跟遠窗同軸座標）
+    # 大B末假突破標在遠窗；近／超近改 60分C波（不含大B）
     assert "假突破" in src
-    assert "假突破" in far_blk and "假突破" in near_blk
-    assert "_stamp_y_data" not in near_blk
-    assert "_stamp_ax_x, _stamp_ax_y = 0.02, 0.96" in near_blk
-    assert 'ha="left"' in near_blk and "ax=ax" in near_blk
+    assert "假突破" in far_blk
+    assert "不含大B" in c60_blk
+    assert "_paint_teach_query_stamp" in c60_blk
+    assert 'ha="left"' in c60_blk and "ax=ax" in c60_blk
     assert "_reserve_avoid_zone" in src
     assert "_seat_onchart_labels" in src
-    # 近窗戳走 axes 左上；資料座標換算工具仍給其他標座用
     assert "def _fig_xy_from_axes_data" in src
-    # 超近：上＝縮圖K、中＝說明＋八浪、下＝量；不准再疊進橫圖中下方
-    assert "y=0.855" in micro_blk
-    assert "add_gridspec" in micro_blk
-    assert "height_ratios=(5.4, 2.55, 1.15)" in micro_blk
-    assert "ax_leg" in micro_blk and "ax_wave_host" in micro_blk
-    assert "AnchoredOffsetbox" not in micro_blk
-    assert "他說 B→今" in micro_blk
-    assert "紫實" not in micro_blk and "橙虛" not in micro_blk
-    assert "ax.legend" not in micro_blk
     assert "_flash_spec_from_pivots" in src
-    # 遠／近八浪縮圖＝超近同吋大小，右緣貼垂直黃虛線（最大量日）左側
     assert "_eight_wave_inset_rect_left_of_vmax" in far_blk
-    assert "_eight_wave_inset_rect_left_of_vmax" in near_blk
     assert "_TEACH_EIGHT_WAVE_INSET_W_FRAC" in src
-    assert "_near_inset" in near_blk
-    # 超近：非C9 仍閃折；C9 改跟遠窗細線九波（c_flash=not _c9_micro）
-    assert "c_flash=True" in micro_blk or "c_flash=not _c9_micro" in micro_blk
-    # 近窗日K八浪不開 c_flash；c9_60m 超近專用才開（夾在 live 與 super_near 之間）
-    live_only = src[
-        src.index("def _render_twii_live_dark") : src.index(
-            "def _render_twii_super_near_c9_60m"
-        )
-    ]
-    assert "c_flash=True" not in live_only
     assert "_c_flash_step" in src
     assert 'panels="far"' in src or "panels: str" in src
     # 遠窗大C 必須自大B末連到今，不准 10/6 後斷線
@@ -349,13 +320,11 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "不准把 A 包進去" in src or "A 必須在黃框" in src
     assert "_TEACH_STAMP_FS" in src
     assert "_paint_stamp_hbox" in src
-    assert "subplots_adjust" in near_blk
-    assert "subplots_adjust" in micro_blk
-    # 右標同欄 x_col；虛線自 note['x'] 連到標左緣（不准左一截短虛線）
+    assert "subplots_adjust" in c60_blk
+    # 右標同欄 x_col；60分C波右欄有 level_dash
     assert "x_col" in src
-    assert "x_near_col" in near_blk or "x_col=" in near_blk
-    assert "level_dash=True" in near_blk
-    assert "level_dash=False" not in near_blk[near_blk.index("_place_live_right_labels") :]
+    assert "x_col=" in c60_blk
+    assert "level_dash=True" in c60_blk
     assert "x_end" in src
     assert "_latest_biaoke_index_snip" in src
     # 外圍對照（附圖二）本輪不加 c4／c5 細標；費半右欄要接他寫死預測點
@@ -504,21 +473,20 @@ def test_far_yellow_band_is_max_vol_day_hl():
     assert "level_dash=True" in block
     # 浪／細浪硬標優先，不准被鄰近飆預測擠掉（c4↔47,637、今↔c5）
     assert "gap_wave" in place and "c4細" in place and "_tier" in place
-    near_src = src[src.index("def _render_twii_live_dark") : src.index("def _render_twii_super_near_dark")]
+    c60_src = src[
+        src.index("def _render_twii_c_wave_60_dark") : src.index(
+            "def _render_twii_live_dark"
+        )
+    ]
+    near_src = src[src.index("def _render_twii_live_dark") : src.index("def _render_twii_super_near_c9_60m")]
     micro_src = src[src.index("def _render_twii_super_near_dark") : src.index("def _render_us_compare_dark")]
-    assert (
-        "0.092 if _c9_near_now else 0.068" in near_src
-        or "0.078 if _c9_near_now else 0.068" in near_src
-        or "0.062 if _c9_near_now else 0.055" in near_src
-        or "min_gap=(ymax - ymin) * 0.055" in near_src
-    )
-    assert "nudge=True" in near_src
-    # 近窗 C9 右欄精簡跟遠窗同一套
-    assert 'f"大B末 {_px(y_b_end)}"' in near_src or "大B末 {_px" in near_src
-    assert "side=\"left\"" in near_src or "side='left'" in near_src
-    # 超近窗標題不准把 C3-3-4 裁成 C3-3（保留 now 尾碼）
+    assert "min_gap=" in c60_src
+    assert "nudge=True" in c60_src
+    assert "_render_twii_c_wave_60_dark" in near_src
+    assert "_render_twii_c_wave_60_dark" in micro_src
+    # 超近入口不裁 one_line；C波60分有 i_now
     assert 'one_line")[:40]' not in micro_src and "one_line')[:40]" not in micro_src
-    assert "_now" in micro_src
+    assert "i_now" in c60_src
     # 右欄預設走 _TEACH_RIGHT_GUTTER=2.55（_teach_right_col_x）；不准再漂 n+1.15／right=0.90
     assert "_TEACH_RIGHT_GUTTER" in src and "2.55" in src
     assert "_teach_right_col_x" in place or "_teach_right_col_x" in block
@@ -826,7 +794,7 @@ def test_nine_wave_inset_c9_ext_labels():
     import biaoke_level_learn as bll
 
     full = open(bll.__file__, encoding="utf-8").read()
-    assert full.count("c9_ext=") >= 3
+    assert full.count("c9_ext=") >= 2
 
 
 def test_thesis_pred_c9_band_and_38000_broke():
@@ -872,7 +840,7 @@ def test_thesis_pred_c9_band_and_38000_broke():
     import biaoke_level_learn as bll
 
     src = open(bll.__file__, encoding="utf-8").read()
-    assert src.count("_paint_c9_low_zone_band(") >= 4  # def + far/near/micro
+    assert src.count("_paint_c9_low_zone_band(") >= 2  # def + 遠／備援窗
     assert "_paint_c9_low_zone_band" in src
 
 
@@ -3431,21 +3399,27 @@ def test_weekend_tx_tip_uses_official_night_not_mis(tmp_path, monkeypatch):
 
 
 def test_near_micro_right_notes_follow_tip_anchors():
-    """近／超近右欄飆預測錨跟 tip_anchors，不准寫死 45546／44210。"""
-    from biaoke_level_learn import _render_twii_live_dark, _render_twii_super_near_dark
+    """近／超近（60分C波）右欄飆預測錨跟 tip_anchors，不准寫死 45546／44210。"""
+    from biaoke_level_learn import (
+        _render_twii_c_wave_60_dark,
+        _render_twii_live_dark,
+        _render_twii_super_near_dark,
+    )
 
-    near = inspect.getsource(_render_twii_live_dark)
-    micro = inspect.getsource(_render_twii_super_near_dark)
-    for blk in (near, micro):
-        assert "for anch in tip_anchors:" in blk
-        assert '"y": 45546.0' not in blk
-        assert '"y": 44210.0' not in blk
-        assert "anchors=tip_anchors" in blk
+    c60 = inspect.getsource(_render_twii_c_wave_60_dark)
+    assert "for anch in tip_anchors:" in c60
+    assert '"y": 45546.0' not in c60
+    assert '"y": 44210.0' not in c60
+    assert "anchors=tip_anchors" in c60
+    # 近／超近入口轉到 C 波 60 分
+    assert 'kind="near"' in inspect.getsource(_render_twii_live_dark)
+    assert 'kind="micro"' in inspect.getsource(_render_twii_super_near_dark)
 
 
 def test_near_micro_follow_far_c9_twii_presentation():
-    """近／超近加權跟遠窗同一套：C9 右欄精簡、浪號靠左、九波細線標題。"""
+    """近／超近改 60分只畫大C；遠窗仍保留九波細線基準；c9_60m 備援仍在。"""
     from biaoke_level_learn import (
+        _render_twii_c_wave_60_dark,
         _render_twii_far_dark,
         _render_twii_live_dark,
         _render_twii_super_near_c9_60m,
@@ -3455,50 +3429,36 @@ def test_near_micro_follow_far_c9_twii_presentation():
     far = inspect.getsource(_render_twii_far_dark)
     near = inspect.getsource(_render_twii_live_dark)
     micro = inspect.getsource(_render_twii_super_near_dark)
+    c60 = inspect.getsource(_render_twii_c_wave_60_dark)
     micro60 = inspect.getsource(_render_twii_super_near_c9_60m)
     # 遠窗基準：C9 右欄精簡＋九波細線
     assert "_c9_now_step_label()" in far
     assert 'title="九波擴延"' in far
     assert "scale=0.56" in far and "pin_bottom=True" in far
     assert "nudge=True" in far
-    # 近窗跟進
-    assert "_c9_now_step_label()" in near
-    assert 'title="九波擴延"' in near
-    assert "nudge=True" in near
-    assert 'side="left"' in near
-    assert "大B末 {_px" in near or 'f"大B末 {_px' in near
-    assert "_stamp_ax_x, _stamp_ax_y = 0.02, 0.96" in near
-    assert "avoid_top_left_stamp=True" in near
-    assert "float(i5s) + 7.5" in near
-    assert "float(i5e) + 7.0" in near
-    assert "_teach_eight_wave_inset_wh" in near
-    assert "0.62" in near
-    assert "width) * 0.55" in near  # 九波靠右，區帶兩標靠左齊頭
-    assert "35500.0" in near
-    assert "_near_major_date_labs" in near
-    # C7 字標必釘浪點；C8 只留細圈（右欄已有 C-7轉C-8今）
+    # 近／超近＝60分C波（不含大B）
+    assert "_render_twii_c_wave_60_dark" in near
+    assert "_render_twii_c_wave_60_dark" in micro
+    assert "不含大B" in c60
+    assert "_C_WAVE_60_SINCE_YMD" in c60 or "20261006" in c60
+    assert "_paint_c3_group12_span_labels" in c60
+    assert "nudge=True" in c60
+    # C7 字標路徑仍在（遠／九波用）
     path_src = inspect.getsource(
         __import__("biaoke_level_learn", fromlist=["_paint_c9_ext_k_path"])._paint_c9_ext_k_path
     )
     assert 'pin_labs = {"C1", "C3", "C5", "C6", "C7"}' in path_src or "C7" in path_src
     assert 'lab == "C8"' in path_src or "lab == 'C8'" in path_src
-    # 超近改回日K；60 分函式仍留著但不當主路
-    assert "_render_twii_super_near_c9_60m" not in micro
-    assert "_c9_now_step_label()" in micro
-    assert 'title="九波擴延"' in micro
-    assert 'side="left"' in micro
-    assert "nudge=True" in micro
+    # 舊 60 分九波函式仍留著備援
     assert "_c9_now_step_label()" in micro60
     assert 'title="九波擴延"' in micro60
-    assert 'side="left"' in micro60
-    assert "nudge=True" in micro60
-    assert "大B末 {_px" in micro60 or 'f"大B末 {_px' in micro60
 
 
 def test_finish_last_twii_used_by_near_and_micro():
-    """近／超近右標後必蓋回末日縮圖K；遠窗亦有末根重畫。"""
+    """遠窗末根重畫；近／超近走 60分C波（日戳可吃日K，軸本身不含大B）。"""
     from biaoke_level_learn import (
         _finish_last_twii_candle,
+        _render_twii_c_wave_60_dark,
         _render_twii_far_dark,
         _render_twii_live_dark,
         _render_twii_super_near_dark,
@@ -3506,13 +3466,14 @@ def test_finish_last_twii_used_by_near_and_micro():
 
     near = inspect.getsource(_render_twii_live_dark)
     micro = inspect.getsource(_render_twii_super_near_dark)
+    c60 = inspect.getsource(_render_twii_c_wave_60_dark)
     far = inspect.getsource(_render_twii_far_dark)
-    assert "_finish_last_twii_candle" in near
-    assert "_finish_last_twii_candle" in micro
+    assert "_render_twii_c_wave_60_dark" in near
+    assert "_render_twii_c_wave_60_dark" in micro
     assert "_paint_one_live_candle" in far
     assert "_tw_last_repaint" in far
-    assert "_twii_bars_for_teach" in near
-    assert "_twii_bars_for_teach" in micro
+    assert "_twii_bars_for_teach" in c60  # 日戳對照
+    assert "_load_twii60_day_rows" in c60
     assert "_twii_bars_for_teach" in far
     src = inspect.getsource(_finish_last_twii_candle)
     # 末根改白邊實心K＋_spear_ring 細圈（不再用 facecolors=none 空心 scatter）
@@ -3631,12 +3592,18 @@ def test_far_tx_now_rail_deferred_until_tip_fixed():
     assert "電盤大量壓" not in far and "電盤大量撐" not in far
     assert far.count("電盤下一層") >= 2  # next-layer 仍可留
     assert "_paint_tx_now_price_rail" in far  # 現價軌仍在電盤
-    # 近／超近雙軌當令跟遠窗日盤：不准再塞青撐壓
-    from biaoke_level_learn import _render_twii_live_dark, _render_twii_super_near_dark
+    # 近／超近改走 60分C波；雙軌青撐壓閘仍在遠／共用區
+    from biaoke_level_learn import (
+        _render_twii_c_wave_60_dark,
+        _render_twii_live_dark,
+        _render_twii_super_near_dark,
+    )
     near = inspect.getsource(_render_twii_live_dark)
     micro = inspect.getsource(_render_twii_super_near_dark)
-    assert "_skip_cyan_sr" in near
-    assert "not (bool(_c9_micro) or bool(_wb_edges_m))" in micro
+    c60 = inspect.getsource(_render_twii_c_wave_60_dark)
+    assert "_render_twii_c_wave_60_dark" in near
+    assert "_render_twii_c_wave_60_dark" in micro
+    assert "_paint_window_dual_zones" in c60
 
 
 def test_week_bot_zone_and_dual_pred_from_thesis():
@@ -3682,7 +3649,7 @@ def test_week_bot_zone_and_dual_pred_from_thesis():
     assert "39,000" not in texts and "37,164" not in texts
     src = open("biaoke_level_learn.py", encoding="utf-8").read()
     assert "_paint_ai_end_zone_band" in src
-    assert src.count("_paint_ai_end_zone_band(ax") >= 4
+    assert src.count("_paint_ai_end_zone_band(ax") >= 2
     assert "ffeb3b" in src  # 下週底部黃框
     assert "_zone_label_x_clear_of_inset" in src  # 兩標清過九波縮圖右緣才齊頭可見
     assert "_reserve_zone_label_avoid" in src  # 區帶大標佔位，尖點不准坐進框
@@ -3820,7 +3787,8 @@ def test_paint_c3_group12_span_labels_wired():
     import biaoke_level_learn as m
 
     src = inspect.getsource(m)
-    assert src.count("_paint_c3_group12_span_labels(") >= 5  # def + 4 call sites
+    # def + 遠窗／C波60分／c9_60m 等呼叫（近／超近改走 _render_twii_c_wave_60_dark）
+    assert src.count("_paint_c3_group12_span_labels(") >= 4
     src_fn = inspect.getsource(_paint_c3_group12_span_labels)
     assert "C1 下跌" in src_fn
     assert "C2 中繼整理" in src_fn
