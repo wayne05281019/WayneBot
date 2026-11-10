@@ -1205,7 +1205,7 @@ def test_format_teach_brief_bb_dual_path_beats_foot2(monkeypatch):
 
 
 def test_format_teach_brief_stop_confirm_latest_levels(monkeypatch):
-    """波浪位階鈕：重點＝他最新止跌確認／41760／再測週五低；不准舊 B-b／C9 當令。"""
+    """波浪位階鈕：止跌確認／41760／再測週五低（尚未下降壓改口的假 pack）。"""
     from biaoke_digest import format_teach_brief, format_wave_level_one_liner
 
     def _fake(_db):
@@ -1251,6 +1251,78 @@ def test_format_teach_brief_stop_confirm_latest_levels(monkeypatch):
     assert "非買訊" in out
     one = format_wave_level_one_liner("x.db")
     assert "止跌確認" in one or "再測週五" in one or "上週五低" in one
+
+
+def test_format_teach_brief_pressure_break_beats_fake_retest(monkeypatch):
+    """波浪位階鈕：下降壓改口當令 → 不再假跌破／回測下降壓；舊再測假跌破不准掛。"""
+    from biaoke_digest import format_teach_brief, format_wave_level_one_liner
+
+    def _fake(_db):
+        return {
+            "thesis": "大A→大B→大C｜夜盤過C3下降壓・週五低不再假跌破（預估）",
+            "snippet": (
+                "夜盤已經過第二組整組 C3的下降壓力線，上周五低點也不可能假跌破了，"
+                "但今天下半場到明後天一定會有拉回回測下降壓力線，順便清洗籌碼。"
+            ),
+            "wait_struct": "拉回回測下降壓力線；清洗籌碼；資金可5~6成；非買訊",
+            "chart_as_of": "20261110",
+            "thesis_as_of": "20261109",
+            "pred_levels": {
+                "tw": [
+                    {
+                        "level": 37837.0,
+                        "role": "五波末／週五低",
+                        "tag": "不再假跌破",
+                        "label": "週五低／37,837（不再假跌破）",
+                    },
+                ],
+                "sox": [],
+            },
+            "pred_note": "週五低／37,837（不再假跌破）｜再測週五低／37,837",
+        }
+
+    monkeypatch.setattr("biaoke_level_learn._build_live_pack", _fake)
+    out = format_teach_brief("x.db")
+    assert "下降壓" in out or "不再假跌破" in out
+    assert "回測下降" in out or "清洗籌碼" in out
+    assert "一定再測週五低" not in out
+    assert "B-b" not in out
+    assert "35579" not in out
+    assert "非買訊" in out
+    one = format_wave_level_one_liner("x.db")
+    assert "下降壓" in one or "不再假跌破" in one or "已過C3" in one
+
+
+def test_focus_oral_pressure_break_scrubs_stale_fake_retest(monkeypatch, tmp_path):
+    """飆大空白鍵：下降壓改口補進大盤欄，過期再測假跌破句要清掉。"""
+    from biaoke_digest import format_focus_oral
+
+    monkeypatch.setattr(
+        "biaoke_digest.format_wave_level_one_liner",
+        lambda _db: "大盤現在落在「止跌確認・已過C3下降壓」（細節按「波浪位階」・非買訊）",
+    )
+    html = format_focus_oral(
+        [
+            {
+                "date": "2026-11-09",
+                "time": "18:20",
+                "text": (
+                    "1. 這周大盤一定會有2000~3000點大震盪，今天立刻達標。\n"
+                    "2. 不相信我大盤止跌，頂多在測一次低破星期五低點假跌破"
+                    "我都已經說的非常清楚。\n"
+                    "3. 現在優先去押5成左右的資金。"
+                ),
+            }
+        ],
+        [],
+        now=datetime(2026, 11, 10, 10, 15, tzinfo=ZoneInfo("Asia/Taipei")),
+        db_path=str(tmp_path / "x.db"),
+        stock_links=False,
+    )
+    assert "下降壓力線" in html or "不再假跌破" in html or "不可能假跌破" in html
+    assert "已過C3下降壓" in html
+    # 過期再測假跌破前瞻不准當現況主句
+    assert "頂多在測一次低破星期五低點假跌破" not in html
 
 
 def test_focus_oral_blank_uses_one_liner_not_full_wave_brief(monkeypatch):

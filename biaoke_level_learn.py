@@ -2442,11 +2442,14 @@ def _biaoke_level_snip_score(blob: str, *, is_main: bool) -> int:
         r"假跌破|有效穿刺|1\s*[-–]?\s*4\s*重疊|(?:今天)?走\s*3-5|"
         r"第二組下跌|落底確認|劇本|5\s*波\s*跌完|走\s*B\s*[-–]?\s*b|"
         r"9\s*波\s*擴延|37837|底部判斷|41760|大盤止跌|大盤已經落底|"
-        r"確認.{0,12}(?:上)?週五.{0,8}低點",
+        r"確認.{0,12}(?:上)?週五.{0,8}低點|"
+        r"下降壓力線|不可能假跌破|回測下降壓|清洗籌碼",
         blob,
     ):
         score += 12
-    # 後文止跌確認／C3-5＋1 4重疊：壓較早雙軌／第二隻腳長文同分搶位
+    # 後文下降壓改口／止跌確認／C3-5＋1 4重疊：壓較早雙軌／第二隻腳長文同分搶位
+    if _text_has_c3_pressure_break(blob):
+        score += 12
     if _text_has_stop_low_confirm(blob):
         score += 8
     n = len(blob)
@@ -2925,6 +2928,28 @@ def _latest_level_thesis(
             post_id = post_id or _FOOT2_ORAL_POST_ID
     except Exception:
         logger.debug("第二隻腳題旨覆寫略過", exc_info=True)
+    # 後文改口：夜盤過 C3 下降壓 → 週五低不再假跌破（壓「一定再測／假跌破」）
+    try:
+        if cap >= _PRESSURE_BREAK_ORAL_AS_OF:
+            _ensure_pressure_break_oral_thesis_snap(db_path, as_of=cap)
+        pb_real = _find_pressure_break_snip(db_path, cap, include_oral=False)
+        pb_any = pb_real or _find_pressure_break_snip(db_path, cap, include_oral=True)
+        if (
+            not pb_any
+            and cap >= _PRESSURE_BREAK_ORAL_AS_OF
+            and not _text_has_c3_pressure_break(snip)
+            and not _text_has_c3_pressure_break(post_snip or "")
+        ):
+            pb_any = _PRESSURE_BREAK_ORAL_SNIP
+        if pb_any and _text_has_c3_pressure_break(pb_any):
+            if not _text_has_c3_pressure_break(snip):
+                # 併在前：後文改口壓前文止跌「再測／假跌破」句
+                snip = f"{pb_any} {snip}".strip()
+                post_id = post_id or _PRESSURE_BREAK_ORAL_POST_ID
+            elif pb_real and cap >= _PRESSURE_BREAK_ORAL_AS_OF:
+                snip = f"{pb_real} {snip}".strip()
+    except Exception:
+        logger.debug("下降壓改口題旨覆寫略過", exc_info=True)
     morph_blob = snip + " " + " ".join(str(r["snippet"] or "") for r in (extra or []))
     if post_snip:
         morph_blob = f"{morph_blob} {post_snip}"
@@ -2966,7 +2991,8 @@ def _latest_level_thesis(
     has_foot2_band = bool(
         re.search(r"37000\s*[-~～到至\-]\s*37500|37000.{0,8}37500", snip)
     )
-    # 11/9 止跌確認＞11/8 雙軌＞第二隻腳＞C9 擴延標號（後文壓前文）
+    # 11/9 夜下降壓改口＞止跌再測假跌破＞11/8 雙軌＞第二隻腳＞C9（後文壓前文）
+    has_pressure_break = _text_has_c3_pressure_break(snip)
     has_stop_confirm = _text_has_stop_low_confirm(snip)
     has_bb_dual = _text_has_bb_dual_path(snip)
     # 9波擴延 C-7轉C-8→C-9＋低點區 35500~37300（後文改口壓舊 C3-5）
@@ -2985,8 +3011,21 @@ def _latest_level_thesis(
     has_c9 = bool(re.search(r"C\s*[-–]\s*9", snip))
     has_41760 = bool(re.search(r"41760", snip))
     # 夜盤第二組落底（C3-5完成）優先於舊 C3-3 題旨；後文改口壓前文
-    if has_stop_confirm:
-        # 他最新：C3-5＋1 4重疊／確認週五低＝最低；再測・假跌破（說明用・非買訊）
+    if has_pressure_break:
+        # 他最新改口：夜盤過 C3 下降壓；上週五低不再假跌破；拉回回測下降壓（非買訊）
+        thesis = "大A→大B→大C｜夜盤過C3下降壓・週五低不再假跌破（預估）"
+        wait_bits = [
+            "拉回回測下降壓力線",
+            "清洗籌碼",
+            "資金可5~6成",
+        ]
+        if has_41760:
+            wait_bits.insert(0, "台指壓41760")
+        wait_bits.append("非買訊")
+        wait = "；".join(wait_bits)
+    elif has_stop_confirm:
+        # 他先前：C3-5＋1 4重疊／確認週五低＝最低；再測・假跌破（說明用・非買訊）
+        # 若已有下降壓改口，上面分支會蓋掉這段「再測／假跌破」
         thesis = "大A→大B→大C｜C3-5＋1 4重疊・確認上週五低＝最低（預估）"
         wait_bits = [
             "一定再測週五低",
@@ -3043,15 +3082,17 @@ def _latest_level_thesis(
     elif "主跌" in snip:
         thesis = "大A→大B→大C｜C內主跌（預估）"
         wait = "細微波完整＋降軌；C走完≠新五波升；再重訂位階"
-    if morph and "楔形" in morph and not has_stop_confirm:
+    if morph and "楔形" in morph and not (has_stop_confirm or has_pressure_break):
         wait = f"{wait}｜型態：{morph}"
-    elif morph and not has_stop_confirm:
+    elif morph and not (has_stop_confirm or has_pressure_break):
         wait = f"{wait}｜型態觀察：{morph}"
     if _REVISE_MARK.search(snip):
-        if has_stop_confirm or has_bb_dual:
-            # 止跌確認／雙軌題旨已帶主線，不准改口警語整段蓋掉
+        if has_pressure_break or has_stop_confirm or has_bb_dual:
+            # 下降壓改口／止跌確認／雙軌題旨已帶主線，不准改口警語整段蓋掉
             wait = f"{wait}｜隨時檢視" + (
-                f"｜{morph}" if morph and not has_stop_confirm else ""
+                f"｜{morph}"
+                if morph and not (has_stop_confirm or has_pressure_break)
+                else ""
             )
         else:
             wait = "他已示警重修／動態修正・圖位＝當下預估" + (
@@ -4654,7 +4695,14 @@ def _c9_extension_active(pack: Optional[Dict[str, Any]] = None) -> bool:
     )
     wait = str((pack or {}).get("wait_struct") or "")
     blob = f"{thesis} {snip} {wait}"
-    if _text_has_stop_low_confirm(blob) or "確認上週五低" in thesis or "止跌確認" in thesis:
+    if (
+        _text_has_c3_pressure_break(blob)
+        or "不再假跌破" in thesis
+        or "過C3下降壓" in thesis
+        or _text_has_stop_low_confirm(blob)
+        or "確認上週五低" in thesis
+        or "止跌確認" in thesis
+    ):
         return False
     if (
         _text_has_bb_dual_path(blob)
@@ -4719,7 +4767,7 @@ def _foot2_oral_now_line() -> str:
 
 
 def _active_oral_now_line(pack: Optional[Dict[str, Any]] = None) -> str:
-    """話筒／三窗腳註：後文當令優先（止跌確認＞第二隻腳＞C9）。"""
+    """話筒／三窗腳註：後文當令優先（下降壓改口＞止跌確認＞第二隻腳＞C9）。"""
     blob = " ".join(
         str(x or "")
         for x in (
@@ -4729,9 +4777,21 @@ def _active_oral_now_line(pack: Optional[Dict[str, Any]] = None) -> str:
             (pack or {}).get("wait_struct"),
         )
     )
-    if _text_has_stop_low_confirm(blob) or "確認上週五低" in str(
-        (pack or {}).get("thesis") or ""
+    thesis = str((pack or {}).get("thesis") or "")
+    if (
+        _text_has_c3_pressure_break(blob)
+        or "不再假跌破" in thesis
+        or "過C3下降壓" in thesis
+        or "回測下降壓力線" in blob
     ):
+        line = (
+            "夜盤過C3下降壓・週五低不再假跌破；"
+            "拉回回測下降壓力線／清洗籌碼"
+        )
+        if "41760" in blob:
+            line = "台指壓41760；" + line
+        return line
+    if _text_has_stop_low_confirm(blob) or "確認上週五低" in thesis:
         line = "C3-5＋1 4重疊・確認上週五低＝最低；一定再測週五低，破＝假跌破觀察"
         if "41760" in blob:
             line = "台指壓41760；" + line
@@ -4761,6 +4821,52 @@ _FOOT2_ORAL_SNIP = (
     "低點應該最多37000-37500可能性非常高。"
     "最安全是買反彈之後拉回1-2轉1-3-1，也就是第二隻腳。"
 )
+
+# 飆大口頭改口（已確認・11/9 夜）：夜盤過第二組 C3 下降壓力線 → 上週五低不再假跌破
+# 後文壓前文：蓋掉「一定再測週五低／破＝假跌破」；下一步改盯拉回回測下降壓
+# 口頭 as_of＝確認日；更早題旨 cap 不准回填這段蓋掉當日真文／snap
+_PRESSURE_BREAK_ORAL_AS_OF = "20261109"
+_PRESSURE_BREAK_ORAL_POST_ID = "oral-c3-pressure-break"
+_PRESSURE_BREAK_ORAL_SNIP = (
+    "夜盤已經過第二組整組 C3的下降壓力線，上周五低點也不可能假跌破了，"
+    "但今天下半場到明後天一定會有拉回回測下降壓力線，順便清洗籌碼的時候，"
+    "這個時候直接投入股市資金可達5~6成，剩下4~5成等新主流浮現再全力拉高資金比例達8~9成。"
+    "高價股風向球創意密切關注。"
+    # 釘週五低官方點，讓三窗／右欄標「不再假跌破」對得上 37837
+    "星期五最低點位37837。"
+)
+
+
+def _text_has_c3_pressure_break(blob: str) -> bool:
+    """後文改口：夜盤過 C3（第二組）下降壓力線 → 週五低不再假跌破／改回測下降壓。
+
+    不准把止跌確認當令的「再測一次假跌破」誤當這段改口；
+    也不准把舊文「穿刺下降壓力線（約49200）」誤觸。
+    """
+    s = str(blob or "")
+    if not s.strip():
+        return False
+    has_break = bool(
+        re.search(
+            r"夜盤已經過.{0,40}下降壓力線|"
+            r"過.{0,12}(?:第二組)?(?:整組)?\s*C\s*[-–]?\s*3.{0,16}下降壓力線|"
+            r"(?:突破|破壞).{0,16}(?:第二組)?.{0,8}C\s*[-–]?\s*3.{0,16}下降壓力線|"
+            r"夜盤已經過第二組.{0,24}下降壓力線",
+            s,
+        )
+    )
+    has_no_fake = bool(
+        re.search(
+            r"(?:上)?週[五底].{0,16}低點.{0,20}不可能(?:再)?假跌破|"
+            r"也不可能假跌破了|"
+            r"不可能(?:再)?假跌破了?",
+            s,
+        )
+    )
+    has_retest = bool(
+        re.search(r"回測下降壓力線|拉回回測下降|回測.{0,8}下降壓", s)
+    )
+    return bool(has_break and (has_no_fake or has_retest))
 
 
 def _text_has_foot2_revision(blob: str) -> bool:
@@ -4822,12 +4928,12 @@ def _text_has_bb_dual_path(blob: str) -> bool:
 
     以他說話時間序為準（date+time）；後文壓前文第二隻腳當主線題旨。
     例：11/8「5波跌完走B-b／假跌破37837／9波擴延→35579→31705」。
-    若已有止跌／週五低確認後文，不算雙軌當令（後文壓前文）。
+    若已有下降壓改口／止跌／週五低確認後文，不算雙軌當令（後文壓前文）。
     """
     s = str(blob or "")
     if not s.strip():
         return False
-    if _text_has_stop_low_confirm(s):
+    if _text_has_c3_pressure_break(s) or _text_has_stop_low_confirm(s):
         return False
     has_bb = bool(
         re.search(
@@ -4850,12 +4956,12 @@ def _text_has_bb_dual_path(blob: str) -> bool:
 def _text_has_c9_extension(blob: str) -> bool:
     """是否為 9波擴延／C-7→C-8／C-9／35500~37300 改口題旨。
 
-    不准把 B-b 雙軌裡「不排除走9波擴延」誤當 C9 結構題旨去蓋後文止跌確認。
+    不准把 B-b 雙軌裡「不排除走9波擴延」誤當 C9 結構題旨去蓋後文下降壓／止跌確認。
     """
     s = str(blob or "")
     if not s.strip():
         return False
-    if _text_has_stop_low_confirm(s):
+    if _text_has_c3_pressure_break(s) or _text_has_stop_low_confirm(s):
         return False
     has_band = bool(re.search(r"35500\s*[-~～到至]\s*37300|35500.{0,8}37300", s))
     has_9 = bool(re.search(r"9\s*波\s*擴延", s))
@@ -5036,6 +5142,87 @@ def _ensure_foot2_oral_thesis_snap(db_path: str, *, as_of: str = "") -> None:
         )
     except Exception:
         logger.debug("補第二隻腳口頭題旨 snap 略過", exc_info=True)
+
+
+def _find_pressure_break_snip(
+    db_path: str, cap_ymd: str, *, include_oral: bool = True
+) -> str:
+    """庫內近窗掃 C3 下降壓改口（後文可壓「再測週五低／假跌破」）。
+
+    include_oral=False：略過 oral-c3-pressure-break（真文優先時用）。
+    """
+    cap = _ymd(cap_ymd)
+    if not db_path or not cap:
+        return ""
+    ensure_tables(db_path)
+    try:
+        conn = sqlite3.connect(db_path, timeout=15.0)
+        try:
+            rows = conn.execute(
+                "SELECT post_id, snippet FROM biaoke_level_snaps "
+                "WHERE as_of<=? ORDER BY as_of DESC, created_at DESC LIMIT 12",
+                (cap,),
+            ).fetchall()
+        finally:
+            conn.close()
+        for post_id, snip in rows or ():
+            if (not include_oral) and str(post_id or "") == _PRESSURE_BREAK_ORAL_POST_ID:
+                continue
+            if _text_has_c3_pressure_break(str(snip or "")):
+                return str(snip or "").strip()
+    except Exception:
+        logger.debug("掃下降壓改口 snap 略過", exc_info=True)
+    try:
+        cap_dash = f"{cap[:4]}-{cap[4:6]}-{cap[6:8]}"
+        since = (
+            datetime.strptime(cap, "%Y%m%d") - timedelta(days=21)
+        ).strftime("%Y-%m-%d")
+        conn = sqlite3.connect(db_path, timeout=15.0)
+        try:
+            rows = conn.execute(
+                "SELECT text FROM biaoke_posts WHERE date>=? AND date<=? "
+                "AND (text LIKE '%下降壓力%' OR text LIKE '%不可能假跌破%' "
+                "OR text LIKE '%回測下降%') "
+                "ORDER BY date DESC, time DESC LIMIT 20",
+                (since, cap_dash),
+            ).fetchall()
+        finally:
+            conn.close()
+        for (text,) in rows or ():
+            if _text_has_c3_pressure_break(str(text or "")):
+                return str(text or "").strip()
+    except Exception:
+        logger.debug("掃下降壓改口貼文略過", exc_info=True)
+    return ""
+
+
+def _ensure_pressure_break_oral_thesis_snap(db_path: str, *, as_of: str = "") -> None:
+    """題旨庫若還沒有 C3 下降壓改口：寫入已確認口頭；口頭缺 37837 則覆寫補齊。
+
+    只在 as_of≥確認日才補；口頭 snap 固定 as_of＝確認日。
+    真文已含改口時不強制覆寫口頭（真文優先）。
+    """
+    if not db_path:
+        return
+    day = _ymd(as_of) or datetime.now(TAIPEI).strftime("%Y%m%d")
+    if not day or day < _PRESSURE_BREAK_ORAL_AS_OF:
+        return
+    real = _find_pressure_break_snip(db_path, day, include_oral=False)
+    if real and _text_has_c3_pressure_break(real):
+        return
+    oral_day = _PRESSURE_BREAK_ORAL_AS_OF
+    try:
+        _upsert_snap(
+            db_path,
+            post_id=_PRESSURE_BREAK_ORAL_POST_ID,
+            as_of=oral_day,
+            post_date=f"{oral_day[:4]}-{oral_day[4:6]}-{oral_day[6:8]}",
+            post_time="19:00",
+            snippet=_PRESSURE_BREAK_ORAL_SNIP,
+            chart_path="",
+        )
+    except Exception:
+        logger.debug("補下降壓改口口頭題旨 snap 略過", exc_info=True)
 
 
 # 主圖／右下九波縮圖共用色（C1…C9）：奇數浪偏暖紅、偶數浪偏冷青／綠，C7 最醒目，虛線 C9 淡紫
@@ -6093,9 +6280,19 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
         )
     # 11/8 雙軌點位（只認原文）：37837／37164／35579／31705
     # 右欄：最佳買點 37837＋深殺上緣 35579＋深殺端 31705；39000／37164 改走黃底帶
-    # 止跌確認後文：37837＝再測／假跌破觀察，不准還寫成舊雙軌「最佳買點」主標
+    # 下降壓改口：37837＝已確認最低／不再假跌破；止跌確認後文未改口前＝再測／假跌破觀察
+    # 不准還寫成舊雙軌「最佳買點」主標
+    # 下降壓／止跌當令但句內沒寫 37837：仍釘週五低官方點（他已點過，不准丟標）
+    _pb_or_stop = _text_has_c3_pressure_break(s) or _text_has_stop_low_confirm(s)
+    if _pb_or_stop and not re.search(r"37837", s):
+        s = f"{s} 星期五最低點位37837"
     if re.search(r"37837", s):
-        if _text_has_stop_low_confirm(s):
+        if _text_has_c3_pressure_break(s) or (
+            "不再假跌破" in s and re.search(r"下降壓", s)
+        ):
+            tag = "不再假跌破"
+            lab = f"週五低／{_px(37837)}（不再假跌破）"
+        elif _text_has_stop_low_confirm(s):
             tag = "再測／假跌破"
             lab = f"再測週五低／{_px(37837)}"
         else:
@@ -8675,8 +8872,8 @@ def _his_micro_degree(blob: str) -> Dict[str, str]:
         degree = "C3"
     elif re.search(r"(現在在C|下降ABC.*C|主跌段)", s):
         degree = "C"
-    # 止跌／週五低確認（後文壓雙軌／第二隻腳／C9）
-    if _text_has_stop_low_confirm(s):
+    # 下降壓改口／止跌／週五低確認（後文壓雙軌／第二隻腳／C9）
+    if _text_has_c3_pressure_break(s) or _text_has_stop_low_confirm(s):
         degree = "止跌確認"
     # 改口第二隻腳（後文壓 9波／C9 低點區）
     elif _text_has_foot2_revision(s):
@@ -9253,21 +9450,29 @@ def _wave_now_ladder(pack: Optional[Dict[str, Any]] = None, *, blob: str = "") -
     thesis = str(pack.get("thesis") or text)
     # 大結構跟他鎖的：A底→B反彈→C；不准寫成「五波升完再ABC」讓人把7/29→四萬九當上升⑤
     steps: List[str] = ["大A底7/29", "大B反彈", "大C進行中"]
-    # 後文止跌確認壓雙軌／第二隻腳／C9；雙軌壓第二隻腳／C9
-    has_stop_ladder = (
+    # 後文下降壓改口壓止跌再測假跌破／雙軌／第二隻腳／C9；雙軌壓第二隻腳／C9
+    has_pressure_ladder = (
+        _text_has_c3_pressure_break(text)
+        or "不再假跌破" in thesis
+        or "過C3下降壓" in thesis
+        or "回測下降壓力線" in text
+    )
+    has_stop_ladder = (not has_pressure_ladder) and (
         deg == "止跌確認"
         or _text_has_stop_low_confirm(text)
         or "確認上週五低" in thesis
         or "1 4重疊" in thesis
         or "止跌確認" in thesis
     )
-    has_bb_ladder = (not has_stop_ladder) and (
+    has_bb_ladder = (not has_pressure_ladder) and (not has_stop_ladder) and (
         _text_has_bb_dual_path(text)
         or "B-b" in thesis
         or "五波跌完" in thesis
         or "備線九波" in thesis
     )
-    if has_stop_ladder:
+    if has_pressure_ladder:
+        steps.append("止跌確認・已過C3下降壓")
+    elif has_stop_ladder:
         steps.append("止跌確認・再測週五低")
     elif has_bb_ladder:
         steps.append("主B-b／備九波")
@@ -9321,8 +9526,28 @@ def _wave_now_ladder(pack: Optional[Dict[str, Any]] = None, *, blob: str = "") -
     else:
         day_zh = ""
         day_bit = ""
-    # 止跌確認／雙軌／改口第二隻腳／9波擴延：話筒／超近說明用人話，不准只丟代號
-    if "止跌確認・再測週五低" in steps or has_stop_ladder:
+    # 下降壓改口／止跌確認／雙軌／改口第二隻腳／9波擴延：話筒／超近說明用人話，不准只丟代號
+    if "止跌確認・已過C3下降壓" in steps or has_pressure_ladder:
+        oral_now = (
+            "夜盤過C3下降壓・週五低不再假跌破；"
+            "拉回回測下降壓力線／清洗籌碼"
+        )
+        if "41760" in text:
+            oral_now = "台指壓41760；" + oral_now
+        one_line = "現在：止跌確認・已過C3下降壓（預估）"
+        now_line = (
+            oral_now
+            + (f"・{day_bit}" if day_bit else "")
+            + "・預估會改・非買訊"
+        )
+        teach_box = (
+            "現在走到（大→小）\n"
+            f"{chain}\n"
+            f"{oral_now}"
+            + (f"・{day_bit}" if day_bit else "")
+            + "\n預估會改・非買訊"
+        )
+    elif "止跌確認・再測週五低" in steps or has_stop_ladder:
         oral_now = (
             "C3-5＋1 4重疊・確認上週五低＝最低；"
             "一定再測週五低，破＝假跌破觀察"

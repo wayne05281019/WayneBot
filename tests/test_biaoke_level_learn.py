@@ -1485,7 +1485,7 @@ def test_bb_dual_path_thesis_beats_earlier_foot2(tmp_path):
 
 
 def test_stop_low_confirm_thesis_beats_older_bb_dual_and_c9(tmp_path):
-    """11/9 止跌／C3-5＋1 4確認壓 11/8 雙軌；不准舊 9波備線整段蓋最新題旨。"""
+    """11/9 止跌後文＋夜下降壓改口壓 11/8 雙軌；不准舊 9波備線／再測假跌破當令。"""
     import sqlite3
     from datetime import datetime
     from zoneinfo import ZoneInfo
@@ -1493,6 +1493,7 @@ def test_stop_low_confirm_thesis_beats_older_bb_dual_and_c9(tmp_path):
     from biaoke_level_learn import (
         _latest_level_thesis,
         _text_has_bb_dual_path,
+        _text_has_c3_pressure_break,
         _text_has_c9_extension,
         _text_has_stop_low_confirm,
         _thesis_pred_levels,
@@ -1541,26 +1542,103 @@ def test_stop_low_confirm_thesis_beats_older_bb_dual_and_c9(tmp_path):
     assert _text_has_stop_low_confirm(morning)
     assert _text_has_stop_low_confirm(evening)
     tz = ZoneInfo("Asia/Taipei")
+    # 11/9 夜下降壓改口口頭補缺：壓掉「一定再測／假跌破」
     th = _latest_level_thesis(
         db, as_of="20261109", now=datetime(2026, 11, 9, 22, 0, tzinfo=tz)
     )
     thesis = th.get("thesis") or ""
     wait = th.get("wait_struct") or ""
     snip = th.get("snippet_full") or th.get("snippet") or ""
-    assert "確認上週五低" in thesis or "1 4重疊" in thesis
+    assert "過C3下降壓" in thesis or "不再假跌破" in thesis
     assert "B-b" not in thesis
     assert "九波" not in thesis
     assert "第二隻腳" not in thesis
-    assert "41760" in wait or "41760" in snip
-    assert "再測週五低" in wait or "假跌破" in wait
+    assert "回測下降" in wait or "清洗籌碼" in wait
+    assert "一定再測週五低" not in wait
     assert "35579" not in snip
     pred = _thesis_pred_levels(snip, db)
     roles = {str(r.get("role")): float(r["level"]) for r in (pred.get("tw") or [])}
-    assert abs(roles.get("台指壓力", 0) - 41760) < 1
     assert "九波備線破位" not in roles
+    fri = next(
+        (r for r in (pred.get("tw") or []) if abs(float(r["level"]) - 37837) < 1),
+        None,
+    )
+    if fri is not None:
+        assert "不再假跌破" in str(fri.get("tag") or "") or "不再假跌破" in str(
+            fri.get("label") or ""
+        )
     ladder = _wave_now_ladder(th)
-    assert "止跌確認" in (ladder.get("now") or "")
+    assert "已過C3下降壓" in (ladder.get("now") or "")
+    assert "不再假跌破" in (ladder.get("now_line") or "")
+    assert "再測週五低" not in (ladder.get("now") or "")
     assert "B-b" not in (ladder.get("now") or "")
+    assert _text_has_c3_pressure_break(
+        "夜盤已經過第二組整組 C3的下降壓力線，上周五低點也不可能假跌破了，"
+        "但今天下半場到明後天一定會有拉回回測下降壓力線。"
+    )
+    assert not _text_has_c3_pressure_break(evening)
+    assert not _text_has_c3_pressure_break(
+        "接下來則看下跌1及下跌4所形成的下降壓力線，明天或後天是否能越過(約49200)"
+    )
+
+
+def test_pressure_break_real_post_beats_stop_retest(tmp_path):
+    """真文第4點：夜盤過C3下降壓 → 週五低不再假跌破；壓掉再測假跌破。"""
+    import sqlite3
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_level_learn import (
+        _latest_level_thesis,
+        _text_has_c3_pressure_break,
+        _thesis_pred_levels,
+        _wave_now_ladder,
+        ensure_tables,
+    )
+
+    db = str(tmp_path / "pb.db")
+    ensure_tables(db)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS biaoke_posts("
+        "id TEXT PRIMARY KEY, date TEXT, time TEXT, kind TEXT, text TEXT)"
+    )
+    full = (
+        "夜盤已經過第二組下降壓力線，高價股風向球創意密切關注\n"
+        "1. 這周大盤一定會有2000~3000點大震盪，今天立刻達標。\n"
+        "2. 不相信我大盤止跌，頂多在測一次低破星期五低點假跌破我都已經說的非常清楚。\n"
+        "3. 現在就是要趁大盤再一次回測大跌，辨識出真正會漲的股票。\n"
+        "4. 夜盤已經過第二組整組 C3的下降壓力線，上周五低點也不可能假跌破了，"
+        "但今天下半場到明後天一定會有拉回回測下降壓力線，順便清洗籌碼的時候，"
+        "這個時候直接投入股市資金可達5~6成。星期五最低點位37837。"
+    )
+    conn.execute(
+        "INSERT INTO biaoke_posts(id, date, time, kind, text) VALUES (?,?,?,?,?)",
+        ("188138405", "2026-11-09", "19:20", "post", full),
+    )
+    conn.commit()
+    conn.close()
+    assert _text_has_c3_pressure_break(full)
+    tz = ZoneInfo("Asia/Taipei")
+    th = _latest_level_thesis(
+        db, as_of="20261110", now=datetime(2026, 11, 10, 10, 0, tzinfo=tz)
+    )
+    wait = th.get("wait_struct") or ""
+    thesis = th.get("thesis") or ""
+    assert "不再假跌破" in thesis or "過C3下降壓" in thesis
+    assert "回測下降" in wait
+    assert "一定再測週五低" not in wait
+    snip = th.get("snippet_full") or th.get("snippet") or ""
+    pred = _thesis_pred_levels(snip, db)
+    fri = next(
+        (r for r in (pred.get("tw") or []) if abs(float(r["level"]) - 37837) < 1),
+        None,
+    )
+    assert fri is not None
+    assert "不再假跌破" in str(fri.get("label") or "")
+    assert "再測週五" not in str(fri.get("label") or "")
+    ladder = _wave_now_ladder(th)
+    assert "已過C3下降壓" in (ladder.get("now") or "")
 
 
 def test_oral_dual_path_uses_bundled_cjk_font():

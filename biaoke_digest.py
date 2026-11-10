@@ -447,7 +447,8 @@ _BOARD = re.compile(
     r"大盤|台指期|頭肩底|中繼站|做多安全|"
     r"台股|股王|股后|"
     r"主跌|止跌|抄底|空手|減碼|48066|45000|47729|48697|49239|"
-    r"47000|47600|47300|反彈不過壓|下降軌道)"
+    r"47000|47600|47300|反彈不過壓|下降軌道|"
+    r"下降壓力線|不可能假跌破|清洗籌碼|C\s*3)"
     # 不准用「回測／前波高點／主升段」當大盤鍵：個股（智邦回測季線）會誤吸進大盤欄
 )
 _FIELD = re.compile(
@@ -688,6 +689,8 @@ def _plain_wave_now_phrase(now: str) -> str:
         return "夜盤跌完居多；低點最多 37000~37500；等反彈後拉回 1-2轉1-3-1 第二隻腳"
     if n in ("主B-b／備九波", "B-b雙軌", "主B-b"):
         return "主線五波跌完走 B-b（假跌破 37837 觀察）；備線若九波擴延 → 35579→31705"
+    if n in ("止跌確認・已過C3下降壓", "已過C3下降壓"):
+        return "夜盤過 C3 下降壓・週五低不再假跌破；拉回回測下降壓力線／清洗籌碼"
     if n in ("止跌確認・再測週五低", "止跌確認"):
         return "C3-5＋1 4重疊・確認上週五低＝最低；接下來再測週五低／假跌破觀察"
     return n
@@ -723,7 +726,14 @@ def format_teach_brief(db_path: str = "") -> str:
     now = str(ladder.get("now") or "").strip()
     day_zh = str(ladder.get("day_zh") or "").strip()
     lines.append("<b>現在</b>")
-    _stop_confirm = (
+    _pressure_break = (
+        "不再假跌破" in thesis
+        or "過C3下降壓" in thesis
+        or "已過C3下降壓" in now
+        or "回測下降壓力線" in wait
+        or "清洗籌碼" in wait
+    )
+    _stop_confirm = (not _pressure_break) and (
         "確認上週五低" in thesis
         or "1 4重疊" in thesis
         or "止跌確認" in thesis
@@ -732,14 +742,14 @@ def format_teach_brief(db_path: str = "") -> str:
         or "台指壓41760" in wait
         or "一定再測週五低" in wait
     )
-    _bb_dual = (not _stop_confirm) and (
+    _bb_dual = (not _pressure_break) and (not _stop_confirm) and (
         "B-b" in thesis
         or "五波跌完" in thesis
         or "備線九波" in thesis
         or "假跌破37837" in wait
         or "35579→31705" in wait
     )
-    _foot2_brief = (not _stop_confirm) and (
+    _foot2_brief = (not _pressure_break) and (not _stop_confirm) and (
         "第二隻腳" in thesis
         or "等第二隻腳" in thesis
         or "37000~37500" in wait
@@ -747,7 +757,17 @@ def format_teach_brief(db_path: str = "") -> str:
         or "看不到37000" in wait
     )
     # 一條路＋目前落在哪；不准再叠「大A→大B→…→落在」兩段重複
-    if _stop_confirm:
+    if _pressure_break:
+        lines.append(
+            html_escape("大盤：大A底（7/29）→ 大B反彈 → 大C進行中（他已講止跌・下降壓改口）。")
+        )
+        lines.append(
+            html_escape(
+                "他最新：夜盤過 C3 下降壓，上週五低不再假跌破；"
+                "拉回回測下降壓力線／清洗籌碼（非買訊）。"
+            )
+        )
+    elif _stop_confirm:
         lines.append(
             html_escape("大盤：大A底（7/29）→ 大B反彈 → 大C進行中（他已講止跌確認）。")
         )
@@ -773,7 +793,7 @@ def format_teach_brief(db_path: str = "") -> str:
                 "低點最多 37000~37500；等反彈後拉回 1-2轉1-3-1 第二隻腳（他口語路徑・非買訊）。"
             )
         )
-    elif (not _stop_confirm) and (
+    elif (not _stop_confirm) and (not _pressure_break) and (
         "9波擴延" in thesis
         or "C-7轉C-8" in thesis
         or "C-7走完" in thesis
@@ -793,13 +813,13 @@ def format_teach_brief(db_path: str = "") -> str:
     elif thesis:
         lines.append(html_escape(thesis))
     struct_bits: List[str] = []
-    if fib and not _stop_confirm:
-        # 止跌確認當令時，反彈壓舊句不准蓋最新點位
+    if fib and not (_stop_confirm or _pressure_break):
+        # 止跌／下降壓當令時，反彈壓舊句不准蓋最新點位
         fib_s = re.sub(r"^黃金切割反彈壓\s*", "", fib).strip() or fib
         struct_bits.append(f"· 反彈壓：{fib_s}")
-    elif fib and _stop_confirm:
+    elif fib and (_stop_confirm or _pressure_break):
         pass
-    if morph and not _stop_confirm:
+    if morph and not (_stop_confirm or _pressure_break):
         morph_s = morph.replace("；", "；").strip()
         struct_bits.append(f"· 型態：{morph_s}")
     if intent:
@@ -818,6 +838,13 @@ def format_teach_brief(db_path: str = "") -> str:
                 one_w = "低點約會落在 35500~37300；C-9 跌完＝這段下殺完"
             elif re.search(r"C-7(?:轉|走完).{0,8}C-8→C-9|C-7走完→C-8→C-9", one_w):
                 one_w = "七走完≠整段完；八先上、再九最後下；九跌完＝這段下殺完"
+            elif _pressure_break or re.search(
+                r"回測下降壓力線|清洗籌碼|資金可\s*5\s*~\s*6\s*成", wait
+            ):
+                # 整段 wait 判斷：開頭若是台指壓41760，不准誤寫回「再測假跌破」
+                one_w = "拉回回測下降壓力線；清洗籌碼；資金可 5~6 成"
+                if re.search(r"41760", wait):
+                    one_w = "台指壓 41760；" + one_w
             elif re.search(r"台指壓\s*41760|一定再測週五低", one_w):
                 one_w = "台指壓 41760；一定再測週五低；破＝假跌破觀察"
             struct_bits.append(f"· 下一步：{one_w}")
@@ -853,8 +880,8 @@ def format_teach_brief(db_path: str = "") -> str:
             c9_hi = lv
         elif role == "C9低下沿" or abs(lv - 35500.0) < 1.0:
             c9_lo = lv
-    if _stop_confirm:
-        # 止跌確認當令：不准再用舊改口／C9 區間句蓋最新盯價
+    if _stop_confirm or _pressure_break:
+        # 止跌／下降壓當令：不准再用舊改口／C9 區間句蓋最新盯價
         foot_lo = foot_hi = c9_lo = c9_hi = None
     if foot_lo is not None and foot_hi is not None:
         c9_lo = c9_hi = None  # 改口壓 C9 區間句
@@ -883,16 +910,26 @@ def format_teach_brief(db_path: str = "") -> str:
             if zone_lo is not None and re.search(r"38000.*劇本一上沿|38000$", bit):
                 bit = "38000已破"
             if re.search(r"改口低|37000|37500", bit) and (
-                foot_lo is not None or _stop_confirm
+                foot_lo is not None or _stop_confirm or _pressure_break
             ):
                 continue
             if re.search(r"C9低|35500|37300", bit) and (
-                foot_lo is not None or c9_lo is not None or _stop_confirm
+                foot_lo is not None
+                or c9_lo is not None
+                or _stop_confirm
+                or _pressure_break
             ):
                 continue
-            # 止跌確認當令：舊雙軌深殺備線不准蓋最新盯價
-            if _stop_confirm and re.search(r"35579|31705|AI結束", bit):
+            # 止跌／下降壓當令：舊雙軌深殺備線不准蓋最新盯價
+            if (_stop_confirm or _pressure_break) and re.search(
+                r"35579|31705|AI結束", bit
+            ):
                 continue
+            # 下降壓改口當令：舊「再測週五低／假跌破」標不准再掛
+            # 但「不再假跌破」是新標，要留
+            if _pressure_break and re.search(r"再測週五|假跌破", bit):
+                if "不再假跌破" not in bit:
+                    continue
             if bit and bit not in bits:
                 bits.append(bit)
             if len(bits) >= 5:
@@ -980,6 +1017,110 @@ def _numbered_bits(text: str) -> List[str]:
     if len(bits) >= 2:
         return bits
     return [raw] if raw else []
+
+
+def _scrub_stale_fake_break_retest(text: str) -> str:
+    """下降壓改口之後：拿掉過期「再測週五低／假跌破」子句，留其餘仍有效句。"""
+    s = _SPACE.sub(" ", str(text or "")).strip()
+    if not s:
+        return ""
+    # 整句若主軸就是再測假跌破，整句丟
+    drop = re.compile(
+        r"(?:接下來)?還會再去測星期五低點一次|"
+        r"一定再測週五低|"
+        r"頂多在測一次低破星期五低點假跌破|"
+        r"破不破，跌破上星期五低點是假跌破|"
+        r"跌破上星期五低點是假跌破|"
+        r"破＝假跌破觀察|"
+        r"再測一次假跌破"
+    )
+    parts = re.split(r"(?<=[。！？；])", s)
+    keep: List[str] = []
+    for part in parts:
+        bit = part.strip()
+        if not bit:
+            continue
+        if drop.search(bit) and not re.search(
+            r"不可能假跌破|不再假跌破|下降壓力線", bit
+        ):
+            # 句內若還有其他大盤判斷，只剁過期子句
+            if "，" in bit or "、" in bit:
+                clauses = re.split(r"(?<=[，、])", bit)
+                kept_c = [
+                    c
+                    for c in clauses
+                    if c.strip()
+                    and not drop.search(c)
+                ]
+                if kept_c:
+                    merged = "".join(kept_c).strip(" ，、")
+                    if bit[-1] in "。！？；" and merged and merged[-1] not in "。！？；":
+                        merged += bit[-1]
+                    if merged:
+                        keep.append(merged)
+                continue
+            continue
+        keep.append(bit)
+    return _SPACE.sub(" ", "".join(keep)).strip(" ，、")
+
+
+def _apply_pressure_break_oral_to_board(
+    board: str,
+    *,
+    blob: str = "",
+    db_path: str = "",
+    now: Optional[datetime] = None,
+) -> str:
+    """飆大欄：下降壓改口當令時，壓過期假跌破句並補最新第4點（只認他文／口頭）。"""
+    try:
+        from biaoke_level_learn import (
+            _PRESSURE_BREAK_ORAL_AS_OF,
+            _PRESSURE_BREAK_ORAL_SNIP,
+            _ensure_pressure_break_oral_thesis_snap,
+            _find_pressure_break_snip,
+            _text_has_c3_pressure_break,
+        )
+    except Exception:
+        return board
+    clock = now or taipei_now()
+    if clock.tzinfo is None:
+        clock = clock.replace(tzinfo=TAIPEI)
+    else:
+        clock = clock.astimezone(TAIPEI)
+    day = clock.strftime("%Y%m%d")
+    if day < _PRESSURE_BREAK_ORAL_AS_OF:
+        return board
+    pb = ""
+    if _text_has_c3_pressure_break(blob) or _text_has_c3_pressure_break(board):
+        pb = board if _text_has_c3_pressure_break(board) else ""
+        if not pb and _text_has_c3_pressure_break(blob):
+            # 從 blob 抽含下降壓的那段
+            for sent in re.split(r"(?<=[。！？；\n])", blob):
+                if _text_has_c3_pressure_break(sent):
+                    pb = _SPACE.sub(" ", sent).strip()
+                    break
+            if not pb:
+                pb = _PRESSURE_BREAK_ORAL_SNIP
+    if db_path and not pb:
+        try:
+            _ensure_pressure_break_oral_thesis_snap(db_path, as_of=day)
+            pb = _find_pressure_break_snip(db_path, day) or ""
+        except Exception:
+            pb = ""
+    if not pb and day >= _PRESSURE_BREAK_ORAL_AS_OF:
+        pb = _PRESSURE_BREAK_ORAL_SNIP
+    if not pb or not _text_has_c3_pressure_break(pb):
+        return board
+    cleaned = _scrub_stale_fake_break_retest(board)
+    # 大盤欄開頭先講改口，再接其餘仍有效句（不准重複贴同一段）
+    lead = _speak(pb, 280)
+    if not lead:
+        return cleaned
+    if cleaned and lead[:24] in cleaned:
+        return cleaned
+    if cleaned:
+        return f"{lead} {cleaned}".strip()
+    return lead
 
 
 def format_focus_oral(
@@ -1130,6 +1271,23 @@ def format_focus_oral(
     latest_t = str(latest.get("text") or "")
     if board and re.search(r"(否則|如果|一定要過)", board + latest_t) and "如果句" not in board:
         board = board.rstrip("。") + "。這句還是如果句，不是已確認主升。"
+    # 下降壓改口：庫／口頭已確認時，壓掉過期「再測週五低假跌破」，並補進最新第4點
+    _pb_blob = " ".join(
+        x
+        for x in (
+            board,
+            latest_t,
+            *(str(p.get("text") or "") for p in mains[:3]),
+            *(str(p.get("text") or "") for p in replies[:6]),
+        )
+        if x
+    )
+    board = _apply_pressure_break_oral_to_board(
+        board,
+        blob=_pb_blob,
+        db_path=str(db_path or ""),
+        now=clock,
+    )
     # 主文後大盤自回併進大盤欄（口語一句接一句；同義短句不准另開「他還說」）
     if after_board:
         merged = _join_said([board] + after_board[:6], shown=[])
@@ -1138,6 +1296,17 @@ def format_focus_oral(
     shown = [x for x in (board, field, pcb) if x]
     # 他還說＝主文沒進上面三欄的補充＋樓下；已講過的大盤／族群／PCB 整段丟掉
     said = _join_said([preview] + spare[:2] + extra[:3], shown=shown)
+    # 下降壓當令：他還說／備援句也不准再留過期再測假跌破
+    try:
+        from biaoke_level_learn import _text_has_c3_pressure_break
+
+        if _text_has_c3_pressure_break(board) or _text_has_c3_pressure_break(_pb_blob):
+            said = _scrub_stale_fake_break_retest(said)
+            # 黃金脈絡用的主文也同步清過期句，不准又把假跌破貼回來
+            for row in cleaned_mains:
+                row["text"] = _scrub_stale_fake_break_retest(str(row.get("text") or ""))
+    except Exception:
+        pass
     # 再保險：他還說若只是大盤欄開頭複述，整欄拿掉（智慧融合，不重複唸）
     if said and board and _overlaps_shown(said, [board], min_chars=10):
         said2 = _strip_shown_sentences(said, [board])
