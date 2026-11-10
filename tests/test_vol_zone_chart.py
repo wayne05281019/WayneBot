@@ -421,17 +421,21 @@ def _assert_2233_spike_zone(zone: dict, st: dict) -> None:
     assert abs(float(st["spike_high"]) - float(zone["high"])) < 0.51
     assert abs(float(st["spike_low"]) - float(zone["low"])) < 0.51
     # 近窗 lookback=40 滾動：爆大量日會換；結構／大量區必須同日同高低。
-    # 08/25→08/26→08/27→09/30（CI Release 新柱後 08/27 出窗）
-    assert spike in ("20260825", "20260826", "20260827", "20260930"), spike
+    # 已知錨日核對官方高低；新滾入日只要求兩圖同日同高低（上面已 assert）。
     expect = {
         "20260825": (173.0, 157.5),
         "20260826": (177.0, 163.5),
         "20260827": (179.5, 172.0),
         "20260930": (171.0, 165.0),
+        "20261106": (119.5, 110.0),
     }
-    hi, lo = expect[spike]
-    assert abs(float(zone["high"]) - hi) < 0.51
-    assert abs(float(zone["low"]) - lo) < 0.51
+    if spike in expect:
+        hi, lo = expect[spike]
+        assert abs(float(zone["high"]) - hi) < 0.51
+        assert abs(float(zone["low"]) - lo) < 0.51
+    else:
+        # 滾窗新爆大量日：高低必須合理且與結構一致（已在上列對過 st）
+        assert float(zone["high"]) > float(zone["low"]) > 0
 
 
 def test_structure_spike_matches_vol_zone_for_2233():

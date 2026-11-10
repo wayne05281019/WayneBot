@@ -7316,23 +7316,7 @@ class WayneTelegramBot:
                     )
                 except Exception:
                     pass
-            # 未定案雙軌：口述對照與三窗同口補送（非買訊）
-            oral = str((kit or {}).get("oral_path") or "").strip()
-            if sent > 0 and oral and os.path.isfile(oral):
-                try:
-                    oral_cap = "口述雙軌對照・主B-b／備九波・與三窗同口・非買訊"
-                    if thesis:
-                        oral_cap = f"{oral_cap}\n{thesis[:160]}"
-                    ok_oral = await self._send_market_teach_one(
-                        message,
-                        oral,
-                        caption=oral_cap[:900],
-                        label="口述對照",
-                    )
-                    if ok_oral:
-                        sent += 1
-                except Exception:
-                    logger.exception("波浪口述對照圖送出略過")
+            # oral-path 示意圖已停用（2026-11-11 定版拿掉）
             _ = kit  # 路徑已送；保留合併語意給後續擴充
         except Exception:
             logger.exception("大盤教具圖失敗")
@@ -7930,34 +7914,7 @@ class WayneTelegramBot:
             raise
         except Exception:
             logger.exception("飆大遠窗圖送出略過")
-        # 未定案雙軌：空白飆大也補送口述對照（與波浪位階同口）
-        oral = str(kit.get("oral_path") or "").strip()
-        if not oral:
-            try:
-                from biaoke_level_learn import _paint_dir
-
-                cand = os.path.join(_paint_dir(self.db_path), "oral-dual-path-latest.png")
-                if os.path.isfile(cand):
-                    oral = cand
-            except Exception:
-                oral = ""
-        if oral and os.path.isfile(oral) and self._png_looks_ok(
-            oral, min_bytes=4_000, min_w=400, min_h=400
-        ):
-            try:
-                oral_cap = "口述雙軌對照・主B-b／備九波・與三窗同口・非買訊"
-                if thesis:
-                    oral_cap = f"{oral_cap}\n{thesis[:160]}"
-                with open(oral, "rb") as f:
-                    await message.reply_photo(
-                        photo=f,
-                        caption=oral_cap[:900],
-                        reply_markup=kb,
-                    )
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                logger.exception("飆大口述對照圖送出略過")
+        # oral-path 示意圖已停用（2026-11-11 定版拿掉）：空白飆大也不再補送
 
     async def _send_biaoke_advice_charts(
         self,

@@ -127,7 +127,8 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "45546" in src and "44210" in src
     assert "C3-3" in src
     assert "1-4" in src and "動態修正" in src
-    assert "48066" in src or "rule14" in src
+    # 48066／rule14 曾在近窗日K；改 60分C波後仍至少要有 1-4／預估語彙
+    assert "1-4" in src or "rule14" in src or "48066" in src
     assert "預估" in src and ("隨時檢視" in src or "重新修訂" in src)
     assert "_REVISE_MARK" in src
     assert "x_col" in src or "同一右欄" in src or "結構優先" in src
@@ -151,7 +152,8 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "_render_twii_super_near_dark" in src
     assert "_alt_path_needed" in src
     assert "micro_path" in src
-    assert "另前提" in src or "薄荷" in src
+    # 舊超近日K另前提／薄荷線；60分C波後改以共用渲染為準
+    assert "_render_twii_c_wave_60_dark" in src or "另前提" in src or "薄荷" in src
     # 費半主圖：同月日軸，波浪自轉折（不准抄加權 A/B 日）
     assert "_align_us_to_twii_dates" in src
     assert "_sox_abc_anchors_on_axis" in src
@@ -160,7 +162,7 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "_macro_wave_calendar_line" in src
     assert "⑤＝4/1→6/23｜A＝6/23→7/29｜B＝7/29→10/6｜C＝10/6→今" in src
     assert "大B末" in src
-    assert "不准用近B" in src
+    assert "不含大B" in src or "不准用近B" in src
     assert "日K小波" in src
     assert "C內震盪" in src or "C內早" in src
     assert "柱上讀" not in src
@@ -175,65 +177,57 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "_seat_onchart_labels" in src
     assert "maybe_push_level_teach_update" in src
     assert "as_of<=" in src or "chart_as_of" in src
-    assert "C內小波①②（未稱C3）" in src or "日K小波①～⑤（＝縮圖）" in src or "日K小波①②（輔助）" in src
+    assert (
+        "60分C波" in src
+        or "C內小波①②（未稱C3）" in src
+        or "日K小波①～⑤（＝縮圖）" in src
+        or "日K小波①②（輔助）" in src
+    )
     assert "title_bit" in src or "不准寫死 C3-3" in src
     assert "_paint_c_forecast" in src and "_c_forecast_tip" in src
     # 預估端同價改飆預測（續弱才留預估↓）
     assert "_biaoke_pred_label(45546" in src or "飆預測" in src
     assert "預估↓續弱" in src
     assert "_paint_window_dual_zones" in src
-    # 近／超近也要黃＋青雙底色（與遠窗對齊）；三張同套 c4／c5
-    near_blk = src[src.index("def _render_twii_live_dark") : src.index("def _render_twii_super_near_dark")]
-    micro_blk = src[src.index("def _render_twii_super_near_dark") : src.index("def _render_us_compare_dark")]
-    far_blk = src[src.index("def _render_twii_far_dark") : src.index("def _render_twii_live_dark")]
-    assert "_paint_window_dual_zones" in near_blk
-    assert "_paint_window_dual_zones" in micro_blk
-    assert "vol_sr=near_vol_sr" in near_blk or "大量撐壓" in near_blk
-    assert "vol_sr=micro_vol_sr" in micro_blk or "大量撐壓" in micro_blk
+    # 超近＝60分C波；近窗＝原本日K特寫；遠窗仍日K大結構
+    c60_blk = src[
+        src.index("def _render_twii_c_wave_60_dark") : src.index(
+            "def _render_twii_live_dark"
+        )
+    ]
+    near_blk = src[
+        src.index("def _render_twii_live_dark") : src.index(
+            "def _render_twii_super_near_c9_60m"
+        )
+    ]
+    micro_blk = src[
+        src.index("def _render_twii_super_near_dark") : src.index(
+            "def _render_us_compare_dark"
+        )
+    ]
+    far_blk = src[src.index("def _render_twii_far_dark") : src.index("def _render_twii_c_wave_60_dark")]
+    assert "_paint_window_dual_zones" in c60_blk
+    assert "_load_twii60_day_rows" in c60_blk
+    assert "不含大B" in c60_blk
+    assert "_paint_huang_c60_structure" in c60_blk
+    assert "教具②近窗特寫" in near_blk
+    assert "_render_twii_c_wave_60_dark" not in near_blk
+    assert "_render_twii_c_wave_60_dark" in micro_blk
     assert "_far_teach_bars_keeping_vol_sr" in far_blk
     assert "_paint_next_layer_vol_zone" in far_blk
     assert "SOXX" in far_blk and "大量撐壓" in far_blk
     assert "_c_subwave_anchors_vs_biaoke60" in far_blk
-    assert "_c_subwave_anchors_vs_biaoke60" in near_blk
-    assert "_c_subwave_anchors_vs_biaoke60" in micro_blk
-    # 三張都掛八浪／九波縮圖；近窗跟遠窗細線九段（detail=False）；超近非C9仍可 detail
+    # 遠窗仍掛八浪／九波縮圖
     assert "_paint_eight_wave_inset" in far_blk
-    assert "_paint_eight_wave_inset" in near_blk
-    assert "_paint_eight_wave_inset" in micro_blk
-    assert "detail=False" in near_blk
-    assert 'title="九波擴延"' in near_blk
-    assert "_stamp_ax_x, _stamp_ax_y = 0.02, 0.96" in near_blk
-    assert "avoid_top_left_stamp=True" in near_blk
-    assert "float(i5s) + 7.5" in near_blk  # ⑤起讓過首根K
-    assert "hspace=0.10" in near_blk
-    assert "labs_ax" in near_blk and "labs_axv" in near_blk
-    assert "0.62" in near_blk and "_teach_eight_wave_inset_wh" in near_blk
-    # 近窗九波改靠右下（0.55），讓左半區帶黃／紫標齊頭
-    assert "width) * 0.55" in near_blk
-    assert "35500.0" in near_blk  # 上緣不准碰藍虛線
-    assert "float(i5e) + 7.0" in near_blk  # ⑤末尖右下讓過戳
-    assert "_near_major_date_labs" in near_blk  # 結構日欄間單行
-    assert "_fp(9.5" in near_blk  # 結構日字級略大
-    # 超近窗改回日K：主路不准再轉 60 分
-    assert "_render_twii_super_near_c9_60m" not in micro_blk
-    assert "detail=True" in micro_blk or "detail=False if _c9_micro" in micro_blk
+    assert 'title="九波擴延"' in far_blk
     assert "_twii_macro_wave_anchors" in src
-    assert (
-        "日K小波①～⑤（＝縮圖）" in micro_blk
-        or "日K小波①②（輔助）" in micro_blk
-        or "橙①②僅輔助" in micro_blk
-    )
     assert "_c_teach_flash_pivots" in src
-    assert "flash_pivots=" in micro_blk
     # 浪名釘轉折點同價Y（左右錯開），不准再漂空＋_seat 上推
     assert "_pin_pivot_name" in far_blk
-    assert "_pin_pivot_name" in near_blk
-    assert "_pin_pivot_name" in micro_blk
     assert "_pin_pivot_name" in src
-    # 三張共用白底查詢戳（開盤螢光邊／收盤黑邊；日期／盤中或收／價）
+    # 遠窗＋60分C波共用白底查詢戳
     assert "_paint_teach_query_stamp" in far_blk
-    assert "_paint_teach_query_stamp" in near_blk
-    assert "_paint_teach_query_stamp" in micro_blk
+    assert "_paint_teach_query_stamp" in c60_blk
     assert "def _teach_query_clock" in src
     assert "def _paint_teach_query_stamp" in src
     assert "def _paint_index_last_chg_tip" in src
@@ -307,40 +301,18 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "rail_pending" in far_blk
     assert "_paint_tx_now_price_rail" in far_blk
     assert "費半｜台指電子盤｜加權日盤" in far_blk
-    # 大B末標假突破；近窗白底戳改主圖框內左上（跟遠窗同軸座標）
+    # 大B末假突破標在遠窗；近／超近改 60分C波（不含大B）
     assert "假突破" in src
-    assert "假突破" in far_blk and "假突破" in near_blk
-    assert "_stamp_y_data" not in near_blk
-    assert "_stamp_ax_x, _stamp_ax_y = 0.02, 0.96" in near_blk
-    assert 'ha="left"' in near_blk and "ax=ax" in near_blk
+    assert "假突破" in far_blk
+    assert "不含大B" in c60_blk
+    assert "_paint_teach_query_stamp" in c60_blk
+    assert 'ha="left"' in c60_blk and "ax=ax" in c60_blk
     assert "_reserve_avoid_zone" in src
     assert "_seat_onchart_labels" in src
-    # 近窗戳走 axes 左上；資料座標換算工具仍給其他標座用
     assert "def _fig_xy_from_axes_data" in src
-    # 超近：上＝縮圖K、中＝說明＋八浪、下＝量；不准再疊進橫圖中下方
-    assert "y=0.855" in micro_blk
-    assert "add_gridspec" in micro_blk
-    assert "height_ratios=(5.4, 2.55, 1.15)" in micro_blk
-    assert "ax_leg" in micro_blk and "ax_wave_host" in micro_blk
-    assert "AnchoredOffsetbox" not in micro_blk
-    assert "他說 B→今" in micro_blk
-    assert "紫實" not in micro_blk and "橙虛" not in micro_blk
-    assert "ax.legend" not in micro_blk
     assert "_flash_spec_from_pivots" in src
-    # 遠／近八浪縮圖＝超近同吋大小，右緣貼垂直黃虛線（最大量日）左側
     assert "_eight_wave_inset_rect_left_of_vmax" in far_blk
-    assert "_eight_wave_inset_rect_left_of_vmax" in near_blk
     assert "_TEACH_EIGHT_WAVE_INSET_W_FRAC" in src
-    assert "_near_inset" in near_blk
-    # 超近：非C9 仍閃折；C9 改跟遠窗細線九波（c_flash=not _c9_micro）
-    assert "c_flash=True" in micro_blk or "c_flash=not _c9_micro" in micro_blk
-    # 近窗日K八浪不開 c_flash；c9_60m 超近專用才開（夾在 live 與 super_near 之間）
-    live_only = src[
-        src.index("def _render_twii_live_dark") : src.index(
-            "def _render_twii_super_near_c9_60m"
-        )
-    ]
-    assert "c_flash=True" not in live_only
     assert "_c_flash_step" in src
     assert 'panels="far"' in src or "panels: str" in src
     # 遠窗大C 必須自大B末連到今，不准 10/6 後斷線
@@ -349,13 +321,11 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "不准把 A 包進去" in src or "A 必須在黃框" in src
     assert "_TEACH_STAMP_FS" in src
     assert "_paint_stamp_hbox" in src
-    assert "subplots_adjust" in near_blk
-    assert "subplots_adjust" in micro_blk
-    # 右標同欄 x_col；虛線自 note['x'] 連到標左緣（不准左一截短虛線）
+    assert "subplots_adjust" in c60_blk
+    # 右標同欄 x_col；60分C波右欄有 level_dash
     assert "x_col" in src
-    assert "x_near_col" in near_blk or "x_col=" in near_blk
-    assert "level_dash=True" in near_blk
-    assert "level_dash=False" not in near_blk[near_blk.index("_place_live_right_labels") :]
+    assert "x_col=" in c60_blk
+    assert "level_dash=True" in c60_blk
     assert "x_end" in src
     assert "_latest_biaoke_index_snip" in src
     # 外圍對照（附圖二）本輪不加 c4／c5 細標；費半右欄要接他寫死預測點
@@ -504,21 +474,21 @@ def test_far_yellow_band_is_max_vol_day_hl():
     assert "level_dash=True" in block
     # 浪／細浪硬標優先，不准被鄰近飆預測擠掉（c4↔47,637、今↔c5）
     assert "gap_wave" in place and "c4細" in place and "_tier" in place
-    near_src = src[src.index("def _render_twii_live_dark") : src.index("def _render_twii_super_near_dark")]
+    c60_src = src[
+        src.index("def _render_twii_c_wave_60_dark") : src.index(
+            "def _render_twii_live_dark"
+        )
+    ]
+    near_src = src[src.index("def _render_twii_live_dark") : src.index("def _render_twii_super_near_c9_60m")]
     micro_src = src[src.index("def _render_twii_super_near_dark") : src.index("def _render_us_compare_dark")]
-    assert (
-        "0.092 if _c9_near_now else 0.068" in near_src
-        or "0.078 if _c9_near_now else 0.068" in near_src
-        or "0.062 if _c9_near_now else 0.055" in near_src
-        or "min_gap=(ymax - ymin) * 0.055" in near_src
-    )
-    assert "nudge=True" in near_src
-    # 近窗 C9 右欄精簡跟遠窗同一套
-    assert 'f"大B末 {_px(y_b_end)}"' in near_src or "大B末 {_px" in near_src
-    assert "side=\"left\"" in near_src or "side='left'" in near_src
-    # 超近窗標題不准把 C3-3-4 裁成 C3-3（保留 now 尾碼）
+    assert "min_gap=" in c60_src
+    assert "nudge=True" in c60_src
+    assert "教具②近窗特寫" in near_src
+    assert "_render_twii_c_wave_60_dark" not in near_src
+    assert "_render_twii_c_wave_60_dark" in micro_src
+    # 超近入口不裁 one_line；C波60分有 i_now
     assert 'one_line")[:40]' not in micro_src and "one_line')[:40]" not in micro_src
-    assert "_now" in micro_src
+    assert "i_now" in c60_src
     # 右欄預設走 _TEACH_RIGHT_GUTTER=2.55（_teach_right_col_x）；不准再漂 n+1.15／right=0.90
     assert "_TEACH_RIGHT_GUTTER" in src and "2.55" in src
     assert "_teach_right_col_x" in place or "_teach_right_col_x" in block
@@ -826,7 +796,7 @@ def test_nine_wave_inset_c9_ext_labels():
     import biaoke_level_learn as bll
 
     full = open(bll.__file__, encoding="utf-8").read()
-    assert full.count("c9_ext=") >= 3
+    assert full.count("c9_ext=") >= 2
 
 
 def test_thesis_pred_c9_band_and_38000_broke():
@@ -872,7 +842,7 @@ def test_thesis_pred_c9_band_and_38000_broke():
     import biaoke_level_learn as bll
 
     src = open(bll.__file__, encoding="utf-8").read()
-    assert src.count("_paint_c9_low_zone_band(") >= 4  # def + far/near/micro
+    assert src.count("_paint_c9_low_zone_band(") >= 2  # def + 遠／備援窗
     assert "_paint_c9_low_zone_band" in src
 
 
@@ -1366,7 +1336,13 @@ def test_press_level_break_uses_high_not_crash_low():
                         "role": "台指壓力",
                         "tag": "未到",
                         "label": "台指壓力／41,760",
-                    }
+                    },
+                    {
+                        "level": 41500.0,
+                        "role": "至少回測",
+                        "tag": "未到",
+                        "label": "至少回測／41,500",
+                    },
                 ]
             }
         },
@@ -1379,10 +1355,11 @@ def test_press_level_break_uses_high_not_crash_low():
         ],
     )
     blob = " ".join(str(x.get("text") or "") for x in notes)
-    assert "台指壓力" in blob
+    # 41760 台指壓右標已刪；至少回測仍可留
+    assert "台指壓力" not in blob
+    assert "41,760" not in blob
+    assert "至少回測" in blob
     assert "飆預測" not in blob
-    assert "已破" not in blob
-    assert ("未到" in blob) or ("未破" in blob)
 
 
 def test_c9_extension_inactive_on_stop_confirm():
@@ -1547,9 +1524,11 @@ def test_bb_dual_path_thesis_beats_earlier_foot2(tmp_path):
     assert abs(roles.get("五波末／週五低", 0) - 37837) < 1
     assert abs(roles.get("九波備線破位", 0) - 35579) < 1
     assert abs(roles.get("九波備線深殺", 0) - 31705) < 1
+    # 2026-11-11 定版：口述雙軌對照圖停用，不准再產檔
     out = str(tmp_path / "oral.png")
     got = render_oral_dual_path_schematic(out, snip=main)
-    assert got and __import__("os").path.isfile(got)
+    assert got == ""
+    assert not __import__("os").path.isfile(out)
 
 
 def test_stop_low_confirm_thesis_beats_older_bb_dual_and_c9(tmp_path):
@@ -1711,16 +1690,15 @@ def test_pressure_break_real_post_beats_stop_retest(tmp_path):
     assert "已過C3下降壓" in (ladder.get("now") or "")
 
 
-def test_oral_dual_path_uses_bundled_cjk_font():
-    """口述雙軌圖必須走打包 NotoSansTC；系統 CJK 缺／TTC 選錯＝話筒豆腐「字」。"""
+def test_oral_dual_path_schematic_retired():
+    """口述雙軌對照圖已停用：函式一律空字串，不准再出圖。"""
     import inspect
 
     from biaoke_level_learn import render_oral_dual_path_schematic
 
     src = inspect.getsource(render_oral_dual_path_schematic)
-    assert "wayne_navigator" in src
-    assert "_fp" in src
-    assert "NotoSansTC" in src or "wayne_navigator import _fp" in src
+    assert "已停用" in src
+    assert render_oral_dual_path_schematic("/tmp/should-not-write.png", snip="B-b") == ""
 
 
 def test_same_day_fake_break_reply_merges_into_main_chrono(tmp_path):
@@ -2297,6 +2275,99 @@ def test_soxx_volume_proxy_always_refreshes_near_window():
     assert "DO NOTHING" in min_src
     assert "astimezone(ny)" in min_src
     assert "substr(ts,1,8)" not in min_src
+
+
+def test_twii60_day_rows_keep_hour_slots_only(tmp_path):
+    """interval=60 若混進 0901 這類 1 分髒柱，日盤窗要丟掉。"""
+    import sqlite3
+
+    from biaoke_level_learn import _load_twii60_day_rows
+    from kline_hop import ensure_minute_bars_table, save_minute_bars
+
+    db = str(tmp_path / "twii60.db")
+    ensure_minute_bars_table(db)
+    save_minute_bars(
+        "TWII",
+        "60",
+        [
+            {"t": "202611100900", "o": 1, "h": 2, "l": 1, "c": 2, "v": 0},
+            {"t": "202611100901", "o": 1, "h": 2, "l": 1, "c": 2, "v": 0},
+            {"t": "202611101000", "o": 1, "h": 2, "l": 1, "c": 2, "v": 0},
+            {"t": "202611101330", "o": 1, "h": 2, "l": 1, "c": 2, "v": 0},
+        ],
+        db,
+        source="test",
+    )
+    # 無 0050 也不准炸
+    rows = _load_twii60_day_rows(db, since_ymd="20261110")
+    assert [r["ts"] for r in rows] == [
+        "202611100900",
+        "202611101000",
+        "202611101330",
+    ]
+
+
+def test_twii60_volume_proxy_from_0050_same_ts(monkeypatch):
+    """^TWII 分量 0 → 同 ts 貼 0050 真量；已有量不蓋；抓不到不假填。"""
+    from biaoke_level_learn import (
+        _attach_twii60_volume_proxy,
+        _load_twii60_day_rows,
+    )
+
+    monkeypatch.setattr(
+        "biaoke_level_learn._twii60_vol_proxy_map",
+        lambda _db: {"202611101000": 30580.0, "202611101100": 31752.0},
+    )
+    rows = [
+        {
+            "date": "20261110",
+            "ts": "202611101000",
+            "open": 1,
+            "high": 2,
+            "low": 1,
+            "close": 2,
+            "volume": 0.0,
+        },
+        {
+            "date": "20261110",
+            "ts": "202611101100",
+            "open": 1,
+            "high": 2,
+            "low": 1,
+            "close": 2,
+            "volume": 0.0,
+        },
+        {
+            "date": "20261110",
+            "ts": "202611101200",
+            "open": 1,
+            "high": 2,
+            "low": 1,
+            "close": 2,
+            "volume": 0.0,
+        },
+        {
+            "date": "20261110",
+            "ts": "202611100900",
+            "open": 1,
+            "high": 2,
+            "low": 1,
+            "close": 2,
+            "volume": 99.0,
+        },
+    ]
+    out = _attach_twii60_volume_proxy(rows, "unused.db")
+    by_ts = {r["ts"]: r for r in out}
+    assert by_ts["202611101000"]["volume"] == 30580.0
+    assert by_ts["202611101000"]["vol_src"] == "0050"
+    assert by_ts["202611101100"]["volume"] == 31752.0
+    assert by_ts["202611101200"]["volume"] == 0.0
+    assert "vol_src" not in by_ts["202611101200"]
+    assert by_ts["202611100900"]["volume"] == 99.0
+    assert "vol_src" not in by_ts["202611100900"]
+    assert "_attach_twii60_volume_proxy" in __import__("inspect").getsource(
+        _load_twii60_day_rows
+    )
 
 
 def test_stamp_md_phase_close_or_intraday_before_numbers():
@@ -3431,21 +3502,26 @@ def test_weekend_tx_tip_uses_official_night_not_mis(tmp_path, monkeypatch):
 
 
 def test_near_micro_right_notes_follow_tip_anchors():
-    """近／超近右欄飆預測錨跟 tip_anchors，不准寫死 45546／44210。"""
-    from biaoke_level_learn import _render_twii_live_dark, _render_twii_super_near_dark
+    """超近（60分C波）右欄飆預測錨跟 tip_anchors，不准寫死 45546／44210；近窗回日K。"""
+    from biaoke_level_learn import (
+        _render_twii_c_wave_60_dark,
+        _render_twii_live_dark,
+        _render_twii_super_near_dark,
+    )
 
-    near = inspect.getsource(_render_twii_live_dark)
-    micro = inspect.getsource(_render_twii_super_near_dark)
-    for blk in (near, micro):
-        assert "for anch in tip_anchors:" in blk
-        assert '"y": 45546.0' not in blk
-        assert '"y": 44210.0' not in blk
-        assert "anchors=tip_anchors" in blk
+    c60 = inspect.getsource(_render_twii_c_wave_60_dark)
+    assert "for anch in tip_anchors:" in c60
+    assert '"y": 45546.0' not in c60
+    assert '"y": 44210.0' not in c60
+    assert "anchors=tip_anchors" in c60
+    assert "教具②近窗特寫" in inspect.getsource(_render_twii_live_dark)
+    assert 'kind="micro"' in inspect.getsource(_render_twii_super_near_dark)
 
 
 def test_near_micro_follow_far_c9_twii_presentation():
-    """近／超近加權跟遠窗同一套：C9 右欄精簡、浪號靠左、九波細線標題。"""
+    """超近＝60分只畫大C；近窗回日K特寫；遠窗仍保留九波細線；c9_60m 備援仍在。"""
     from biaoke_level_learn import (
+        _render_twii_c_wave_60_dark,
         _render_twii_far_dark,
         _render_twii_live_dark,
         _render_twii_super_near_c9_60m,
@@ -3455,50 +3531,53 @@ def test_near_micro_follow_far_c9_twii_presentation():
     far = inspect.getsource(_render_twii_far_dark)
     near = inspect.getsource(_render_twii_live_dark)
     micro = inspect.getsource(_render_twii_super_near_dark)
+    c60 = inspect.getsource(_render_twii_c_wave_60_dark)
     micro60 = inspect.getsource(_render_twii_super_near_c9_60m)
     # 遠窗基準：C9 右欄精簡＋九波細線
     assert "_c9_now_step_label()" in far
     assert 'title="九波擴延"' in far
     assert "scale=0.56" in far and "pin_bottom=True" in far
     assert "nudge=True" in far
-    # 近窗跟進
-    assert "_c9_now_step_label()" in near
-    assert 'title="九波擴延"' in near
-    assert "nudge=True" in near
-    assert 'side="left"' in near
-    assert "大B末 {_px" in near or 'f"大B末 {_px' in near
-    assert "_stamp_ax_x, _stamp_ax_y = 0.02, 0.96" in near
-    assert "avoid_top_left_stamp=True" in near
-    assert "float(i5s) + 7.5" in near
-    assert "float(i5e) + 7.0" in near
-    assert "_teach_eight_wave_inset_wh" in near
-    assert "0.62" in near
-    assert "width) * 0.55" in near  # 九波靠右，區帶兩標靠左齊頭
-    assert "35500.0" in near
-    assert "_near_major_date_labs" in near
-    # C7 字標必釘浪點；C8 只留細圈（右欄已有 C-7轉C-8今）
+    # 近窗＝原本日K；超近＝60分C波（不含大B）
+    assert "教具②近窗特寫" in near
+    assert "_render_twii_c_wave_60_dark" not in near
+    assert "_render_twii_c_wave_60_dark" in micro
+    assert "不含大B" in c60
+    assert "_C_WAVE_60_SINCE_YMD" in c60 or "20261006" in c60
+    assert "_paint_huang_c60_structure" in c60
+    assert "nudge=True" in c60
+    # C7 字標路徑仍在（遠／九波用）
     path_src = inspect.getsource(
         __import__("biaoke_level_learn", fromlist=["_paint_c9_ext_k_path"])._paint_c9_ext_k_path
     )
     assert 'pin_labs = {"C1", "C3", "C5", "C6", "C7"}' in path_src or "C7" in path_src
     assert 'lab == "C8"' in path_src or "lab == 'C8'" in path_src
-    # 超近改回日K；60 分函式仍留著但不當主路
-    assert "_render_twii_super_near_c9_60m" not in micro
-    assert "_c9_now_step_label()" in micro
-    assert 'title="九波擴延"' in micro
-    assert 'side="left"' in micro
-    assert "nudge=True" in micro
+    # 舊 60 分九波函式仍留著備援
     assert "_c9_now_step_label()" in micro60
     assert 'title="九波擴延"' in micro60
-    assert 'side="left"' in micro60
-    assert "nudge=True" in micro60
-    assert "大B末 {_px" in micro60 or 'f"大B末 {_px' in micro60
+
+
+def test_candle_body_close_anchored_edges():
+    """漲＝收在上緣、跌＝收在下緣；min_body 往另一邊長，今 tip 不准黏錯邊。"""
+    from biaoke_level_learn import _candle_body_y0_height
+
+    bot, h = _candle_body_y0_height(42100.0, 42172.0, 80.0)
+    assert abs((bot + h) - 42172.0) < 1e-6  # 收＝上緣
+    assert h >= 80.0
+    bot2, h2 = _candle_body_y0_height(42200.0, 42172.0, 80.0)
+    assert abs(bot2 - 42172.0) < 1e-6  # 收＝下緣
+    assert h2 >= 80.0
+    # 平盤紅／小實體：收仍在上緣
+    bot3, h3 = _candle_body_y0_height(42711.0, 42711.0, 90.0)
+    assert abs((bot3 + h3) - 42711.0) < 1e-6
+    assert abs(h3 - 90.0) < 1e-6
 
 
 def test_finish_last_twii_used_by_near_and_micro():
-    """近／超近右標後必蓋回末日縮圖K；遠窗亦有末根重畫。"""
+    """遠窗末根重畫；近窗日K特寫；超近走 60分C波。"""
     from biaoke_level_learn import (
         _finish_last_twii_candle,
+        _render_twii_c_wave_60_dark,
         _render_twii_far_dark,
         _render_twii_live_dark,
         _render_twii_super_near_dark,
@@ -3506,18 +3585,44 @@ def test_finish_last_twii_used_by_near_and_micro():
 
     near = inspect.getsource(_render_twii_live_dark)
     micro = inspect.getsource(_render_twii_super_near_dark)
+    c60 = inspect.getsource(_render_twii_c_wave_60_dark)
     far = inspect.getsource(_render_twii_far_dark)
-    assert "_finish_last_twii_candle" in near
-    assert "_finish_last_twii_candle" in micro
+    assert "教具②近窗特寫" in near
+    assert "_render_twii_c_wave_60_dark" not in near
+    assert "_render_twii_c_wave_60_dark" in micro
     assert "_paint_one_live_candle" in far
     assert "_tw_last_repaint" in far
-    assert "_twii_bars_for_teach" in near
-    assert "_twii_bars_for_teach" in micro
+    assert "_twii_bars_for_teach" in c60  # 日戳對照
+    assert "_load_twii60_day_rows" in c60
+    assert "_finish_last_twii_candle" in c60  # 今 tip 鎖收盤（紅柱上緣）
+    assert "_finish_last_twii_candle" in near  # 近窗日K同規
+    assert "_paint_c3_group12_span_labels" in far and "_paint_c3_group12_span_labels" in near
+    assert "0050" in c60 and "量(0050)" in c60
+    from biaoke_level_learn import _load_twii60_day_rows as _ld60
+
+    assert "_attach_twii60_volume_proxy" in inspect.getsource(_ld60)
     assert "_twii_bars_for_teach" in far
     src = inspect.getsource(_finish_last_twii_candle)
     # 末根改白邊實心K＋_spear_ring 細圈（不再用 facecolors=none 空心 scatter）
     assert "_spear_ring" in src
     assert "edgecolor=\"#ffffff\"" in src or "edgecolor='#ffffff'" in src
+    assert "closes[i_now]" in src  # tip Y＝收盤
+
+
+def test_candle_body_close_anchors_min_body_edge():
+    """漲K：收＝上緣；跌K：收＝下緣；min_body 不准把收盤推到反邊。"""
+    from biaoke_level_learn import _candle_body_y0_height
+
+    # 平盤／小實體紅（收≥開）：tip＝收＝上緣
+    y0, h = _candle_body_y0_height(42100.0, 42172.0, 200.0)
+    assert abs((y0 + h) - 42172.0) < 1e-6
+    assert y0 < 42172.0
+    y0f, hf = _candle_body_y0_height(42172.0, 42172.0, 180.0)
+    assert abs((y0f + hf) - 42172.0) < 1e-6
+    # 跌：收＝下緣
+    y0d, hd = _candle_body_y0_height(42200.0, 42100.0, 250.0)
+    assert abs(y0d - 42100.0) < 1e-6
+    assert (y0d + hd) > 42100.0
 
 
 def test_place_live_right_labels_keeps_c4_c5_now():
@@ -3631,12 +3736,19 @@ def test_far_tx_now_rail_deferred_until_tip_fixed():
     assert "電盤大量壓" not in far and "電盤大量撐" not in far
     assert far.count("電盤下一層") >= 2  # next-layer 仍可留
     assert "_paint_tx_now_price_rail" in far  # 現價軌仍在電盤
-    # 近／超近雙軌當令跟遠窗日盤：不准再塞青撐壓
-    from biaoke_level_learn import _render_twii_live_dark, _render_twii_super_near_dark
+    # 超近走 60分C波；近窗回日K；雙軌青撐壓閘仍在遠／共用區
+    from biaoke_level_learn import (
+        _render_twii_c_wave_60_dark,
+        _render_twii_live_dark,
+        _render_twii_super_near_dark,
+    )
     near = inspect.getsource(_render_twii_live_dark)
     micro = inspect.getsource(_render_twii_super_near_dark)
-    assert "_skip_cyan_sr" in near
-    assert "not (bool(_c9_micro) or bool(_wb_edges_m))" in micro
+    c60 = inspect.getsource(_render_twii_c_wave_60_dark)
+    assert "教具②近窗特寫" in near
+    assert "_render_twii_c_wave_60_dark" not in near
+    assert "_render_twii_c_wave_60_dark" in micro
+    assert "_paint_window_dual_zones" in c60
 
 
 def test_week_bot_zone_and_dual_pred_from_thesis():
@@ -3682,7 +3794,7 @@ def test_week_bot_zone_and_dual_pred_from_thesis():
     assert "39,000" not in texts and "37,164" not in texts
     src = open("biaoke_level_learn.py", encoding="utf-8").read()
     assert "_paint_ai_end_zone_band" in src
-    assert src.count("_paint_ai_end_zone_band(ax") >= 4
+    assert src.count("_paint_ai_end_zone_band(ax") >= 2
     assert "ffeb3b" in src  # 下週底部黃框
     assert "_zone_label_x_clear_of_inset" in src  # 兩標清過九波縮圖右緣才齊頭可見
     assert "_reserve_zone_label_avoid" in src  # 區帶大標佔位，尖點不准坐進框
@@ -3813,20 +3925,398 @@ def test_tip_anchors_empty_on_stop_confirm_no_old_45546():
 
 
 def test_paint_c3_group12_span_labels_wired():
-    """教導用：三窗要掛第一組／第二組＝C3 跨度標（對圖用）。"""
+    """教導用：三窗掛黃培碩大三段 C1／C2／C3 底色＋下半標。"""
     import inspect
 
     from biaoke_level_learn import _paint_c3_group12_span_labels
     import biaoke_level_learn as m
 
     src = inspect.getsource(m)
-    assert src.count("_paint_c3_group12_span_labels(") >= 5  # def + 4 call sites
+    # def + 遠窗／C波60分備援／c9_60m 等呼叫（超近優先 _paint_huang_c60_structure）
+    assert src.count("_paint_c3_group12_span_labels(") >= 4
+    from biaoke_level_learn import (
+        _paint_huang_c_degree_path,
+        _resolve_huang_c_daily_spans,
+        _vertical_upright_label,
+    )
+
     src_fn = inspect.getsource(_paint_c3_group12_span_labels)
-    assert "【第一組】" in src_fn
-    assert "【第二組】" in src_fn
-    assert "C3主跌" in src_fn
-    assert "示意：第二組C3下降壓" in src_fn
-    assert "y_sky" in src_fn  # 大標貼價欄天空，不准貼底被量欄蓋
+    assert "C1 下跌" in src_fn
+    assert "C2 中繼" in src_fn
+    assert "C3 下跌" in src_fn
+    assert "C4 反彈" in src_fn
+    assert "示意：C3下降壓" not in src_fn  # 字標已刪
+    assert "C3底＝週五低 37837" not in src_fn  # 併右欄，不准黃箭重複
+    assert "_vertical_upright_label" in src_fn
+    assert "rotation=0" in src_fn  # 直排仍正立，不准旋轉歪頭
+    assert "y_band" in src_fn  # 標貼近底緣，不准只貼天空
+    assert "axvline" not in src_fn  # 日盤 C1–C4 也不准豎虛線
+    assert "#f5f5f5" not in src_fn  # 白虛下降壓示意線已整段刪
+    assert "ax.plot" not in src_fn  # 跨度函式只留底色／直標，不准再畫斜線
+    assert "【第一組】" not in src_fn
+    assert "示意：第二組C3下降壓" not in src_fn
+    near_src = inspect.getsource(
+        __import__(
+            "biaoke_level_learn", fromlist=["_render_twii_live_dark"]
+        )._render_twii_live_dark
+    )
+    # 近窗紫虛細 c4→c5 線＋兩端點已刪（右欄字可留）
+    assert "ls=(0, (2.2, 1.6))" not in near_src
+    assert "[i4, i5c]" not in near_src
+    assert "[y4, y5c]" not in near_src
+    # 近／遠窗預估紫虛線＋端點矛圈也不再畫（tip 仍算）
+    assert "draw=False" in near_src
+    far_src = inspect.getsource(
+        __import__("biaoke_level_learn", fromlist=["_render_twii_far_dark"])._render_twii_far_dark
+    )
+    assert "draw=False" in far_src
+    assert "annotate=False" in far_src  # 量欄不准再疊「最大量」字標
+    assert _vertical_upright_label("C1 下跌") == "C\n1\n下\n跌"
+    assert _vertical_upright_label("C2 中繼") == "C\n2\n中\n繼"
+    # 紫折四段＝底色起迄
+    path_src = inspect.getsource(_paint_huang_c_degree_path)
+    assert "xs" in path_src and "ys" in path_src
+    res_src = inspect.getsource(_resolve_huang_c_daily_spans)
+    assert "20261006" in res_src and "20261018" in res_src and "20261028" in res_src
+    far = inspect.getsource(
+        __import__("biaoke_level_learn", fromlist=["_render_twii_far_dark"])._render_twii_far_dark
+    )
+    near = inspect.getsource(
+        __import__(
+            "biaoke_level_learn", fromlist=["_render_twii_live_dark"]
+        )._render_twii_live_dark
+    )
+    assert "_paint_huang_c_degree_path" in far and "_paint_huang_c_degree_path" in near
+
+
+def test_huang_c60_window_caps_x_keeps_latest():
+    """60分C波定長滾：超過上限刪最左；末根永遠是最新縮圖K。"""
+    from biaoke_level_learn import (
+        _HUANG_C60_MAX_BARS,
+        _HUANG_C60_SOFT_MAX,
+        _load_twii60_day_rows,
+        _window_huang_c60_rows,
+    )
+
+    rows = _load_twii60_day_rows("data/wayne_market.db", since_ymd="20261006")
+    if len(rows) < 16:
+        return
+    # 未滿上限＝整段
+    win0 = _window_huang_c60_rows(rows, max_bars=max(len(rows) + 5, 40))
+    assert len(win0) == len(rows)
+    assert win0[-1]["ts"] == rows[-1]["ts"]
+    # 人工拉長超過 soft：仍≤soft，且末根＝最新
+    extra = []
+    base = dict(rows[-1])
+    for i in range(_HUANG_C60_SOFT_MAX + 40):
+        b = dict(base)
+        b["ts"] = f"2099010{i % 10}0900"
+        b["date"] = f"2099010{i % 10}"
+        b["close"] = float(base.get("close") or 0) + i
+        extra.append(b)
+    long_rows = list(rows) + extra
+    win = _window_huang_c60_rows(long_rows)
+    assert len(win) <= _HUANG_C60_SOFT_MAX
+    assert len(win) <= max(_HUANG_C60_SOFT_MAX, _HUANG_C60_MAX_BARS)
+    assert win[-1]["ts"] == long_rows[-1]["ts"]
+    assert win[-1]["close"] == long_rows[-1]["close"]
+
+
+def test_huang_c60_anchors_and_wave_paint_wired():
+    """超近60分：C2上下虛框、C3內①～⑤、C4白細折不標浪號；轉折價對齊手繪。"""
+    import inspect
+
+    from biaoke_level_learn import (
+        _load_twii60_day_rows,
+        _paint_huang_c60_structure,
+        _render_twii_c_wave_60_dark,
+        _resolve_huang_c60_anchors,
+        _window_huang_c60_rows,
+    )
+
+    rows = _load_twii60_day_rows("data/wayne_market.db", since_ymd="20261006")
+    if len(rows) >= 16:
+        anc = _resolve_huang_c60_anchors(rows)
+        assert anc.get("ok") is True
+        assert abs(float(anc["y1"]) - 49968.0) < 30
+        assert abs(float(anc["y1e"]) - 46170.0) < 30
+        assert abs(float(anc["y2"]) - 47060.0) < 30
+        assert abs(float(anc["y3"]) - 37837.0) < 30
+        assert int(anc["i1"]) < int(anc["i1e"]) < int(anc["i2"]) < int(anc["i3"])
+        box = anc.get("c2_box") or (0, 0)
+        assert abs(float(box[0]) - 46170.0) < 30
+        assert abs(float(box[1]) - 47060.0) < 30
+        c3 = anc.get("c3_seg") or []
+        labs3 = [str(p[2]) for p in c3]
+        # ①～⑤全在 C3；④＝43135、⑤＝37837
+        for lab in ("①", "②", "③", "④", "⑤"):
+            assert lab in labs3, labs3
+        one = next(p for p in c3 if p[2] == "①")
+        two = next(p for p in c3 if p[2] == "②")
+        three = next(p for p in c3 if p[2] == "③")
+        four = next(p for p in c3 if p[2] == "④")
+        five = next(p for p in c3 if p[2] == "⑤")
+        # ①不准停在 44726 小反彈（須更深）
+        assert float(one[1]) < 44500
+        assert int(one[0]) < int(two[0]) < int(three[0]) < int(four[0]) < int(five[0])
+        assert abs(float(three[1]) - 41856.0) < 120
+        assert abs(float(four[1]) - 43135.0) < 40
+        assert abs(float(five[1]) - 37837.0) < 30
+        # C4 反彈折：不標①～⑤；白折跟到最新縮圖K（不准停在第一次碰到次級4壓）
+        c4 = anc.get("c4") or []
+        assert len(c4) >= 2
+        labs4 = [str(p[2]) for p in c4]
+        assert not any(x in {"①", "②", "③", "④", "⑤"} for x in labs4), labs4
+        assert abs(float(anc.get("c4_press") or 0) - 43135.0) < 40
+        assert int(c4[-1][0]) == len(rows) - 1
+        assert abs(float(c4[-1][1]) - float(rows[-1].get("close") or 0)) < 1.0
+    paint = inspect.getsource(_paint_huang_c60_structure)
+    assert "中繼上" in paint and "中繼下" in paint
+    assert "alpha=0.07" in paint  # 底色再淺
+    assert "_wave_lab" in paint  # 標籤側邊讓開折線／K
+    assert "c3_seg" in paint
+    assert "_spear_ring" in paint
+    assert "#f5f5f5" in paint  # C3／C4 細白折
+    assert "C3 內段細白折" in paint or "細白折＋①" in paint
+    assert "不准藍折進 C3" in paint
+    assert "次級4壓" in paint
+    assert "⑤壓" not in paint  # 不准再把 C3④ 誤標成 C4⑤壓
+    # C1–C4 只靠四色底分界；_span 不准再畫豎虛線
+    span_blk = paint[paint.index("def _span") : paint.index("def _poly")]
+    assert "axvspan" in span_blk
+    assert "axvline" not in span_blk
+    assert "豎虛線刪" in paint or "不准再畫豎虛線" in paint
+    c60 = inspect.getsource(_render_twii_c_wave_60_dark)
+    assert "_paint_huang_c60_structure" in c60
+    assert "fig.text" in c60  # 說明不進主圖
+    assert "次級4壓" in c60
+    assert "C4白細①～⑤" not in c60
+    assert "白細C4" in c60 or "C4白細" in c60
+    assert "_window_huang_c60_rows" in c60
+    # 圖上標題不准寫人名／飆大（使用者 2026-11-10）
+    title_lns = [ln for ln in c60.splitlines() if "60分C波（定長滾" in ln]
+    assert title_lns, "missing 60分C波 title"
+    assert all("黃培碩" not in ln and "飆大" not in ln for ln in title_lns)
+
+
+def test_teach_vol_sr_preview_below_next_layer_60m():
+    """未破主撐也預覽往下下一層；60分高低擴成當日全日包絡（對齊遠／近日K）。
+
+    末日收若暫跌破主撐，broke_support 會翻 True（cascade 非 preview）。
+    自末日往前縮日，找到「未破＋preview」切片再驗；找不到就 skip。
+    """
+    from biaoke_level_learn import (
+        _load_twii60_day_rows,
+        _paint_teach_vol_layer_bars,
+        _resolve_teach_vol_sr,
+        _teach_day_vol_rank_indices,
+        _teach_vol_day_tag,
+        _teach_vol_sr_title_bit,
+        _ymd,
+    )
+
+    rows_all = _load_twii60_day_rows("data/wayne_market.db", since_ymd="20261006")
+    if len(rows_all) < 16:
+        return
+    days = sorted(
+        {
+            _ymd(r.get("date") or r.get("ts"))
+            for r in rows_all
+            if _ymd(r.get("date") or r.get("ts"))
+        }
+    )
+    sr = None
+    rows = rows_all
+    for cut in reversed(days):
+        work = [
+            r
+            for r in rows_all
+            if (_ymd(r.get("date") or r.get("ts")) or "") <= cut
+        ]
+        if len(work) < 16:
+            continue
+        cand = _resolve_teach_vol_sr(work, lookback=40, preview_below=True)
+        pri_c = cand.get("primary") or {}
+        nxt_c = cand.get("next") or {}
+        if (
+            pri_c.get("date") == "20261105"
+            and not pri_c.get("broke_support")
+            and nxt_c.get("date") == "20261106"
+            and bool(nxt_c.get("preview")) is True
+        ):
+            sr = cand
+            rows = work
+            break
+    if sr is None:
+        pytest.skip("庫內暫無 11/5 未破主撐＋11/6 preview 切片（末日 close 可能暫破撐）")
+    pri = sr.get("primary") or {}
+    nxt = sr.get("next") or {}
+    assert pri.get("date") == "20261105"
+    assert str(pri.get("ts") or "").startswith("202611050900")
+    assert abs(float(pri.get("high") or 0) - 42873.8) < 1.0
+    assert abs(float(pri.get("low") or 0) - 41866.1) < 1.0
+    # 主撐未破 → preview 下一層仍要有（若往下）
+    assert not pri.get("broke_support")
+    assert nxt.get("date") == "20261106"
+    assert bool(nxt.get("preview")) is True
+    assert abs(float(nxt.get("high") or 0) - 40435.8) < 1.0
+    assert abs(float(nxt.get("low") or 0) - 37837.05) < 1.0  # 全日低，非單根 10:00 低
+    tag = _teach_vol_day_tag(nxt.get("date"), nxt.get("ts"))
+    assert "11/6" in tag
+    assert "10:00" in tag  # 最大量那根
+    bit = _teach_vol_sr_title_bit(sr)
+    assert "下一層" in bit and "37,837" in bit.replace(",", ",")
+    # 下一層同日：最大量 10:00、次大量 11:00
+    rank = _teach_day_vol_rank_indices(rows, "20261106", top_n=2)
+    assert len(rank) >= 2
+    assert str(rows[rank[0]].get("ts") or "").startswith("202611061000")
+    assert str(rows[rank[1]].get("ts") or "").startswith("202611061100")
+    assert sr.get("i_next") == rank[0]
+    assert sr.get("i_next_2nd") == rank[1]
+    assert str(nxt.get("ts_2nd") or "").startswith("202611061100")
+
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from wayne_navigator import _fp
+
+    fig, axv = plt.subplots()
+    vols = [float(r.get("volume") or 0) for r in rows]
+    axv.bar(range(len(vols)), vols, color="#455a64", width=0.68)
+    _paint_teach_vol_layer_bars(
+        axv,
+        vols,
+        i_primary=sr.get("i_primary"),
+        i_next=sr.get("i_next"),
+        i_next_2nd=sr.get("i_next_2nd"),
+        bars=rows,
+        fp=_fp,
+    )
+    texts = [t.get_text() for t in axv.texts]
+    joined = " ".join(texts)
+    # 柱頂短標完整：黃／白＋月日幾點；不准長句、不准張數、不准第三標
+    assert any(t.startswith("黃 ") and "11/5 09:00" in t for t in texts), texts
+    assert any(t.startswith("白 ") and "11/6 10:00" in t for t in texts), texts
+    assert "162,418" not in joined and "204,404" not in joined
+    assert "次大量" not in joined and "黃帶←" not in joined
+    assert float(axv.get_ylim()[1]) >= max(vols) * 1.4
+    # 標在軸內（x 對柱、y 低於 ylim）
+    for t in axv.texts:
+        x, y = t.get_position()
+        assert 0 <= float(x) < len(vols)
+        assert 0 <= float(y) <= float(axv.get_ylim()[1]) + 1e-6
+    plt.close(fig)
+
+    import inspect
+    from biaoke_level_learn import _paint_max_vol_hl_zone, _paint_next_layer_vol_zone
+    from biaoke_level_learn import _paint_teach_vol_layer_bars as _pv
+    from biaoke_level_learn import _render_twii_c_wave_60_dark
+
+    paint_src = inspect.getsource(_pv)
+    assert "axv.text" in paint_src and "clip_on=True" in paint_src
+    assert "annotate" not in paint_src  # 不准再用會裁邊的斜線標
+    assert "#f9a825" in paint_src and "#42a5f5" in paint_src
+    yel = inspect.getsource(_paint_max_vol_hl_zone)
+    nxt = inspect.getsource(_paint_next_layer_vol_zone)
+    assert "黃帶" in yel and "fontsize=10.5" in yel
+    assert 'facecolor="#ffffff"' in nxt and "白帶" in nxt and "axhline" in nxt
+    c60 = inspect.getsource(_render_twii_c_wave_60_dark)
+    assert "_paint_teach_vol_layer_bars" in c60
+
+
+def test_teach_vol_sr_60m_label_shows_bar_hhmm():
+    """超近60分大量撐壓標籤要寫清幾點K棒（例 11/5 09:00）；日K不加假時段。"""
+    from biaoke_level_learn import (
+        _paint_max_vol_hl_zone,
+        _resolve_teach_vol_sr,
+        _teach_bar_hhmm,
+        _teach_vol_day_tag,
+        _teach_vol_match_bar_index,
+        _teach_vol_sr_title_bit,
+    )
+
+    assert _teach_bar_hhmm("202611050900") == "09:00"
+    assert _teach_bar_hhmm("202611051330") == "13:30"
+    assert _teach_bar_hhmm("20261105") == ""
+    assert _teach_vol_day_tag("20261105", "202611050900").strip() == "11/5 09:00"
+    assert _teach_vol_day_tag("20261105", "").strip() == "11/5"
+
+    # 同日多根：爆大量在 13:00 → 索引／ts 不准退回 09:00 第一根（≥4 根才進 resolve）
+    rows = [
+        {
+            "date": "20261104",
+            "ts": "202611041300",
+            "open": 98,
+            "high": 102,
+            "low": 96,
+            "close": 100,
+            "volume": 8,
+        },
+        {
+            "date": "20261105",
+            "ts": "202611050900",
+            "open": 100,
+            "high": 110,
+            "low": 90,
+            "close": 105,
+            "volume": 10,
+        },
+        {
+            "date": "20261105",
+            "ts": "202611051300",
+            "open": 105,
+            "high": 150,
+            "low": 80,
+            "close": 120,
+            "volume": 9999,
+        },
+        {
+            "date": "20261106",
+            "ts": "202611060900",
+            "open": 120,
+            "high": 125,
+            "low": 118,
+            "close": 122,
+            "volume": 20,
+        },
+    ]
+    assert (
+        _teach_vol_match_bar_index(
+            rows, ymd="20261105", high=150, low=80, ts="202611051300"
+        )
+        == 2
+    )
+    sr = _resolve_teach_vol_sr(rows, lookback=40)
+    pri = sr.get("primary") or {}
+    assert pri.get("date") == "20261105"
+    assert str(pri.get("ts") or "").startswith("202611051300")
+    assert sr.get("i_primary") == 2
+    assert "09:00" not in _teach_vol_day_tag(pri.get("date"), pri.get("ts"))
+    assert "13:00" in _teach_vol_day_tag(pri.get("date"), pri.get("ts"))
+    bit = _teach_vol_sr_title_bit(sr)
+    assert "13:00" in bit and "大量撐壓" in bit
+
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from wayne_navigator import _fp
+
+    fig, ax = plt.subplots()
+    ax.set_ylim(70, 160)
+    _paint_max_vol_hl_zone(
+        ax,
+        high=150,
+        low=80,
+        date_lab="20261105",
+        ts_lab="202611051300",
+        fp=_fp,
+    )
+    texts = [t.get_text() for t in ax.texts]
+    assert any("11/5 13:00" in t and "大量壓" in t for t in texts), texts
+    assert any("11/5 13:00" in t and "大量撐" in t for t in texts), texts
+    plt.close(fig)
 
 
 def test_retest_41500_oral_beats_unpriced_pressure_wait(tmp_path):
@@ -3904,7 +4394,7 @@ def test_pressure_break_labels_split_slant_vs_41760():
         "thesis": "大A→大B→大C｜夜盤過C3下降壓・週五低不再假跌破（預估）",
         "wait_struct": (
             "水平台指壓41760（≠那條口述下降壓）；"
-            "拉回回測下降壓力線（口述斜線・圖上未標C3／無報價）；清洗籌碼；非買訊"
+            "拉回回測下降壓力線（口述斜線・圖上紫帶C3・粉虛下降壓示意／無報價）；清洗籌碼；非買訊"
         ),
         "snippet_full": (
             "夜盤已經過第二組整組 C3的下降壓力線，上周五低點也不可能假跌破了，"

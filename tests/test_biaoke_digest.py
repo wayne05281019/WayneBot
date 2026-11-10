@@ -1266,7 +1266,7 @@ def test_format_teach_brief_pressure_break_beats_fake_retest(monkeypatch):
             ),
             "wait_struct": (
                 "水平台指壓41760（≠那條口述下降壓）；"
-                "拉回回測下降壓力線（口述斜線・圖上未標C3／無報價）；"
+                "拉回回測下降壓力線（口述斜線・圖上紫帶C3・粉虛下降壓示意／無報價）；"
                 "清洗籌碼；資金可5~6成；非買訊"
             ),
             "chart_as_of": "20261110",
@@ -1437,23 +1437,22 @@ def test_focus_oral_reply_context_and_no_expired_monday():
 
 
 def test_biaoke_teach_charts_only_far_no_us_outer():
-    """空白飆大只送遠窗一張（費半上／加權下）；近／超近改波浪位階；雙軌時補口述。"""
+    """空白飆大只送遠窗一張（費半上／加權下）；近／超近改波浪位階；口述對照已停用。"""
     import inspect
 
     src = inspect.getsource(WayneTelegramBot._send_biaoke_teach_charts)
     assert '("us_path"' not in src
     assert "panels=\"far\"" in src or "panels='far'" in src
     assert "far_path" in src
-    assert "oral_path" in src
-    assert "口述雙軌對照" in src
+    assert "oral_cap" not in src and "oral-dual-path-latest" not in src
     assert "micro_path" not in src or "近／超近請按" in src
     assert "near_path" not in src or "波浪位階" in src
     assert "上費半" in src and "下加權" in src
     wave = inspect.getsource(WayneTelegramBot._send_market_wave_charts)
     assert "外圍對照另張" not in wave
     assert "micro_path" in wave and "far_path" in wave and "near_path" in wave
-    assert "oral_path" in wave
-    assert "口述雙軌對照" in wave
+    assert "oral_cap" not in wave and "_send_market_teach_one" in wave
+    assert 'label="口述對照"' not in wave
 
 
 def test_sox_9865_official_not_twii(tmp_path):
