@@ -1,0 +1,80 @@
+{
+  "version": "stock_spirit_soft_leader_fib618_vol_expand_lab_v1",
+  "as_of": "2026-11-10T06:16:13+08:00",
+  "tz": "Asia/Taipei",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "promote_lookup": false,
+  "status": "shared_beats_keep_but_phone_blocked",
+  "gate_passed": false,
+  "keep": "v106",
+  "keep_detail": "compare vs sealed early ei_n2_lu5／fast lu5_vol_next；sell hi20_or_desync",
+  "entry": "SPIRIT_pull_fib618",
+  "entry_note_zh": "present-data 替代核；≠sealed keep；≠leave_zero／黃金買訊",
+  "sell": "hi20_or_desync",
+  "variant_tested_zh": "fib618 × soft_leader×vol_expand×reclaim／bias／近60低",
+  "n_stocks": 204,
+  "entry_hits": 7414,
+  "soft_leader_n": 31,
+  "hard_leader_n": 11,
+  "smoke": false,
+  "best_candidate": {
+    "leg": "spirit_soft_leader_fib618_vol_expand_confirm",
+    "entry": "SPIRIT_pull_fib618",
+    "variant": "soft_leader_and_vol_expand",
+    "kind": "vs_plain",
+    "oos_wr": 0.9545454545454546,
+    "oos_d": 20,
+    "plain_oos_wr": 0.7332361516034985,
+    "plain_oos_d": 223,
+    "delta_oos_wr": 0.22130930294195605,
+    "beats_v106_early_keep_oos": true,
+    "beats_v106_fast_keep_oos": true
+  },
+  "shared_vs_keep": [
+    "soft_leader_and_vol_expand"
+  ],
+  "beats_v106_early_keep": [
+    "soft_leader_and_vol_expand"
+  ],
+  "beats_v106_fast_keep": [
+    "soft_leader_and_vol_expand"
+  ],
+  "oos_vs_v106_keep": {
+    "plain_oos": {
+      "n_trades": 686,
+      "n_unique_entry_days": 223,
+      "win_rate": 0.7332361516034985,
+      "expectancy": 0.028919680861225854,
+      "avg_hold": 15.51457725947522,
+      "exit_reason_counts": {
+        "first_hi20": 636,
+        "max_hold_60": 50
+      },
+      "gate_n20": true
+    },
+    "v106_ref": {
+      "early": {
+        "wr": 0.8269230769230769,
+        "d": 51,
+        "bars": 16.54901960784314
+      },
+      "fast": {
+        "wr": 0.8545454545454545,
+        "d": 54,
+        "bars": 15.296296296296296
+      }
+    }
+  },
+  "gate_one_liner": "stock_spirit_soft_leader_fib618_vol_expand n=204 hits=7414 smoke=0; best={'leg': 'spirit_soft_leader_fib618_vol_expand_confirm', 'entry': 'SPIRIT_pull_fib618', 'variant': 'soft_leader_and_vol_expand', 'kind': 'vs_plain', 'oos_wr': 0.9545454545454546, 'oos_d': 20, 'plain_oos_wr': 0.7332361516034985, 'plain_oos_d': 223, 'delta_oos_wr': 0.22130930294195605, 'beats_v106_early_keep_oos': True, 'beats_v106_fast_keep_oos': True}; shared=['soft_leader_and_vol_expand']; promote=False",
+  "finding_zh": "fib618×soft_leader×vol_expand：最佳={'leg': 'spirit_soft_leader_fib618_vol_expand_confirm', 'entry': 'SPIRIT_pull_fib618', 'variant': 'soft_leader_and_vol_expand', 'kind': 'vs_plain', 'oos_wr': 0.9545454545454546, 'oos_d': 20, 'plain_oos_wr': 0.7332361516034985, 'plain_oos_d': 223, 'delta_oos_wr': 0.22130930294195605, 'beats_v106_early_keep_oos': True, 'beats_v106_fast_keep_oos': True}；共享變體 soft_leader_and_vol_expand OOS 同時贏 early+fast sealed keep → 理論過閘；本件仍封 keep=v106／replace=false／phone blocked。",
+  "parent_keep": "phone_spirit_mix_dual_track_v106_decision.json",
+  "prev_failed": [
+    "stock_spirit_soft_leader_fib618_reclaim_lab_decision.json",
+    "stock_spirit_soft_leader_pull_fib_ma60_hold_lab_decision.json",
+    "stock_spirit_soft_leader_pull_fib_ma5_10_hold_lab_decision.json"
+  ],
+  "next": "理論過閘但 phone blocked／replace=false；下一刀 soft_leader×fib618×vol_expand×sell_vol_fade 再生；備選 mid_liq×fib618×vol_expand×reclaim；不准改話筒",
+  "elapsed_s": 65.94,
+  "db_path": "data/wayne_market.db"
+}
