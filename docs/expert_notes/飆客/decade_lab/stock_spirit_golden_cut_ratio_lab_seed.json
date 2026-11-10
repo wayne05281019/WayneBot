@@ -1,0 +1,26 @@
+{
+  "version": "stock_spirit_golden_cut_ratio_lab_v1",
+  "status": "plain_delta_only_keep_v106",
+  "gate_passed": false,
+  "as_of": "2026-11-10T21:06:35+08:00",
+  "best_candidate": {
+    "leg": "spirit_golden_cut_ratio_confirm",
+    "entry": "WAVE_pullbase_x_BK_not_avoid",
+    "variant": "near_0786_vol_expand",
+    "kind": "vs_plain",
+    "oos_wr": 0.7122002085505735,
+    "oos_d": 654,
+    "plain_oos_wr": 0.7021002655508167,
+    "plain_oos_d": 2332,
+    "delta_oos_wr": 0.010099942999756806,
+    "beats_fib0618_oos": true,
+    "beats_v106_early_keep_oos": false,
+    "beats_v106_fast_keep_oos": false
+  },
+  "shared_vs_keep": [],
+  "promote_lookup": false,
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "next": "未過閘；下一刀 soft_leader×最佳切割率 或 延伸目標賣端；不准另發明切割率、不准改話筒",
+  "note_zh": "定義黃金切割率 0.382／0.5／0.618／0.786 近位對質；不准另發明切割率"
+}
