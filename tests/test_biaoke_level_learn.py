@@ -3943,7 +3943,10 @@ def test_paint_c3_group12_span_labels_wired():
     assert "20261006" in src_fn
     assert "20261018" in src_fn
     assert "20261028" in src_fn
-    assert "y_band" in src_fn  # 標在底色下半，不准只貼天空
+    assert "y_band" in src_fn  # 標貼近底緣，不准只貼天空
+    assert "豎虛線刪" in src_fn or "不准再畫豎虛線" in src_fn or "只留四色底" in src_fn
+    assert "axvline" not in src_fn  # 日盤 C1–C4 也不准豎虛線
+    assert "#f5f5f5" in src_fn  # C3 下降壓示意改細白
     assert "【第一組】" not in src_fn
     assert "示意：第二組C3下降壓" not in src_fn
 

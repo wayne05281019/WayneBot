@@ -5130,20 +5130,10 @@ def _paint_c3_group12_span_labels(
     try:
         y0, y1 = ax.get_ylim()
         span_y = max(float(y1) - float(y0), 1.0)
-        # 標在底色接近下半部（使用者指定）；略高於量欄
-        y_band = float(y0) + span_y * 0.22
+        # 標貼近底緣（對齊超近窗），不准壓折線／K
+        y_band = float(y0) + span_y * 0.08
     except Exception:
         return
-
-    def _vbound(xi: float, color: str) -> None:
-        ax.axvline(
-            float(xi),
-            color=color,
-            lw=2.2,
-            ls=(0, (4, 2)),
-            alpha=0.95,
-            zorder=5.5,
-        )
 
     def _span_band(
         i_a: int,
@@ -5156,33 +5146,33 @@ def _paint_c3_group12_span_labels(
     ) -> None:
         if int(i_b) < int(i_a):
             return
+        # 跟超近窗同規：只留四色底＋段名；豎虛線刪（多餘）
+        _ = edge
         x_a, x_b = float(i_a) - 0.45, float(i_b) + 0.45
         ax.axvspan(
             x_a,
             x_b,
             facecolor=face,
-            alpha=0.22,
+            alpha=0.08,
             zorder=1.05,
             linewidth=0,
         )
-        _vbound(x_a, edge)
-        _vbound(x_b, edge)
         ax.text(
             (float(i_a) + float(i_b)) * 0.5,
             y_band,
             label,
             ha="center",
             va="center",
-            fontproperties=fp(11.5, "bold"),
+            fontproperties=fp(10.5, "bold"),
             color=fg,
             zorder=42,
             linespacing=1.1,
             bbox={
-                "boxstyle": "round,pad=0.42",
+                "boxstyle": "round,pad=0.32",
                 "facecolor": face,
                 "edgecolor": "#ffffff",
-                "linewidth": 2.2,
-                "alpha": 0.96,
+                "linewidth": 1.2,
+                "alpha": 0.78,
             },
             clip_on=False,
         )
@@ -5199,7 +5189,11 @@ def _paint_c3_group12_span_labels(
                 fg="#00363a",
             )
         # C2：中繼整理 →47060
-        i_c2s = (int(i_c1e) + 1) if i_c1e is not None else _idx("20261019", "20261020")
+        i_c2s = (
+            (int(i_c1e) + 1)
+            if i_c1e is not None
+            else _idx_first("20261019", "20261020")
+        )
         if i_c2s is not None and i_c2e is not None and int(i_c2e) >= int(i_c2s):
             _span_band(
                 int(i_c2s),
@@ -5210,7 +5204,11 @@ def _paint_c3_group12_span_labels(
                 fg="#3e2723",
             )
         # C3：47060 起跌 → 週五低 37837
-        i_c3s = (int(i_c2e) + 1) if i_c2e is not None else _idx("20261029", "20261030")
+        i_c3s = (
+            (int(i_c2e) + 1)
+            if i_c2e is not None
+            else _idx_first("20261029", "20261030")
+        )
         if i_c3s is not None and i_fri is not None and int(i_fri) >= int(i_c3s):
             i_fri_i = int(i_fri)
             i_c3s_i = int(i_c3s)
@@ -5279,11 +5277,20 @@ def _paint_c3_group12_span_labels(
                                 slope = (y_b - y_a) / (x2 - x1)
                                 x_end = float(min(len(bars) - 1, max(i_fri_i + 4, len(bars) - 1)))
                                 y_end = y_a + slope * (x_end - x1)
+                                # 對齊超近窗：C3 區示意線改細白（不准粗粉虛）
                                 ax.plot(
                                     [x1, x_end],
                                     [y_a, y_end],
-                                    color="#ff80ab",
-                                    lw=2.4,
+                                    color="#0b0f14",
+                                    lw=1.55,
+                                    zorder=6.45,
+                                    solid_capstyle="round",
+                                )
+                                ax.plot(
+                                    [x1, x_end],
+                                    [y_a, y_end],
+                                    color="#f5f5f5",
+                                    lw=0.9,
                                     ls=(0, (5, 2)),
                                     zorder=6.5,
                                     solid_capstyle="round",
@@ -5294,16 +5301,16 @@ def _paint_c3_group12_span_labels(
                                     "示意：C3下降壓\n（日盤已過・無報價）",
                                     ha="left",
                                     va="bottom",
-                                    fontproperties=fp(8.0, "bold"),
-                                    color="#fce4ec",
+                                    fontproperties=fp(7.6, "bold"),
+                                    color="#111111",
                                     zorder=35,
                                     linespacing=1.1,
                                     bbox={
-                                        "boxstyle": "round,pad=0.28",
-                                        "facecolor": "#880e4f",
-                                        "edgecolor": "#ff80ab",
-                                        "linewidth": 1.3,
-                                        "alpha": 0.94,
+                                        "boxstyle": "round,pad=0.22",
+                                        "facecolor": "#eceff1",
+                                        "edgecolor": "#90a4ae",
+                                        "linewidth": 0.9,
+                                        "alpha": 0.92,
                                     },
                                     clip_on=False,
                                 )
@@ -14107,7 +14114,20 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     _set_upright_ylabel(axv, "加權量", fp=_fp, color=_LIVE_MUTED, fontsize=9)
     # 加權 10/15 黃豎線只畫加權價＋量；不准延伸到費半／電子盤（各自爆大量日不同）
     _paint_vol_sr_day_guides(axv, i_primary=_tw_i_pri, i_next=_tw_i_nxt)
-    axv.set_ylim(0, (max(vols) if any(vols) else 1) * 1.45)
+    # 跟超近窗同規：量欄黃／白兩柱短標（月日）
+    _paint_teach_vol_layer_bars(
+        axv,
+        vols,
+        i_primary=_tw_i_pri,
+        i_next=_tw_i_nxt,
+        i_next_2nd=(far_vol_sr or {}).get("i_next_2nd")
+        if isinstance(far_vol_sr, dict)
+        else None,
+        bars=bars,
+        fp=_fp,
+    )
+    if axv.get_ylim()[1] <= (max(vols) if any(vols) else 1) * 1.01:
+        axv.set_ylim(0, (max(vols) if any(vols) else 1) * 1.45)
 
     want = {
         _ymd(bars[0].get("date")),
@@ -14514,7 +14534,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         va="top",
     )
     _pb_bit = (
-        "｜他說C3下降壓＝口述斜線（圖上紫帶C3・粉虛下降壓示意／無報價）≠水平41760｜紫線＝大C路徑"
+        "｜他說C3下降壓＝口述斜線（圖上紫帶C3・細白下降壓示意／無報價）｜紫線＝大C路徑"
         if _pack_pressure_break_on(pack)
         else ""
     )
@@ -15306,6 +15326,9 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     # 區帶兩標改到九波縮圖定位後再畫（與遠窗同一套：齊頭＋不被縮圖裁字）
     _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_up_taiwan)
     i_vmax = zone.get("i_vmax")
+    _near_i_nxt = None
+    if isinstance(near_vol_sr, dict):
+        _near_i_nxt = near_vol_sr.get("i_next")
     if i_vmax is not None:
         _paint_special_candle(
             ax,
@@ -15318,7 +15341,31 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
             date_lab=_ymd(bars[i_vmax].get("date")),
             fp=_fp,
         )
-        _paint_max_vol_day_guide((ax, axv), int(i_vmax))
+    # 跟超近／遠窗同規：黃＝本層、藍＝下一層豎導＋量柱短標
+    _paint_vol_sr_day_guides(axv, i_primary=i_vmax, i_next=_near_i_nxt)
+    _paint_vol_sr_mark_on_axis(
+        ax,
+        opens=opens,
+        highs=highs,
+        lows=lows,
+        closes=closes,
+        i_primary=i_vmax,
+        i_next=_near_i_nxt,
+        fp=_fp,
+        date_primary=_ymd(((near_vol_sr or {}).get("primary") or {}).get("date")),
+        date_next=_ymd(((near_vol_sr or {}).get("next") or {}).get("date")),
+    )
+    _paint_teach_vol_layer_bars(
+        axv,
+        vols,
+        i_primary=i_vmax,
+        i_next=_near_i_nxt,
+        i_next_2nd=(near_vol_sr or {}).get("i_next_2nd")
+        if isinstance(near_vol_sr, dict)
+        else None,
+        bars=bars,
+        fp=_fp,
+    )
     # 大結構色帶／折線＝遠窗／縮圖同一套（⑤→A→B→C）；C內震盪不准再叫近A／近B
     ax.axvspan(i5s - 0.35, i5e + 0.35, facecolor="#40c4ff", alpha=0.05, zorder=0.2)
     ax.axvspan(i5e - 0.2, i_alow + 0.2, facecolor="#ff8a80", alpha=0.05, zorder=0.2)
