@@ -1136,8 +1136,17 @@ def test_day_change_vs_prev_trading_day():
     """漲跌＝對前一個交易日收；顯示序價→漲幅％→點數。"""
     from biaoke_level_learn import _day_change_vs_prev, _prev_bar_close, _teach_stamp_line
 
-    assert _prev_bar_close([{"close": 100}]) is None
-    assert _prev_bar_close([{"close": 100}, {"close": 110}]) == 100.0
+    assert _prev_bar_close([{"date": "20261106", "close": 100}]) is None
+    # 前收只認「前一個開市日」那根；有日期才準
+    assert (
+        _prev_bar_close(
+            [
+                {"date": "20261105", "close": 100},
+                {"date": "20261106", "close": 110},
+            ]
+        )
+        == 100.0
+    )
     up = _day_change_vs_prev(110.0, 100.0)
     assert up["pts"] == 10.0
     assert abs(float(up["pct"]) - 10.0) < 1e-9
@@ -1191,12 +1200,12 @@ def test_prev_bar_close_db_fills_missing_open_day(tmp_path):
     )
     conn.commit()
     conn.close()
-    # 圖軸故意漏 11/06 → 倒數第二會變成 11/05（舊 bug＝+0.21%）
+    # 圖軸故意漏 11/06：不准改用 11/05 當前收（舊 bug＝假漲跌）
     bars = [
         {"date": "20261105", "close": 41574.72},
         {"date": "20261109", "close": 41661.7},
     ]
-    assert abs(float(_prev_bar_close(bars) or 0) - 41574.72) < 1.0
+    assert _prev_bar_close(bars) is None
     prev = _prev_bar_close(bars, db_path=db)
     assert abs(float(prev or 0) - 39701.64) < 1.0
     chg = _day_change_vs_prev(41661.7, prev)
@@ -1206,6 +1215,48 @@ def test_prev_bar_close_db_fills_missing_open_day(tmp_path):
     assert "4.94%" in line or "＋4.94" in line or "+4.94" in line
     assert "0.21%" not in line
     assert "1,960" in line or "1960" in line
+
+
+def test_prev_bar_close_refuses_stale_bar_when_expect_day_missing(tmp_path):
+    """11/10 戳：庫缺 11/09（甚至 11/06）時不准退回 11/05 → 假 +2.74%／+1,137。"""
+    import sqlite3
+
+    from biaoke_level_learn import _prev_bar_close, _teach_stamp_line
+
+    db = str(tmp_path / "twii_prev_hole.db")
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE index_daily (date TEXT, symbol TEXT, open REAL, high REAL, "
+        "low REAL, close REAL, volume REAL)"
+    )
+    conn.execute(
+        "INSERT INTO index_daily(date,symbol,open,high,low,close,volume) "
+        "VALUES (?,?,?,?,?,?,?)",
+        ("20261105", "TWII", 42666, 42874, 41514, 41574.72, 1),
+    )
+    conn.commit()
+    conn.close()
+    bars = [
+        {"date": "20261105", "close": 41574.72},
+        {"date": "20261110", "close": 42711.92},
+    ]
+    assert _prev_bar_close(bars, db_path=db) is None
+    assert _prev_bar_close(bars, db_path="") is None
+    line = _teach_stamp_line(bars, close=42711.92, db_path=db, label_prefix="加權")
+    assert "2.74%" not in line
+    assert "1,137" not in line
+    assert "1137" not in line
+    assert "42,712" in line
+
+
+def test_sanitize_bar_ohlc_fills_zero_high_low():
+    from biaoke_level_learn import _sanitize_bar_ohlc
+
+    out = _sanitize_bar_ohlc(
+        {"open": 42130.0, "high": 0, "low": 0, "close": 42711.92, "volume": 1}
+    )
+    assert float(out["high"]) >= float(out["close"])
+    assert 0 < float(out["low"]) <= float(out["open"])
 
 
 def test_apply_live_tx_replaces_full_ohlc_not_stale_wick():
