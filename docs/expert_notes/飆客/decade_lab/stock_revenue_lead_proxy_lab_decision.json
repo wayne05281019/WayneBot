@@ -1,0 +1,56 @@
+{
+  "version": "stock_revenue_lead_proxy_lab_v1",
+  "as_of": "2026-11-10T18:26:55+08:00",
+  "tz": "Asia/Taipei",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "promote_lookup": false,
+  "status": "no_beat_keep_v106",
+  "gate_passed": false,
+  "keep": "v106",
+  "keep_detail": "compare vs sealed early ei_n2_lu5／fast lu5_vol_next；sell hi20_or_desync",
+  "entry": "SPIRIT_pull_fib618",
+  "entry_note_zh": "present-data 替代核；≠sealed keep；≠leave_zero／黃金買訊",
+  "sell": "hi20_or_desync",
+  "variant_tested_zh": "已公告月營收 YoY 加速＋公告前1～10日窗＋ma20／vol_expand；不准未公告數字",
+  "n_stocks": 197,
+  "rev_ok_stocks": 197,
+  "entry_hits": 29826,
+  "smoke": false,
+  "best_candidate": null,
+  "shared_vs_keep": [],
+  "beats_v106_early_keep": [],
+  "beats_v106_fast_keep": [],
+  "oos_vs_v106_keep": {
+    "plain_oos": {
+      "n_trades": 3055,
+      "n_unique_entry_days": 1588,
+      "win_rate": 0.7060556464811784,
+      "expectancy": 0.01767994813776623,
+      "avg_hold": 17.127332242225858,
+      "exit_reason_counts": {
+        "first_hi20": 2920,
+        "max_hold_60": 135
+      },
+      "gate_n20": true
+    },
+    "v106_ref": {
+      "early": {
+        "wr": 0.8269230769230769,
+        "d": 51,
+        "bars": 16.54901960784314
+      },
+      "fast": {
+        "wr": 0.8545454545454545,
+        "d": 54,
+        "bars": 15.296296296296296
+      }
+    }
+  },
+  "gate_one_liner": "stock_revenue_lead_proxy n=197 hits=29826 smoke=0; best=None; shared=[]; promote=False",
+  "finding_zh": "營收領先代理（已公告 YoY 加速／公告前窗／價量）：最佳=None；未同時贏 sealed v106 keep → keep v106。不准改話筒。",
+  "parent_keep": "phone_spirit_mix_dual_track_v106_decision.json",
+  "next": "未過閘；下一刀加長營收史／季 EPS 轉佳／同業領先；不准發明未公告營收、不准改話筒",
+  "elapsed_s": 224.3,
+  "db_path": "data/wayne_market.db"
+}

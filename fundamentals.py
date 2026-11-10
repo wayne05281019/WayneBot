@@ -866,6 +866,9 @@ _FILING_SYNC_STATE: Dict[str, Any] = {
     "monthly_ym": "",
     "monthly_at": 0.0,
     "income_at": 0.0,
+    # 薄檔期背景補專用：佔槽防連續 ensure 開兩條 thread（≠ monthly TTL 本體）
+    "thin_bg_ym": "",
+    "thin_bg_at": 0.0,
 }
 _FILING_MONTHLY_TTL_SEC = 20 * 60
 _FILING_INCOME_TTL_SEC = 45 * 60
@@ -1171,26 +1174,46 @@ def ensure_stock_fundamentals(
             "yyyymm": filing,
             "reason": f"ensure {sid} thin defer; latest={latest_m.get('yyyymm')}",
         }
-        out["deferred_thin_refresh"] = True
-        try:
-            import threading
+        # 背景補：專用佔槽防連續 ensure 雙開；不准提早寫 monthly_at（會讓 refresh 誤 TTL skip）
+        spawn_thin_bg = False
+        with _FILING_SYNC_LOCK:
+            same_bg = _FILING_SYNC_STATE.get("thin_bg_ym") == filing
+            age_bg = time.monotonic() - float(
+                _FILING_SYNC_STATE.get("thin_bg_at") or 0
+            )
+            same_m = _FILING_SYNC_STATE.get("monthly_ym") == filing
+            age_m = time.monotonic() - float(
+                _FILING_SYNC_STATE.get("monthly_at") or 0
+            )
+            if (same_m and age_m < _FILING_MONTHLY_TTL_SEC) or (
+                same_bg and age_bg < _FILING_MONTHLY_TTL_SEC
+            ):
+                out["monthly"]["skipped"] = "thin_has_recent_ttl"
+                out["deferred_thin_refresh"] = False
+            else:
+                _FILING_SYNC_STATE["thin_bg_ym"] = str(filing)
+                _FILING_SYNC_STATE["thin_bg_at"] = time.monotonic()
+                spawn_thin_bg = True
+                out["deferred_thin_refresh"] = True
+        if spawn_thin_bg:
+            try:
 
-            def _bg_thin() -> None:
-                try:
-                    refresh_announced_monthly(
-                        path,
-                        filing,
-                        force=False,
-                        reason=f"bg thin {sid} filing={filing}",
-                    )
-                except Exception:
-                    logger.debug("背景補薄檔期月營收略過", exc_info=True)
+                def _bg_thin() -> None:
+                    try:
+                        refresh_announced_monthly(
+                            path,
+                            filing,
+                            force=False,
+                            reason=f"bg thin {sid} filing={filing}",
+                        )
+                    except Exception:
+                        logger.debug("背景補薄檔期月營收略過", exc_info=True)
 
-            threading.Thread(
-                target=_bg_thin, name=f"fund-thin-{sid}", daemon=True
-            ).start()
-        except Exception:
-            logger.debug("背景薄檔期 thread 略過", exc_info=True)
+                threading.Thread(
+                    target=_bg_thin, name=f"fund-thin-{sid}", daemon=True
+                ).start()
+            except Exception:
+                logger.debug("背景薄檔期 thread 略過", exc_info=True)
     elif need_month:
         out["monthly"] = refresh_announced_monthly(
             path,
@@ -1226,7 +1249,6 @@ def ensure_stock_fundamentals(
         }
         out["deferred_income_refresh"] = True
         try:
-            import threading
 
             def _bg_income() -> None:
                 try:
