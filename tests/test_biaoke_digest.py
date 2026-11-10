@@ -1264,7 +1264,10 @@ def test_format_teach_brief_pressure_break_beats_fake_retest(monkeypatch):
                 "夜盤已經過第二組整組 C3的下降壓力線，上周五低點也不可能假跌破了，"
                 "但今天下半場到明後天一定會有拉回回測下降壓力線，順便清洗籌碼。"
             ),
-            "wait_struct": "拉回回測下降壓力線；清洗籌碼；資金可5~6成；非買訊",
+            "wait_struct": (
+                "水平台指壓41760（≠下降壓線）；"
+                "拉回回測下降壓力線（斜線・無報價）；清洗籌碼；資金可5~6成；非買訊"
+            ),
             "chart_as_of": "20261110",
             "thesis_as_of": "20261109",
             "pred_levels": {
@@ -1275,10 +1278,16 @@ def test_format_teach_brief_pressure_break_beats_fake_retest(monkeypatch):
                         "tag": "不再假跌破",
                         "label": "週五低／37,837（不再假跌破）",
                     },
+                    {
+                        "level": 41760.0,
+                        "role": "台指壓力",
+                        "tag": "未到",
+                        "label": "台指壓力／41,760｜≠下降壓線",
+                    },
                 ],
                 "sox": [],
             },
-            "pred_note": "週五低／37,837（不再假跌破）｜再測週五低／37,837",
+            "pred_note": "週五低／37,837（不再假跌破）｜台指壓力／41,760｜≠下降壓線",
         }
 
     monkeypatch.setattr("biaoke_level_learn._build_live_pack", _fake)
@@ -1289,6 +1298,8 @@ def test_format_teach_brief_pressure_break_beats_fake_retest(monkeypatch):
     assert "B-b" not in out
     assert "35579" not in out
     assert "非買訊" in out
+    assert "≠下降壓線" in out or "斜線" in out
+    assert "41760" in out
     one = format_wave_level_one_liner("x.db")
     assert "下降壓" in one or "不再假跌破" in one or "已過C3" in one
 

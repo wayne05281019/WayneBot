@@ -3757,3 +3757,58 @@ def test_tip_anchors_empty_on_stop_confirm_no_old_45546():
     )
     assert "台指壓力" in lab
     assert "飆預測" not in lab
+
+
+def test_pressure_break_labels_split_slant_vs_41760():
+    """下降壓改口當令：口述／右標寫死『斜線≠41760』，不准兩件混讀。"""
+    from biaoke_level_learn import (
+        _active_oral_now_line,
+        _format_tw_pred_note,
+        _pack_pressure_break_on,
+        _thesis_pred_levels,
+        _wave_now_ladder,
+    )
+
+    pack = {
+        "thesis": "大A→大B→大C｜夜盤過C3下降壓・週五低不再假跌破（預估）",
+        "wait_struct": (
+            "水平台指壓41760（≠下降壓線）；"
+            "拉回回測下降壓力線（斜線・無報價）；清洗籌碼；非買訊"
+        ),
+        "snippet_full": (
+            "夜盤已經過第二組整組 C3的下降壓力線，上周五低點也不可能假跌破了，"
+            "但今天下半場到明後天一定會有拉回回測下降壓力線；台指壓力41760"
+        ),
+        "snippet": "過C3下降壓；不再假跌破；回測下降壓力線；41760",
+        "pred_levels": {
+            "tw": [
+                {
+                    "level": 41760.0,
+                    "role": "台指壓力",
+                    "tag": "未到",
+                    "label": "台指壓力／41,760｜≠下降壓線",
+                }
+            ]
+        },
+    }
+    assert _pack_pressure_break_on(pack)
+    oral = _active_oral_now_line(pack)
+    assert "斜線" in oral or "無報價" in oral
+    assert "≠下降壓線" in oral
+    assert "41760" in oral
+    lab = _format_tw_pred_note(
+        41760.0, pack=pack, lows=[37837.0], highs=[41600.0]
+    )
+    assert "台指壓力" in lab
+    assert "≠下降壓線" in lab
+    ladder = _wave_now_ladder(pack)
+    assert "≠下降壓線" in str(ladder.get("now_line") or "") or "斜線" in str(
+        ladder.get("now_line") or ""
+    )
+    preds = _thesis_pred_levels(
+        "夜盤過C3下降壓；不再假跌破；回測下降壓力線；台指壓力41760"
+    )
+    tw = preds.get("tw") or []
+    hit = [r for r in tw if abs(float(r.get("level") or 0) - 41760.0) < 0.6]
+    assert hit
+    assert "≠下降壓線" in str(hit[0].get("label") or "")

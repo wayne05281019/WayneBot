@@ -3013,14 +3013,15 @@ def _latest_level_thesis(
     # 夜盤第二組落底（C3-5完成）優先於舊 C3-3 題旨；後文改口壓前文
     if has_pressure_break:
         # 他最新改口：夜盤過 C3 下降壓；上週五低不再假跌破；拉回回測下降壓（非買訊）
+        # 斜線回測 ≠ 水平台指壓41760：兩件寫清，不准混成一點
         thesis = "大A→大B→大C｜夜盤過C3下降壓・週五低不再假跌破（預估）"
         wait_bits = [
-            "拉回回測下降壓力線",
+            "拉回回測下降壓力線（斜線・無報價）",
             "清洗籌碼",
             "資金可5~6成",
         ]
         if has_41760:
-            wait_bits.insert(0, "台指壓41760")
+            wait_bits.insert(0, "水平台指壓41760（≠下降壓線）")
         wait_bits.append("非買訊")
         wait = "；".join(wait_bits)
     elif has_stop_confirm:
@@ -4766,6 +4767,82 @@ def _foot2_oral_now_line() -> str:
     )
 
 
+def _pack_pressure_break_on(pack: Optional[Dict[str, Any]] = None) -> bool:
+    """題旨／等待句是否為下降壓改口當令（線≠41760）。"""
+    thesis = str((pack or {}).get("thesis") or "")
+    wait = str((pack or {}).get("wait_struct") or "")
+    blob = " ".join(
+        str(x or "")
+        for x in (
+            thesis,
+            (pack or {}).get("snippet_full"),
+            (pack or {}).get("snippet"),
+            wait,
+        )
+    )
+    return bool(
+        _text_has_c3_pressure_break(blob)
+        or "過C3下降壓" in thesis
+        or "不再假跌破" in thesis
+        or "回測下降壓力線" in wait
+        or "已過C3下降壓" in blob
+    )
+
+
+def _paint_c3_vs_41760_legend(ax, *, fp, pack: Optional[Dict[str, Any]] = None) -> None:
+    """三窗加權價欄：下降壓改口當令時白底寫死『斜線≠41760』，不准兩件混讀。"""
+    if ax is None or fp is None or not _pack_pressure_break_on(pack):
+        return
+    try:
+        ax.text(
+            0.015,
+            0.14,
+            "①C3下降壓＝斜線回測（無報價）\n"
+            "②台指壓41,760＝水平價（≠①）",
+            transform=ax.transAxes,
+            ha="left",
+            va="bottom",
+            fontproperties=fp(8.2, "bold"),
+            color="#111111",
+            zorder=36,
+            linespacing=1.25,
+            bbox={
+                "boxstyle": "round,pad=0.38",
+                "facecolor": "#ffffff",
+                "edgecolor": "#7e57c2",
+                "linewidth": 1.85,
+                "alpha": 0.95,
+            },
+            clip_on=False,
+        )
+    except Exception:
+        logger.debug("下降壓／41760 對照簽略過", exc_info=True)
+
+
+def _teach_cyan_band_title_bit(
+    sr: Optional[Dict[str, Any]],
+    *,
+    pack: Optional[Dict[str, Any]] = None,
+) -> str:
+    """標題青帶一句：下降壓當令時 41,760 不准寫成飆預測。"""
+    sr = sr or {}
+    _sup_c = sr.get("support")
+    _res_c = sr.get("resist")
+    if (
+        _pack_pressure_break_on(pack)
+        and _sup_c is not None
+        and abs(float(_sup_c) - 41760.0) < 1.5
+    ):
+        return (
+            f"青＝位階帶{_px(_sup_c)}～{_px(_res_c) if _res_c is not None else '—'}｜"
+            f"41,760＝台指壓（≠下降壓線）"
+        )
+    return (
+        f"青＝飆預測{_px(_sup_c) if _sup_c is not None else '—'}～"
+        f"{_px(_res_c) if _res_c is not None else '—'}"
+    )
+
+
 def _active_oral_now_line(pack: Optional[Dict[str, Any]] = None) -> str:
     """話筒／三窗腳註：後文當令優先（下降壓改口＞止跌確認＞第二隻腳＞C9）。"""
     blob = " ".join(
@@ -4778,18 +4855,14 @@ def _active_oral_now_line(pack: Optional[Dict[str, Any]] = None) -> str:
         )
     )
     thesis = str((pack or {}).get("thesis") or "")
-    if (
-        _text_has_c3_pressure_break(blob)
-        or "不再假跌破" in thesis
-        or "過C3下降壓" in thesis
-        or "回測下降壓力線" in blob
-    ):
+    if _pack_pressure_break_on(pack) or _text_has_c3_pressure_break(blob):
+        # 寫死兩件分開：斜線回測 ≠ 水平41760
         line = (
-            "夜盤過C3下降壓・週五低不再假跌破；"
-            "拉回回測下降壓力線／清洗籌碼"
+            "C3下降壓＝斜線回測（無報價）；"
+            "週五低不再假跌破；拉回回測下降壓線"
         )
-        if "41760" in blob:
-            line = "台指壓41760；" + line
+        if "41760" in blob or "台指壓" in blob:
+            line = "水平台指壓41760（≠下降壓線）；" + line
         return line
     if _text_has_stop_low_confirm(blob) or "確認上週五低" in thesis:
         line = "C3-5＋1 4重疊・確認上週五低＝最低；一定再測週五低，破＝假跌破觀察"
@@ -6038,7 +6111,11 @@ def _format_tw_pred_note(
         highs=list(highs or []) if highs is not None else None,
     )
     if role == "台指壓力" or abs(float(level) - 41760.0) < 0.6:
-        return f"台指壓力／{_px(level)}・{br}"
+        lab = f"台指壓力／{_px(level)}・{br}"
+        # 下降壓改口當令：水平41760 不准被讀成 C3 下降壓線
+        if _pack_pressure_break_on(pack):
+            lab = f"{lab}｜≠下降壓線"
+        return lab
     return _biaoke_pred_label(float(level), br)
 
 
@@ -6270,13 +6347,18 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
         )
     # 11/9 台指壓力 41760（他原文；止跌確認後文優先寫）
     if re.search(r"41760", s):
+        _lab41760 = f"台指壓力／{_px(41760)}"
+        if _text_has_c3_pressure_break(s) or (
+            "不再假跌破" in s and re.search(r"下降壓", s)
+        ):
+            _lab41760 = f"{_lab41760}｜≠下降壓線"
         _add(
             "tw",
             level=41760.0,
             ref_ymd="",
             role="台指壓力",
             tag="未到",
-            label=f"台指壓力／{_px(41760)}",
+            label=_lab41760,
         )
     # 11/8 雙軌點位（只認原文）：37837／37164／35579／31705
     # 右欄：最佳買點 37837＋深殺上緣 35579＋深殺端 31705；39000／37164 改走黃底帶
@@ -8655,6 +8737,10 @@ def _place_live_right_labels(
             or "最佳買點" in s
             or "AI結束" in s
             or "五波末" in s
+            # 水平台指壓41760：當令必留，不准被大C今擠掉（≠斜線下降壓）
+            or "台指壓力" in s
+            or "41,760" in s
+            or "41760" in s
         ):
             return 0
         # 電盤下一層可丟；一般飆預測次之（已破／C9 已升 0）
@@ -8684,6 +8770,9 @@ def _place_live_right_labels(
                 "最佳買點",
                 "AI結束",
                 "五波末",
+                "台指壓力",
+                "41,760",
+                "41760",
             )
         )
 
@@ -9529,11 +9618,11 @@ def _wave_now_ladder(pack: Optional[Dict[str, Any]] = None, *, blob: str = "") -
     # 下降壓改口／止跌確認／雙軌／改口第二隻腳／9波擴延：話筒／超近說明用人話，不准只丟代號
     if "止跌確認・已過C3下降壓" in steps or has_pressure_ladder:
         oral_now = (
-            "夜盤過C3下降壓・週五低不再假跌破；"
-            "拉回回測下降壓力線／清洗籌碼"
+            "C3下降壓＝斜線回測（無報價）；"
+            "週五低不再假跌破；拉回回測下降壓線"
         )
         if "41760" in text:
-            oral_now = "台指壓41760；" + oral_now
+            oral_now = "水平台指壓41760（≠下降壓線）；" + oral_now
         one_line = "現在：止跌確認・已過C3下降壓（預估）"
         now_line = (
             oral_now
@@ -10780,6 +10869,8 @@ def _tw_pred_right_notes(
             if role == "台指壓力":
                 # 壓力位保留原文角色，不准改寫成「飆預測・已破」（低點誤破）
                 text = f"台指壓力／{_px(lv)}・{br}"
+                if _pack_pressure_break_on(pack):
+                    text = f"{text}｜≠下降壓線"
             else:
                 text = _biaoke_pred_label(lv, br)
         else:
@@ -10842,8 +10933,22 @@ def _tw_pred_right_notes(
             col = "#ce93d8"
         else:
             col = "#82b1ff" if lv < 45000 else "#4dd0e1"
-        # 價・日期完整；買點／上緣／深殺長標略放寬
-        lim = 34 if ("／" in text or "・" in text or role.startswith("九波") or "五波" in role) else 28
+        # 價・日期完整；買點／上緣／深殺／台指壓長標略放寬（≠下降壓線 不准裁掉）
+        lim = (
+            42
+            if (
+                "／" in text
+                or "・" in text
+                or "≠下降壓線" in text
+                or role.startswith("九波")
+                or "五波" in role
+                or role == "台指壓力"
+            )
+            else 28
+        )
+        # 水平台指壓：白／淺黃，跟紫大C斜線路徑分色
+        if role == "台指壓力" or abs(lv - 41760.0) < 0.6:
+            col = "#ffe082"
         out.append(
             {
                 "x": x_note,
@@ -12223,14 +12328,21 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         and sr_skip.get("support") is not None
         and round(float(sr_skip["support"]), 1) not in tip_skip
     ):
-        right_notes.append(
-            {
-                "x": n_axis - 1,
-                "y": float(sr_skip["support"]),
-                "text": _biaoke_pred_label(float(sr_skip["support"])),
-                "color": "#4dd0e1",
-            }
-        )
+        _sup_y = float(sr_skip["support"])
+        _sup_role = _tw_level_role(pack, _sup_y)
+        # 台指壓41760：不准先貼「飆預測」佔席，改由 _tw_pred_right_notes 寫水平壓｜≠下降壓線
+        if _sup_role == "台指壓力" or abs(_sup_y - 41760.0) < 0.6:
+            pass
+        else:
+            right_notes.append(
+                {
+                    "x": n_axis - 1,
+                    "y": _sup_y,
+                    "text": _biaoke_pred_label(_sup_y),
+                    "color": "#4dd0e1",
+                }
+            )
+            tip_skip.add(round(_sup_y, 1))
     # 他最新錨（虛線梯）上右欄；跟著題旨換，不准寫死單一 44210
     for anch in tip_anchors:
         if round(float(anch), 1) in tip_skip:
@@ -12717,10 +12829,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     vz_y = _teach_vol_sr_title_bit(
         far_vol_sr, bars=bars, highs=highs, lows=lows, i_vmax=i_vmax
     )
-    vz_c = (
-        f"青＝飆預測{_px(sr['support']) if sr.get('support') is not None else '—'}～"
-        f"{_px(sr['resist']) if sr.get('resist') is not None else '—'}"
-    )
+    vz_c = _teach_cyan_band_title_bit(sr, pack=pack)
     sox_bit = ""
     sox_preds = ((pack or {}).get("pred_levels") or {}).get("sox") or []
     sox_bit = ""
@@ -12742,11 +12851,16 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         ha="left",
         va="top",
     )
+    _pb_bit = (
+        "｜①斜線＝C3下降壓（無報價）≠②水平41760"
+        if _pack_pressure_break_on(pack)
+        else ""
+    )
     fig.text(
         0.05,
         0.961,
         f"{_macro_wave_calendar_line()}｜藍⑤｜粉A｜金虛B｜紫C｜"
-        f"費半＋台指電子盤同時段｜C走完≠新五波升{sox_bit}",
+        f"費半＋台指電子盤同時段｜C走完≠新五波升{sox_bit}{_pb_bit}",
         fontproperties=_fp(9, "bold"),
         color="#ce93d8",
         ha="left",
@@ -12831,6 +12945,8 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         ax=ax,
         db_path=db_path,
     )
+    # 下降壓改口當令：加權欄左下寫死斜線≠41760，三窗同口
+    _paint_c3_vs_41760_legend(ax, fp=_fp, pack=pack)
     # 腳註多行：thesis＋預測點按｜分行；壓在 x 軸日期下方，不准互疊、不准裁半截
     foot_main = str(
         pack.get("thesis") or "推進⑤＝4/1→6/23｜大A底7/29→大B→大C進行中（預估）"
@@ -13603,6 +13719,12 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
                 continue
             if round(float(yv), 1) in _wb_edges:
                 continue
+            # 台指壓41760：已有角色標就不准再貼青「飆預測」
+            if (
+                _tw_level_role(pack, float(yv)) == "台指壓力"
+                or abs(float(yv) - 41760.0) < 0.6
+            ):
+                continue
             right_notes.append(
                 {
                     "x": 0,
@@ -13744,10 +13866,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         lows=lows,
         i_vmax=i_vmax,
     )
-    vz_c = (
-        f"青＝飆預測{_px(sr['support']) if sr.get('support') is not None else '—'}～"
-        f"{_px(sr['resist']) if sr.get('resist') is not None else '—'}"
-    )
+    vz_c = _teach_cyan_band_title_bit(sr, pack=pack)
     c_sub_bit = ""
     if c_sub.get("ok"):
         c_sub_bit = f"｜細c4 {_px(c_sub['y_c4'])}／c5 {_px(c_sub['y_c5'])}"
@@ -13786,6 +13905,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         ax=ax,
         db_path=db_path,
     )
+    _paint_c3_vs_41760_legend(ax, fp=_fp, pack=pack)
     # 單行腳：不准雙行疊字蓋數字
     intent_foot = str(pack.get("intent_note") or pack.get("vol_note") or "")
     intent_one = intent_foot.split("；")[0] if intent_foot else ""
@@ -14380,6 +14500,7 @@ def _render_twii_super_near_c9_60m(
         y=0.855,
         db_path=db_path,
     )
+    _paint_c3_vs_41760_legend(ax, fp=_fp, pack=pack)
 
     labs_line = " ".join(
         f"{lab}@{_ymd(rows[i].get('date'))[4:6]}/{_ymd(rows[i].get('date'))[6:8]}"
@@ -14839,8 +14960,20 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     now_vis = str(ladder.get("now") or deg_his or "").strip()
     if now_vis and now_vis not in hierarchy:
         hierarchy = f"{hierarchy}\n此刻＝{now_vis}"
-    # 改口第二隻腳／9波擴延：中排主句跟人話對齊，不准被舊 C3 柱讀蓋掉
-    if deg_his == "第二隻腳" or "第二隻腳" in hierarchy or "37000~37500" in hierarchy:
+    # 下降壓改口／改口第二隻腳／9波擴延：中排主句跟人話對齊，不准被舊 C3 柱讀蓋掉
+    if (
+        _pack_pressure_break_on(pack)
+        or "已過C3下降壓" in hierarchy
+        or "不再假跌破" in hierarchy
+    ):
+        _pb_oral = _active_oral_now_line(pack)
+        if "≠下降壓線" not in hierarchy and "斜線回測" not in hierarchy:
+            hierarchy = f"{hierarchy}\n{_pb_oral}"
+        geom_line = (
+            "日K小波①～⑤＝柱上細讀（輔）；"
+            "口述主＝C3下降壓斜線回測（無報價）≠水平41760"
+        )
+    elif deg_his == "第二隻腳" or "第二隻腳" in hierarchy or "37000~37500" in hierarchy:
         if "看不到37000" not in hierarchy and "夜盤" not in hierarchy:
             hierarchy = f"{hierarchy}\n{_foot2_oral_now_line()}"
         geom_line = "日K小波①～⑤＝柱上細讀（輔）；口述主＝等第二隻腳・低點37000~37500"
@@ -15044,6 +15177,11 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
                 continue
             if round(float(yv), 1) in _wb_edges_m:
                 continue
+            if (
+                _tw_level_role(pack, float(yv)) == "台指壓力"
+                or abs(float(yv) - 41760.0) < 0.6
+            ):
+                continue
             right_notes.append(
                 {
                     "x": 0,
@@ -15105,10 +15243,7 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         lows=lows,
         i_vmax=i_vmax,
     )
-    vz_c = (
-        f"青＝飆預測{_px(sr['support']) if sr.get('support') is not None else '—'}～"
-        f"{_px(sr['resist']) if sr.get('resist') is not None else '—'}"
-    )
+    vz_c = _teach_cyan_band_title_bit(sr, pack=pack)
     c_sub_bit = ""
     if c_sub.get("ok"):
         c_sub_bit = f"｜細c4 {_px(c_sub['y_c4'])}／c5 {_px(c_sub['y_c5'])}（同遠／近）"
@@ -15172,8 +15307,11 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         y=0.855,
         db_path=db_path,
     )
+    _paint_c3_vs_41760_legend(ax, fp=_fp, pack=pack)
     foot_m = str(ladder.get("now_line") or (pack.get("thesis") or ""))
-    if _foot2_micro or "第二隻腳" in foot_m or "37000" in foot_m:
+    if _pack_pressure_break_on(pack) or "已過C3下降壓" in foot_m or "不再假跌破" in foot_m:
+        foot_m = _active_oral_now_line(pack).replace(" ", "")
+    elif _foot2_micro or "第二隻腳" in foot_m or "37000" in foot_m:
         foot_m = _foot2_oral_now_line().replace(" ", "")
     elif "C-7" in foot_m or "9波擴延" in foot_m:
         foot_m = _c9_oral_now_line().replace(" ", "")
