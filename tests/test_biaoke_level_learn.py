@@ -1269,6 +1269,23 @@ def test_tx_align_no_ffill_fake_duplicate_candle():
     assert math.isnan(a["low"][2])
 
 
+def test_axis_pivot_price_snaps_leading_nan():
+    """窗左緣台開美休＝NaN 時，費半浪線端點就近有限柱；不准整段浪線消失。"""
+    import math
+
+    from biaoke_level_learn import _axis_pivot_price, _nearest_finite_axis_idx
+
+    closes = [float("nan"), 9599.0, 9647.0, 9909.0]
+    highs = [float("nan"), 9612.0, 9721.0, 10000.0]
+    lows = [float("nan"), 9462.0, 9569.0, 9800.0]
+    assert _nearest_finite_axis_idx(closes, 0) == 1
+    hit = _axis_pivot_price(highs, lows, closes, 0, tip="low")
+    assert hit is not None
+    assert hit[0] == 1
+    assert abs(hit[1] - 9462.0) < 1e-6
+    assert math.isfinite(hit[1])
+
+
 def test_press_level_break_uses_high_not_crash_low():
     """台指壓力破位看高點向上穿；不准因急跌低點就標已破。"""
     from biaoke_level_learn import _tw_pred_break_tag, _tw_pred_right_notes
@@ -1553,11 +1570,18 @@ def test_stop_low_confirm_thesis_beats_older_bb_dual_and_c9(tmp_path):
     assert "第二隻腳" not in thesis
     assert "41760" in wait or "41760" in snip
     assert "再測週五低" in wait or "假跌破" in wait
-    assert "35579" not in snip
+    assert "37837" in wait  # 排版／右欄錨：口頭週五低要帶數字
+    assert "35579" not in snip  # 本則題旨不准被舊備線正文蓋掉
     pred = _thesis_pred_levels(snip, db)
     roles = {str(r.get("role")): float(r["level"]) for r in (pred.get("tw") or [])}
     assert abs(roles.get("台指壓力", 0) - 41760) < 1
-    assert "九波備線破位" not in roles
+    # 排版席：週五低＋AI結束帶可從近窗真文補回；仍不准開九波路徑標
+    assert abs(roles.get("五波末／週五低", 0) - 37837) < 1
+    assert abs(roles.get("九波備線破位", 0) - 35579) < 1
+    assert abs(roles.get("九波備線深殺", 0) - 31705) < 1
+    from biaoke_level_learn import _c9_extension_active
+
+    assert not _c9_extension_active({**th, "pred_levels": pred})
     ladder = _wave_now_ladder(th)
     assert "止跌確認" in (ladder.get("now") or "")
     assert "B-b" not in (ladder.get("now") or "")

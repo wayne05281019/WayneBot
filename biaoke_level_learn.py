@@ -2989,7 +2989,7 @@ def _latest_level_thesis(
         # 他最新：C3-5＋1 4重疊／確認週五低＝最低；再測・假跌破（說明用・非買訊）
         thesis = "大A→大B→大C｜C3-5＋1 4重疊・確認上週五低＝最低（預估）"
         wait_bits = [
-            "一定再測週五低",
+            "一定再測週五低37837",
             "破＝假跌破觀察",
         ]
         if has_41760:
@@ -6109,6 +6109,19 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
             tag=tag,
             label=lab,
         )
+    # 止跌確認口頭「再測／假跌破星期五低」常不寫 37837 數字 → 仍釘週五低排版錨
+    # （右欄／區帶席；不准當九波路徑；不准發明別價）
+    elif _text_has_stop_low_confirm(s) and re.search(
+        r"星期五低|上週五低|再測|假跌破", s
+    ):
+        _add(
+            "tw",
+            level=37837.0,
+            ref_ymd="20261106",
+            role="五波末／週五低",
+            tag="再測／假跌破",
+            label=f"再測週五低／{_px(37837)}",
+        )
     if re.search(r"37164", s):
         _add(
             "tw",
@@ -6351,6 +6364,50 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
             tag="未到",
             label=f"費半{_px(lv)}",
         )
+
+    # 止跌確認本則常不寫 35579／31705：從近期真文補回 AI 結束觀察帶排版錨
+    # （右欄＋紫底帶；_c9_extension_active 仍因止跌鎖 False，不准開 C1…C9）
+    if _text_has_stop_low_confirm(s) and db_path:
+        have_tw = {round(float(r["level"]), 1) for r in out["tw"]}
+        need_ai = (round(35579.0, 1) not in have_tw) or (
+            round(31705.0, 1) not in have_tw
+        )
+        if need_ai:
+            prior = ""
+            try:
+                conn = sqlite3.connect(str(db_path), timeout=15.0)
+                try:
+                    rows = conn.execute(
+                        "SELECT text FROM biaoke_posts "
+                        "WHERE text LIKE '%35579%' AND text LIKE '%31705%' "
+                        "ORDER BY date DESC, time DESC LIMIT 3"
+                    ).fetchall()
+                finally:
+                    conn.close()
+                prior = " ".join(str(r[0] or "") for r in rows)
+            except Exception:
+                logger.debug("止跌補 AI 結束帶略過", exc_info=True)
+                prior = ""
+            if re.search(r"35579", prior) and re.search(r"31705", prior):
+                if round(35579.0, 1) not in have_tw:
+                    _add(
+                        "tw",
+                        level=35579.0,
+                        ref_ymd="20260226",
+                        role="九波備線破位",
+                        tag="未到",
+                        label=f"AI結束上緣／{_px(35579)}",
+                    )
+                    have_tw.add(round(35579.0, 1))
+                if round(31705.0, 1) not in have_tw:
+                    _add(
+                        "tw",
+                        level=31705.0,
+                        ref_ymd="20260331",
+                        role="九波備線深殺",
+                        tag="未到",
+                        label=f"AI結束深殺／{_px(31705)}",
+                    )
 
     # 庫內最新費半價：9865 已破就掛 2/25 8498（盤中 live 在 prepare 再刷一次）
     return _refresh_sox_pred_cascade(out, db_path)
@@ -10896,13 +10953,21 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 )
             )
         # 費半跟加權同一日曆錨：⑤起4/1→⑤終6/23→A底7/29→B末10/6→C
+        # 窗左緣若台開美休＝NaN：就近有限柱取端點，不准整段浪線消失（加權四欄幾何不改）
         s5s, s5e, sa, sb = i5s, i5e, i_alow, i_b_end
-        if all(i in valid or (0 <= i < n_axis and sox_c[i] == sox_c[i]) for i in (s5s, s5e, sa, sb)):
-            sy5s = float(sox_l[s5s]) if sox_l[s5s] == sox_l[s5s] else float(sox_c[s5s])
-            sy5e = float(sox_h[s5e]) if sox_h[s5e] == sox_h[s5e] else float(sox_c[s5e])
-            sya = float(sox_l[sa]) if sox_l[sa] == sox_l[sa] else float(sox_c[sa])
-            syb = float(sox_h[sb]) if sox_h[sb] == sox_h[sb] else float(sox_c[sb])
-            sn = float(sox_c[sox_i_now])
+        _sox_p5s = _axis_pivot_price(sox_h, sox_l, sox_c, s5s, tip="low", n=n_axis)
+        _sox_p5e = _axis_pivot_price(sox_h, sox_l, sox_c, s5e, tip="high", n=n_axis)
+        _sox_pa = _axis_pivot_price(sox_h, sox_l, sox_c, sa, tip="low", n=n_axis)
+        _sox_pb = _axis_pivot_price(sox_h, sox_l, sox_c, sb, tip="high", n=n_axis)
+        _sox_pn = _axis_pivot_price(
+            sox_h, sox_l, sox_c, sox_i_now, tip="close", n=n_axis
+        )
+        if all(p is not None for p in (_sox_p5s, _sox_p5e, _sox_pa, _sox_pb, _sox_pn)):
+            s5s, sy5s = _sox_p5s  # type: ignore[misc]
+            s5e, sy5e = _sox_p5e  # type: ignore[misc]
+            sa, sya = _sox_pa  # type: ignore[misc]
+            sb, syb = _sox_pb  # type: ignore[misc]
+            sox_i_now, sn = _sox_pn  # type: ignore[misc]
             axu.plot([s5s, s5e], [sy5s, sy5e], color="#40c4ff", lw=2.2, zorder=7)
             axu.plot([s5e, sa], [sy5e, sya], color="#ff8a80", lw=2.0, zorder=7)
             axu.plot(
@@ -10916,14 +10981,10 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             # 費C：自費B末連到今（中經 C 起日若有柱），不准大B末後斷線
             sox_c_xs = [sb]
             sox_c_ys = [syb]
-            if (
-                0 <= i_c < n_axis
-                and i_c != sb
-                and sox_c[i_c] == sox_c[i_c]
-                and math.isfinite(float(sox_c[i_c]))
-            ):
-                sox_c_xs.append(i_c)
-                sox_c_ys.append(float(sox_c[i_c]))
+            _sox_pc = _axis_pivot_price(sox_h, sox_l, sox_c, i_c, tip="close", n=n_axis)
+            if _sox_pc is not None and int(_sox_pc[0]) != int(sb):
+                sox_c_xs.append(int(_sox_pc[0]))
+                sox_c_ys.append(float(_sox_pc[1]))
             sox_c_xs.append(sox_i_now)
             sox_c_ys.append(sn)
             axu.plot(sox_c_xs, sox_c_ys, color="#ea80fc", lw=1.85, zorder=7)
@@ -14927,6 +14988,81 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     pack["micro_degree_geom"] = geom.get("geom_degree") or ""
     pack["micro_alt"] = "1" if need_alt else "0"
     return save_path if os.path.isfile(save_path) and os.path.getsize(save_path) > 4000 else ""
+
+
+def _nearest_finite_axis_idx(
+    values: Sequence[float],
+    i: int,
+    *,
+    n: Optional[int] = None,
+) -> Optional[int]:
+    """軸索引 i 若為 NaN／越界，往右再往左找最近有限值；都沒有回 None。
+
+    用途：費半／電子浪線端點。台股開市美休市對齊時，窗左緣可能是 NaN，
+    不准因此整段⑤→A→B→C 浪線消失（板塊與加權K棒位置不准動）。
+    """
+    import math
+
+    m = int(n) if n is not None else len(values)
+    if m <= 0:
+        return None
+    try:
+        i0 = int(i)
+    except (TypeError, ValueError):
+        return None
+
+    def _ok(j: int) -> bool:
+        if not (0 <= j < m and j < len(values)):
+            return False
+        try:
+            v = float(values[j])
+        except (TypeError, ValueError):
+            return False
+        return v == v and math.isfinite(v)
+
+    if _ok(i0):
+        return i0
+    for d in range(1, m):
+        r, l = i0 + d, i0 - d
+        if _ok(r):
+            return r
+        if _ok(l):
+            return l
+    return None
+
+
+def _axis_pivot_price(
+    highs: Sequence[float],
+    lows: Sequence[float],
+    closes: Sequence[float],
+    i: int,
+    *,
+    tip: str = "close",
+    n: Optional[int] = None,
+) -> Optional[Tuple[int, float]]:
+    """浪線尖點：(實際軸索引, 價)。優先 tip＝low／high／close；NaN 則就近有限柱。"""
+    import math
+
+    m = int(n) if n is not None else max(len(closes), len(highs), len(lows))
+    tip_l = str(tip or "close").lower()
+    primary = lows if tip_l == "low" else highs if tip_l == "high" else closes
+    j = _nearest_finite_axis_idx(primary, i, n=m)
+    if j is None:
+        j = _nearest_finite_axis_idx(closes, i, n=m)
+    if j is None:
+        return None
+    try:
+        if tip_l == "low":
+            y = float(lows[j]) if lows[j] == lows[j] else float(closes[j])
+        elif tip_l == "high":
+            y = float(highs[j]) if highs[j] == highs[j] else float(closes[j])
+        else:
+            y = float(closes[j])
+    except (TypeError, ValueError, IndexError):
+        return None
+    if not (y == y and math.isfinite(y)):
+        return None
+    return (int(j), float(y))
 
 
 def _align_us_to_twii_dates(
