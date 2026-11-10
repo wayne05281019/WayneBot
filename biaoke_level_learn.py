@@ -3040,7 +3040,11 @@ def _latest_level_thesis(
                 "清洗籌碼",
             ]
         if has_41760:
-            wait_bits.insert(0, "水平台指壓41760（≠41500回測／≠口述下降壓）")
+            # 未到 11/10「至少回測41500」口頭前，不准在等待句寫 41500（會誤觸絕對不破文案）
+            if has_41500:
+                wait_bits.insert(0, "水平台指壓41760（≠41500回測／≠口述下降壓）")
+            else:
+                wait_bits.insert(0, "水平台指壓41760（≠口述下降壓）")
         wait_bits.append("非買訊")
         wait = "；".join(wait_bits)
     elif has_stop_confirm:
@@ -5118,7 +5122,8 @@ def _active_oral_now_line(pack: Optional[Dict[str, Any]] = None) -> str:
     thesis = str((pack or {}).get("thesis") or "")
     if _pack_pressure_break_on(pack) or _text_has_c3_pressure_break(blob):
         # 寫死分開：斜線口述下降壓 ≠ 水平41760；11/10 後文＝至少回測41500
-        if _text_has_retest_41500(blob) or "41500" in blob:
+        # 不准只因對照句「≠41500」就切絕對不破（11/9 下降壓當令仍用不再假跌破）
+        if _text_has_retest_41500(blob) or "至少回測41500" in blob:
             line = (
                 "至少回測41500；絕對不破週五低37837；"
                 "他說已過C3下降壓（口述斜線・無報價）"
@@ -6437,16 +6442,16 @@ def _format_tw_pred_note(
         # 下降壓改口當令：水平41760 不准被讀成 C3 下降壓線
         if _pack_pressure_break_on(pack):
             lab = f"{lab}｜≠口述下降壓"
-        if "41500" in str((pack or {}).get("wait_struct") or "") or _text_has_retest_41500(
-            " ".join(
-                str(x or "")
-                for x in (
-                    (pack or {}).get("thesis"),
-                    (pack or {}).get("snippet"),
-                    (pack or {}).get("wait_struct"),
-                )
+        _pack_blob = " ".join(
+            str(x or "")
+            for x in (
+                (pack or {}).get("thesis"),
+                (pack or {}).get("snippet"),
+                (pack or {}).get("snippet_full"),
+                (pack or {}).get("wait_struct"),
             )
-        ):
+        )
+        if _text_has_retest_41500(_pack_blob) or "至少回測41500" in _pack_blob:
             lab = f"{lab}｜≠41500回測"
         return lab
     return _biaoke_pred_label(float(level), br)
@@ -6685,7 +6690,7 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
             "不再假跌破" in s and re.search(r"下降壓", s)
         ):
             _lab41760 = f"{_lab41760}｜≠口述下降壓"
-        if _text_has_retest_41500(s) or re.search(r"41500", s):
+        if _text_has_retest_41500(s) or "至少回測41500" in s:
             _lab41760 = f"{_lab41760}｜≠41500回測"
         _add(
             "tw",
@@ -9973,7 +9978,7 @@ def _wave_now_ladder(pack: Optional[Dict[str, Any]] = None, *, blob: str = "") -
         day_bit = ""
     # 下降壓改口／止跌確認／雙軌／改口第二隻腳／9波擴延：話筒／超近說明用人話，不准只丟代號
     if "止跌確認・已過C3下降壓" in steps or has_pressure_ladder:
-        if "41500" in text or "至少回測" in text:
+        if _text_has_retest_41500(text) or "至少回測41500" in text:
             oral_now = (
                 "至少回測41500；絕對不破週五低37837；"
                 "他說已過C3下降壓（口述斜線・無報價）"
