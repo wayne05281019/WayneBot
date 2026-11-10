@@ -5461,31 +5461,35 @@ def _huang_c60_c4_segments(
 ) -> List[Tuple[int, float, str]]:
     """C4 反彈折點：只連官方柱高低，不准標①～⑤。
 
-    見底後反彈測次級4壓（≈43135）；浪號①～⑤只屬於 C3；畫面上用白細折。
+    新縮圖K持續進來＝白折跟到窗末最新根（收）；次級4壓是水平線不是折線終點。
+    浪號①～⑤只屬於 C3；不准因新柱發明 C4 浪號。
     """
     out: List[Tuple[int, float, str]] = [(int(i3), float(y3), "")]
     if not rows or int(i3) >= len(rows) - 1:
         return out
     i_end = len(rows) - 1
-    # 優先接到次級4壓附近的高（≈43135）；沒有就接到窗末最高
-    i_press = _nearest_bar_idx_by_price(
-        rows, 43135.0, field="high", lo=int(i3) + 1, tol=40.0
-    )
-    if i_press is not None and int(i_press) > int(i3):
-        i_end = int(i_press)
     swings = _huang_c60_alt_swings(
-        rows, int(i3), int(i_end), start="l", min_swing=450.0, force_end="h"
+        rows, int(i3), int(i_end), start="l", min_swing=450.0, force_end=""
     )
     for ii, yy, _lab in swings[1:]:
+        if int(ii) >= int(i_end):
+            continue
         # 全部不標浪號（手繪 C4 無①～⑤）
         out.append((int(ii), float(yy), ""))
-    if out[-1][0] != int(i_end):
-        try:
-            h = float(rows[int(i_end)].get("high") or 0)
-        except (TypeError, ValueError):
-            h = 0.0
-        if h > 0:
-            out.append((int(i_end), float(h), ""))
+    # 窗末釘最新縮圖K收（教具鎖死畫到最新）；不准停在第一次碰到 43135
+    try:
+        c = float(rows[int(i_end)].get("close") or 0)
+        h = float(rows[int(i_end)].get("high") or 0)
+        lo = float(rows[int(i_end)].get("low") or 0)
+    except (TypeError, ValueError):
+        c = h = lo = 0.0
+    y_end = c if c > 0 else (h if h > 0 else lo)
+    if y_end <= 0:
+        return out
+    if out[-1][0] == int(i_end):
+        out[-1] = (int(i_end), float(y_end), "")
+    else:
+        out.append((int(i_end), float(y_end), ""))
     return out
 
 

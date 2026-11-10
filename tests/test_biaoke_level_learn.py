@@ -3944,12 +3944,14 @@ def test_huang_c60_anchors_and_wave_paint_wired():
         assert abs(float(three[1]) - 41856.0) < 120
         assert abs(float(four[1]) - 43135.0) < 40
         assert abs(float(five[1]) - 37837.0) < 30
-        # C4 反彈折：不標①～⑤
+        # C4 反彈折：不標①～⑤；白折跟到最新縮圖K（不准停在第一次碰到次級4壓）
         c4 = anc.get("c4") or []
         assert len(c4) >= 2
         labs4 = [str(p[2]) for p in c4]
         assert not any(x in {"①", "②", "③", "④", "⑤"} for x in labs4), labs4
         assert abs(float(anc.get("c4_press") or 0) - 43135.0) < 40
+        assert int(c4[-1][0]) == len(rows) - 1
+        assert abs(float(c4[-1][1]) - float(rows[-1].get("close") or 0)) < 1.0
     paint = inspect.getsource(_paint_huang_c60_structure)
     assert "中繼上" in paint and "中繼下" in paint
     assert "alpha=0.07" in paint  # 底色再淺
