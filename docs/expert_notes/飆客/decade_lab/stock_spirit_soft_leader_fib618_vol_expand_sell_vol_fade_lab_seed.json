@@ -1,0 +1,45 @@
+{
+  "version": "stock_spirit_soft_leader_fib618_vol_expand_sell_vol_fade_lab_v1",
+  "tz": "Asia/Taipei",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "promote_lookup": false,
+  "gate_passed": false,
+  "keep": "v106",
+  "entry": "SPIRIT_pull_fib618",
+  "parents": [
+    "stock_spirit_soft_leader_fib618_vol_expand_lab_decision.json",
+    "stock_spirit_soft_leader_pull_fib_reclaim_sell_vol_fade_lab_decision.json"
+  ],
+  "hypothesis_zh": "fib618×soft_leader×vol_expand 理論過閘仍 phone blocked；賣端改 hi20_vol_fade_or_desync，看能否 n≥20 且同時贏 sealed v106 early+fast keep",
+  "confirm_variants": [
+    "plain",
+    "vol_expand_1p5",
+    "vol_expand_2",
+    "soft_leader_and_vol_expand",
+    "soft_leader_vol_expand_reclaim",
+    "soft_leader_vol_expand_2_reclaim",
+    "soft_leader_vol_expand_reclaim_bias_lt8",
+    "soft_leader_vol_expand_reclaim_near_low60_8",
+    "hard_leader_vol_expand_reclaim",
+    "reclaim_and_vol_expand"
+  ],
+  "sell": "hi20_vol_fade_or_desync",
+  "next": "未過閘；下一刀 soft_leader×fib618×vol_expand×sell_vol_fade×bias_lt5；備選 mid_liq×fib618×vol_expand×sell_vol_fade；不准混浪形、不准改話筒",
+  "status": "plain_delta_only_keep_v106",
+  "as_of": "2026-11-10T08:09:03+08:00",
+  "best_candidate": {
+    "leg": "spirit_soft_leader_fib618_vol_expand_sell_vol_fade_confirm",
+    "entry": "SPIRIT_pull_fib618",
+    "variant": "soft_leader_and_vol_expand",
+    "kind": "vs_plain",
+    "oos_wr": 0.7619047619047619,
+    "oos_d": 20,
+    "plain_oos_wr": 0.6491228070175439,
+    "plain_oos_d": 200,
+    "delta_oos_wr": 0.11278195488721798,
+    "beats_v106_early_keep_oos": false,
+    "beats_v106_fast_keep_oos": false
+  },
+  "shared_vs_keep": []
+}
