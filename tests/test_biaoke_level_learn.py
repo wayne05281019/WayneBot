@@ -3946,7 +3946,7 @@ def test_paint_c3_group12_span_labels_wired():
     assert "C1 下跌" in src_fn
     assert "C2 中繼" in src_fn
     assert "C3 下跌" in src_fn
-    assert "C4 反彈" in src_fn
+    assert "C4＝(4)第四大波" in src_fn
     assert "示意：C3下降壓" not in src_fn  # 字標已刪
     assert "C3底＝週五低 37837" not in src_fn  # 併右欄，不准黃箭重複
     assert "_vertical_upright_label" in src_fn
