@@ -1,0 +1,335 @@
+{
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "certainty": false,
+  "segment_numbers": "REQUIRED",
+  "as_of_taipei": "2026-11-09T17:01:11+0800",
+  "event": {
+    "source": "user_paste_biaoke_2026-11-09_09:09",
+    "post_in_local_db": false,
+    "levels_he_said": [
+      41760
+    ],
+    "oral": "C3-5＋1 4重疊；再測上週五低；假跌破＝上車點（他說）"
+  },
+  "paths": [
+    {
+      "id": "A_main_his",
+      "status": "推論／未定案",
+      "thesis_zh": "他認最後一組下跌脈動 C3-5 已與 1 4 重疊；上週五低為最低候選；再測／戳破＝假跌破觀察。41760 為第一道壓力，未過壓轉撐則易再打低測週五低。",
+      "segments_provisional": [
+        {
+          "label": "C3-1",
+          "role": "下跌脈動起",
+          "note": "暫定；待細拆對折點"
+        },
+        {
+          "label": "C3-2",
+          "role": "反彈",
+          "note": "暫定"
+        },
+        {
+          "label": "C3-3",
+          "role": "主跌",
+          "note": "暫定"
+        },
+        {
+          "label": "C3-4",
+          "role": "反彈／與1重疊候選",
+          "note": "1 4重疊關鍵"
+        },
+        {
+          "label": "C3-5",
+          "role": "末跌＝上週五低附近完成候選",
+          "level": 37837.05078125
+        },
+        {
+          "label": "post_C_rebound",
+          "role": "C走完後反彈／再測",
+          "note": "非新五波升定案"
+        }
+      ],
+      "levels": {
+        "pressure_41760": 41760.0,
+        "friday_low_twii": 37837.05078125,
+        "friday_low_tx": 37694.0
+      },
+      "expect": [
+        "近窗再測 friday_low（可戳破後快速站回＝假跌破劇本）",
+        "若 41760 未轉支撐，反彈夭折機率升"
+      ],
+      "invalidate": [
+        "收盤有效站穩 41760 上方且不再回測 friday_low（壓力轉撐成立）",
+        "深破 friday_low 後無法快速站回（假跌破劇本失效→改走更深殺備線）"
+      ],
+      "not_buy_signal": true
+    },
+    {
+      "id": "B_fail_41760_retest",
+      "status": "推論／未定案",
+      "thesis_zh": "41760 不過→快速回測週五低；C3-5 後 B 反彈失敗再測底。",
+      "segments_provisional": [
+        {
+          "label": "C3-5",
+          "role": "已完成候選",
+          "level": 37837.05078125
+        },
+        {
+          "label": "B-a",
+          "role": "反彈段",
+          "note": "暫定；挑戰 41760"
+        },
+        {
+          "label": "B-b",
+          "role": "回測段",
+          "note": "再測 friday_low"
+        }
+      ],
+      "levels": {
+        "pressure_41760": 41760.0,
+        "retest": 37837.05078125
+      },
+      "expect": [
+        "日盤／夜盤高點壓在 41760 下",
+        "低點靠近 friday_low±1%"
+      ],
+      "invalidate": [
+        "有效站上 41760"
+      ],
+      "not_buy_signal": true
+    },
+    {
+      "id": "C_deeper_kill_fake",
+      "status": "推論／未定案",
+      "thesis_zh": "若戳破 friday_low 後無法站回，則 C3-5／1 4 重疊底劇本失效；八循環改拆更深一層（備：35579→31705 他先前提過的深殺帶）。",
+      "segments_provisional": [
+        {
+          "label": "C3-5",
+          "role": "看似完成但被否決",
+          "note": "若假跌破失效"
+        },
+        {
+          "label": "C9_ext_or_deeper_C",
+          "role": "更深殺備線暫定",
+          "note": "只沿用他點過 35579／31705"
+        }
+      ],
+      "levels": {
+        "friday_low": 37837.05078125,
+        "deep_hi": 35579.0,
+        "deep_lo": 31705.0
+      },
+      "expect": [
+        "收在 friday_low 下且次日無法站回"
+      ],
+      "invalidate": [
+        "戳破後快速站回 friday_low（回到 A 假跌破）"
+      ],
+      "not_buy_signal": true
+    }
+  ],
+  "verify": {
+    "official": {
+      "as_of": "20261109",
+      "friday_twii": {
+        "date": "20261106",
+        "open": 38915.76171875,
+        "high": 40435.828125,
+        "low": 37837.05078125,
+        "close": 39701.64
+      },
+      "friday_tx_reg": {
+        "date": "20261106",
+        "session": "regular",
+        "open": 38888.0,
+        "high": 40690.0,
+        "low": 37694.0,
+        "close": 39786.0
+      },
+      "latest_twii": {
+        "date": "20261106",
+        "open": 38915.76171875,
+        "high": 40435.828125,
+        "low": 37837.05078125,
+        "close": 39701.64
+      },
+      "latest_tx_regular": null,
+      "latest_tx_night": {
+        "date": "20261109",
+        "session": "night",
+        "open": 39742.0,
+        "high": 40845.0,
+        "low": 39129.0,
+        "close": 40298.0
+      },
+      "bar_final": false,
+      "note_zh": "無日盤收＝盤中／休市；夜盤可作進行中對照，不當最終定案收"
+    },
+    "path_results": [
+      {
+        "path_id": "A_main_his",
+        "segments_check": [
+          {
+            "label": "C3-1",
+            "status": "進行中／未決",
+            "mark": "推論／未定案"
+          },
+          {
+            "label": "C3-2",
+            "status": "進行中／未決",
+            "mark": "推論／未定案"
+          },
+          {
+            "label": "C3-3",
+            "status": "進行中／未決",
+            "mark": "推論／未定案"
+          },
+          {
+            "label": "C3-4",
+            "status": "進行中／未決",
+            "mark": "推論／未定案"
+          },
+          {
+            "label": "C3-5",
+            "status": "他認完成候選；官方上週五低已在；待再測確認",
+            "mark": "推論／未定案"
+          },
+          {
+            "label": "post_C_rebound",
+            "status": "反彈未過41760＝與B-a失敗／再測劇本相容",
+            "mark": "推論／未定案"
+          }
+        ],
+        "hits": [],
+        "misses": [
+          "尚未碰到41760（night high=40845.0）"
+        ],
+        "actual_path_tags": [
+          "below_41760"
+        ],
+        "score_rough": -0.5,
+        "verdict_zh": "進行中"
+      },
+      {
+        "path_id": "B_fail_41760_retest",
+        "segments_check": [
+          {
+            "label": "C3-5",
+            "status": "他認完成候選；官方上週五低已在；待再測確認",
+            "mark": "推論／未定案"
+          },
+          {
+            "label": "B-a",
+            "status": "反彈未過41760＝與B-a失敗／再測劇本相容",
+            "mark": "推論／未定案"
+          },
+          {
+            "label": "B-b",
+            "status": "進行中／未決",
+            "mark": "推論／未定案"
+          }
+        ],
+        "hits": [],
+        "misses": [
+          "尚未碰到41760（night high=40845.0）"
+        ],
+        "actual_path_tags": [
+          "below_41760"
+        ],
+        "score_rough": -0.5,
+        "verdict_zh": "進行中"
+      },
+      {
+        "path_id": "C_deeper_kill_fake",
+        "segments_check": [
+          {
+            "label": "C3-5",
+            "status": "他認完成候選；官方上週五低已在；待再測確認",
+            "mark": "推論／未定案"
+          },
+          {
+            "label": "C9_ext_or_deeper_C",
+            "status": "進行中／未決",
+            "mark": "推論／未定案"
+          }
+        ],
+        "hits": [],
+        "misses": [
+          "尚未碰到41760（night high=40845.0）"
+        ],
+        "actual_path_tags": [
+          "below_41760"
+        ],
+        "score_rough": -0.5,
+        "verdict_zh": "進行中"
+      }
+    ],
+    "leading_path": "A_main_his"
+  },
+  "cycle8_review": {
+    "required": true,
+    "textbook_8cycle": [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "A",
+      "B",
+      "C"
+    ],
+    "this_infer_map_zh": "他層級：大A→大B→大C 內之 C3 脈動＝C3-1…C3-5；1 4重疊落在 C3-1 與 C3-4；C3-5≈上週五低。之後反彈暫標 post_C／B-a，不准未驗證就升成新五波1。",
+    "miss_analysis_template": {
+      "expected_segments": "必填",
+      "actual_path": "必填",
+      "unexpected_level": "走到哪個沒推到的數",
+      "which_segment_broke": "哪一段暫定段號先失效",
+      "rule_patch": "回寫八循環切法"
+    },
+    "pending_zh": "待日盤收完再填 miss_analysis；現有夜盤僅進行中對照"
+  },
+  "accuracy_gate": {
+    "promote_to_phone": false,
+    "note_zh": "正確率升高前只練習；不上話筒定論"
+  },
+  "eod_filled": true,
+  "official_eod": {
+    "twii": {
+      "o": 42130.328125,
+      "h": 43135.921875,
+      "l": 41930.03125,
+      "c": 42711.92,
+      "v": 12821280.0
+    },
+    "tx_regular": {
+      "o": 42701.0,
+      "h": 43108.0,
+      "l": 41873.0,
+      "c": 42623.0,
+      "v": 85124
+    }
+  },
+  "miss_analysis": {
+    "expected_segments": [
+      "B-a_hold或B-b回測週五低（條件分歧）",
+      "N1：未站穩41760→再測37837",
+      "N2：收穩41760壓轉撐",
+      "N3：破低假跌破抽回"
+    ],
+    "actual_path": "N2：開盤已過41760、全日低＞41760、收穩壓轉撐；高見43135後小回；未走N1／N3",
+    "unexpected_level": "TWII高43135.92／TX高43108（遠高於forward只釘的41760／37837；屬站穩後更高壓，非N1必經）",
+    "which_segment_broke": "N1/B-b（今日前提失效）；N3未啟動",
+    "rule_patch": "條件句『未站穩41760→再測週五低』：若日盤開盤即穩壓上且全日低＞41760，當日取消N1必經、改標B-a_hold；下一窗優先回測41760撐與更高壓43135，失守41760才把37837升回必經",
+    "two_diff": {
+      "vs_biaoke_zh": "他層：41760壓轉撐／週五低37837仍為錨。今官方走N2站穩，未測週五低＝與『站穩則回測延後』同向。",
+      "vs_official_zh": "官方加權 O42130.33/H43135.92/L41930.03/C42711.92 V12821280；台指日盤 O42701/H43108/L41873/C42623 V85124。"
+    }
+  },
+  "path_eod_verdicts": {
+    "N1_still_retest_friday": "失效於今日／前提不成立",
+    "N2_hold_above_first_cap": "合／日盤收穩41760壓轉撐",
+    "N3_fake_break_if_retest": "未觸發"
+  },
+  "as_of_day": "20261110",
+  "forward_next": "20261111"
+}
