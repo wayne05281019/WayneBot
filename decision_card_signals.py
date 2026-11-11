@@ -1422,7 +1422,7 @@ def display_alert_cell(alert: str, hi_lo: str) -> str:
 
 
 def candle_up_taiwan(close, prev_close=None, open_=None) -> bool:
-    """台股紅漲綠跌：相對昨收。無昨收時退回收盤≥開盤。平盤視為紅。"""
+    """漲跌（相對昨收）：報價／連跌／箭頭訊號用。無昨收時退回收≥開。平盤視為漲。"""
     try:
         c = float(close)
     except (TypeError, ValueError):
@@ -1438,6 +1438,30 @@ def candle_up_taiwan(close, prev_close=None, open_=None) -> bool:
     except (TypeError, ValueError):
         o = c
     return c >= o
+
+
+def candle_body_up_taiwan(close, prev_close=None, open_=None) -> bool:
+    """K／量顯示色：陽紅陰綠＝收相對開（對齊籌碼K線）。無開盤才退回昨收。平盤當陽。
+
+    參數順序與 candle_up_taiwan 相同，方便畫圖 callback 直接替換。
+    """
+    try:
+        c = float(close)
+    except (TypeError, ValueError):
+        return True
+    try:
+        o = float(open_) if open_ is not None else float("nan")
+    except (TypeError, ValueError):
+        o = float("nan")
+    if o == o and o > 0:
+        return c >= o
+    try:
+        p = float(prev_close) if prev_close is not None else 0.0
+    except (TypeError, ValueError):
+        p = 0.0
+    if p == p and p > 0:
+        return c >= p
+    return True
 
 
 def volume_headline_rank(vol_rank_480=99, vol_rank_120=99, vol_rank_60=99) -> tuple[str, int]:

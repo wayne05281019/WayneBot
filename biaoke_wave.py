@@ -1924,7 +1924,7 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
 
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
-        from decision_card_signals import candle_up_taiwan
+        from decision_card_signals import candle_body_up_taiwan
         from wayne_navigator import NAV_CHART_DPI, _fp, _mpl_serial
     except Exception:
         return ""
@@ -2007,7 +2007,7 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
         vol_colors = []
         for i in range(n):
             prev_c = closes[i - 1] if i else None
-            up = candle_up_taiwan(closes[i], prev_c, opens[i])
+            up = candle_body_up_taiwan(closes[i], prev_c, opens[i])
             color = "#e53935" if up else "#00897b"
             vol_colors.append(color)
             ax.vlines(i, lows[i], highs[i], color=color, linewidth=1.2, zorder=3)

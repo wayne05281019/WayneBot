@@ -222,12 +222,26 @@ def test_alert_tag_k20_low_needs_near_twenty_low():
 def test_candle_up_taiwan_vs_prev_close():
     from decision_card_signals import candle_up_taiwan
 
-    # 8/19 型：收>開但跌破昨收 → 綠
+    # 8/19 型：收>開但跌破昨收 → 綠（漲跌／訊號仍認昨收）
     assert not candle_up_taiwan(363.5, prev_close=374.5, open_=353.5)
     # 9/3 穩懋：開收皆跌 → 綠
     assert not candle_up_taiwan(446.5, prev_close=469.5, open_=478.0)
     # 平盤紅
     assert candle_up_taiwan(100.0, prev_close=100.0, open_=99.0)
+
+
+def test_candle_body_up_taiwan_matches_chip_kline():
+    """K／量顯示色＝陽紅陰綠（收相對開），對齊籌碼K線；與昨收漲跌可分叉。"""
+    from decision_card_signals import candle_body_up_taiwan, candle_up_taiwan
+
+    # 8/19 型：收>開但跌破昨收 → 陽紅（顯示）／昨收綠（漲跌）
+    assert candle_body_up_taiwan(363.5, prev_close=374.5, open_=353.5)
+    assert not candle_up_taiwan(363.5, prev_close=374.5, open_=353.5)
+    # 6442 11/10：開1170收1135、昨收1105 → 陰綠／昨收紅
+    assert not candle_body_up_taiwan(1135.0, prev_close=1105.0, open_=1170.0)
+    assert candle_up_taiwan(1135.0, prev_close=1105.0, open_=1170.0)
+    # 平盤陽
+    assert candle_body_up_taiwan(100.0, prev_close=100.0, open_=100.0)
 
 
 def test_template_regime_narrow_range_is_consolidation():
