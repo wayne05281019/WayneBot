@@ -3307,7 +3307,7 @@ def paint_locator_inset(
     quote: Optional[Dict[str, Any]] = None,
 ) -> bool:
     """右上長軸縮圖：橙底＝大圖同一段日期，黃底＝兩邊都是最後一根之後的演算。橫軸月份。不在縮圖裡再套框。"""
-    from decision_card_signals import candle_up_taiwan
+    from decision_card_signals import candle_body_up_taiwan
 
     rows = locator_positive_rows(bars)
     if len(rows) < 24:
@@ -3444,7 +3444,7 @@ def paint_locator_inset(
         if halt_flags[i]:
             colors.append(_HALT)
         else:
-            colors.append(_UP if candle_up_taiwan(closes[i], prev_c, opens[i]) else _DN)
+            colors.append(_UP if candle_body_up_taiwan(closes[i], prev_c, opens[i]) else _DN)
     trade_i = [i for i in range(m) if not halt_flags[i]]
     _add_ohlc_wicks(
         ax,

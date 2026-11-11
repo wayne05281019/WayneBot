@@ -8958,7 +8958,7 @@ def _paint_one_live_candle(
     """單根日K；給遠窗末根蓋回紫點／右標用（z 高於 tip scatter）。"""
     import matplotlib.pyplot as plt
 
-    # 末根蓋回也只認昨收；prev_c 缺／0／NaN 時不准默默改比開收翻色
+    # 末根蓋回＝陽陰線（收相對開）；無開盤才退回昨收
     pc = prev_c
     try:
         if pc is not None:
@@ -9077,7 +9077,7 @@ def _prev_valid_close(
 
 
 def _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_up) -> None:
-    """三窗共用日K＋量：漲跌色只認昨收（candle_up_taiwan）；K／量同根同色。
+    """三窗共用日K＋量：陽紅陰綠＝收相對開（candle_body_up_taiwan）；K／量同根同色。
 
     不准一根用昨收、量柱改比開收；也不准缺昨收就整窗翻色。
     high／low≤0 時用 open／close 補，不准量柱在、價K隱形。
@@ -9387,7 +9387,7 @@ def _paint_vol_sr_mark_on_axis(
         ii = int(i_next)
         # 桃描邊鎖在已畫好的漲跌色 K 上；本體色跟近／超近同一套昨收規則
         try:
-            from decision_card_signals import candle_up_taiwan as _cup
+            from decision_card_signals import candle_body_up_taiwan as _cup
         except Exception:
             _cup = candle_up
         cup = candle_up or _cup
@@ -12581,7 +12581,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
 
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
-        from decision_card_signals import candle_up_taiwan
+        from decision_card_signals import candle_body_up_taiwan
         from wayne_navigator import NAV_CHART_DPI, _fp
     except Exception:
         return ""
@@ -12819,7 +12819,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 None,
             )
             prev_c = sox_c[prev_i] if prev_i is not None else None
-            up = candle_up_taiwan(sox_c[i], prev_c, sox_o[i])
+            up = candle_body_up_taiwan(sox_c[i], prev_c, sox_o[i])
             color = _LIVE_UP if up else _LIVE_DOWN
             # 遠窗費半：加粗影線＋價窗比例最小實體（舊 0.15%→看不見）
             axu.vlines(i, sox_l[i], sox_h[i], color=color, linewidth=1.55, zorder=5)
@@ -13380,7 +13380,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 None,
             )
             prev_c = tx_c[prev_i] if prev_i is not None else None
-            up = candle_up_taiwan(tx_c[i], prev_c, tx_o[i])
+            up = candle_body_up_taiwan(tx_c[i], prev_c, tx_o[i])
             color = _LIVE_UP if up else _LIVE_DOWN
             axt.vlines(i, tx_l[i], tx_h[i], color=color, linewidth=1.55, zorder=5)
             y0, y1 = sorted((tx_o[i], tx_c[i]))
@@ -13676,7 +13676,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     sr_skip = zone.get("sr_skip") or {}
     if zone.get("i_vmax") is not None:
         i_vmax = int(zone["i_vmax"])
-    _paint_live_candles(ax, None, opens, highs, lows, closes, vols, candle_up_taiwan)
+    _paint_live_candles(ax, None, opens, highs, lows, closes, vols, candle_body_up_taiwan)
     # 加權自己的大量撐壓日金K＋下一層亮桃K（豎線稍後只畫在加權價／量欄）
     _tw_i_pri = int(i_vmax) if i_vmax is not None else None
     _tw_i_nxt = far_vol_sr.get("i_next") if isinstance(far_vol_sr, dict) else None
@@ -14059,7 +14059,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         vols,
         opens,
         closes,
-        candle_up_taiwan,
+        candle_body_up_taiwan,
         fp=_fp,
         title="加權量",
         date_lab=_ymd(bars[i_vmax].get("date")) if i_vmax is not None else "",
@@ -14136,7 +14136,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             low=float(_tw_last_repaint["l"]),
             close=float(_tw_last_repaint["c"]),
             prev_c=_tw_last_repaint.get("prev_c"),
-            candle_up=candle_up_taiwan,
+            candle_up=candle_body_up_taiwan,
             min_body=float(_tw_last_repaint["min_body"]),
             width=0.86,
             wick_lw=2.05,
@@ -14290,7 +14290,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             low=float(_sox_last_repaint["l"]),
             close=float(_sox_last_repaint["c"]),
             prev_c=_prev_c,
-            candle_up=candle_up_taiwan,
+            candle_up=candle_body_up_taiwan,
             min_body=float(_sox_last_repaint["min_body"]),
             width=0.86,
             wick_lw=2.05,
@@ -14308,7 +14308,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             low=float(_sox_last_repaint["l"]),
             close=float(_sox_last_repaint["c"]),
             prev_c=_prev_c,
-            candle_up=candle_up_taiwan,
+            candle_up=candle_body_up_taiwan,
             min_body=float(_sox_last_repaint["min_body"]),
             width=0.86,
             wick_lw=2.05,
@@ -14373,7 +14373,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             low=float(_tx_last_repaint["l"]),
             close=float(_tx_last_repaint["c"]),
             prev_c=_prev_tx,
-            candle_up=candle_up_taiwan,
+            candle_up=candle_body_up_taiwan,
             min_body=float(_tx_last_repaint["min_body"]),
             width=0.86,
             wick_lw=2.05,
@@ -14690,7 +14690,7 @@ def _render_twii_self_pred_dark(db_path: str, save_path: str, pack: Dict[str, An
 
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
-        from decision_card_signals import candle_up_taiwan
+        from decision_card_signals import candle_body_up_taiwan
         from wayne_navigator import NAV_CHART_DPI, _fp
     except Exception:
         return ""
@@ -14741,7 +14741,7 @@ def _render_twii_self_pred_dark(db_path: str, save_path: str, pack: Dict[str, An
     )
     fig.patch.set_facecolor(_LIVE_BG)
     _style_live_ax(ax, axv)
-    _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_up_taiwan)
+    _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_body_up_taiwan)
     ax.plot([i5, i_alow], [y5, y_alow], color="#ff8a80", lw=1.6, alpha=0.75, zorder=6)
     ax.plot([i_alow, i_bhi], [y_alow, y_bhi], color="#40c4ff", lw=1.6, alpha=0.75, zorder=6)
     ax.plot([i_bhi, i_now], [y_bhi, y_now], color="#ea80fc", lw=1.7, zorder=6)
@@ -14880,7 +14880,7 @@ def _render_twii_c_wave_60_dark(
 
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
-        from decision_card_signals import candle_up_taiwan
+        from decision_card_signals import candle_body_up_taiwan
         from wayne_navigator import NAV_CHART_DPI, _fp
     except Exception:
         return ""
@@ -14971,7 +14971,7 @@ def _render_twii_c_wave_60_dark(
     for bi in _bounds[1:]:
         ax.axvline(bi - 0.5, color="#37474f", lw=0.7, ls=":", alpha=0.85, zorder=1.2)
         axv.axvline(bi - 0.5, color="#37474f", lw=0.7, ls=":", alpha=0.85, zorder=1.2)
-    _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_up_taiwan)
+    _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_body_up_taiwan)
     # 黃＝主大量日；亮桃＝下一層大量日（與遠／近豎導同色）
     _i_pri = zone.get("i_vmax")
     _i_nxt = (c60_vol_sr or {}).get("i_next")
@@ -15072,7 +15072,7 @@ def _render_twii_c_wave_60_dark(
         highs=highs,
         lows=lows,
         closes=closes,
-        candle_up=candle_up_taiwan,
+        candle_up=candle_body_up_taiwan,
         ymin=float(ymin),
         ymax=float(ymax),
     )
@@ -15173,7 +15173,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
 
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
-        from decision_card_signals import candle_up_taiwan
+        from decision_card_signals import candle_body_up_taiwan
         from wayne_navigator import NAV_CHART_DPI, _fp
     except Exception:
         return ""
@@ -15278,7 +15278,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         pack=pack,
     )
     # 區帶兩標改到九波縮圖定位後再畫（與遠窗同一套：齊頭＋不被縮圖裁字）
-    _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_up_taiwan)
+    _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_body_up_taiwan)
     i_vmax = zone.get("i_vmax")
     _near_i_nxt = None
     if isinstance(near_vol_sr, dict):
@@ -15705,7 +15705,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         highs=highs,
         lows=lows,
         closes=closes,
-        candle_up=candle_up_taiwan,
+        candle_up=candle_body_up_taiwan,
         ymin=ymin,
         ymax=ymax,
     )
@@ -15972,7 +15972,7 @@ def _render_twii_super_near_c9_60m(
 
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
-        from decision_card_signals import candle_up_taiwan
+        from decision_card_signals import candle_body_up_taiwan
         from wayne_navigator import NAV_CHART_DPI, _fp
     except Exception:
         return ""
@@ -16082,7 +16082,7 @@ def _render_twii_super_near_c9_60m(
     for bi in _bounds[1:]:
         ax.axvline(bi - 0.5, color="#37474f", lw=0.7, ls=":", alpha=0.85, zorder=1.2)
         axv.axvline(bi - 0.5, color="#37474f", lw=0.7, ls=":", alpha=0.85, zorder=1.2)
-    _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_up_taiwan)
+    _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_body_up_taiwan)
     ax.plot(
         [i_now, float(tip["fut_x"])],
         [y_now, float(tip["fut_y"])],
@@ -16303,7 +16303,7 @@ def _render_twii_super_near_c9_60m(
         pivots_60=pivots,
         rows_60=rows,
         fp=_fp,
-        candle_up=candle_up_taiwan,
+        candle_up=candle_body_up_taiwan,
         note="",
     )
     _oral_m = _active_oral_now_line(pack)
@@ -16464,7 +16464,7 @@ def _paint_c9_daily_thumb(
     n = len(daily)
     for i in range(n):
         o, h, l, c = opens[i], highs[i], lows[i], closes[i]
-        # 與主圖同規：candle_up_taiwan(close, prev_close, open_)；不准 (o,c) 參數顛倒翻色
+        # 與主圖同規：candle_body_up_taiwan(close, prev_close, open_)；不准 (o,c) 參數顛倒翻色
         prev_c = _prev_valid_close(closes, i, opens=opens)
         up = bool(candle_up(c, prev_c, o))
         col = _LIVE_UP if up else _LIVE_DOWN
@@ -16657,7 +16657,7 @@ def _render_us_compare_dark(db_path: str, save_path: str, pack: Dict[str, Any]) 
 
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
-        from decision_card_signals import candle_up_taiwan
+        from decision_card_signals import candle_body_up_taiwan
         from biaoke_wave import _load_twii_bars
         from wayne_navigator import NAV_CHART_DPI, _fp
     except Exception:
@@ -16721,7 +16721,7 @@ def _render_us_compare_dark(db_path: str, save_path: str, pack: Dict[str, Any]) 
         a.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color=_LIVE_GRID)
 
     # 上：加權＋⑤／A／B／C進行中（中段不准標成 C 已完）
-    _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_up_taiwan)
+    _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_body_up_taiwan)
     ax.plot([i5, i_alow], [y5, y_alow], color="#ff8a80", lw=2.2, zorder=7)
     ax.plot([i_alow, i_bhi], [y_alow, y_bhi], color="#40c4ff", lw=2.2, zorder=7)
     ax.plot([i_bhi, i_now], [y_bhi, y_now], color="#ea80fc", lw=2.0, zorder=7)
@@ -16772,7 +16772,7 @@ def _render_us_compare_dark(db_path: str, save_path: str, pack: Dict[str, Any]) 
         for i in valid:
             prev_i = next((j for j in range(i - 1, -1, -1) if sox_c[j] == sox_c[j]), None)
             prev_c = sox_c[prev_i] if prev_i is not None else None
-            up = candle_up_taiwan(sox_c[i], prev_c, sox_o[i])
+            up = candle_body_up_taiwan(sox_c[i], prev_c, sox_o[i])
             color = _LIVE_UP if up else _LIVE_DOWN
             axu.vlines(i, sox_l[i], sox_h[i], color=color, linewidth=1.1, zorder=3)
             y0, y1 = sorted((sox_o[i], sox_c[i]))
@@ -16976,7 +16976,7 @@ def _render_tx60_png(db_path: str, save_path: str, pack: Dict[str, Any]) -> str:
 
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
-        from decision_card_signals import candle_up_taiwan
+        from decision_card_signals import candle_body_up_taiwan
         from wayne_navigator import NAV_CHART_DPI, _fp
     except Exception:
         return ""
@@ -16997,7 +16997,7 @@ def _render_tx60_png(db_path: str, save_path: str, pack: Dict[str, Any]) -> str:
     )
     fig.patch.set_facecolor(_LIVE_BG)
     _style_live_ax(ax, axv)
-    _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_up_taiwan)
+    _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_body_up_taiwan)
     levels = pack.get("key_levels") or {}
     lv_notes = []
     for key, col, lab in _LIVE_LV:

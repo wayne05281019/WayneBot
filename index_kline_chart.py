@@ -28,7 +28,7 @@ from wayne_navigator import (
     lookup_vol_to_display,
     paint_lookup_volume_bars,
 )
-from decision_card_signals import candle_up_taiwan
+from decision_card_signals import candle_body_up_taiwan
 
 logger = logging.getLogger(__name__)
 
@@ -279,7 +279,7 @@ def render_index_kline_png(
     candle_up = []
     for i in range(n):
         prev_c = float(closes[i - 1]) if i else None
-        candle_up.append(candle_up_taiwan(float(closes[i]), prev_c, float(opens[i])))
+        candle_up.append(candle_body_up_taiwan(float(closes[i]), prev_c, float(opens[i])))
     colors = [_tw_color(bool(candle_up[i])) for i in range(n)]
     wick_segs = [
         [(float(xs[i]), float(lows[i])), (float(xs[i]), float(highs[i]))]

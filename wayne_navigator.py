@@ -2089,8 +2089,8 @@ def configure_lookup_vol_axis(ax, vmax: float, **_ignore) -> None:
 
 
 def lookup_candle_up_mask(opens, closes, *, halt=None) -> np.ndarray:
-    """台股紅漲綠跌：收 vs 昨收（無昨收才比開）。回布林陣列，長度＝柱數。"""
-    from decision_card_signals import candle_up_taiwan
+    """K／量顯示色：陽紅陰綠＝收 vs 開（對齊籌碼K線；無開才比昨收）。"""
+    from decision_card_signals import candle_body_up_taiwan
 
     opens = np.asarray(opens, dtype=float)
     closes = np.asarray(closes, dtype=float)
@@ -2106,7 +2106,7 @@ def lookup_candle_up_mask(opens, closes, *, halt=None) -> np.ndarray:
         if bool(halt_arr[i]):
             continue
         prev = float(closes[i - 1]) if i and np.isfinite(closes[i - 1]) else None
-        up[i] = bool(candle_up_taiwan(float(closes[i]), prev, float(opens[i])))
+        up[i] = bool(candle_body_up_taiwan(float(closes[i]), prev, float(opens[i])))
     return up
 
 
@@ -3307,8 +3307,8 @@ def _paint_title_stamp(ax, tw, C, brand_x, title_cy, stamp, clock_line, ohlc=Non
 
 
 def _draw_mini_candle(ax, x, y, w, h, open_, high, low, close, prev_close=None):
-    """在資料座標畫當日 K：台股紅漲綠跌（相對昨收），含上下影。"""
-    from decision_card_signals import candle_up_taiwan
+    """在資料座標畫當日 K：陽紅陰綠（收相對開，對齊籌碼K線），含上下影。"""
+    from decision_card_signals import candle_body_up_taiwan
 
     o, hi, lo, cl = float(open_), float(high), float(low), float(close)
     try:
@@ -3327,7 +3327,7 @@ def _draw_mini_candle(ax, x, y, w, h, open_, high, low, close, prev_close=None):
     def py(p):
         return y + (float(p) - lo) / rng * h
 
-    color = "#e53935" if candle_up_taiwan(cl, prev_close, o) else "#00897b"
+    color = "#e53935" if candle_body_up_taiwan(cl, prev_close, o) else "#00897b"
     cx = x + w / 2
     ax.plot([cx, cx], [py(lo), py(hi)], color=color, linewidth=2.4, solid_capstyle="round", zorder=4)
     body_lo, body_hi = py(min(o, cl)), py(max(o, cl))
@@ -7996,7 +7996,7 @@ def draw_from_ohlc(
         pass
     fig.text(
         0.50, 0.045,
-        "K 線紅漲綠跌＝相對昨收（台股慣例）；價格列見上方圖例："
+        "K 線陽紅陰綠＝收相對開（對齊籌碼K線）；漲跌幅仍相對昨收；價格列見上方圖例："
         "實心＝當日觸發、空心＝接近、灰藍半透明＝殘影（仍貼高低不當新觸發）；高紫／脫離橙／低綠／脫離青／60低藍；"
         "20低／60低＝紅箭頭代理；過 ma60_lower 確認才當買訊（藍▲紅框，與 leave_zero 並列）；未確認仍不當買；"
         "止穩◆＝觀察非買；橘六角「觀察」＝外資預警（還在測試・非買）",

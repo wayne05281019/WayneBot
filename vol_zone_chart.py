@@ -2243,10 +2243,16 @@ def vol_zone_photo_caption(
 
 def _candle_up(close: float, prev_close: Optional[float], open_: float) -> bool:
     try:
-        from decision_card_signals import candle_up_taiwan
+        from decision_card_signals import candle_body_up_taiwan
 
-        return bool(candle_up_taiwan(close, prev_close, open_))
+        return bool(candle_body_up_taiwan(close, prev_close, open_))
     except Exception:
+        try:
+            o = float(open_)
+        except (TypeError, ValueError):
+            o = 0.0
+        if o == o and o > 0:
+            return float(close) >= o
         if prev_close is None:
             return float(close) >= float(open_)
         return float(close) >= float(prev_close)

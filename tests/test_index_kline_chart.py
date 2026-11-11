@@ -44,11 +44,11 @@ class IndexKlineChartTests(unittest.TestCase):
             self.assertGreater(g, 200)
             self.assertGreater(b, 200)
 
-    def test_render_uses_taiwan_prev_close_color(self):
+    def test_render_uses_taiwan_body_color(self):
         import inspect
 
         src = inspect.getsource(render_index_kline_png)
-        self.assertIn("candle_up_taiwan", src)
+        self.assertIn("candle_body_up_taiwan", src)
         self.assertNotIn("cl >= op", src)
         self.assertIn("12.8", src)
         self.assertIn("NAV_CHART_DPI", src)

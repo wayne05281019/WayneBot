@@ -3812,20 +3812,22 @@ def test_week_bot_zone_and_dual_pred_from_thesis():
 
 
 def test_prev_valid_close_and_friday_color_vs_prev():
-    """倒數第二根（周五）漲跌色只認昨收；K／量同色；缺昨收不准改比開收翻紅。"""
-    from decision_card_signals import candle_up_taiwan
+    """昨收漲跌與 K 陽陰可分叉；缺昨收仍可跳上一有效收。"""
+    from decision_card_signals import candle_body_up_taiwan, candle_up_taiwan
     from biaoke_level_learn import _LIVE_DOWN, _LIVE_UP, _prev_valid_close
 
     closes = [41574.72, 39701.64, 41661.7]
     opens = [42666.13, 38915.76, 40347.28]
-    # 周五＝index 1：相對周四收下跌 → 綠
+    # 周五＝index 1：相對周四收下跌；但收>開＝陽紅（顯示）
     prev = _prev_valid_close(closes, 1, opens=opens)
     assert prev == 41574.72
     assert candle_up_taiwan(closes[1], prev, opens[1]) is False
-    assert (_LIVE_UP if candle_up_taiwan(closes[1], prev, opens[1]) else _LIVE_DOWN) == _LIVE_DOWN
-    # 周一相對周五上漲 → 紅
+    assert candle_body_up_taiwan(closes[1], prev, opens[1]) is True
+    assert (_LIVE_UP if candle_body_up_taiwan(closes[1], prev, opens[1]) else _LIVE_DOWN) == _LIVE_UP
+    # 周一相對周五上漲；收>開＝陽紅
     prev_m = _prev_valid_close(closes, 2, opens=opens)
     assert candle_up_taiwan(closes[2], prev_m, opens[2]) is True
+    assert candle_body_up_taiwan(closes[2], prev_m, opens[2]) is True
     # 中間插 NaN／0 空格仍跳到上一有效收
     closes_gap = [41574.72, float("nan"), 0.0, 39701.64]
     assert _prev_valid_close(closes_gap, 3, opens=[1, 1, 1, 1]) == 41574.72
