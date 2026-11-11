@@ -1,0 +1,114 @@
+{
+  "as_of": "20261111",
+  "as_of_taipei": "2026-11-11T16:45:00+0800",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "certainty": false,
+  "segment_numbers": "REQUIRED",
+  "bar_status": {
+    "twii_daily": "in_db_volume_ok_after_resync",
+    "tx_regular": "in_db",
+    "tx_night": "in_db",
+    "note_zh": "觸發時庫內尚無20261111；已 sync_index_daily／sync_futures_daily 補齊；TWII V>0 才當收"
+  },
+  "official": {
+    "twii": {
+      "o": 43135.76171875,
+      "h": 44257.1484375,
+      "l": 42708.05078125,
+      "c": 44257.15,
+      "v": 11514264.0
+    },
+    "tx_regular": {
+      "o": 42942.0,
+      "h": 44250.0,
+      "l": 42646.0,
+      "c": 44091.0,
+      "v": 81696
+    },
+    "tx_night": {
+      "o": 42503.0,
+      "h": 43147.0,
+      "l": 42030.0,
+      "c": 42522.0,
+      "v": 56759
+    },
+    "friday_low_twii": 37837.05,
+    "friday_low_tx": 37694.0,
+    "support_41760": 41760.0,
+    "pressure_43135": 43135.92
+  },
+  "paths": [
+    {
+      "id": "M1_retest_41760_as_support",
+      "verdict": "未觸發／依失效句回測延後",
+      "segments_provisional": [
+        {
+          "label": "B-a_hold",
+          "role": "壓轉撐仍在（全日低遠高於41760）",
+          "level": 41760.0
+        },
+        {
+          "label": "B-a_hold_retest",
+          "role": "回測41760未啟動",
+          "level": 41760.0
+        }
+      ],
+      "evidence_zh": "TWII L42708.05／TX L42646 皆遠高於41760；且收再站穩43135上（C44257）→符合 forward 失效句『低遠高於41760且收再創新高並站穩43135上＝回測延後』。",
+      "next_zh": "41760回測降權至失守43135之後（見 forward 11/12）。"
+    },
+    {
+      "id": "M2_challenge_43135_cap",
+      "verdict": "合／挑戰並有效收穩43135上",
+      "segments_provisional": [
+        {
+          "label": "post_hold",
+          "role": "開盤即貼昨高43135並上攻",
+          "level": 43135.92,
+          "note": "TWII O43135.76"
+        },
+        {
+          "label": "post_hold_cap",
+          "role": "盤中曾回失43135（L42708）再攻上；收穩壓上≠受制",
+          "level": 43135.92,
+          "note": "TWII C44257.15／H44257.15；TX C44091／H44250"
+        }
+      ],
+      "evidence_zh": "TWII 開≈昨高、高／收44257.15＞43135；TX 高44250收44091。盤中低42708曾回失43135後再站上＝挑戰成立、收盤壓轉撐候選升到43135。",
+      "invalidate_progress_zh": "收穩43135上已發生；後續若有效收回43135下，則改回測41760升權。"
+    },
+    {
+      "id": "M3_lose_41760_then_friday",
+      "verdict": "未觸發",
+      "segments_provisional": [
+        {
+          "label": "B-a_hold_fail",
+          "role": "未失守41760"
+        },
+        {
+          "label": "B-b",
+          "role": "回測C3-5低未啟動",
+          "level": 37837.05
+        }
+      ],
+      "evidence_zh": "全日低遠高於41760／37837；週五低回測不升權。"
+    }
+  ],
+  "miss_analysis": {
+    "expected_segments": [
+      "M1：回測41760撐（B-a_hold_retest）",
+      "M2：挑戰／受制43135（post_hold／post_hold_cap）",
+      "M3：失守41760→再測37837（B-b）"
+    ],
+    "actual_path": "M2為主：開貼43135、盤中回42708仍≫41760、收穩44257站上43135；M1依失效句延後；M3未觸發",
+    "unexpected_level": "TWII高／收44257.15（遠高於forward只釘的43135／41760；屬站穩後更高觀察，不准發明新段號5／9）",
+    "which_segment_broke": "M1/B-a_hold_retest（今日未啟動＝延後）；M3/B-b未啟動",
+    "rule_patch": "條件句『站穩41760後回測41760』：若下一開市日開盤即貼／過更高壓43135，且全日低≫41760並收穩43135上，當日取消M1必經、標 post_hold→收穩43135；下一窗優先回測43135撐，失守43135才把41760升回必經，失守41760才把37837升回必經",
+    "two_diff": {
+      "vs_biaoke_zh": "他層錨仍是41760／37837／結構位；今官方走強收穩昨高43135上，未測41760／週五低＝與『強則回測延後』同向，不准把44257發明成新浪號。",
+      "vs_official_zh": "官方加權 O43135.76/H44257.15/L42708.05/C44257.15 V11514264；台指日盤 O42942/H44250/L42646/C44091 V81696；台指夜盤 O42503/H43147/L42030/C42522 V56759。"
+    }
+  },
+  "cycle8_review_zh": "暫定：C3-5（37837）底候選仍未被再測；B-a_hold（41760）未失守；post_hold 收穩43135上成立；44257僅標更高觀察，不准升新五波1。",
+  "not_buy_signal": true
+}

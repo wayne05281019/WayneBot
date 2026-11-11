@@ -1,0 +1,91 @@
+{
+  "as_of_taipei": "2026-11-11T16:45:00+0800",
+  "as_of_day": "20261111",
+  "infer_for": "20261112",
+  "today_job": "post_close_next_session_infer",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "certainty": false,
+  "segment_numbers": "REQUIRED",
+  "from_eod_zh": "11/11 日盤開貼43135、收穩44257.15（TWII L42708≫41760）；M2成立、M1延後、M3未觸發。下一次優先回測43135撐；失守43135才升權測41760；失守41760才升權測37837。",
+  "paths": [
+    {
+      "id": "M1_retest_43135_as_support",
+      "priority": 1,
+      "status": "推論／未定案",
+      "must_happen_zh": "收穩43135後常見回測：日盤靠近／戳測43135是否仍當撐（壓轉撐確認第二拍）",
+      "segments_provisional": [
+        {
+          "label": "post_hold_43135",
+          "role": "已標收穩昨高上",
+          "level": 43135.92
+        },
+        {
+          "label": "post_hold_43135_retest",
+          "role": "回測43135撐",
+          "level": 43135.92
+        }
+      ],
+      "levels": {
+        "support": 43135.92,
+        "prior_support": 41760.0,
+        "friday_low": 37837.05
+      },
+      "invalidate_zh": "日盤低遠高於43135且收再創新高＝回測延後（仍不准未驗證升新五波1）"
+    },
+    {
+      "id": "M2_hold_or_extend_above_43135",
+      "priority": 2,
+      "status": "推論／未定案",
+      "must_happen_zh": "若續強：收維持43135上、觀察是否延續／整理（更高結構只觀察；≠升新五波1；不准發明未說過的價）",
+      "segments_provisional": [
+        {
+          "label": "post_hold_extend",
+          "role": "站穩後延續／整理",
+          "level": 43135.92,
+          "note": "昨收44257僅官方柱，非他點名新壓"
+        },
+        {
+          "label": "post_hold_watch",
+          "role": "更高觀察（不發明段號）",
+          "note": "未驗證不准升浪"
+        }
+      ],
+      "levels": {
+        "support": 43135.92
+      },
+      "invalidate_zh": "有效收回43135下＝改走M3回測41760"
+    },
+    {
+      "id": "M3_lose_43135_then_41760_friday",
+      "priority": 3,
+      "status": "推論／未定案",
+      "must_happen_zh": "若日盤有效失守43135→41760回升必經回測候選；再失守41760→週五低37837（TX≈37694）升權；破低假跌破另計",
+      "segments_provisional": [
+        {
+          "label": "post_hold_43135_fail",
+          "role": "43135壓轉撐撤銷",
+          "level": 43135.92
+        },
+        {
+          "label": "B-a_hold_retest",
+          "role": "回測41760",
+          "level": 41760.0
+        },
+        {
+          "label": "B-b",
+          "role": "若再失守41760→回測C3-5低",
+          "level": 37837.05
+        }
+      ],
+      "levels": {
+        "fail_high": 43135.92,
+        "fail": 41760.0,
+        "retest": 37837.05,
+        "retest_tx": 37694.0
+      },
+      "invalidate_zh": "失守後迅速收回原位並收穩＝假跌破該層，不強制當日測下一層"
+    }
+  ],
+  "not_buy_signal": true
+}
