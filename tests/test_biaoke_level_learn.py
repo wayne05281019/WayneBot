@@ -4081,6 +4081,9 @@ def test_huang_c60_anchors_and_wave_paint_wired():
     assert "#f5f5f5" in paint  # C3／C4 細白折
     assert "C3 內段細白折" in paint or "細白折＋①" in paint
     assert "不准藍折進 C3" in paint
+    # C3 整段首日→末日紫折（對齊遠／近；細白①～⑤另疊）
+    assert "C3 整段" in paint
+    assert "[float(i2), float(i3)]" in paint or "float(i2), float(i3)" in paint
     assert "次級4壓" in paint
     assert "⑤壓" not in paint  # 不准再把 C3④ 誤標成 C4⑤壓
     # C1–C4 只靠四色底分界；_span 不准再畫豎虛線

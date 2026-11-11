@@ -414,6 +414,7 @@ def test_ops_force_morning_requires_secret_and_runs_on_disk(serve, monkeypatch):
 
         def _fake_rescue(self, *a, **k):
             called["rescue"] += 1
+            called["reissue"] = bool(k.get("force_reissue"))
             return {"ok": True, "delivered": True, "demoted": 1}
 
         monkeypatch.setattr(mr.MainRunner, "force_rescue_morning", _fake_rescue)
@@ -428,11 +429,40 @@ def test_ops_force_morning_requires_secret_and_runs_on_disk(serve, monkeypatch):
         assert code == 202
         assert body.get("ok") is True
         assert body.get("started") is True
+        assert body.get("force_reissue") is False
         for _ in range(120):
             if called["rescue"]:
                 break
             time.sleep(0.05)
         assert called["rescue"] == 1
+        assert called.get("reissue") is False
+
+        called["rescue"] = 0
+        called["reissue"] = None
+
+        def _post_json(path, payload, headers=None):
+            req = urllib.request.Request(
+                f"http://127.0.0.1:{port}{path}",
+                data=json.dumps(payload).encode("utf-8"),
+                method="POST",
+                headers=headers
+                or {
+                    "Content-Type": "application/json",
+                    "X-Wayne-Ops-Secret": "test-ops-secret",
+                },
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                return resp.status, json.loads(resp.read().decode("utf-8"))
+
+        code, body = _post_json("/ops/force-morning", {"reissue": True})
+        assert code == 202
+        assert body.get("force_reissue") is True
+        for _ in range(120):
+            if called["rescue"]:
+                break
+            time.sleep(0.05)
+        assert called["rescue"] == 1
+        assert called.get("reissue") is True
     finally:
         httpd.shutdown()
         httpd.server_close()

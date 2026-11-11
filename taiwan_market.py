@@ -4736,6 +4736,7 @@ def format_taiwan_market_brief_html(
         ]
         return "\n".join(x for x in nums if x)
     fr_light = _falling_risk_light(int(snap.get("falling_risk") or 0))
+    chg5_txt = f"{float(snap.get('chg5_pct') or 0):+.2f}%"
     nums = [
         "＝＝台灣加權指數研究＝＝",
         f"{_brief_lab('收盤')}　{_page_b(snap['close'])}",
@@ -4746,7 +4747,7 @@ def format_taiwan_market_brief_html(
         ),
         *pack_phone_bits(
             f"{_brief_lab('日')}　{_page_b(_fmt_signed_pct(snap.get('chg1_pct')))}",
-            f"{_brief_lab('5日')}　{_page_b(f'{float(snap.get('chg5_pct') or 0):+.2f}%')}",
+            f"{_brief_lab('5日')}　{_page_b(chg5_txt)}",
             f"{_brief_lab('20日')}　{_page_b(_fmt_signed_pct(snap.get('chg20_pct')))}",
         ),
         *pack_phone_bits(
@@ -4786,8 +4787,10 @@ def format_taiwan_market_brief_html(
     if hits:
         bt_lines = [_brief_lab("同一盤勢隔日")]
         for b in hits[:3]:
+            avg_s = f"{float(b['avg_next_pct']):+.1f}%"
+            hit_s = f"{float(b['hit_rate']):.0%}"
             bt_lines.append(
-                f"{_market_bucket_face(b['bucket'])}　隔日{_page_b(f'{b['avg_next_pct']:+.1f}%')}（勝{b['hit_rate']:.0%}）"
+                f"{_market_bucket_face(b['bucket'])}　隔日{_page_b(avg_s)}（勝{hit_s}）"
             )
         blocks.append("\n".join(bt_lines))
     bt_rp = snap.get("backtest_regime_plus") or []
@@ -4796,8 +4799,10 @@ def format_taiwan_market_brief_html(
     if hits_rp:
         rp_lines = [_brief_lab("同一細分盤勢隔日")]
         for b in hits_rp[:3]:
+            avg_s = f"{float(b['avg_next_pct']):+.1f}%"
+            hit_s = f"{float(b['hit_rate']):.0%}"
             rp_lines.append(
-                f"{_market_bucket_face(b['bucket'])}　隔日{_page_b(f'{b['avg_next_pct']:+.1f}%')}（勝{b['hit_rate']:.0%}）"
+                f"{_market_bucket_face(b['bucket'])}　隔日{_page_b(avg_s)}（勝{hit_s}）"
             )
         blocks.append("\n".join(rp_lines))
     return join_dashed(*blocks)

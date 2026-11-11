@@ -519,7 +519,7 @@ class HealthHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         """Ops 救援（需 X-Wayne-Ops-Secret）：
-        - POST /ops/force-morning：常駐碟內立刻補寄今早海選兩支話筒
+        - POST /ops/force-morning：常駐碟內立刻補寄今早海選兩支話筒（body reissue=true＝話筒回報沒收到強制重寄）
         - POST /ops/repair-market-db：缺 daily_quotes／壞庫時裝 Release＋救私人／飆大
         - POST /ops/disk-audit：只讀碟分項＋.corrupt-* 救援副本估量（不刪）
         - POST /ops/purge-rebuildable-disk：只刪確定可重建快取／過期教具
@@ -898,14 +898,24 @@ class HealthHandler(BaseHTTPRequestHandler):
             else:
                 from main_runner import MainRunner
 
-                logger.info("§14 /ops/force-morning：常駐碟背景 force_rescue_morning")
+                force_reissue = bool(
+                    req_json.get("reissue")
+                    or req_json.get("force_reissue")
+                    or req_json.get("user_miss")
+                )
+                logger.info(
+                    "§14 /ops/force-morning：常駐碟背景 force_rescue_morning reissue=%s",
+                    force_reissue,
+                )
                 # demote／補寄全交給 force_rescue_morning：新鮮 morning-claim 進行中不准
                 # 先 demote 再開第二條（2026-10-27 整套雙寄根因）。
                 # MainRunner() 可能很慢（Release／DB）；先 202 再背景建，不准拖死 ops POST。
 
-                def _bg() -> None:
+                def _bg(reissue: bool = force_reissue) -> None:
                     try:
-                        result_bg = MainRunner().force_rescue_morning()
+                        result_bg = MainRunner().force_rescue_morning(
+                            force_reissue=reissue
+                        )
                         logger.info("§14 /ops/force-morning 背景補寄結束 %s", result_bg)
                     except Exception:
                         logger.exception("§14 /ops/force-morning 背景補寄失敗")
@@ -917,6 +927,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                     "ok": True,
                     "started": True,
                     "delivered": False,
+                    "force_reissue": force_reissue,
                     "note": "force_rescue_morning started on web service disk",
                 }
                 body = json.dumps(result, ensure_ascii=False).encode("utf-8")

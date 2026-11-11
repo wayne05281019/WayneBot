@@ -1101,7 +1101,12 @@ class MainRunner:
             )
         return 0
 
-    def force_rescue_morning(self, *, ignore_fuse_window: bool = False) -> Dict[str, Any]:
+    def force_rescue_morning(
+        self,
+        *,
+        ignore_fuse_window: bool = False,
+        force_reissue: bool = False,
+    ) -> Dict[str, Any]:
         """§14 救援：在常駐碟上強制降 morning-claim，立刻補寄白名單兩人。
 
         只准 web 常駐呼叫（掛永久碟）；不准 Render 無碟 one-off job。
@@ -1110,6 +1115,9 @@ class MainRunner:
 
         16:25–17:00 盤後融合、以及 17:40／18:50／22:30 彙整緩衝窗預設讓路
         （ignore_fuse_window=True 才硬搶）。
+
+        force_reissue=True：話筒回報沒收到時，清掉 screen-{latest} 同日回執並
+        降 success→computed 再真寄（預設 False，防雙寄）。
         """
         out: Dict[str, Any] = {
             "ok": False,
@@ -1118,6 +1126,7 @@ class MainRunner:
             "as_of": "",
             "key": "",
             "error": "",
+            "force_reissue": bool(force_reissue),
         }
         if not ignore_fuse_window:
             try:
@@ -1132,12 +1141,16 @@ class MainRunner:
             except Exception:
                 logger.exception("force_rescue 重鎖窗讓路判斷略過")
         # 先把「已寄出但蓋戳失敗」的回執補成 success，再 demote／補寄（防 2026-10-23 雙寄）
-        try:
-            out["reconciled"] = int(
-                self.reconcile_push_deliveries(prefix="screen-") or 0
-            )
-        except Exception:
-            logger.exception("force_rescue_morning reconcile 失敗")
+        # force_reissue 時不准先 honor 回執把鍵鎖死，否則清不掉。
+        if not force_reissue:
+            try:
+                out["reconciled"] = int(
+                    self.reconcile_push_deliveries(prefix="screen-") or 0
+                )
+            except Exception:
+                logger.exception("force_rescue_morning reconcile 失敗")
+                out["reconciled"] = 0
+        else:
             out["reconciled"] = 0
         # 2026-10-27：Deploy 後 boot catch-up 已搶 morning-claim 進行中，force 再 demote
         # 並開第二條會整套雙寄（07:47＋07:56）。新鮮 claim 未寄達＝讓路給進行中那條。
@@ -1185,8 +1198,12 @@ class MainRunner:
         except Exception:
             logger.debug("force_rescue 查未寄 screen 略過", exc_info=True)
         # 若釘到的鍵其實已有回執（檔在、表尚未）→ 補標後不要當未寄
-        if pin_as_of and self.honor_push_delivery(
-            f"screen-{pin_as_of}", notes="force-rescue-receipt"
+        if (
+            pin_as_of
+            and (not force_reissue)
+            and self.honor_push_delivery(
+                f"screen-{pin_as_of}", notes="force-rescue-receipt"
+            )
         ):
             pin_as_of = ""
         try:
@@ -1206,9 +1223,41 @@ class MainRunner:
             out["key"] = f"screen-{as_of or 'none'}"
         except Exception:
             pass
+        # §14：話筒回報沒收到 → 清同日回執再寄（只動 latest 那把 screen 鍵）
+        if force_reissue and out.get("key"):
+            try:
+                from pipeline_delivery import clear_push_delivery
+
+                key = str(out["key"])
+                cleared = bool(
+                    clear_push_delivery(
+                        self.db_path, key, bak_suffix=".bak-user-miss-reissue"
+                    )
+                )
+                out["reissue_cleared"] = cleared
+                st0 = self.pipeline_status(key)
+                if st0 == "success":
+                    self._mark_pipeline(
+                        "computed",
+                        "§14 user-miss reissue demote",
+                        run_date=key,
+                        retries=8,
+                    )
+                pin_as_of = str(out.get("as_of") or "")
+                out["reissued_user_miss"] = True
+                logger.info(
+                    "§14 force-rescue user-miss：清回執＋降級 key=%s cleared=%s was=%s",
+                    key,
+                    cleared,
+                    st0,
+                )
+            except Exception as e:
+                out["error"] = f"user-miss-reissue: {e}"
+                logger.exception("force_rescue user-miss 放行失敗")
+                return out
         # §14 救援：連假後同一 as_of 舊回執先放行，再跑早報（否則永遠略過）
         try:
-            if out.get("key"):
+            if out.get("key") and not force_reissue:
                 if self.release_stale_morning_delivery_for_open_day(str(out["key"])):
                     out["reissued_stale"] = True
                     pin_as_of = ""
@@ -1216,7 +1265,11 @@ class MainRunner:
             logger.exception("force_rescue 開市日舊回執放行略過")
         # #822 換臉：舊海選回執不准擋勝率＋大量圖
         try:
-            if out.get("key") and self.release_pre_winrate_morning_face(str(out["key"])):
+            if (
+                out.get("key")
+                and (not force_reissue)
+                and self.release_pre_winrate_morning_face(str(out["key"]))
+            ):
                 out["reissued_pre_wrvol"] = True
                 pin_as_of = ""
         except Exception:

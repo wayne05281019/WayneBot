@@ -5596,9 +5596,10 @@ def _paint_huang_c60_structure(
     fp,
     pack: Optional[Dict[str, Any]] = None,
 ) -> bool:
-    """超近窗 60 分：C1–C4 四色底＋C2上下虛框＋C3內①～⑤細白折＋C4白細折（不標浪號）。
+    """超近窗 60 分：C1–C4 四色底＋C2上下虛框＋C3整段紫折＋內①～⑤細白折＋C4白細折。
 
     段界只靠四色底，不准再畫豎虛線（多餘）。不是買訊。折線／錨只連官方柱真高低。
+    C3 整段＝首日(2)→末日⑤ 一條紫折（對齊遠／近紫折 C3）；細白①～⑤另疊其上。
     """
     if ax is None or fp is None or not rows:
         return False
@@ -5788,6 +5789,24 @@ def _paint_huang_c60_structure(
             fs=8.6,
             dx=0.9,
         )
+
+    # C3 整段：首日(2)→末日⑤ 紫折一段（對齊遠／近紫折 C3；不是已刪的白虛下降壓）
+    _poly(
+        [float(i2), float(i3)],
+        [float(y2), float(y3)],
+        edge="#6a1b9a",
+        face="#ea80fc",
+        lw=2.05,
+    )
+    ax.scatter(
+        [float(i2), float(i3)],
+        [float(y2), float(y3)],
+        s=36,
+        c="#ea80fc",
+        zorder=8.15,
+        edgecolors="#6a1b9a",
+        linewidths=0.95,
+    )
 
     # C3 內段細白折＋①②③④⑤（④＝43135、⑤＝37837；標在側邊，不准壓K／折線）
     c3_seg = list(anc.get("c3_seg") or [])
