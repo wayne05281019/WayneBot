@@ -1,0 +1,56 @@
+{
+  "as_of_taipei": "2026-11-10T09:50:00+08:00",
+  "as_of_day": "20261110",
+  "infer_for": "20261110_eod_then_20261111",
+  "today_job": "forward_after_1109_verify",
+  "today_job_done": false,
+  "note_zh": "11/10盤中加權暫見站上41760（庫內未收量＝0，不當收）。收盤後才定N路徑。",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "certainty": false,
+  "segment_numbers": "REQUIRED",
+  "from_verify_zh": "11/09：P1未測週五低；P2盤中刺穿收未站穩；P3未觸發。",
+  "paths": [
+    {
+      "id": "N1_retest_friday_if_fail_hold",
+      "priority": 1,
+      "status": "推論／未定案",
+      "must_happen_zh": "若11/10收未站穩41760壓轉撐，近窗仍偏再靠近／戳測週五低37837（TX≈37694）",
+      "segments_provisional": [
+        {"label": "B-a", "role": "11/09反彈已走／刺穿收回"},
+        {"label": "B-a2", "role": "11/10挑戰／站穩觀察", "level": 41760.0},
+        {"label": "B-b", "role": "若站穩失敗→回測C3-5低", "level": 37837.05}
+      ],
+      "levels": {"pressure": 41760.0, "retest": 37837.05, "retest_tx": 37694.0},
+      "invalidate_zh": "日盤有效收穩41760上方且不再回測週五低",
+      "not_buy_signal": true
+    },
+    {
+      "id": "N2_hold_41760_cap_to_support",
+      "priority": 2,
+      "status": "推論／未定案",
+      "must_happen_zh": "若收穩41760壓轉撐，P1回測時序延後／降權；仍不准升新五波1",
+      "segments_provisional": [
+        {"label": "B-a_hold", "role": "壓轉撐候選", "level": 41760.0},
+        {"label": "post_hold", "role": "站穩後續暫不升新五波1", "note": "未驗證不准升"}
+      ],
+      "levels": {"pressure": 41760.0},
+      "invalidate_zh": "再度跌回41760下且加快測週五低",
+      "not_buy_signal": true
+    },
+    {
+      "id": "N3_fake_break_if_retest",
+      "priority": 3,
+      "status": "推論／未定案",
+      "must_happen_zh": "若回測戳破37837後快速抽回＝他的假跌破區（只對質）",
+      "segments_provisional": [
+        {"label": "B-b_spike", "role": "戳破", "level": 37837.05},
+        {"label": "B-b_reclaim", "role": "抽回"}
+      ],
+      "levels": {"friday_low": 37837.05},
+      "invalidate_zh": "破低不回→備線35579→31705",
+      "not_buy_signal": true
+    }
+  ],
+  "not_buy_signal": true
+}
