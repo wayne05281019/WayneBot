@@ -141,5 +141,23 @@
     "hi": 42700.0,
     "source": "188400106:c188400106-352",
     "his_confidence": 0.95
-  }
+  },
+  "evidence_gate_zh": "S8：本窗 preferred＝41760回測，憑據＝昨收失43135（官方）＋I5下一檔大量撐階梯；41900～42700另有他點名＋11/10低41930＋60分大量。無憑據不升權37837。",
+  "learner_method_file": "learner_evidence_infer_verify_20261112.json",
+  "evidence_for_preferred": [
+    {
+      "kind": "official_eod",
+      "zh": "11/12 TWII C43091.87＜43135.92／L42943.5",
+      "as_of": "20261112"
+    },
+    {
+      "kind": "vol_ladder",
+      "zh": "I5 下一檔大量撐候選41760",
+      "level": 41760.0
+    },
+    {
+      "kind": "his_named_band_parallel",
+      "zh": "他點名41900～42700（平行觀察，非本窗 preferred）"
+    }
+  ]
 }

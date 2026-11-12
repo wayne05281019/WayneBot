@@ -1,0 +1,46 @@
+{
+  "as_of_taipei": "2026-11-12T22:40:12+08:00",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "not_buy_signal": true,
+  "title_zh": "學員法鎖：有憑有據→推論→驗證",
+  "user_lock_zh": "2026-11-12 使用者：你要學習這個學員 有憑有據 才可以推論後驗證",
+  "method_zh": [
+    "先列可核對憑據（官方開高低收量、大量換手高低、他已點名層、可重算比率）",
+    "至少兩種依據同帶／同向，才寫下一窗路徑條件句",
+    "盤中或收後對官方柱寫成立／不成立／部分觸發",
+    "單一浪號標籤若無官方柱或其他依據交叉＝不准當推論起點"
+  ],
+  "example": {
+    "source_zh": "社團學員自回（路人，非飆大正文）",
+    "quote_zh": "至從每天看飆大跟波浪大師的觀念學習 都大致能看得懂低點位置 我看次級四浪的低點41930 我用另一個斐波那契比率0.382多頭修正來算大約落在41970 差不多的位置 雖然可能我是錯的 但提供出來分享給大家",
+    "evidence": [
+      {
+        "kind": "official_bar",
+        "zh": "加權11/10低41930.03",
+        "level": 41930.03
+      },
+      {
+        "kind": "fib_0_382_bull_correction",
+        "zh": "學員重算≈41970",
+        "level": 41970.0,
+        "note": "學員自算；可重算但非他點名"
+      },
+      {
+        "kind": "his_named_band",
+        "zh": "飆大13:05點名41900～42700",
+        "lo": 41900.0,
+        "hi": 42700.0
+      },
+      {
+        "kind": "vol_cluster",
+        "zh": "I8／60分大量換手同帶",
+        "align": "I8_bottom_band_vol_cluster"
+      }
+    ],
+    "wave_label_status": "路人標「次級四浪」＝交叉佐證，不過閘不成已驗證浪號；不准發明5／9",
+    "alignment_zh": "官方低＋費波0.382＋他點名帶下緣＋大量撐階梯同落419xx＝有憑有據範例"
+  },
+  "ops_id": "S8_evidence_before_infer",
+  "applies_to_forward_zh": "之後 forward／infer 必須先寫 evidence／憑據，再寫 paths；空憑據不准升 preferred"
+}
