@@ -84,5 +84,6 @@
   ],
   "stock_parallel_zh": "大盤修正窗：底部出量龍頭候選→等量縮介入（智邦／光聖／台光電類）；非追指數反彈高。",
   "not_buy_signal": true,
-  "preferred_infer": "I5_vol_support_ladder"
+  "preferred_infer": "I5_vol_support_ladder",
+  "tx_lead_zh": "下一開市日前先看台指期（夜收＋開盤）是否仍弱於上一大量區／相對夜高；先行弱→加權日盤偏下看43192／43000下。"
 }
