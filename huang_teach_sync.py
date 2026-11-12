@@ -249,16 +249,59 @@ def _is_open_day(dt: datetime, db_path: str) -> bool:
             return dt.weekday() < 5
 
 
-def find_huang_video_hint(as_of_ymd: str) -> Dict[str, str]:
-    """找當日黃培碩片提示（環境／本機快取）；沒有就空，不准假造 file id。
+def find_huang_video_hint(
+    as_of_ymd: str,
+    *,
+    db_path: str = "",
+    fetch_youtube: bool = True,
+) -> Dict[str, str]:
+    """找當日黃培碩片提示：優先 YouTube RSS 自動抓；再 env／本機快取。
 
-    Render 常駐通常沒有 Drive MCP；有設 HUANG_TEACH_VIDEO_ID／TITLE 才記入。
-    檔名慣例含 YYYYMMDD 或 YYYY-MM-DD／黃培碩。
+    不准假造 file id。影音全文：Drive ``MMDD黃培碩.mp4`` 或 HUANG_YT_COOKIES；
+    沒影音仍用標題教法標籤。看影片＝影格＋口播。
     """
     out = {"video_id": "", "video_title": "", "source": ""}
+    ymd = str(as_of_ymd or "").strip()
+    # 1) YouTube RSS＋Drive／cookies 影音（不靠使用者每天貼）
+    if ymd and db_path:
+        try:
+            from huang_youtube import discover_day_video, resolve_drive_file_id
+
+            want_media = bool(
+                (os.getenv("HUANG_YT_COOKIES") or os.getenv("YTDLP_COOKIES") or "").strip()
+                or resolve_drive_file_id(ymd)
+                or (os.getenv("HUANG_LOCAL_VIDEO") or "").strip()
+            )
+            yt = discover_day_video(
+                db_path,
+                ymd,
+                fetch=bool(fetch_youtube),
+                want_transcript=want_media,
+            )
+            if yt.get("video_id") or yt.get("video_title"):
+                out = {
+                    "video_id": str(yt.get("video_id") or ""),
+                    "video_title": str(yt.get("video_title") or ""),
+                    "source": str(yt.get("source") or "youtube_rss"),
+                }
+                tags = yt.get("teach_tags") or []
+                if tags:
+                    out["teach_tags"] = ",".join(str(x) for x in tags)
+                if yt.get("transcript_status"):
+                    out["transcript_status"] = str(yt.get("transcript_status") or "")
+                if yt.get("visual_status"):
+                    out["visual_status"] = str(yt.get("visual_status") or "")
+                if yt.get("drive_file_id"):
+                    out["drive_file_id"] = str(yt.get("drive_file_id") or "")
+                levels = yt.get("levels") or []
+                if levels:
+                    out["levels"] = ",".join(str(x) for x in levels)
+                return out
+        except Exception:
+            logger.exception("huang_teach：YouTube／Drive 自動抓片略過")
+
     vid = (os.getenv("HUANG_TEACH_VIDEO_ID") or "").strip()
     title = (os.getenv("HUANG_TEACH_VIDEO_TITLE") or "").strip()
-    ymd = str(as_of_ymd or "").strip()
     if vid and title:
         if ymd and (ymd in title or f"{ymd[:4]}-{ymd[4:6]}-{ymd[6:]}" in title):
             return {"video_id": vid, "video_title": title, "source": "env"}
@@ -356,7 +399,7 @@ def run_huang_teach_sync(
     except Exception:
         logger.exception("huang_teach：飆大匯入略過（不擋吸收）")
 
-    hint = find_huang_video_hint(ymd)
+    hint = find_huang_video_hint(ymd, db_path=path, fetch_youtube=True)
     out["video_id"] = hint.get("video_id") or ""
     video_hm = resolve_huang_video_hm(hint, as_of_ymd=ymd)
     timing = classify_biaoke_vs_huang(path, ymd, video_hm=video_hm)
@@ -372,6 +415,10 @@ def run_huang_teach_sync(
         f"compare_n={out['compare_n']}",
         f"hint={hint.get('source') or 'none'}",
     ]
+    if hint.get("teach_tags"):
+        note_bits.append(f"teach_tags={hint.get('teach_tags')}")
+    if hint.get("transcript_status"):
+        note_bits.append(f"transcript={hint.get('transcript_status')}")
     if out["verify_n"]:
         note_bits.append("飆大在前→用黃驗證")
     if out["compare_n"]:
