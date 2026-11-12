@@ -161,5 +161,7 @@
     }
   ],
   "huang_biaoke_align_zh": "與黃C4／第4家族同向：修正消化優先41760／419～427帶；名稱定位不同不另發明浪號。",
-  "shared_biaoke_huang_file": "shared_biaoke_huang_ops_20261112.json"
+  "shared_biaoke_huang_file": "shared_biaoke_huang_ops_20261112.json",
+  "two_ranges_evidence_zh": "今天兩層有憑據：R1 43000下；R2 41900～42700。黃0.618≈42471落R2內。上週五低37837為更深不破／假跌破舊憑據。",
+  "fib618_gift_file": "huang_biaoke_fib618_gift_align_20261112.json"
 }
