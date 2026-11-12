@@ -104,6 +104,23 @@ def test_parse_drive_name_and_known_ids():
     assert "37837" in extract_levels_from_text("低點 37837 與 42471")
 
 
+def test_vtt_to_text_strips_timestamps(tmp_path):
+    from huang_youtube import _vtt_to_text
+
+    p = tmp_path / "a.zh-TW.vtt"
+    p.write_text(
+        "WEBVTT\n\n00:00:01.000 --> 00:00:03.000\n第二支腳\n\n"
+        "00:00:03.000 --> 00:00:05.000\n第二支腳\n\n"
+        "00:00:05.000 --> 00:00:07.000\n低點 37837\n",
+        encoding="utf-8",
+    )
+    text = _vtt_to_text(str(p))
+    assert "第二支腳" in text
+    assert "37837" in text
+    assert "-->" not in text
+    assert text.count("第二支腳") == 1
+
+
 def test_discover_prefers_local_mp4_for_visual(tmp_path, monkeypatch):
     import huang_youtube as hy
 

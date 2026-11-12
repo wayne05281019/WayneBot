@@ -674,6 +674,82 @@ def cookies_path() -> str:
     return ""
 
 
+def _vtt_to_text(vtt_path: str) -> str:
+    """極簡 VTT→純文字（去時間碼／重複列）。"""
+    if not vtt_path or not os.path.isfile(vtt_path):
+        return ""
+    lines: List[str] = []
+    seen = set()
+    try:
+        raw = open(vtt_path, encoding="utf-8", errors="ignore").read()
+    except Exception:
+        return ""
+    for line in raw.splitlines():
+        s = line.strip()
+        if not s or s.startswith("WEBVTT") or s.startswith("NOTE") or "-->" in s:
+            continue
+        if re.match(r"^\d+$", s):
+            continue
+        s = re.sub(r"<[^>]+>", "", s).strip()
+        if not s or s in seen:
+            continue
+        seen.add(s)
+        lines.append(s)
+    return "\n".join(lines).strip()
+
+
+def try_fetch_youtube_captions(video_id: str, *, dest_dir: str = "") -> Dict[str, str]:
+    """有 cookies：yt-dlp 拉自動／手動字幕（不重、Render 可先靠這層讀口播）。"""
+    vid = str(video_id or "").strip()
+    out = {"transcript": "", "transcript_status": "skipped_no_cookies", "path": ""}
+    if not vid:
+        return out
+    cookies = cookies_path()
+    if not cookies or not os.path.isfile(cookies):
+        return out
+    ytdlp = os.getenv("YTDLP_BIN") or "yt-dlp"
+    url = f"https://www.youtube.com/watch?v={vid}"
+    td = str(dest_dir or "").strip() or tempfile.mkdtemp(prefix="huang-cap-")
+    os.makedirs(td, exist_ok=True)
+    out_tmpl = os.path.join(td, "cap")
+    cmd = [
+        ytdlp,
+        "--skip-download",
+        "--write-auto-sub",
+        "--write-sub",
+        "--sub-langs",
+        "zh-TW,zh-Hant,zh-Hans,zh,en",
+        "--sub-format",
+        "vtt",
+        "--cookies",
+        cookies,
+        "--no-playlist",
+        "-o",
+        out_tmpl,
+        url,
+    ]
+    try:
+        subprocess.run(cmd, check=True, capture_output=True, timeout=180)
+    except Exception:
+        logger.exception("huang_youtube：字幕抓取失敗 video_id=%s", vid)
+        out["transcript_status"] = "captions_failed"
+        return out
+    vtts = sorted(
+        os.path.join(td, n) for n in os.listdir(td) if n.endswith(".vtt")
+    )
+    # 優先 zh
+    vtts.sort(key=lambda p: (0 if "zh" in os.path.basename(p).lower() else 1, p))
+    for vp in vtts:
+        text = _vtt_to_text(vp)
+        if text:
+            out["transcript"] = text
+            out["transcript_status"] = "captions_ok"
+            out["path"] = vp
+            return out
+    out["transcript_status"] = "captions_empty"
+    return out
+
+
 def try_fetch_youtube_video(
     video_id: str,
     *,
@@ -728,7 +804,7 @@ def try_fetch_youtube_video(
 
 
 def try_transcribe_video(video_id: str, *, max_seconds: int = 25 * 60) -> Dict[str, Any]:
-    """可選：有 cookies 才 yt-dlp 抓影音＋影格＋whisper。失敗不假造。"""
+    """有 cookies：先字幕口播，再下影音抽影格；本機有 whisper 才補口播。失敗不假造。"""
     vid = str(video_id or "").strip()
     out: Dict[str, Any] = {
         "transcript": "",
@@ -740,26 +816,53 @@ def try_transcribe_video(video_id: str, *, max_seconds: int = 25 * 60) -> Dict[s
     if not vid:
         return out
     with tempfile.TemporaryDirectory(prefix="huang-yt-") as td:
+        cap = try_fetch_youtube_captions(vid, dest_dir=td)
+        if cap.get("transcript"):
+            out["transcript"] = cap["transcript"]
+            out["transcript_status"] = cap.get("transcript_status") or "captions_ok"
+            out["levels"] = extract_levels_from_text(out["transcript"])
+
         fetched = try_fetch_youtube_video(vid, dest_dir=td, want_video=True)
         if fetched.get("status") != "ok" or not fetched.get("path"):
+            if out["transcript"]:
+                out["visual_status"] = str(fetched.get("status") or "ytdlp_failed")
+                return out
             out["transcript_status"] = str(fetched.get("status") or "ytdlp_failed")
             out["visual_status"] = out["transcript_status"]
             return out
+
+        # 畫面一定要抽；口播：已有字幕就略過 whisper（Render 通常沒裝）
+        want_whisper = (not out["transcript"]) and bool(
+            (os.getenv("HUANG_WHISPER_BIN") or "").strip()
+            or os.path.isfile("/home/ubuntu/.local/bin/whisper")
+        )
         got = ingest_local_video(
             str(fetched["path"]),
             work_dir=td,
-            want_whisper=True,
+            want_whisper=want_whisper,
             want_frames=True,
         )
-        # whisper 截斷長度：ingest 內預設 25m；若需覆寫再另截
-        out["transcript"] = got.get("transcript") or ""
-        out["transcript_status"] = got.get("transcript_status") or ""
         out["visual_status"] = got.get("visual_status") or ""
         out["frames"] = list(got.get("frames") or [])
-        out["levels"] = list(got.get("levels") or [])
-        if max_seconds and max_seconds < 25 * 60 and not out["transcript"]:
-            # 已在 ingest 處理；此參數保留相容
-            pass
+        if want_whisper and got.get("transcript"):
+            out["transcript"] = got.get("transcript") or ""
+            out["transcript_status"] = got.get("transcript_status") or ""
+            out["levels"] = list(
+                dict.fromkeys(
+                    list(out.get("levels") or [])
+                    + list(got.get("levels") or [])
+                    + extract_levels_from_text(out["transcript"])
+                )
+            )
+        elif out["transcript"]:
+            out["levels"] = list(
+                dict.fromkeys(
+                    list(out.get("levels") or []) + extract_levels_from_text(out["transcript"])
+                )
+            )
+        elif got.get("transcript_status"):
+            out["transcript_status"] = got.get("transcript_status") or out["transcript_status"]
+        _ = max_seconds  # 相容舊呼叫
         return out
 
 
