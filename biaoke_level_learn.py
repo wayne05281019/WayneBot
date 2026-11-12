@@ -8395,6 +8395,103 @@ def _paint_next_layer_vol_zone(
     _ = direction
 
 
+def _display_teach_vol_sr_for_paint(sr_pack: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """畫圖用：主大量區已破撐／過壓且有非預覽下一層 → 黃帶升格下一層，已破主帶改淡標。
+
+    不改 ``_resolve_teach_vol_sr`` 語意（對質／測仍認 volume_first 主區＋cascade）。
+    只修三窗「分布區」：不准已破黃帶繼續當現況主色塊漂在現價外。
+    """
+    out = dict(sr_pack or {})
+    primary = dict(out.get("primary") or {})
+    nxt = dict(out.get("next") or {})
+    if not primary or not nxt:
+        return out
+    if bool(nxt.get("preview")):
+        return out
+    broke = bool(primary.get("broke_support")) or bool(primary.get("broke_press"))
+    if not broke:
+        return out
+    if not (nxt.get("high") and nxt.get("low")):
+        return out
+    broken = dict(primary)
+    broken["broken_for_paint"] = True
+    active = {
+        "date": nxt.get("date"),
+        "ts": nxt.get("ts") or "",
+        "high": float(nxt["high"]),
+        "low": float(nxt["low"]),
+        "volume": float(nxt.get("volume") or 0),
+        "broke_support": False,
+        "broke_press": False,
+        "promoted_from_next": True,
+    }
+    out["primary"] = active
+    out["broken_primary"] = broken
+    out["next"] = {}
+    if out.get("i_next") is not None:
+        out["i_primary"] = out.get("i_next")
+    out["i_next"] = None
+    out["i_next_2nd"] = None
+    out["paint_promoted"] = True
+    return out
+
+
+def _paint_broken_vol_zone(
+    ax,
+    *,
+    high: float,
+    low: float,
+    date_lab: str,
+    fp: Any,
+    labels: bool = True,
+    avoid_top_left_stamp: bool = False,
+    ts_lab: str = "",
+    broke_support: bool = True,
+) -> None:
+    """已破主大量區：淡灰虛邊，不准再當醒目黃帶（分布區亂源）。"""
+    y0, y1 = float(low), float(high)
+    if y1 <= y0:
+        return
+    day_tag = _teach_vol_day_tag(date_lab, ts_lab)
+    ax.axhspan(y0, y1, facecolor="#90a4ae", alpha=0.10, zorder=0.42)
+    for yy in (y0, y1):
+        ax.axhline(
+            float(yy),
+            color="#78909c",
+            lw=0.9,
+            ls=(0, (2.5, 2.2)),
+            alpha=0.55,
+            zorder=1.05,
+        )
+    if not labels:
+        return
+    tag = "已破撐" if broke_support else "已破壓"
+    _paint_left_sr_label(
+        ax,
+        y1,
+        f"淡帶 {day_tag}{tag}壓 {_px(y1)}",
+        fp=fp,
+        color="#b0bec5",
+        edge="#607d8b",
+        va="bottom",
+        fontsize=9.0,
+        avoid_top_left_stamp=avoid_top_left_stamp,
+        x_base=0.01,
+    )
+    _paint_left_sr_label(
+        ax,
+        y0,
+        f"淡帶 {day_tag}{tag}撐 {_px(y0)}",
+        fp=fp,
+        color="#b0bec5",
+        edge="#607d8b",
+        va="top",
+        fontsize=9.0,
+        avoid_top_left_stamp=avoid_top_left_stamp,
+        x_base=0.13,
+    )
+
+
 def _paint_window_dual_zones(
     ax,
     *,
@@ -8414,11 +8511,13 @@ def _paint_window_dual_zones(
 ) -> Dict[str, Any]:
     """遠／近／超近共用：黃＝大量撐壓、灰＝下一層大量區、青＝飆預測位階帶；底色在K下層。"""
     n = len(highs)
-    sr_pack = vol_sr if isinstance(vol_sr, dict) else _resolve_teach_vol_sr(
+    sr_raw = vol_sr if isinstance(vol_sr, dict) else _resolve_teach_vol_sr(
         bars, lookback=int(vol_lookback or 40)
     )
+    sr_pack = _display_teach_vol_sr_for_paint(sr_raw)
     primary = (sr_pack or {}).get("primary") or {}
     nxt = (sr_pack or {}).get("next") or {}
+    broken = (sr_pack or {}).get("broken_primary") or {}
     i_vmax = (sr_pack or {}).get("i_primary")
     if i_vmax is None and n and any(float(v or 0) > 0 for v in vols):
         # 備援：窗內絕對最大量（無 volume_first 時仍要有黃帶）
@@ -8432,6 +8531,30 @@ def _paint_window_dual_zones(
     sr = _next_support_resist(float(y_now), supports=supports, resists=resists)
     y_excl_lo = float(primary["low"]) if primary.get("low") is not None else None
     y_excl_hi = float(primary["high"]) if primary.get("high") is not None else None
+    if broken.get("high") and broken.get("low"):
+        _paint_broken_vol_zone(
+            ax,
+            high=float(broken["high"]),
+            low=float(broken["low"]),
+            date_lab=str(broken.get("date") or ""),
+            ts_lab=str(broken.get("ts") or ""),
+            fp=fp,
+            avoid_top_left_stamp=avoid_top_left_stamp,
+            broke_support=bool(broken.get("broke_support")),
+        )
+        try:
+            y_excl_lo = (
+                min(float(y_excl_lo), float(broken["low"]))
+                if y_excl_lo is not None
+                else float(broken["low"])
+            )
+            y_excl_hi = (
+                max(float(y_excl_hi), float(broken["high"]))
+                if y_excl_hi is not None
+                else float(broken["high"])
+            )
+        except (TypeError, ValueError):
+            pass
     if primary.get("high") and primary.get("low"):
         _paint_max_vol_hl_zone(
             ax,
@@ -8479,6 +8602,7 @@ def _paint_window_dual_zones(
         "y_excl_lo": y_excl_lo,
         "y_excl_hi": y_excl_hi,
         "vol_sr": sr_pack,
+        "vol_sr_raw": sr_raw,
     }
 
 
@@ -13756,11 +13880,13 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         i_vmax = int(zone["i_vmax"])
     _paint_live_candles(ax, None, opens, highs, lows, closes, vols, candle_body_up_taiwan)
     # 加權自己的大量撐壓日金K＋下一層亮桃K（豎線稍後只畫在加權價／量欄）
+    # 畫圖升格後跟 zone.vol_sr（黃＝現況層）；對質仍看 far_vol_sr raw
+    _far_paint_sr = zone.get("vol_sr") if isinstance(zone.get("vol_sr"), dict) else far_vol_sr
     _tw_i_pri = int(i_vmax) if i_vmax is not None else None
-    _tw_i_nxt = far_vol_sr.get("i_next") if isinstance(far_vol_sr, dict) else None
-    if _tw_i_nxt is None and isinstance(far_vol_sr, dict):
+    _tw_i_nxt = (_far_paint_sr or {}).get("i_next") if isinstance(_far_paint_sr, dict) else None
+    if _tw_i_nxt is None and isinstance(_far_paint_sr, dict):
         _tw_i_pri2, _tw_i_nxt = _vol_sr_index_on_axis(
-            far_vol_sr, axis_ymds=[_ymd(r.get("date")) for r in bars]
+            _far_paint_sr, axis_ymds=[_ymd(r.get("date")) for r in bars]
         )
         if _tw_i_pri is None:
             _tw_i_pri = _tw_i_pri2
@@ -13773,7 +13899,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         i_primary=_tw_i_pri,
         i_next=int(_tw_i_nxt) if _tw_i_nxt is not None else None,
         date_primary=_ymd(bars[_tw_i_pri].get("date")) if _tw_i_pri is not None else "",
-        date_next=_ymd(((far_vol_sr or {}).get("next") or {}).get("date")),
+        date_next=_ymd(((_far_paint_sr or {}).get("next") or {}).get("date")),
         fp=_fp,
     )
     # 遠窗不加權浪段大底色（⑤／B／C axvspan）：兩大塊半透底圖擋K，只留折線
@@ -15358,9 +15484,10 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     # 區帶兩標改到九波縮圖定位後再畫（與遠窗同一套：齊頭＋不被縮圖裁字）
     _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_body_up_taiwan)
     i_vmax = zone.get("i_vmax")
+    _near_paint_sr = zone.get("vol_sr") if isinstance(zone.get("vol_sr"), dict) else near_vol_sr
     _near_i_nxt = None
-    if isinstance(near_vol_sr, dict):
-        _near_i_nxt = near_vol_sr.get("i_next")
+    if isinstance(_near_paint_sr, dict):
+        _near_i_nxt = _near_paint_sr.get("i_next")
     if i_vmax is not None:
         _paint_special_candle(
             ax,
@@ -15384,25 +15511,22 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         i_primary=i_vmax,
         i_next=_near_i_nxt,
         fp=_fp,
-        date_primary=_ymd(((near_vol_sr or {}).get("primary") or {}).get("date")),
-        date_next=_ymd(((near_vol_sr or {}).get("next") or {}).get("date")),
+        date_primary=_ymd(((_near_paint_sr or {}).get("primary") or {}).get("date")),
+        date_next=_ymd(((_near_paint_sr or {}).get("next") or {}).get("date")),
     )
     _paint_teach_vol_layer_bars(
         axv,
         vols,
         i_primary=i_vmax,
         i_next=_near_i_nxt,
-        i_next_2nd=(near_vol_sr or {}).get("i_next_2nd")
-        if isinstance(near_vol_sr, dict)
+        i_next_2nd=(_near_paint_sr or {}).get("i_next_2nd")
+        if isinstance(_near_paint_sr, dict)
         else None,
         bars=bars,
         fp=_fp,
     )
-    # 大結構色帶／折線＝遠窗／縮圖同一套（⑤→A→B→C）；C內震盪不准再叫近A／近B
-    ax.axvspan(i5s - 0.35, i5e + 0.35, facecolor="#40c4ff", alpha=0.05, zorder=0.2)
-    ax.axvspan(i5e - 0.2, i_alow + 0.2, facecolor="#ff8a80", alpha=0.05, zorder=0.2)
-    ax.axvspan(i_alow - 0.2, i_b_end + 0.35, facecolor="#ffd54f", alpha=0.05, zorder=0.2)
-    ax.axvspan(i_b_end + 0.35, n - 0.15, facecolor="#ea80fc", alpha=0.07, zorder=0.2)
+    # 近窗亦不加權浪段大底色（⑤／A／B／C axvspan）：與遠窗同一套，只留折線，
+    # 免跟 C1–C4／黃白大量帶疊成「分布區域亂」。
     ax.plot([i5s, i5e], [y5s, y5e], color="#40c4ff", lw=2.5, zorder=7)  # 推進⑤
     ax.plot([i5e, i_alow], [y5e, y_alow], color="#ff8a80", lw=2.5, zorder=7)  # 大A
     ax.plot(
