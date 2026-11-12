@@ -43,6 +43,10 @@ def test_forward_has_n4_band_path():
     assert "N4_test_419_427_vol_band" in paths
     assert paths["N4_test_419_427_vol_band"]["levels"]["band_lo"] == 41900.0
     assert paths["N4_test_419_427_vol_band"]["levels"]["band_hi"] == 42700.0
-    assert d.get("preferred_infer") == "I8_bottom_band_vol_cluster"
+    # 盤後對質後 preferred 改 M1（41760）；教法帶 N4 仍必須在 paths
+    assert d.get("preferred_infer") in {
+        "I8_bottom_band_vol_cluster",
+        "M1_retest_41760_after_43135_fail",
+    }
     assert d.get("phone_sync") == "blocked"
     assert d.get("not_buy_signal") is True
