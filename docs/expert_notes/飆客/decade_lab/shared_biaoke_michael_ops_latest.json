@@ -1,0 +1,52 @@
+{
+  "as_of": "2026-11-12T12:18:00+08:00",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "purpose_zh": "飆大／麥可可共用的相同處（操作節奏與觀盤骨架）；內容工具仍分軌，勝率不准混",
+  "usable_same": [
+    {
+      "id": "S1_infer_then_verify",
+      "zh": "先寫路徑／條件句 → 盤中或收後對官方柱寫成立／不成立",
+      "biaoke": "workflow_lock／I* 待驗",
+      "michael": "wait_confirm；文內常自寫『成立』"
+    },
+    {
+      "id": "S2_night_then_tx_then_day",
+      "zh": "夜盤（電子盤）→ 台指期開／早盤 → 日盤驗證；時序不倒灌",
+      "biaoke": "T8／T7",
+      "michael": "night_then_day；開高後一路向南等句"
+    },
+    {
+      "id": "S3_tx_is_index_lens",
+      "zh": "看大盤方向優先用台指期（不是只盯加權收盤美化）",
+      "biaoke": "用台指期看大盤；期開宣判反彈結束",
+      "michael": "主戰場就是期指；15K／邊界"
+    },
+    {
+      "id": "S4_sox_outer_link",
+      "zh": "費半／外圍與內盤連動，要一起讀",
+      "biaoke": "T9 三盤＋費半",
+      "michael": "文內費半保衛戰等外圍句；量化有 sox 變體"
+    },
+    {
+      "id": "S5_failed_up_then_down",
+      "zh": "上攻／反彈預定帶沒站上或開盤破壞 → 改向下看待（失敗反彈／開高轉弱家族）",
+      "biaoke": "T1／T2／I5 未接大量區",
+      "michael": "gap_south_open；上邊界站不上就南下"
+    },
+    {
+      "id": "S6_stock_not_equal_index",
+      "zh": "大盤定時機／方向；個股另看（不准指數一刀切全買）",
+      "biaoke": "T5／T6 個股量價另軌",
+      "michael": "stock_vs_index"
+    }
+  ],
+  "not_shared_keep_split": [
+    "飆大波浪段號／C3－5 位階公式",
+    "麥可 15K 連兩根、當沖站名、系統上下邊界數字",
+    "兩邊勝率與選股閘門（michael_* lab ≠ 飆大海選）",
+    "不准把任一方未驗證規則寫進黃金買點／話筒買訊"
+  ],
+  "how_to_use_zh": "每天觀盤清單可共用 S1–S6 骨架；點位與進出仍各跟來源：大量撐／他點名層走飆大，15K 邊界走麥可自研軌。",
+  "user_ask_zh": "有無兩人可抓出的相同處可以用"
+}
