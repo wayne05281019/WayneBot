@@ -7,7 +7,7 @@
   "buy_signal": false,
   "certainty": false,
   "segment_numbers": "REQUIRED",
-  "from_teach_zh": "11/12 自回教法：反彈點未及→弱；期貨開盤宣判反彈結束；絕對到43000下；回到位階4整理等多空表態。舉一反三代理：夜高44911／夜收44606未及＝弱勢。",
+  "from_teach_zh": "11/12 自回教法：反彈點未及→弱；期貨開盤宣判反彈結束；絕對到43000下；回到位階4整理等多空表態。舉一反三代理：夜高44911／夜收44606未及＝弱勢。 主鏈I5：未接10/30大量區≈45212→下看11/03≈43192→43000下→41930/41760→37837。",
   "from_eod_zh": "11/12 日盤收尚未鎖死本則；先依盤中柱＋教法推下一開市日。收盤後以官方收覆寫 verify。",
   "paths": [
     {
@@ -16,11 +16,25 @@
       "status": "推論／未定案",
       "must_happen_zh": "修正進行：日盤／台指期續弱或整理偏空，路徑觀察先見43000之下（目標區非撐）",
       "segments_provisional": [
-        {"label": "rebound_ended", "role": "11/12期開已宣判反彈結束"},
-        {"label": "degree4_digest", "role": "一組位階4整理／修正"},
-        {"label": "path_below_43000", "role": "下行觀察", "level": 43000.0}
+        {
+          "label": "rebound_ended",
+          "role": "11/12期開已宣判反彈結束"
+        },
+        {
+          "label": "degree4_digest",
+          "role": "一組位階4整理／修正"
+        },
+        {
+          "label": "path_below_43000",
+          "role": "下行觀察",
+          "level": 43000.0
+        }
       ],
-      "levels": {"path_below": 43000.0, "next_fail": 41760.0, "friday_low": 37837.05},
+      "levels": {
+        "path_below": 43000.0,
+        "next_fail": 41760.0,
+        "friday_low": 37837.05
+      },
       "invalidate_zh": "日盤強收且有效站回並站穩夜盤收44606上（甚至挑戰44911）＝弱勢／反彈結束句暫失效，改觀察是否另起反彈段（仍不准發明未說過新價）"
     },
     {
@@ -29,10 +43,20 @@
       "status": "推論／未定案",
       "must_happen_zh": "先位階4區間整理、等多空表態；表態向下則接N1；表態向上仍須過反彈代理帶才算結構翻多",
       "segments_provisional": [
-        {"label": "degree4_wait", "role": "整理等表態"},
-        {"label": "break_down", "role": "向下表態→43000下"}
+        {
+          "label": "degree4_wait",
+          "role": "整理等表態"
+        },
+        {
+          "label": "break_down",
+          "role": "向下表態→43000下"
+        }
       ],
-      "levels": {"watch_proxy_high": 44606.0, "night_high": 44911.0, "path_below": 43000.0}
+      "levels": {
+        "watch_proxy_high": 44606.0,
+        "night_high": 44911.0,
+        "path_below": 43000.0
+      }
     },
     {
       "id": "N3_lose_41760_then_friday",
@@ -40,13 +64,25 @@
       "status": "推論／未定案",
       "must_happen_zh": "若有效失守41760→升權回測週五低37837（假跌破另計）；本路承接他11/09鏈式，今天未重念但未作廢",
       "segments_provisional": [
-        {"label": "fail_41760", "role": "壓轉撐撤／回測", "level": 41760.0},
-        {"label": "retest_37837", "role": "C3-5低", "level": 37837.05}
+        {
+          "label": "fail_41760",
+          "role": "壓轉撐撤／回測",
+          "level": 41760.0
+        },
+        {
+          "label": "retest_37837",
+          "role": "C3-5低",
+          "level": 37837.05
+        }
       ],
-      "levels": {"fail": 41760.0, "retest": 37837.05},
+      "levels": {
+        "fail": 41760.0,
+        "retest": 37837.05
+      },
       "invalidate_zh": "失守後迅速收回並收穩＝假跌破該層，不強制當日測下一層"
     }
   ],
   "stock_parallel_zh": "大盤修正窗：底部出量龍頭候選→等量縮介入（智邦／光聖／台光電類）；非追指數反彈高。",
-  "not_buy_signal": true
+  "not_buy_signal": true,
+  "preferred_infer": "I5_vol_support_ladder"
 }
