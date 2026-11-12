@@ -38,9 +38,10 @@
         "align": "I8_bottom_band_vol_cluster"
       }
     ],
-    "wave_label_status": "路人標「次級四浪」＝交叉佐證，不過閘不成已驗證浪號；不准發明5／9",
+    "wave_label_status": "路人用飆大慣用語「次級四浪」標41930＝交叉佐證；需再對他點名帶／官方柱。不過閘不成話筒浪號；可與黃「第4家族」名稱對照。",
     "alignment_zh": "官方低＋費波0.382＋他點名帶下緣＋大量撐階梯同落419xx＝有憑有據範例"
   },
   "ops_id": "S8_evidence_before_infer",
-  "applies_to_forward_zh": "之後 forward／infer 必須先寫 evidence／憑據，再寫 paths；空憑據不准升 preferred"
+  "applies_to_forward_zh": "之後 forward／infer 必須先寫 evidence／憑據，再寫 paths；空憑據不准升 preferred",
+  "huang_align_zh": "使用者：黃／飆看法一致、大浪名稱定位不同；見 shared_biaoke_huang_ops"
 }
