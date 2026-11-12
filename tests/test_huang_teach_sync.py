@@ -80,7 +80,7 @@ def test_run_huang_teach_marks_success_without_video(tmp_path, monkeypatch):
     monkeypatch.setattr("huang_teach_sync._is_open_day", lambda dt, db_path: True)
     monkeypatch.setattr(
         "huang_teach_sync.find_huang_video_hint",
-        lambda ymd: {"video_id": "", "video_title": "", "source": ""},
+        lambda ymd, **kwargs: {"video_id": "", "video_title": "", "source": ""},
     )
     monkeypatch.setattr(
         "biaoke_ingest.run_biaoke_ingest_quiet", lambda: None, raising=False
