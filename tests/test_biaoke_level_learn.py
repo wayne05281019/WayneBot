@@ -2231,6 +2231,77 @@ def test_teach_tip_snapshots_match_gates_stale_kit():
     assert not teach_tip_snapshots_match(base, None)
 
 
+def test_ensure_latest_tx_night_row_requires_exact_cap(monkeypatch):
+    """有舊夜盤列不准當已齊；缺 cap 當日列才 sync。"""
+    from biaoke_level_learn import _ensure_latest_tx_night_row
+
+    sync_dates = []
+
+    monkeypatch.setattr(
+        "trading_calendar.futures_night_date_cap",
+        lambda *a, **k: "20261112",
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._load_tx_futures_daily",
+        lambda *_a, **_k: [{"date": "20261111", "close": 42522.0}],
+    )
+
+    def _sync(db, dates=None, **_kw):
+        sync_dates.append(list(dates or []))
+        return {"ok": True}
+
+    monkeypatch.setattr("taiwan_market.sync_futures_daily", _sync)
+    _ensure_latest_tx_night_row("/tmp/fake.db")
+    assert sync_dates == [["20261112"]]
+
+    sync_dates.clear()
+    monkeypatch.setattr(
+        "biaoke_level_learn._load_tx_futures_daily",
+        lambda *_a, **_k: [{"date": "20261112", "close": 44606.0}],
+    )
+    _ensure_latest_tx_night_row("/tmp/fake.db")
+    assert sync_dates == []
+
+
+def test_compute_teach_tip_reuses_frozen_pack_tip(monkeypatch):
+    """prep 凍 tip 後遠／近／超近重算必須同口，不准各自漂價。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_level_learn import (
+        compute_teach_tip_snapshot,
+        _resolve_tx_after_hours_tip,
+    )
+
+    frozen = {
+        "tw_asof": "20261112",
+        "tw_close": 40123.4,
+        "tw_live": 1,
+        "sox_asof": "20261111",
+        "sox_close": 9500.5,
+        "sox_live": 0,
+        "tx_asof": "20261112",
+        "tx_close": 44606.0,
+        "tx_live": 0,
+    }
+    pack = {"teach_tip": dict(frozen)}
+    a = compute_teach_tip_snapshot("/tmp/none.db", pack)
+    b = compute_teach_tip_snapshot("/tmp/none.db", pack)
+    assert a == b == frozen
+    day = datetime(2026, 11, 12, 11, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    monkeypatch.setattr(
+        "biaoke_level_learn._tx_night_session_live", lambda *_a, **_k: False
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._query_now_from_pack", lambda *_a, **_k: day
+    )
+    tip = _resolve_tx_after_hours_tip("", pack)
+    # 白天／非夜盤：戳價吃凍結 tip
+    assert tip is not None
+    assert float(tip["close"]) == 44606.0
+    assert tip["asof"] == "20261112"
+
+
 def test_sox_axis_index_for_ymd_prefers_tw_then_extra():
     """費半 tip 索引：先加權同日格，再延長格。"""
     from biaoke_level_learn import _sox_axis_index_for_ymd

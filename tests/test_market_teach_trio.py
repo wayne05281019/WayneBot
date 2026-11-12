@@ -276,6 +276,10 @@ def test_market_wave_phone_paint_uses_trio_panels_only():
     assert "_tx_night_session_live" in prep_src
     assert "_ensure_paint_live_tx" in prep_src
     assert "_fill_live_twii_when_official_lags" in prep_src
+    # 遠窗電子盤缺 cap 當日列必補；三窗 tip 同口凍結
+    assert "_ensure_latest_tx_night_row" in prep_src
+    assert "teach_tip" in prep_src
+    assert "compute_teach_tip_snapshot" in prep_src
     # 排程／ingest 鉤子仍預設 full（不傳 panels）
     maybe = inspect.getsource(maybe_paint_open_day_after_ingest)
     assert "paint_open_day_hypothesis(db_path, force=force)" in maybe

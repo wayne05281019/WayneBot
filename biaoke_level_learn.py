@@ -731,13 +731,37 @@ def _ensure_paint_live_sox(
 
 
 def compute_teach_tip_snapshot(
-    db_path: str, pack: Optional[Dict[str, Any]] = None
+    db_path: str,
+    pack: Optional[Dict[str, Any]] = None,
+    *,
+    reuse_frozen: bool = True,
 ) -> Dict[str, Any]:
     """三窗現況一口：加權／費半／台指電子盤 asof＋收／是否盤中。
 
     話筒存檔回退要比對這份；三張對不起來＝不准混用舊圖。
+    pack 已有 prep 凍結的 teach_tip（含三價）→ 直接重用，遠／近／超近同口。
+    prep 當下算凍結時傳 reuse_frozen=False。
     """
     pack = pack if isinstance(pack, dict) else {}
+    frozen = pack.get("teach_tip") if isinstance(pack.get("teach_tip"), dict) else None
+    if (
+        reuse_frozen
+        and frozen
+        and frozen.get("tw_close")
+        and frozen.get("tx_close")
+    ):
+        # 已凍結：三窗 paint 重入不准重抓漂價
+        return {
+            "tw_asof": _ymd(frozen.get("tw_asof")) or "",
+            "tw_close": frozen.get("tw_close"),
+            "tw_live": int(frozen.get("tw_live") or 0),
+            "sox_asof": _ymd(frozen.get("sox_asof")) or "",
+            "sox_close": frozen.get("sox_close"),
+            "sox_live": int(frozen.get("sox_live") or 0),
+            "tx_asof": _ymd(frozen.get("tx_asof")) or "",
+            "tx_close": frozen.get("tx_close"),
+            "tx_live": int(frozen.get("tx_live") or 0),
+        }
     out: Dict[str, Any] = {
         "tw_asof": "",
         "tw_close": None,
@@ -2005,6 +2029,17 @@ def _paint_teach_query_stamp(
     live = int((bars[-1] or {}).get("live_session") or 0) == 1
     if live and not _twii_cash_session_live(_query_now_from_pack(pack)):
         live = False
+    # prep 凍結 tip：三窗加權戳同口（不准遠／近／超近各吃一版 MIS）
+    tip0 = (pack or {}).get("teach_tip") if isinstance(pack, dict) else None
+    if (
+        isinstance(tip0, dict)
+        and str(label_prefix or "").strip() in {"", "加權"}
+        and float(tip0.get("tw_close") or 0) > 0
+    ):
+        as_of = _ymd(tip0.get("tw_asof")) or as_of
+        live = bool(int(tip0.get("tw_live") or 0))
+        if close is None:
+            close = float(tip0["tw_close"])
     when = _stamp_when_bit(
         as_of,
         live=live,
@@ -2150,6 +2185,16 @@ def _paint_index_last_chg_tip(
         return
     from matplotlib.offsetbox import TextArea
 
+    # prep 凍結 tip：三窗費半戳同口
+    tip0 = (pack or {}).get("teach_tip") if isinstance(pack, dict) else None
+    if (
+        isinstance(tip0, dict)
+        and str(label_prefix or "費半").strip() in {"", "費半"}
+        and float(tip0.get("sox_close") or 0) > 0
+    ):
+        close = float(tip0["sox_close"])
+        asof_ymd = _ymd(tip0.get("sox_asof")) or asof_ymd
+        session_live = bool(int(tip0.get("sox_live") or 0))
     chg = _day_change_vs_prev(close, prev_close)
     pct_s = str(chg.get("pct_text") or "").strip()
     pts_s = str(chg.get("pts_text") or "").strip()
@@ -2273,11 +2318,15 @@ def _tx_night_rows_on_evening_axis(
 
 
 def _ensure_latest_tx_night_row(db_path: str) -> None:
-    """週末也要把「下一開市日」標的週五夜補進庫；缺列會讓戳／末K吃到更舊夜盤。"""
+    """牆鐘 cap 當日夜盤列必須在庫；缺列會讓戳／末K吃到更舊夜盤。
+
+    不准用 load_futures_night(date<=cap) 有舊列就當已齊——05:00 後 cap 已是今晨
+    結束標（例 11/12），庫內若只有 11/11，舊寫法會誤判已齊、遠窗電子盤少最新一根。
+    """
     if not db_path:
         return
     try:
-        from taiwan_market import load_futures_night, sync_futures_daily
+        from taiwan_market import sync_futures_daily
         from trading_calendar import futures_night_date_cap
     except Exception:
         return
@@ -2287,11 +2336,17 @@ def _ensure_latest_tx_night_row(db_path: str) -> None:
         return
     if len(cap) != 8:
         return
+    # 只認 cap 當日那一列（官方結束標），不准 date<=cap 舊夜冒充
+    have_cap = False
     try:
-        got = load_futures_night(db_path, cap)
+        rows = _load_tx_futures_daily(db_path, session="night", since=cap)
+        for r in rows or []:
+            if _ymd((r or {}).get("date")) == cap and float((r or {}).get("close") or 0) > 0:
+                have_cap = True
+                break
     except Exception:
-        got = None
-    if isinstance(got, dict) and float(got.get("close") or 0) > 0:
+        have_cap = False
+    if have_cap:
         return
     try:
         sync_futures_daily(db_path, dates=[cap])
@@ -2314,6 +2369,17 @@ def _resolve_tx_after_hours_tip(
     asof = ""
     clock = ""
     night_live = _tx_night_session_live(_query_now_from_pack(pack))
+    # prep 凍結 tip：日盤三窗電子盤戳同口（夜盤進行中仍走即時）
+    tip0 = (pack or {}).get("teach_tip") if isinstance(pack, dict) else None
+    tip_locked = False
+    if (
+        not night_live
+        and isinstance(tip0, dict)
+        and float(tip0.get("tx_close") or 0) > 0
+    ):
+        close = float(tip0["tx_close"])
+        asof = _ymd(tip0.get("tx_asof")) or ""
+        tip_locked = True
     # 0) pack 已抓的 live_tx（同口 OHLC＋ref）——只在夜盤進行中
     live0 = (pack or {}).get("live_tx") if isinstance(pack, dict) else None
     if (
@@ -2371,11 +2437,13 @@ def _resolve_tx_after_hours_tip(
             if int(datetime.now(TAIPEI).hour) < 5:
                 asof = (datetime.now(TAIPEI) - timedelta(days=1)).strftime("%Y%m%d")
     # 2) 庫內：現價＝最新已齊夜盤收；前收＝該夜起日日盤結算（對齊 CRefPrice）
-    if close is None and db_path:
-        try:
-            _ensure_latest_tx_night_row(db_path)
-        except Exception:
-            pass
+    # tip 已鎖 close／asof 時仍走這段補 prev，不准另漂價
+    if (close is None or tip_locked) and db_path:
+        if close is None:
+            try:
+                _ensure_latest_tx_night_row(db_path)
+            except Exception:
+                pass
         try:
             from taiwan_market import load_futures_daily, load_futures_night
             from trading_calendar import futures_night_date_cap
@@ -2386,12 +2454,14 @@ def _resolve_tx_after_hours_tip(
             )
         except Exception:
             night = None
-        if isinstance(night, dict) and float(night.get("close") or 0) > 0:
+        if close is None and isinstance(night, dict) and float(night.get("close") or 0) > 0:
             close = float(night["close"])
             label = _ymd(night.get("date"))
             eve = _tx_night_evening_ymd(label) or label
             asof = eve
-            if prev is None and len(eve) == 8:
+        if prev is None:
+            eve = _ymd(asof)
+            if len(eve) == 8:
                 try:
                     reg = load_futures_daily(db_path, eve, symbol="TX") or {}
                     settle = float(reg.get("settlement") or 0)
@@ -2408,7 +2478,7 @@ def _resolve_tx_after_hours_tip(
         except Exception:
             fut = {}
     levels = (fut or {}).get("levels") or {}
-    if close is None:
+    if close is None and not tip_locked:
         try:
             nc = float(levels.get("tx_night_c") or 0)
         except (TypeError, ValueError):
@@ -17241,12 +17311,23 @@ def prepare_wave_live_pack(
     except Exception:
         logger.debug("prepare_wave 費半即時略過", exc_info=True)
         live_sox = None
-    # 電子夜盤進行中（15:00–05:00）：波浪 prep 就帶 live_tx，遠窗紅框同口
+    # 電子夜盤：先強迫補牆鐘 cap 當日官方列（修遠窗少最新夜）；盤中再疊 live_tx
+    try:
+        _ensure_latest_tx_night_row(db_path)
+    except Exception:
+        logger.debug("prepare_wave 補最新夜盤列略過", exc_info=True)
     try:
         if _tx_night_session_live(dt):
             _ensure_paint_live_tx(pack, now=dt)
     except Exception:
         logger.debug("prepare_wave 電子夜盤即時略過", exc_info=True)
+    # 三窗同口：prep 當下凍一份 tip，遠／近／超近不准各自再漂成不同日盤價
+    try:
+        pack["teach_tip"] = compute_teach_tip_snapshot(
+            db_path, pack, reuse_frozen=False
+        )
+    except Exception:
+        logger.debug("prepare_wave teach_tip 略過", exc_info=True)
     # 即時價若已破 4/28 9865 → 掛 2/25 8498 再回測（撐壓對最新價）
     try:
         pred = pack.get("pred_levels") if isinstance(pack.get("pred_levels"), dict) else {}
