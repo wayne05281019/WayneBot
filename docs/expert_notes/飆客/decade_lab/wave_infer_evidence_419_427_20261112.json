@@ -1,0 +1,33 @@
+{
+  "as_of": "2026-11-12T13:20:00+08:00",
+  "track": "market_tw",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "he_said": {
+    "at": "2026-11-12 13:05",
+    "post_id": "188400106:c188400106-352",
+    "text": "不用害怕 低點絕對不會破，低點應該在41900~42700左右，不可能100%正確，但這個區間95%"
+  },
+  "user_15m": {
+    "note_zh": "籌碼K線15分：419xx～427xx附近多根大成交量",
+    "artifacts": [
+      "/opt/cursor/artifacts/biaoke-419-427/twii15_vol_42520_42712.jpg",
+      "/opt/cursor/artifacts/biaoke-419-427/twii15_vol_42130.jpg",
+      "/opt/cursor/artifacts/biaoke-419-427/twii15_vol_41611_base.jpg"
+    ]
+  },
+  "official_align": {
+    "daily_20261110": {
+      "o": 42130.33,
+      "h": 43135.92,
+      "l": 41930.03,
+      "c": 42711.92,
+      "vol": 12827160
+    },
+    "band": [
+      41900.0,
+      42700.0
+    ]
+  },
+  "infer_id": "I8_bottom_band_vol_cluster"
+}
