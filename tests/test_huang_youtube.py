@@ -71,3 +71,18 @@ def test_channel_id_locked():
 
     assert HUANG_YT_CHANNEL_ID == "UCq8cveuaw5Ztv44nw2txiIg"
     assert HUANG_YT_CHANNEL_ID in HUANG_YT_RSS
+
+
+def test_cookies_path_accepts_inline_netscape(tmp_path, monkeypatch):
+    from huang_youtube import cookies_path
+
+    cookie_file = tmp_path / "c.txt"
+    monkeypatch.setenv("HUANG_YT_COOKIES_TMP", str(cookie_file))
+    monkeypatch.setenv(
+        "HUANG_YT_COOKIES",
+        "# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tFALSE\t0\tA\tB\n",
+    )
+    path = cookies_path()
+    assert path == str(cookie_file)
+    assert cookie_file.is_file()
+    assert "youtube.com" in cookie_file.read_text(encoding="utf-8")

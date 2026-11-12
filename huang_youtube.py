@@ -265,12 +265,35 @@ def load_day_video(db_path: str, as_of_ymd: str) -> Dict[str, Any]:
 
 
 def cookies_path() -> str:
-    return (
+    """回傳可用的 cookies 檔路徑。
+
+    支援：
+    - 環境變數是既有檔路徑
+    - 環境變數直接是 Netscape cookies 內容（Render Secret 常這樣放）→ 寫入暫存檔
+    不准把 cookies 貼進 git／聊天。
+    """
+    raw = (
         os.getenv("HUANG_YT_COOKIES")
         or os.getenv("YTDLP_COOKIES")
         or os.getenv("YOUTUBE_COOKIES")
         or ""
     ).strip()
+    if not raw:
+        return ""
+    if os.path.isfile(raw):
+        return raw
+    # 內嵌 cookies 文本
+    if ("# Netscape" in raw) or ("\t" in raw and "youtube.com" in raw):
+        path = os.getenv("HUANG_YT_COOKIES_TMP") or "/tmp/huang_yt_cookies.txt"
+        try:
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(raw if raw.endswith("\n") else raw + "\n")
+            os.chmod(path, 0o600)
+            return path
+        except Exception:
+            logger.exception("huang_youtube：寫入 cookies 暫存失敗")
+            return ""
+    return ""
 
 
 def try_transcribe_video(video_id: str, *, max_seconds: int = 25 * 60) -> Dict[str, str]:
