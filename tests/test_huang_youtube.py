@@ -86,3 +86,51 @@ def test_cookies_path_accepts_inline_netscape(tmp_path, monkeypatch):
     assert path == str(cookie_file)
     assert cookie_file.is_file()
     assert "youtube.com" in cookie_file.read_text(encoding="utf-8")
+
+
+def test_parse_drive_name_and_known_ids():
+    from huang_youtube import (
+        HUANG_DRIVE_FOLDER_ID_DEFAULT,
+        extract_levels_from_text,
+        parse_drive_name_ymd,
+        resolve_drive_file_id,
+    )
+
+    assert parse_drive_name_ymd("1111黃培碩.mp4").endswith("1111")
+    assert parse_drive_name_ymd("20261112黃培碩.mp4") == "20261112"
+    assert parse_drive_name_ymd("雜檔.txt") == ""
+    assert resolve_drive_file_id("20261111") == "1efllG90yQBmFPC-3yFuba2TxW0FLA2jh"
+    assert HUANG_DRIVE_FOLDER_ID_DEFAULT.startswith("1")
+    assert "37837" in extract_levels_from_text("低點 37837 與 42471")
+
+
+def test_discover_prefers_local_mp4_for_visual(tmp_path, monkeypatch):
+    import huang_youtube as hy
+
+    db = str(tmp_path / "t.db")
+    fake_mp4 = tmp_path / "v.mp4"
+    fake_mp4.write_bytes(b"\x00" * 1_500_000)
+
+    monkeypatch.setattr(hy, "fetch_rss", lambda **kw: hy.parse_rss_xml(SAMPLE_RSS))
+    monkeypatch.setenv("HUANG_LOCAL_VIDEO", str(fake_mp4))
+
+    def _fake_ingest(path, **kw):
+        assert path == str(fake_mp4)
+        return {
+            "transcript": "第二支腳 37837 禮物",
+            "transcript_status": "whisper_ok",
+            "visual_status": "frames_ok",
+            "frames": ["f_001.jpg"],
+            "frames_dir": str(tmp_path / "frames"),
+            "levels": ["37837"],
+        }
+
+    monkeypatch.setattr(hy, "ingest_local_video", _fake_ingest)
+    got = hy.discover_day_video(db, "20261111", fetch=True, want_transcript=True)
+    assert got["source"] == "local_mp4"
+    assert got["visual_status"] == "frames_ok"
+    assert got["transcript_status"] == "whisper_ok"
+    assert "37837" in (got.get("levels") or [])
+    loaded = hy.load_day_video(db, "20261111")
+    assert "第二支腳" in (loaded.get("transcript") or "")
+    assert loaded.get("visual_status") == "frames_ok"

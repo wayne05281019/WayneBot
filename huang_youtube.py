@@ -1,9 +1,10 @@
-"""黃培碩 YouTube：開市日自動抓最新片（不靠使用者貼連結）。
+"""黃培碩 YouTube／Drive：開市日自動抓最新影音（不靠使用者每天貼）。
 
 做法：
 - 公開 RSS（channel_id 固定）每天列片→落庫→回傳當日 hint 給 huang_teach_sync
-- 標題／摘要先吸收（可核對關鍵句）；完整口播需 HUANG_YT_COOKIES 才准 yt-dlp＋本機 whisper
-- 不准假造 video_id；沒片＝空 hint
+- 標題／摘要先吸收；完整影音優先雲端硬碟 ``MMDD黃培碩.mp4``（gdown）→抽影格＋whisper
+- YouTube 完整影音需 HUANG_YT_COOKIES 才准 yt-dlp（雲端 IP 常被擋）
+- 看影片＝影格＋口播；不准只當標題／不准假造 video_id
 - 非買訊；不寄話筒
 """
 from __future__ import annotations
@@ -18,7 +19,7 @@ import tempfile
 import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 logger = logging.getLogger("wayne.huang_youtube")
@@ -28,6 +29,13 @@ HUANG_YT_CHANNEL_ID = "UCq8cveuaw5Ztv44nw2txiIg"
 HUANG_YT_RSS = (
     f"https://www.youtube.com/feeds/videos.xml?channel_id={HUANG_YT_CHANNEL_ID}"
 )
+# 雲端硬碟「黃培碩每日影音」資料夾（agent 建；可被 HUANG_DRIVE_FOLDER_ID 覆寫）
+HUANG_DRIVE_FOLDER_ID_DEFAULT = "1JkZ3P_AjAq4QigGplenKZ4o5CNaUvtfR"
+# 已驗證可 gdown 的歷史片（不用每天問）
+HUANG_DRIVE_KNOWN_IDS = {
+    "20261110": "1m5GHbPCxjWZz5NHHdHgtzOJiITUeDj9I",
+    "20261111": "1efllG90yQBmFPC-3yFuba2TxW0FLA2jh",
+}
 _ATOM = {"atom": "http://www.w3.org/2005/Atom", "yt": "http://www.youtube.com/xml/schemas/2015", "media": "http://search.yahoo.com/mrss/"}
 
 # 標題教法關鍵（先吸收；口播再補）
@@ -41,6 +49,8 @@ _TEACH_PATTERNS = (
     (r"禮物", "gift"),
     (r"斜率", "slope"),
 )
+# 影格／口播也掃數字位階
+_LEVEL_RE = re.compile(r"(?<!\d)(3[5-9]\d{3}|4[0-9]\d{3}|5[0-2]\d{3})(?!\d)")
 
 
 def ensure_tables(db_path: str) -> None:
@@ -62,11 +72,30 @@ def ensure_tables(db_path: str) -> None:
                 teach_tags_json TEXT DEFAULT '[]',
                 transcript TEXT DEFAULT '',
                 transcript_status TEXT DEFAULT '',
+                drive_file_id TEXT DEFAULT '',
+                visual_status TEXT DEFAULT '',
+                frames_json TEXT DEFAULT '[]',
+                levels_json TEXT DEFAULT '[]',
                 raw_json TEXT DEFAULT '',
                 fetched_at TEXT NOT NULL
             );
             """
         )
+        # 舊庫補欄
+        cols = {
+            r[1]
+            for r in conn.execute("PRAGMA table_info(huang_youtube_videos)").fetchall()
+        }
+        for col, typ in (
+            ("drive_file_id", "TEXT DEFAULT ''"),
+            ("visual_status", "TEXT DEFAULT ''"),
+            ("frames_json", "TEXT DEFAULT '[]'"),
+            ("levels_json", "TEXT DEFAULT '[]'"),
+        ):
+            if col not in cols:
+                conn.execute(
+                    f"ALTER TABLE huang_youtube_videos ADD COLUMN {col} {typ}"
+                )
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_huang_yt_asof "
             "ON huang_youtube_videos(as_of);"
@@ -74,6 +103,309 @@ def ensure_tables(db_path: str) -> None:
         conn.commit()
     finally:
         conn.close()
+
+
+def drive_folder_id() -> str:
+    return (
+        os.getenv("HUANG_DRIVE_FOLDER_ID") or HUANG_DRIVE_FOLDER_ID_DEFAULT or ""
+    ).strip()
+
+
+def parse_drive_name_ymd(name: str) -> str:
+    """``1111黃培碩.mp4``／``20261111黃培碩.mp4`` → YYYYMMDD；認不出＝空。"""
+    base = os.path.basename(str(name or "")).strip()
+    m = re.match(r"^(20\d{2})(\d{2})(\d{2}).*黃培碩", base)
+    if m:
+        return f"{m.group(1)}{m.group(2)}{m.group(3)}"
+    m = re.match(r"^(\d{2})(\d{2}).*黃培碩", base)
+    if m:
+        mm, dd = int(m.group(1)), int(m.group(2))
+        if 1 <= mm <= 12 and 1 <= dd <= 31:
+            # 年：台北今／去年（跨年 12→1）
+            now = datetime.now(TAIPEI)
+            year = now.year
+            try:
+                cand = datetime(year, mm, dd, tzinfo=TAIPEI)
+            except ValueError:
+                return ""
+            if cand.date() > now.date():
+                year -= 1
+            return f"{year:04d}{mm:02d}{dd:02d}"
+    return ""
+
+
+def drive_file_ids_map() -> Dict[str, str]:
+    """ymd → Drive file id。env ``HUANG_DRIVE_FILE_IDS``＝``20261111=id,20261112=id``。"""
+    out = dict(HUANG_DRIVE_KNOWN_IDS)
+    raw = (os.getenv("HUANG_DRIVE_FILE_IDS") or "").strip()
+    if raw:
+        try:
+            if raw.startswith("{"):
+                parsed = json.loads(raw)
+                if isinstance(parsed, dict):
+                    for k, v in parsed.items():
+                        kk = str(k).strip()
+                        vv = str(v).strip()
+                        if kk and vv:
+                            out[kk] = vv
+            else:
+                for part in raw.split(","):
+                    part = part.strip()
+                    if "=" not in part:
+                        continue
+                    k, v = part.split("=", 1)
+                    kk, vv = k.strip(), v.strip()
+                    if kk and vv:
+                        out[kk] = vv
+        except Exception:
+            logger.exception("huang_youtube：解析 HUANG_DRIVE_FILE_IDS 失敗")
+    return out
+
+
+def resolve_drive_file_id(as_of_ymd: str) -> str:
+    ymd = str(as_of_ymd or "").strip()
+    if not ymd:
+        return ""
+    return str(drive_file_ids_map().get(ymd) or "").strip()
+
+
+def extract_levels_from_text(*parts: str) -> List[str]:
+    seen: List[str] = []
+    for p in parts:
+        for m in _LEVEL_RE.findall(str(p or "")):
+            if m not in seen:
+                seen.append(m)
+    return seen
+
+
+def gdown_drive_mp4(file_id: str, dest_path: str) -> bool:
+    """用 gdown 抓 Drive mp4（anyone／已授權）。失敗不假造。"""
+    fid = str(file_id or "").strip()
+    dest = str(dest_path or "").strip()
+    if not fid or not dest:
+        return False
+    os.makedirs(os.path.dirname(dest) or ".", exist_ok=True)
+    gdown_bin = os.getenv("GDOWN_BIN") or "gdown"
+    url = f"https://drive.google.com/uc?id={fid}"
+    try:
+        subprocess.run(
+            [gdown_bin, "--fuzzy", "-O", dest, url],
+            check=True,
+            capture_output=True,
+            timeout=1800,
+        )
+    except Exception:
+        logger.exception("huang_youtube：gdown 失敗 file_id=%s", fid)
+        return False
+    return os.path.isfile(dest) and os.path.getsize(dest) > 1_000_000
+
+
+def extract_video_frames(
+    video_path: str,
+    frames_dir: str,
+    *,
+    start_sec: int = 60,
+    duration_sec: int = 25 * 60,
+    every_sec: int = 90,
+    max_frames: int = 20,
+) -> List[str]:
+    """從影音抽影格（要看畫面，不只聽口播）。回傳檔名清單。"""
+    src = str(video_path or "").strip()
+    out_dir = str(frames_dir or "").strip()
+    if not src or not os.path.isfile(src) or not out_dir:
+        return []
+    os.makedirs(out_dir, exist_ok=True)
+    pattern = os.path.join(out_dir, "f_%03d.jpg")
+    vf = f"fps=1/{max(int(every_sec), 30)},scale=1280:-1"
+    try:
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-ss",
+                str(int(start_sec)),
+                "-i",
+                src,
+                "-t",
+                str(int(duration_sec)),
+                "-vf",
+                vf,
+                "-frames:v",
+                str(int(max_frames)),
+                "-q:v",
+                "3",
+                pattern,
+            ],
+            check=True,
+            capture_output=True,
+            timeout=600,
+        )
+    except Exception:
+        logger.exception("huang_youtube：抽影格失敗 path=%s", src)
+        return []
+    names = sorted(
+        n for n in os.listdir(out_dir) if n.startswith("f_") and n.endswith(".jpg")
+    )
+    return names[: int(max_frames)]
+
+
+def whisper_local_media(
+    media_path: str,
+    *,
+    max_seconds: int = 25 * 60,
+) -> Dict[str, str]:
+    """本機 ffmpeg→whisper；media 可為 mp4／wav／m4a。"""
+    src = str(media_path or "").strip()
+    out = {"transcript": "", "transcript_status": "no_media"}
+    if not src or not os.path.isfile(src):
+        return out
+    whisper_bin = os.getenv("HUANG_WHISPER_BIN") or "whisper"
+    with tempfile.TemporaryDirectory(prefix="huang-whisper-") as td:
+        clipped = os.path.join(td, "clip.wav")
+        try:
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    src,
+                    "-t",
+                    str(int(max_seconds)),
+                    "-ac",
+                    "1",
+                    "-ar",
+                    "16000",
+                    clipped,
+                ],
+                check=True,
+                capture_output=True,
+                timeout=600,
+            )
+        except Exception:
+            logger.exception("huang_youtube：whisper 前 ffmpeg 失敗")
+            out["transcript_status"] = "ffmpeg_failed"
+            return out
+        try:
+            subprocess.run(
+                [
+                    whisper_bin,
+                    clipped,
+                    "--language",
+                    "zh",
+                    "--model",
+                    os.getenv("HUANG_WHISPER_MODEL") or "base",
+                    "--output_format",
+                    "txt",
+                    "--output_dir",
+                    td,
+                ],
+                check=True,
+                capture_output=True,
+                timeout=1800,
+            )
+            txt_path = os.path.join(td, "clip.txt")
+            if os.path.isfile(txt_path):
+                text = open(txt_path, encoding="utf-8").read().strip()
+                out["transcript"] = text
+                out["transcript_status"] = "whisper_ok" if text else "whisper_empty"
+                return out
+        except Exception:
+            logger.exception("huang_youtube：whisper 失敗")
+            out["transcript_status"] = "whisper_failed"
+            return out
+    out["transcript_status"] = "unknown"
+    return out
+
+
+def ingest_local_video(
+    video_path: str,
+    *,
+    work_dir: str = "",
+    want_whisper: bool = True,
+    want_frames: bool = True,
+) -> Dict[str, Any]:
+    """讀本機 mp4：抽影格＋口播。畫面數字從檔名／之後 OCR 欄位擴；先留影格路徑。"""
+    src = str(video_path or "").strip()
+    out: Dict[str, Any] = {
+        "transcript": "",
+        "transcript_status": "",
+        "visual_status": "",
+        "frames": [],
+        "frames_dir": "",
+        "levels": [],
+    }
+    if not src or not os.path.isfile(src):
+        out["transcript_status"] = "no_file"
+        out["visual_status"] = "no_file"
+        return out
+    root = str(work_dir or "").strip() or os.path.join(
+        tempfile.gettempdir(), "huang-ingest"
+    )
+    os.makedirs(root, exist_ok=True)
+    frames_dir = os.path.join(root, "frames")
+    if want_frames:
+        names = extract_video_frames(src, frames_dir)
+        out["frames"] = names
+        out["frames_dir"] = frames_dir if names else ""
+        out["visual_status"] = "frames_ok" if names else "frames_empty"
+    else:
+        out["visual_status"] = "skipped"
+    if want_whisper:
+        tr = whisper_local_media(src)
+        out["transcript"] = tr.get("transcript") or ""
+        out["transcript_status"] = tr.get("transcript_status") or ""
+        out["levels"] = extract_levels_from_text(out["transcript"])
+    else:
+        out["transcript_status"] = "skipped"
+    return out
+
+
+def ingest_drive_video(
+    as_of_ymd: str,
+    *,
+    file_id: str = "",
+    work_dir: str = "",
+    want_whisper: bool = True,
+    want_frames: bool = True,
+) -> Dict[str, Any]:
+    """Drive file id → 本機 mp4 → 影格＋口播。"""
+    ymd = str(as_of_ymd or "").strip()
+    fid = str(file_id or "").strip() or resolve_drive_file_id(ymd)
+    out: Dict[str, Any] = {
+        "drive_file_id": fid,
+        "as_of": ymd,
+        "local_path": "",
+        "transcript": "",
+        "transcript_status": "no_drive_id",
+        "visual_status": "no_drive_id",
+        "frames": [],
+        "frames_dir": "",
+        "levels": [],
+    }
+    if not fid:
+        return out
+    root = str(work_dir or "").strip() or os.path.join(
+        tempfile.gettempdir(), f"huang-drive-{ymd or fid[:8]}"
+    )
+    os.makedirs(root, exist_ok=True)
+    dest = os.path.join(root, f"{ymd or 'video'}.mp4")
+    if not (os.path.isfile(dest) and os.path.getsize(dest) > 1_000_000):
+        if not gdown_drive_mp4(fid, dest):
+            out["transcript_status"] = "gdown_failed"
+            out["visual_status"] = "gdown_failed"
+            return out
+    out["local_path"] = dest
+    got = ingest_local_video(
+        dest,
+        work_dir=root,
+        want_whisper=want_whisper,
+        want_frames=want_frames,
+    )
+    out.update(got)
+    out["drive_file_id"] = fid
+    out["as_of"] = ymd
+    out["local_path"] = dest
+    return out
 
 
 def _stamp() -> str:
@@ -183,14 +515,28 @@ def upsert_video(db_path: str, row: Dict[str, Any]) -> None:
     tags = row.get("teach_tags")
     if tags is None:
         tags = extract_teach_tags(str(row.get("title") or ""), str(row.get("description") or ""))
+    frames = row.get("frames")
+    if frames is None:
+        try:
+            frames = json.loads(str(row.get("frames_json") or "[]"))
+        except Exception:
+            frames = []
+    levels = row.get("levels")
+    if levels is None:
+        try:
+            levels = json.loads(str(row.get("levels_json") or "[]"))
+        except Exception:
+            levels = []
     conn = sqlite3.connect(db_path, timeout=30.0)
     try:
         conn.execute(
             """
             INSERT INTO huang_youtube_videos(
                 video_id, as_of, published, title, description, source,
-                teach_tags_json, transcript, transcript_status, raw_json, fetched_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                teach_tags_json, transcript, transcript_status,
+                drive_file_id, visual_status, frames_json, levels_json,
+                raw_json, fetched_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(video_id) DO UPDATE SET
                 as_of=excluded.as_of,
                 published=excluded.published,
@@ -205,6 +551,18 @@ def upsert_video(db_path: str, row: Dict[str, Any]) -> None:
                     WHEN length(excluded.transcript)>0 THEN excluded.transcript_status
                     WHEN excluded.transcript_status!='' THEN excluded.transcript_status
                     ELSE huang_youtube_videos.transcript_status END,
+                drive_file_id=CASE
+                    WHEN length(excluded.drive_file_id)>0 THEN excluded.drive_file_id
+                    ELSE huang_youtube_videos.drive_file_id END,
+                visual_status=CASE
+                    WHEN length(excluded.visual_status)>0 THEN excluded.visual_status
+                    ELSE huang_youtube_videos.visual_status END,
+                frames_json=CASE
+                    WHEN length(excluded.frames_json)>2 THEN excluded.frames_json
+                    ELSE huang_youtube_videos.frames_json END,
+                levels_json=CASE
+                    WHEN length(excluded.levels_json)>2 THEN excluded.levels_json
+                    ELSE huang_youtube_videos.levels_json END,
                 raw_json=excluded.raw_json,
                 fetched_at=excluded.fetched_at
             """,
@@ -218,6 +576,10 @@ def upsert_video(db_path: str, row: Dict[str, Any]) -> None:
                 json.dumps(list(tags), ensure_ascii=False),
                 str(row.get("transcript") or ""),
                 str(row.get("transcript_status") or ""),
+                str(row.get("drive_file_id") or ""),
+                str(row.get("visual_status") or ""),
+                json.dumps(list(frames or []), ensure_ascii=False),
+                json.dumps(list(levels or []), ensure_ascii=False),
                 str(row.get("raw_json") or "")[:8000],
                 _stamp(),
             ),
@@ -233,7 +595,9 @@ def load_day_video(db_path: str, as_of_ymd: str) -> Dict[str, Any]:
     try:
         rows = conn.execute(
             "SELECT video_id, as_of, published, title, description, source, "
-            "teach_tags_json, transcript, transcript_status FROM huang_youtube_videos "
+            "teach_tags_json, transcript, transcript_status, "
+            "drive_file_id, visual_status, frames_json, levels_json "
+            "FROM huang_youtube_videos "
             "WHERE as_of=? ORDER BY length(title) DESC",
             (str(as_of_ymd or "").strip(),),
         ).fetchall()
@@ -251,6 +615,16 @@ def load_day_video(db_path: str, as_of_ymd: str) -> Dict[str, Any]:
         tags = list(json.loads(best[6] or "[]"))
     except Exception:
         tags = []
+    frames: List[str] = []
+    levels: List[str] = []
+    try:
+        frames = list(json.loads(best[11] or "[]"))
+    except Exception:
+        frames = []
+    try:
+        levels = list(json.loads(best[12] or "[]"))
+    except Exception:
+        levels = []
     return {
         "video_id": best[0] or "",
         "as_of": best[1] or "",
@@ -261,6 +635,10 @@ def load_day_video(db_path: str, as_of_ymd: str) -> Dict[str, Any]:
         "teach_tags": tags,
         "transcript": best[7] or "",
         "transcript_status": best[8] or "",
+        "drive_file_id": best[9] or "",
+        "visual_status": best[10] or "",
+        "frames": frames,
+        "levels": levels,
     }
 
 
@@ -296,101 +674,112 @@ def cookies_path() -> str:
     return ""
 
 
-def try_transcribe_video(video_id: str, *, max_seconds: int = 25 * 60) -> Dict[str, str]:
-    """可選：有 cookies 才 yt-dlp 抓音訊＋本機 whisper。失敗不假造。"""
+def try_fetch_youtube_video(
+    video_id: str,
+    *,
+    dest_dir: str = "",
+    want_video: bool = True,
+) -> Dict[str, str]:
+    """有 cookies 才 yt-dlp。優先整段影音（可看畫面）；失敗再退音訊。"""
     vid = str(video_id or "").strip()
-    out = {"transcript": "", "transcript_status": "skipped_no_cookies"}
+    out = {"path": "", "status": "skipped_no_cookies", "kind": ""}
     if not vid:
         return out
     cookies = cookies_path()
     if not cookies or not os.path.isfile(cookies):
         return out
     ytdlp = os.getenv("YTDLP_BIN") or "yt-dlp"
-    whisper_bin = os.getenv("HUANG_WHISPER_BIN") or "whisper"
     url = f"https://www.youtube.com/watch?v={vid}"
-    with tempfile.TemporaryDirectory(prefix="huang-yt-") as td:
-        out_tmpl = os.path.join(td, "audio.%(ext)s")
-        cmd = [
-            ytdlp,
-            "-f",
-            "bestaudio/best",
-            "--cookies",
-            cookies,
-            "--no-playlist",
-            "-o",
-            out_tmpl,
-            url,
-        ]
-        try:
-            subprocess.run(cmd, check=True, capture_output=True, timeout=600)
-        except Exception:
-            logger.exception("huang_youtube：yt-dlp 失敗 video_id=%s", vid)
-            out["transcript_status"] = "ytdlp_failed"
-            return out
-        audio = ""
-        for name in os.listdir(td):
-            if name.startswith("audio."):
-                audio = os.path.join(td, name)
-                break
-        if not audio:
-            out["transcript_status"] = "no_audio"
-            return out
-        # 截斷過長音訊（省資源）
-        clipped = os.path.join(td, "clip.wav")
-        try:
-            subprocess.run(
-                [
-                    "ffmpeg",
-                    "-y",
-                    "-i",
-                    audio,
-                    "-t",
-                    str(int(max_seconds)),
-                    "-ac",
-                    "1",
-                    "-ar",
-                    "16000",
-                    clipped,
-                ],
-                check=True,
-                capture_output=True,
-                timeout=300,
-            )
-        except Exception:
-            logger.exception("huang_youtube：ffmpeg 失敗")
-            out["transcript_status"] = "ffmpeg_failed"
-            return out
-        try:
-            # 本機 whisper CLI；輸出 txt 到同目錄
-            subprocess.run(
-                [
-                    whisper_bin,
-                    clipped,
-                    "--language",
-                    "zh",
-                    "--model",
-                    os.getenv("HUANG_WHISPER_MODEL") or "base",
-                    "--output_format",
-                    "txt",
-                    "--output_dir",
-                    td,
-                ],
-                check=True,
-                capture_output=True,
-                timeout=1800,
-            )
-            txt_path = os.path.join(td, "clip.txt")
-            if os.path.isfile(txt_path):
-                text = open(txt_path, encoding="utf-8").read().strip()
-                out["transcript"] = text
-                out["transcript_status"] = "whisper_ok" if text else "whisper_empty"
-                return out
-        except Exception:
-            logger.exception("huang_youtube：whisper 失敗")
-            out["transcript_status"] = "whisper_failed"
-            return out
-    out["transcript_status"] = "unknown"
+    td = str(dest_dir or "").strip() or tempfile.mkdtemp(prefix="huang-yt-")
+    os.makedirs(td, exist_ok=True)
+    fmt = "bestvideo[height<=720]+bestaudio/best[height<=720]/best" if want_video else "bestaudio/best"
+    out_tmpl = os.path.join(td, "media.%(ext)s")
+    cmd = [
+        ytdlp,
+        "-f",
+        fmt,
+        "--cookies",
+        cookies,
+        "--no-playlist",
+        "--merge-output-format",
+        "mp4",
+        "-o",
+        out_tmpl,
+        url,
+    ]
+    try:
+        subprocess.run(cmd, check=True, capture_output=True, timeout=900)
+    except Exception:
+        logger.exception("huang_youtube：yt-dlp 失敗 video_id=%s", vid)
+        out["status"] = "ytdlp_failed"
+        return out
+    media = ""
+    for name in os.listdir(td):
+        if name.startswith("media."):
+            media = os.path.join(td, name)
+            break
+    if not media:
+        out["status"] = "no_media"
+        return out
+    out["path"] = media
+    out["status"] = "ok"
+    out["kind"] = "video" if media.endswith((".mp4", ".mkv", ".webm")) else "audio"
     return out
+
+
+def try_transcribe_video(video_id: str, *, max_seconds: int = 25 * 60) -> Dict[str, Any]:
+    """可選：有 cookies 才 yt-dlp 抓影音＋影格＋whisper。失敗不假造。"""
+    vid = str(video_id or "").strip()
+    out: Dict[str, Any] = {
+        "transcript": "",
+        "transcript_status": "skipped_no_cookies",
+        "visual_status": "",
+        "frames": [],
+        "levels": [],
+    }
+    if not vid:
+        return out
+    with tempfile.TemporaryDirectory(prefix="huang-yt-") as td:
+        fetched = try_fetch_youtube_video(vid, dest_dir=td, want_video=True)
+        if fetched.get("status") != "ok" or not fetched.get("path"):
+            out["transcript_status"] = str(fetched.get("status") or "ytdlp_failed")
+            out["visual_status"] = out["transcript_status"]
+            return out
+        got = ingest_local_video(
+            str(fetched["path"]),
+            work_dir=td,
+            want_whisper=True,
+            want_frames=True,
+        )
+        # whisper 截斷長度：ingest 內預設 25m；若需覆寫再另截
+        out["transcript"] = got.get("transcript") or ""
+        out["transcript_status"] = got.get("transcript_status") or ""
+        out["visual_status"] = got.get("visual_status") or ""
+        out["frames"] = list(got.get("frames") or [])
+        out["levels"] = list(got.get("levels") or [])
+        if max_seconds and max_seconds < 25 * 60 and not out["transcript"]:
+            # 已在 ingest 處理；此參數保留相容
+            pass
+        return out
+
+
+def _should_ingest_media(want_transcript: bool, as_of_ymd: str) -> bool:
+    if want_transcript:
+        return True
+    # 有 Drive 檔或 cookies → 自動挖影音（不用等旗標）
+    if resolve_drive_file_id(as_of_ymd):
+        return True
+    if cookies_path():
+        return True
+    # 本機已有快取片
+    for p in (
+        os.getenv("HUANG_LOCAL_VIDEO") or "",
+        f"/tmp/huang{as_of_ymd[-4:]}.mp4" if len(as_of_ymd) >= 8 else "",
+        f"/tmp/huang{as_of_ymd}.mp4",
+    ):
+        if p and os.path.isfile(p) and os.path.getsize(p) > 1_000_000:
+            return True
+    return False
 
 
 def discover_day_video(
@@ -400,7 +789,11 @@ def discover_day_video(
     fetch: bool = True,
     want_transcript: bool = False,
 ) -> Dict[str, Any]:
-    """抓／選當日黃片；寫庫；回 hint 形狀給 teach sync。"""
+    """抓／選當日黃片；寫庫；回 hint 形狀給 teach sync。
+
+    影音優先序：本機快取 → Drive ``MMDD黃培碩.mp4`` → YouTube cookies yt-dlp。
+    都要抽影格（看畫面）＋whisper（口播）；只有標題不算看過影片。
+    """
     ymd = str(as_of_ymd or "").strip()
     out: Dict[str, Any] = {
         "video_id": "",
@@ -409,6 +802,9 @@ def discover_day_video(
         "as_of": ymd,
         "teach_tags": [],
         "transcript_status": "",
+        "visual_status": "",
+        "drive_file_id": "",
+        "levels": [],
     }
     if not ymd or not db_path:
         return out
@@ -439,10 +835,36 @@ def discover_day_video(
                     "source": f"db:{loaded.get('source') or 'cache'}",
                     "teach_tags": list(loaded.get("teach_tags") or []),
                     "transcript_status": loaded.get("transcript_status") or "",
+                    "visual_status": loaded.get("visual_status") or "",
+                    "drive_file_id": loaded.get("drive_file_id") or "",
+                    "levels": list(loaded.get("levels") or []),
                 }
             )
-            return out
-        return out
+            # 庫內尚無口播／影格且今日可 ingest → 補挖
+            need = (not loaded.get("transcript")) or (
+                str(loaded.get("visual_status") or "") not in ("frames_ok",)
+            )
+            if need and _should_ingest_media(want_transcript, ymd):
+                picked = {
+                    "video_id": str(loaded.get("video_id") or ""),
+                    "title": str(loaded.get("title") or ""),
+                    "as_of": ymd,
+                    "published": str(loaded.get("published") or ""),
+                    "description": str(loaded.get("description") or ""),
+                }
+            else:
+                return out
+        else:
+            # 無 RSS 列仍可只靠 Drive 當日檔
+            if not resolve_drive_file_id(ymd):
+                return out
+            picked = {
+                "video_id": f"drive:{resolve_drive_file_id(ymd)}",
+                "title": f"{ymd[4:]}黃培碩",
+                "as_of": ymd,
+                "published": "",
+                "description": "",
+            }
 
     tags = extract_teach_tags(picked.get("title") or "", picked.get("description") or "")
     row: Dict[str, Any] = {
@@ -451,19 +873,93 @@ def discover_day_video(
         "source": "rss",
         "transcript": "",
         "transcript_status": "title_only",
+        "visual_status": "title_only",
+        "drive_file_id": "",
+        "frames": [],
+        "levels": [],
     }
-    if want_transcript and cookies_path():
-        tr = try_transcribe_video(str(picked.get("video_id") or ""))
-        row["transcript"] = tr.get("transcript") or ""
-        row["transcript_status"] = tr.get("transcript_status") or "title_only"
+
+    if _should_ingest_media(want_transcript, ymd):
+        media_done = False
+        # 1) 本機快取
+        local_cands = [
+            (os.getenv("HUANG_LOCAL_VIDEO") or "").strip(),
+            f"/tmp/huang{ymd[-4:]}.mp4",
+            f"/tmp/huang{ymd}.mp4",
+            f"/tmp/huang{ymd[-4:]}/video.mp4",
+        ]
+        for lp in local_cands:
+            if lp and os.path.isfile(lp) and os.path.getsize(lp) > 1_000_000:
+                got = ingest_local_video(lp, work_dir=f"/tmp/huang-ingest-{ymd}")
+                row["transcript"] = got.get("transcript") or ""
+                row["transcript_status"] = got.get("transcript_status") or ""
+                row["visual_status"] = got.get("visual_status") or ""
+                row["frames"] = list(got.get("frames") or [])
+                row["levels"] = list(got.get("levels") or [])
+                row["source"] = "local_mp4"
+                media_done = True
+                break
+        # 2) Drive
+        if not media_done:
+            fid = resolve_drive_file_id(ymd)
+            if fid:
+                got = ingest_drive_video(
+                    ymd,
+                    file_id=fid,
+                    work_dir=f"/tmp/huang-drive-{ymd}",
+                )
+                row["drive_file_id"] = got.get("drive_file_id") or fid
+                row["transcript"] = got.get("transcript") or ""
+                row["transcript_status"] = got.get("transcript_status") or ""
+                row["visual_status"] = got.get("visual_status") or ""
+                row["frames"] = list(got.get("frames") or [])
+                row["levels"] = list(got.get("levels") or [])
+                if got.get("local_path"):
+                    row["source"] = "drive_mp4"
+                    media_done = str(got.get("transcript_status") or "").startswith(
+                        "whisper"
+                    ) or str(got.get("visual_status") or "") == "frames_ok"
+                else:
+                    row["source"] = "drive_miss"
+        # 3) YouTube cookies
+        if not media_done and cookies_path():
+            tr = try_transcribe_video(str(picked.get("video_id") or ""))
+            row["transcript"] = tr.get("transcript") or ""
+            row["transcript_status"] = tr.get("transcript_status") or "title_only"
+            row["visual_status"] = tr.get("visual_status") or ""
+            row["frames"] = list(tr.get("frames") or [])
+            row["levels"] = list(tr.get("levels") or [])
+            if row["transcript"] or row["frames"]:
+                row["source"] = "youtube_media"
+
+    # 標題 tags 併入口播／位階
+    if row.get("transcript"):
+        tags = list(
+            dict.fromkeys(
+                tags
+                + extract_teach_tags(str(row.get("transcript") or ""))
+            )
+        )
+        row["teach_tags"] = tags
+        more = extract_levels_from_text(str(row.get("transcript") or ""))
+        row["levels"] = list(dict.fromkeys(list(row.get("levels") or []) + more))
+
     upsert_video(db_path, row)
+    src_out = "youtube_rss"
+    if row.get("source") in ("local_mp4", "drive_mp4", "youtube_media"):
+        src_out = str(row.get("source"))
+    elif row.get("source") == "drive_miss":
+        src_out = "youtube_rss"
     out.update(
         {
             "video_id": picked.get("video_id") or "",
             "video_title": picked.get("title") or "",
-            "source": "youtube_rss",
+            "source": src_out,
             "teach_tags": tags,
             "transcript_status": row.get("transcript_status") or "",
+            "visual_status": row.get("visual_status") or "",
+            "drive_file_id": row.get("drive_file_id") or "",
+            "levels": list(row.get("levels") or []),
         }
     )
     return out

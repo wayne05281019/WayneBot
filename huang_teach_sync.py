@@ -257,22 +257,26 @@ def find_huang_video_hint(
 ) -> Dict[str, str]:
     """找當日黃培碩片提示：優先 YouTube RSS 自動抓；再 env／本機快取。
 
-    不准假造 file id。口播全文需 HUANG_YT_COOKIES；沒 cookies 仍用標題教法標籤。
+    不准假造 file id。影音全文：Drive ``MMDD黃培碩.mp4`` 或 HUANG_YT_COOKIES；
+    沒影音仍用標題教法標籤。看影片＝影格＋口播。
     """
     out = {"video_id": "", "video_title": "", "source": ""}
     ymd = str(as_of_ymd or "").strip()
-    # 1) YouTube RSS（不靠使用者貼連結）
+    # 1) YouTube RSS＋Drive／cookies 影音（不靠使用者每天貼）
     if ymd and db_path:
         try:
-            from huang_youtube import discover_day_video
+            from huang_youtube import discover_day_video, resolve_drive_file_id
 
+            want_media = bool(
+                (os.getenv("HUANG_YT_COOKIES") or os.getenv("YTDLP_COOKIES") or "").strip()
+                or resolve_drive_file_id(ymd)
+                or (os.getenv("HUANG_LOCAL_VIDEO") or "").strip()
+            )
             yt = discover_day_video(
                 db_path,
                 ymd,
                 fetch=bool(fetch_youtube),
-                want_transcript=bool(
-                    (os.getenv("HUANG_YT_COOKIES") or os.getenv("YTDLP_COOKIES") or "").strip()
-                ),
+                want_transcript=want_media,
             )
             if yt.get("video_id") or yt.get("video_title"):
                 out = {
@@ -285,9 +289,16 @@ def find_huang_video_hint(
                     out["teach_tags"] = ",".join(str(x) for x in tags)
                 if yt.get("transcript_status"):
                     out["transcript_status"] = str(yt.get("transcript_status") or "")
+                if yt.get("visual_status"):
+                    out["visual_status"] = str(yt.get("visual_status") or "")
+                if yt.get("drive_file_id"):
+                    out["drive_file_id"] = str(yt.get("drive_file_id") or "")
+                levels = yt.get("levels") or []
+                if levels:
+                    out["levels"] = ",".join(str(x) for x in levels)
                 return out
         except Exception:
-            logger.exception("huang_teach：YouTube 自動抓片略過")
+            logger.exception("huang_teach：YouTube／Drive 自動抓片略過")
 
     vid = (os.getenv("HUANG_TEACH_VIDEO_ID") or "").strip()
     title = (os.getenv("HUANG_TEACH_VIDEO_TITLE") or "").strip()
