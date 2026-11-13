@@ -8558,6 +8558,82 @@ def _teach_rows_have_intraday_ts(rows: Sequence[Dict[str, Any]]) -> bool:
     return False
 
 
+def _micro_today_session_bar_indices(
+    rows: Sequence[Dict[str, Any]],
+    *,
+    now: Optional[datetime] = None,
+    pack: Optional[Dict[str, Any]] = None,
+) -> List[int]:
+    """超近窗：今開盤→查詢當下已出現的 60 分柱索引（台北）。
+
+    例：13:00 查詢通常 09/10/11/12 四根；若庫已有 13:00 盤中柱則一併算入。
+    非開市日／窗內無今日柱 → 空。
+    """
+    dt = None
+    if isinstance(pack, dict):
+        dt = _parse_query_at(pack.get("query_at"))
+    if dt is None:
+        dt = now or datetime.now(TAIPEI)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=TAIPEI)
+    else:
+        dt = dt.astimezone(TAIPEI)
+    today = dt.strftime("%Y%m%d")
+    qhm = int(dt.hour) * 100 + int(dt.minute)
+    out: List[int] = []
+    for i, r in enumerate(rows or []):
+        ts = str((r or {}).get("ts") or "")
+        ymd = _ymd((r or {}).get("date") or ts)
+        if ymd != today:
+            continue
+        try:
+            hm = int(ts[8:12]) if len(ts) >= 12 else -1
+        except ValueError:
+            continue
+        if hm < 0:
+            continue
+        # 柱開始時刻 ≤ 查詢當下才算「到現在」
+        if hm <= qhm:
+            out.append(int(i))
+    return out
+
+
+def _paint_micro_today_session_bg(
+    ax,
+    axv,
+    rows: Sequence[Dict[str, Any]],
+    *,
+    pack: Optional[Dict[str, Any]] = None,
+    now: Optional[datetime] = None,
+    alpha: float = 0.50,
+) -> List[int]:
+    """超近窗：今開盤→查詢當下每根 60 分 K 白底半透明（預設 50%）。
+
+    一眼看出今天第一根；價／量同段。不是買訊。
+    """
+    idxs = _micro_today_session_bar_indices(rows, now=now, pack=pack)
+    if not idxs:
+        return []
+    x0 = float(idxs[0]) - 0.48
+    x1 = float(idxs[-1]) + 0.48
+    for a in (ax, axv):
+        if a is None:
+            continue
+        try:
+            a.axvspan(
+                x0,
+                x1,
+                facecolor="#ffffff",
+                alpha=float(alpha),
+                zorder=0.28,
+                linewidth=0,
+                clip_on=True,
+            )
+        except Exception:
+            logger.debug("超近今日白底略過", exc_info=True)
+    return list(idxs)
+
+
 def _teach_day_max_vol_ts(
     rows: Sequence[Dict[str, Any]], ymd: str
 ) -> str:
@@ -12487,10 +12563,10 @@ def _paint_micro_retest_then_rise_schematic(
             logger.debug("新五波升圈5略過", exc_info=True)
     # 標籤進右側空帶（與右欄同欄）；箭尖→字用青虛線接，不准擋K／浪折
     try:
-        x_lab = float(x_label_col) if x_label_col is not None else float(n) + 6.2
+        x_lab = float(x_label_col) if x_label_col is not None else float(n) + 8.8
     except (TypeError, ValueError):
-        x_lab = float(n) + 6.2
-    x_lab = max(float(x_lab), float(x_tip) + 1.0, float(n) + 5.5)
+        x_lab = float(n) + 8.8
+    x_lab = max(float(x_lab), float(x_tip) + 1.0, float(n) + 8.0)
     y_lab = float(y_tip) + max(abs(float(y_up) - float(y_mid)) * 0.03, 70.0)
     if FancyArrowPatch is not None:
         try:
@@ -15883,6 +15959,9 @@ def _render_twii_c_wave_60_dark(
     for bi in _bounds[1:]:
         ax.axvline(bi - 0.5, color="#37474f", lw=0.7, ls=":", alpha=0.85, zorder=1.2)
         axv.axvline(bi - 0.5, color="#37474f", lw=0.7, ls=":", alpha=0.85, zorder=1.2)
+    # 超近：今開盤→查詢當下每根 60 分白底半透明，一眼看出今天從哪根起
+    if kind == "micro":
+        _paint_micro_today_session_bg(ax, axv, rows, pack=pack)
     _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_body_up_taiwan)
     # 黃＝主大量日；亮桃＝下一層大量日（與遠／近豎導同色）
     _i_pri = zone.get("i_vmax")
@@ -15976,8 +16055,8 @@ def _render_twii_c_wave_60_dark(
         )
     )
     ax.set_ylim(float(ymin), float(ymax))
-    # 右欄推到末K右側空帶（使用者紅框區），水平虛線接真價；不准壓在K／浪折上
-    x_col = float(n) + 6.2
+    # 右欄左緣對齊使用者紅框左緣（末K右側空帶），水平虛線接真價；不准壓K／浪折
+    x_col = float(n) + 8.8
     _place_live_right_labels(
         ax,
         right_notes,
@@ -16039,8 +16118,8 @@ def _render_twii_c_wave_60_dark(
         tip_xlim=max(float(tip.get("fut_x") or n), float(_path.get("fut_x") or n))
         + 1.6,
         right_col=float(x_col),
-        # 右側空帶要裝得下右欄標；不准再負 extra 把標擠回K線上
-        extra=2.4,
+        # 右側空帶要裝得下右欄標（x_col≈n+8.8）；不准再負 extra 把標擠回K線上
+        extra=4.6,
     )
     # 左緣貼 C 起，不准再留大B空位
     ax.set_xlim(-0.35, x_right)

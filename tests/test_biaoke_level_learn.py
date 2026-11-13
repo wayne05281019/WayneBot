@@ -3313,6 +3313,8 @@ def test_micro_eight_wave_inset_and_retest_path_in_source():
     assert "_paint_eight_wave_inset" in c60
     assert "此刻＝大C｜內＝C4進行中" in c60
     assert "_paint_micro_retest_then_rise_schematic" in c60
+    assert "_paint_micro_today_session_bg" in c60
+    assert "float(n) + 8.8" in c60  # 右欄左緣進空帶，不准壓K
     path_src = inspect.getsource(_paint_micro_retest_then_rise_schematic)
     assert "新五波升" in path_src
     # 回測價只留右欄；虛線端不准再貼「至少回測」；升段用紅箭＋圈5指到右側標
@@ -3325,6 +3327,54 @@ def test_micro_eight_wave_inset_and_retest_path_in_source():
         __import__("biaoke_level_learn", fromlist=["_paint_huang_c60_structure"])._paint_huang_c60_structure
     )
     assert "C4 起段" in paint or "不准佔右欄" in paint
+
+
+def test_micro_today_session_bg_indices_at_1300():
+    """13:00 查詢→今開盤起通常四根（09/10/11/12）；白底 alpha=0.50。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_level_learn import (
+        _micro_today_session_bar_indices,
+        _paint_micro_today_session_bg,
+    )
+
+    rows = [
+        {"date": "20261112", "ts": "202611121300", "open": 1, "high": 2, "low": 1, "close": 1.5},
+        {"date": "20261113", "ts": "202611130900", "open": 1, "high": 2, "low": 1, "close": 1.5},
+        {"date": "20261113", "ts": "202611131000", "open": 1, "high": 2, "low": 1, "close": 1.5},
+        {"date": "20261113", "ts": "202611131100", "open": 1, "high": 2, "low": 1, "close": 1.5},
+        {"date": "20261113", "ts": "202611131200", "open": 1, "high": 2, "low": 1, "close": 1.5},
+        {"date": "20261113", "ts": "202611131300", "open": 1, "high": 2, "low": 1, "close": 1.5},
+    ]
+    now = datetime(2026, 11, 13, 13, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    idxs = _micro_today_session_bar_indices(rows, now=now)
+    # 13:00 整點含當根 → 09..13 五根；若只要「倒數四根」需查詢 <13:00
+    assert idxs == [1, 2, 3, 4, 5]
+    idxs_1245 = _micro_today_session_bar_indices(
+        rows, now=datetime(2026, 11, 13, 12, 45, tzinfo=ZoneInfo("Asia/Taipei"))
+    )
+    assert idxs_1245 == [1, 2, 3, 4]  # 09/10/11/12 四根
+
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    fig, (ax, axv) = plt.subplots(2, 1)
+    painted = _paint_micro_today_session_bg(
+        ax,
+        axv,
+        rows,
+        now=datetime(2026, 11, 13, 12, 45, tzinfo=ZoneInfo("Asia/Taipei")),
+        alpha=0.50,
+    )
+    assert painted == [1, 2, 3, 4]
+    spans = [p for p in ax.patches if hasattr(p, "get_facecolor")]
+    assert spans, "應有白底 axvspan"
+    fc = spans[0].get_facecolor()
+    assert abs(float(fc[3]) - 0.50) < 0.02  # alpha 50%
+    plt.close(fig)
 
 
 def test_micro_retest_path_skips_when_already_below():
