@@ -5481,14 +5481,17 @@ def _paint_macro_wave_seg_tags(
     fp,
     span_y: float,
 ) -> None:
-    """近窗：⑤／A／B／C 段中點短標，一眼對上色線（尖點對尖點連）。"""
+    """近窗：⑤／A／B 段中點短標，一眼對上色線（尖點對尖點連）。
+
+    不准再貼段中孤「C」：右欄已有大C今、浪名已有 C進行中（多餘會壓K）。
+    """
     if ax is None or fp is None:
         return
+    _ = (i_now, y_now)  # C 段終點仍傳入對齊呼叫端，但不畫孤 C
     tags = (
         ((i5s + i5e) * 0.5, (y5s + y5e) * 0.5, "⑤", "#40c4ff", "#01579b"),
         ((i5e + i_alow) * 0.5, (y5e + y_alow) * 0.5, "A", "#ff8a80", "#b71c1c"),
         ((i_alow + i_b_end) * 0.5, (y_alow + y_b_end) * 0.5, "B", "#ffd54f", "#f57f17"),
-        ((i_b_end + i_now) * 0.5, (y_b_end + y_now) * 0.5, "C", "#ea80fc", "#6a1b9a"),
     )
     dy = max(float(span_y) * 0.012, 80.0)
     for x, y, lab, fg, face in tags:
@@ -5636,7 +5639,7 @@ def _paint_c3_group12_span_labels(
                 i_now,
                 face="#69f0ae",
                 edge="#00c853",
-                label="C4＝(4)第四大波",
+                label="C4＝第四大波",
                 fg="#003300",
             )
     except Exception:
@@ -6070,7 +6073,7 @@ def _paint_huang_c60_structure(
     _span(i2, i3, "#ea80fc", "#6a1b9a", "C3＝(3)下跌", "#ffffff")
     if n - 1 >= i3 + 1:
         # 2026-11-11 黃培碩口播＋附圖：37837 起＝第四大波（教導用；不准標①～⑤）
-        _span(i3 + 1, n - 1, "#69f0ae", "#00c853", "C4＝(4)第四大波", "#003300")
+        _span(i3 + 1, n - 1, "#69f0ae", "#00c853", "C4＝第四大波", "#003300")
 
     # C2 中繼：上下震盪區間虛線（46170~47060）；標在框外左側，不准壓虛線／折線
     box = anc.get("c2_box") or (y1e, y2)
@@ -8196,12 +8199,13 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
         if _text_has_retest_41500(s) or re.search(r"絕對不(?:會)?破", s):
             tag = "絕對不破"
             # 與圖上 C3 底同一點：右下只留這一顆，不准再黃箭重複
-            lab = f"C3底＝週五低／{_px(37837)}（絕對不破）"
+            # 右欄：C3底＋價＋狀態即可；「週五低」三字多餘（使用者 2026-11-13）
+            lab = f"C3底／{_px(37837)}（絕對不破）"
         elif _text_has_c3_pressure_break(s) or (
             "不再假跌破" in s and re.search(r"下降壓", s)
         ):
             tag = "不再假跌破"
-            lab = f"C3底＝週五低／{_px(37837)}（不再假跌破）"
+            lab = f"C3底／{_px(37837)}（不再假跌破）"
         elif _text_has_stop_low_confirm(s):
             tag = "再測／假跌破"
             lab = f"再測週五低／{_px(37837)}"
@@ -9162,6 +9166,8 @@ def _paint_broken_vol_zone(
     avoid_top_left_stamp: bool = False,
     ts_lab: str = "",
     broke_support: bool = True,
+    highs: Optional[Sequence[float]] = None,
+    lows: Optional[Sequence[float]] = None,
 ) -> None:
     """已破主大量區：淡灰虛邊，不准再當醒目黃帶（分布區亂源）。"""
     y0, y1 = float(low), float(high)
@@ -9181,6 +9187,7 @@ def _paint_broken_vol_zone(
     if not labels:
         return
     tag = "已破撐" if broke_support else "已破壓"
+    # 淡帶：標貼「這價沒被 K 碰到」的空檔（使用者圈位），不准壓棒
     _paint_left_sr_label(
         ax,
         y1,
@@ -9192,6 +9199,9 @@ def _paint_broken_vol_zone(
         fontsize=9.0,
         avoid_top_left_stamp=avoid_top_left_stamp,
         x_base=0.01,
+        x_mode="mid_clear",
+        highs=highs,
+        lows=lows,
     )
     _paint_left_sr_label(
         ax,
@@ -9204,6 +9214,9 @@ def _paint_broken_vol_zone(
         fontsize=9.0,
         avoid_top_left_stamp=avoid_top_left_stamp,
         x_base=0.13,
+        x_mode="mid_clear",
+        highs=highs,
+        lows=lows,
     )
 
 
@@ -9256,6 +9269,8 @@ def _paint_window_dual_zones(
             fp=fp,
             avoid_top_left_stamp=avoid_top_left_stamp,
             broke_support=bool(broken.get("broke_support")),
+            highs=highs,
+            lows=lows,
         )
         try:
             y_excl_lo = (
@@ -10542,6 +10557,56 @@ def _paint_tx_now_price_rail(
     )
 
 
+def _axes_x_clear_of_bars(
+    ax,
+    y: float,
+    highs: Optional[Sequence[float]] = None,
+    lows: Optional[Sequence[float]] = None,
+    *,
+    prefer: float = 0.42,
+    x_nudge: float = 0.0,
+) -> float:
+    """該價水平線上沒被 K 高低蓋住的空檔 → axes 分數 X。
+
+    雙區底色常在 ``set_xlim`` 前就畫：不准用當下 xlim（常是 ±0.05）換算，
+    只用柱索引／根數估 axes 分數，才會落在使用者圈的空檔。
+    """
+    pref = float(prefer)
+    hi_l = list(highs or [])
+    lo_l = list(lows or [])
+    n = min(len(hi_l), len(lo_l))
+    _ = ax
+    if n < 2:
+        return float(max(0.08, min(0.72, pref + float(x_nudge))))
+    clear: List[int] = []
+    yy = float(y)
+    for i in range(n):
+        try:
+            hi, lo = float(hi_l[i]), float(lo_l[i])
+        except (TypeError, ValueError):
+            continue
+        if not (lo <= yy <= hi):
+            clear.append(i)
+    if not clear:
+        return float(max(0.08, min(0.72, pref + float(x_nudge))))
+    best_s, best_e = clear[0], clear[0]
+    run_s, prev = clear[0], clear[0]
+    for i in clear[1:]:
+        if i == prev + 1:
+            prev = i
+            continue
+        if prev - run_s > best_e - best_s:
+            best_s, best_e = run_s, prev
+        run_s = prev = i
+    if prev - run_s > best_e - best_s:
+        best_s, best_e = run_s, prev
+    mid_i = 0.5 * (best_s + best_e)
+    # 柱畫在 0..n-1；axes 分數≈索引比例（底色早於 set_xlim 也穩）
+    axes_x = float(mid_i) / float(max(n - 1, 1))
+    axes_x = float(axes_x) + float(x_nudge)
+    return float(max(0.08, min(0.72, axes_x)))
+
+
 def _left_sr_label_xy(
     ax,
     y: float,
@@ -10550,8 +10615,28 @@ def _left_sr_label_xy(
     stamp_top_frac: float = _TEACH_STAMP_AX_Y_MIN,
     clear_x: float = 0.60,
     x_base: float = 0.01,
+    x_mode: str = "left",
+    highs: Optional[Sequence[float]] = None,
+    lows: Optional[Sequence[float]] = None,
 ) -> Tuple[float, bool]:
-    """左欄價標 X（axes）；白底戳佔左上時改右移並回傳 need_dash。"""
+    """左欄價標 X（axes）；白底戳佔左上時改右移並回傳 need_dash。
+
+    x_mode=mid_clear：標貼該價水平線上空檔（避密K），一定畫水平虛線連回左緣真價。
+    """
+    mode = str(x_mode or "left").strip().lower()
+    if mode == "mid_clear":
+        # 壓／撐微錯開；優先落在「K 沒碰到這價」的最長空檔
+        # 不准再被左上白底戳邏輯右推到 0.72（會整排壓回密K）
+        _ = (avoid_top_left_stamp, stamp_top_frac, clear_x)
+        x = _axes_x_clear_of_bars(
+            ax,
+            y,
+            highs,
+            lows,
+            prefer=0.42,
+            x_nudge=0.02 if float(x_base) >= 0.10 else 0.0,
+        )
+        return float(x), True
     x = float(x_base)
     if not avoid_top_left_stamp or ax is None:
         return float(x), False
@@ -10578,20 +10663,30 @@ def _paint_left_sr_label(
     fontsize: float = 9,
     avoid_top_left_stamp: bool = False,
     x_base: float = 0.01,
+    x_mode: str = "left",
+    highs: Optional[Sequence[float]] = None,
+    lows: Optional[Sequence[float]] = None,
 ) -> None:
     """左欄大量／下一層標；標籤 Y＝真價（va 鎖 center）；右移時短虛線水平連回價位。
 
     va 參數保留相容，一律當 center（不准標在價上／價下讓人自己對）。
     x_base：壓／撐錯欄（0.01 vs 0.13），Y 接近時不准上下互壓成一坨。
+    x_mode=mid_clear：淡帶等高區改貼空檔，不准壓住 K 棒。
     """
     if ax is None or fp is None or not text:
         return
     _ = va  # 相容；鎖死水平對價
     x, need_dash = _left_sr_label_xy(
-        ax, y, avoid_top_left_stamp=avoid_top_left_stamp, x_base=float(x_base)
+        ax,
+        y,
+        avoid_top_left_stamp=avoid_top_left_stamp,
+        x_base=float(x_base),
+        x_mode=str(x_mode or "left"),
+        highs=highs,
+        lows=lows,
     )
     tr = ax.get_yaxis_transform()
-    # 右移避戳時：標前短虛線水平連回真價（與標籤同一 Y）
+    # 右移避戳／中空檔：標前短虛線水平連回真價（與標籤同一 Y）
     if need_dash:
         ax.plot(
             [0.02, max(0.04, float(x) - 0.02)],
@@ -11294,6 +11389,23 @@ def _place_live_right_labels(
             other_t = kt_texts[i] if i < len(kt_texts) else ""
             if _is_dual_key(text) or _is_dual_key(other_t):
                 thresh = max(span * 0.012, 180.0)
+            # 右欄價標字盒約 400–500 點高：回測／飆預測互近必蓋字（42300↔41900）
+            def _price_box(t0: str) -> bool:
+                s0 = str(t0 or "")
+                return any(
+                    x in s0
+                    for x in (
+                        "回測",
+                        "飆預測",
+                        "台指壓力",
+                        "C3底",
+                        "絕對不破",
+                        "不再假跌破",
+                    )
+                )
+
+            if _price_box(text) and _price_box(other_t):
+                thresh = max(thresh, span * 0.05, 650.0)
             if abs(y0 - ky) < thresh:
                 return True
         return False
@@ -13739,6 +13851,35 @@ def _tw_pred_right_notes(
             }
         )
         skip.add(round(lv, 1))
+    # 回測平均＋最低併一標：價近時兩框必互壓（42300↔41900）
+    avg_i = next(
+        (i for i, n0 in enumerate(out) if "回測平均" in str(n0.get("text") or "")),
+        None,
+    )
+    min_i = next(
+        (i for i, n0 in enumerate(out) if "回測最低" in str(n0.get("text") or "")),
+        None,
+    )
+    if avg_i is not None and min_i is not None and avg_i != min_i:
+        a_n, m_n = out[avg_i], out[min_i]
+        try:
+            ya, ym = float(a_n["y"]), float(m_n["y"])
+        except (TypeError, ValueError, KeyError):
+            ya = ym = 0.0
+        if ya > 0 and ym > 0 and abs(ya - ym) < 1200.0:
+            br = "未到"
+            blob_ab = f"{a_n.get('text') or ''}{m_n.get('text') or ''}"
+            if "已破" in blob_ab:
+                br = "已破"
+            merged = {
+                "x": min(int(a_n.get("x") or 0), int(m_n.get("x") or 0)),
+                "y": ya,
+                "text": f"回測{_px(ya)}／{_px(ym)}・{br}",
+                "color": a_n.get("color") or "#26a69a",
+            }
+            for i in sorted((avg_i, min_i), reverse=True):
+                out.pop(i)
+            out.append(merged)
     return out
 
 
@@ -16787,6 +16928,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         fontsize=9,
         pivots=_c9_pivots_near,
     ):
+        # 浪名靠左：右欄已有「大C今＋價」，靠右會壓住「中」國字
         _pin_pivot_name(
             ax,
             i_now,
@@ -16794,7 +16936,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
             "C進行中",
             "#ea80fc",
             _fp,
-            side="right",
+            side="left",
             tip="mid",
             n=n,
             pad_x=1.05,

@@ -3333,7 +3333,7 @@ def test_mark_intraday_incomplete_twii_bar_flags_vol0(monkeypatch):
 
 
 def test_near_micro_wave_draw_howto_in_source():
-    """近／超近要寫清浪線怎麼畫；近窗段中⑤／A／B／C 短標。"""
+    """近／超近要寫清浪線怎麼畫；近窗段中⑤／A／B；不准孤 C。"""
     from biaoke_level_learn import (
         _paint_macro_wave_seg_tags,
         _paint_wave_draw_howto,
@@ -3350,8 +3350,11 @@ def test_near_micro_wave_draw_howto_in_source():
     assert "尖點對尖點" in near
     assert howto.strip()
     assert "_paint_wave_draw_howto" in micro
-    assert "藍折＝C1→C2" in micro
-    assert '"⑤"' in tags and '"A"' in tags and '"B"' in tags and '"C"' in tags
+    assert "粗藍折＝大段高低連" in micro
+    assert "C1→C2→C3底→C4高" in micro
+    assert '"⑤"' in tags and '"A"' in tags and '"B"' in tags
+    assert '", "C"' not in tags and "\"C\", \"#ea80fc\"" not in tags
+    assert "不准再貼段中孤" in tags
 
 
 def test_micro_eight_wave_inset_and_retest_path_in_source():
@@ -4105,6 +4108,40 @@ def test_paint_left_sr_label_locks_va_center():
     plt.close(fig)
 
 
+def test_broken_vol_label_uses_bar_clear_x_not_xlim():
+    """淡帶標：底色常在 set_xlim 前畫；空檔 X 用柱索引，不准被 ±0.05 xlim 推到右密K。"""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from biaoke_level_learn import _axes_x_clear_of_bars, _paint_broken_vol_zone
+    from wayne_navigator import _fp
+
+    highs = [120.0] * 20 + [50.0] * 30 + [120.0] * 20
+    lows = [80.0] * 20 + [10.0] * 30 + [80.0] * 20
+    fig, ax = plt.subplots()
+    ax.set_xlim(-0.05, 0.05)  # 模擬雙區尚未 set_xlim
+    ax.set_ylim(0, 150)
+    x = _axes_x_clear_of_bars(ax, 100.0, highs, lows)
+    assert 0.25 < float(x) < 0.65
+    _paint_broken_vol_zone(
+        ax,
+        high=110.0,
+        low=90.0,
+        date_lab="20261015",
+        fp=_fp,
+        highs=highs,
+        lows=lows,
+    )
+    xs = [
+        float(t.get_position()[0])
+        for t in ax.texts
+        if "淡帶" in str(t.get_text())
+    ]
+    assert xs and all(v > 0.2 for v in xs)
+    plt.close(fig)
+
+
 def test_far_tx_now_rail_deferred_until_tip_fixed():
     """遠窗電子盤現價虛線：tip 校完才畫；釘最後真K，水平接到標籤。"""
     import inspect
@@ -4341,7 +4378,8 @@ def test_paint_c3_group12_span_labels_wired():
     assert "C1 下跌" in src_fn
     assert "C2 中繼" in src_fn
     assert "C3 下跌" in src_fn
-    assert "C4＝(4)第四大波" in src_fn
+    assert "C4＝第四大波" in src_fn
+    assert "C4＝(4)" not in src_fn  # 不准重複 (4)
     assert "示意：C3下降壓" not in src_fn  # 字標已刪
     assert "C3底＝週五低 37837" not in src_fn  # 併右欄，不准黃箭重複
     assert "_vertical_upright_label" in src_fn
