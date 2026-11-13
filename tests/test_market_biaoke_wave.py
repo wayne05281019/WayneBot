@@ -153,9 +153,10 @@ def test_market_chart_calls_overlay_and_keeps_us_refresh():
     wave = inspect.getsource(bot_servers.WayneTelegramBot._send_market_wave_charts)
     assert "paint_open_day_hypothesis" in wave
     assert "far_path" in wave
-    assert "format_teach_brief" in inspect.getsource(
-        bot_servers.WayneTelegramBot.wave_status_cmd
-    )
+    wave_cmd = inspect.getsource(bot_servers.WayneTelegramBot.wave_status_cmd)
+    assert "format_teach_brief" in wave_cmd
+    assert "_wave_locks" in wave_cmd
+    assert "上一組波浪位階還在出圖" in wave_cmd
 
 
 def test_render_puts_zone_right_of_candles(tmp_path):

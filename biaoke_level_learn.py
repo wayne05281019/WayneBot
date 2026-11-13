@@ -1091,6 +1091,8 @@ def _twii_bars_for_teach(
 # 教具準備：飆大文節流（行情每次可抓；貼文網頁不要連打爆）
 _TEACH_BIAOKE_FRESH_AT: Dict[str, float] = {}
 _TEACH_BIAOKE_FRESH_SEC = 180.0  # 盤中／活畫 3 分內同庫只補一次
+# 話筒波浪不准被 ingest／walk 卡死（否則只出遠窗或第二次全沒）
+_TEACH_BIAOKE_INGEST_TIMEOUT_SEC = 12.0
 
 
 def _ensure_teach_biaoke_posts_fresh(
@@ -1101,6 +1103,7 @@ def _ensure_teach_biaoke_posts_fresh(
     根因：本機／agent 庫常停在舊 snapshot，但 Yahoo／MIS 每次都抓到當下 →
     白底／漲幅是新的、口頭標籤卻停在多天前。Render 常駐 ingest 沒這洞。
     這裡跟 ``_ensure_teach_index_bars`` 同層；節流避免三張連打公開頁。
+    硬逾時：ingest／walk 卡住也不准拖死遠／近／超近出圖。
     """
     out: Dict[str, Any] = {"ok": False, "skipped": False, "reason": ""}
     path = str(db_path or "").strip()
@@ -1113,6 +1116,8 @@ def _ensure_teach_biaoke_posts_fresh(
     else:
         dt = dt.astimezone(TAIPEI)
     import time as _time
+    from concurrent.futures import ThreadPoolExecutor
+    from concurrent.futures import TimeoutError as FutTimeout
 
     key = os.path.abspath(path)
     age = _time.time() - float(_TEACH_BIAOKE_FRESH_AT.get(key) or 0.0)
@@ -1126,9 +1131,40 @@ def _ensure_teach_biaoke_posts_fresh(
         from biaoke_ingest import ingest_public_posts
 
         # 輕量：只補最近幾則主文＋討論串；seed 1709 在 ingest 內已是缺才補
-        stats = ingest_public_posts(
-            db_path=path, max_ids=16, refresh_latest=4
-        ) or {}
+        # 硬逾時：失敗／超時仍記節流，避免連按波浪每次重踩 walk。
+        # 逾時不准 wait shutdown（否則仍被掛住的 ingest 拖死）。
+        pool = ThreadPoolExecutor(max_workers=1)
+        fut = pool.submit(
+            ingest_public_posts,
+            db_path=path,
+            max_ids=16,
+            refresh_latest=4,
+        )
+        try:
+            stats = fut.result(timeout=float(_TEACH_BIAOKE_INGEST_TIMEOUT_SEC)) or {}
+        except FutTimeout:
+            _TEACH_BIAOKE_FRESH_AT[key] = _time.time()
+            out["ok"] = False
+            out["skipped"] = True
+            out["reason"] = "ingest_timeout"
+            out["timeout_s"] = float(_TEACH_BIAOKE_INGEST_TIMEOUT_SEC)
+            logger.warning(
+                "教具補飆大公開文逾時 %.0fs，先出三窗",
+                float(_TEACH_BIAOKE_INGEST_TIMEOUT_SEC),
+            )
+            try:
+                pool.shutdown(wait=False, cancel_futures=True)
+            except TypeError:
+                pool.shutdown(wait=False)
+            return out
+        except Exception:
+            try:
+                pool.shutdown(wait=False, cancel_futures=True)
+            except TypeError:
+                pool.shutdown(wait=False)
+            raise
+        else:
+            pool.shutdown(wait=True)
         _TEACH_BIAOKE_FRESH_AT[key] = _time.time()
         out["ok"] = bool(stats.get("ok", True))
         out["stats"] = {
@@ -9528,7 +9564,8 @@ _LIVE_UP = "#ff5252"
 _LIVE_DOWN = "#26a69a"
 # 遠窗縮圖：絕對 min body=6 對費半／加權價軸幾乎看不見；改跟價窗比例走
 _LIVE_CANDLE_MIN_BODY_FRAC = 0.01
-_FAR_SOX_MIN_BODY_FRAC = 0.018
+# 遠窗費半縮圖K：電話 JPEG 會把過細影線洗掉（中段像缺K）；略加粗＋加寬實體
+_FAR_SOX_MIN_BODY_FRAC = 0.024
 # 教具 X／標籤契約（鎖死；不准無限變瘦、不准右欄越擠越亂）
 # 1) 定長滾動：新交易日進一根 → 刪最左一根；K 寬穩定。
 # 2) 右欄現況標（今／飆預測／雙軌關鍵／大量撐壓價）：x＝末根+_TEACH_RIGHT_GUTTER，
@@ -14268,18 +14305,18 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             prev_c = sox_c[prev_i] if prev_i is not None else None
             up = candle_body_up_taiwan(sox_c[i], prev_c, sox_o[i])
             color = _LIVE_UP if up else _LIVE_DOWN
-            # 遠窗費半：加粗影線＋價窗比例最小實體（舊 0.15%→看不見）
-            axu.vlines(i, sox_l[i], sox_h[i], color=color, linewidth=1.55, zorder=5)
+            # 遠窗費半：影線／實體再加粗加寬，話筒縮圖中段不准被 JPEG 洗成「缺K」
+            axu.vlines(i, sox_l[i], sox_h[i], color=color, linewidth=2.15, zorder=5)
             y0, y1 = sorted((sox_o[i], sox_c[i]))
             _bh = max(y1 - y0, float(sox_min_body))
             axu.add_patch(
                 plt.Rectangle(
-                    (i - 0.36, y0),
-                    0.72,
+                    (i - 0.42, y0),
+                    0.84,
                     _bh,
                     facecolor=color,
                     edgecolor=color,
-                    linewidth=0.45,
+                    linewidth=0.55,
                     zorder=6,
                 )
             )
