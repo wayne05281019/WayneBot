@@ -6080,21 +6080,26 @@ def _paint_huang_c60_structure(
             alpha=0.9,
             zorder=6.2,
         )
+        # 標在 C4 起段線上內側，不准佔右欄跟「今／回測／黃帶」互壓
+        try:
+            x_lab = float(i3) + max(1.2, (float(n) - float(i3)) * 0.08)
+        except Exception:
+            x_lab = max(0.0, float(n) * 0.55)
         ax.text(
-            float(n) + 0.35,
-            float(y_press) + span_y * 0.012,
+            x_lab,
+            float(y_press) + span_y * 0.018,
             f"次級4壓 {_px(float(y_press))}",
             ha="left",
             va="bottom",
-            fontproperties=fp(8.0, "bold"),
+            fontproperties=fp(7.6, "bold"),
             color="#ff1744",
-            zorder=45,
+            zorder=41,
             bbox={
-                "boxstyle": "round,pad=0.16",
-                "facecolor": "#fff59d",
+                "boxstyle": "round,pad=0.12",
+                "facecolor": "#1a0808",
                 "edgecolor": "#ff1744",
-                "linewidth": 1.0,
-                "alpha": 0.92,
+                "linewidth": 0.85,
+                "alpha": 0.9,
             },
             clip_on=False,
         )
@@ -12044,24 +12049,7 @@ def _paint_micro_retest_then_rise_schematic(
         zorder=5.95,
     )
     _spear_ring(ax, x1, y_mid, color="#ea80fc", zorder=7, hot=True)
-    ax.text(
-        x1,
-        y_mid - max(abs(y0 - y_mid) * 0.04, 180.0),
-        f"至少回測 {_px(y_rt)}",
-        fontproperties=fp(8.0, "bold"),
-        color="#ea80fc",
-        ha="center",
-        va="top",
-        zorder=8,
-        bbox={
-            "boxstyle": "round,pad=0.12",
-            "facecolor": "#1a0a24",
-            "edgecolor": "#ea80fc",
-            "linewidth": 0.7,
-            "alpha": 0.88,
-        },
-        clip_on=False,
-    )
+    # 回測價標只留右欄「至少回測／41500」一口；不准虛線端再貼第二個
     # 青虛＝C走完後新五波升示意（無目標價）
     ax.plot(
         [x1, x2],
@@ -15492,9 +15480,11 @@ def _render_twii_c_wave_60_dark(
             "color": "#ea80fc",
         },
     ]
-    tip_skip = {round(float(y_now), 1)}
+    tip_skip = {round(float(y_now), 1), 43135.0, round(43135.0, 1)}
+    # 43135＝次級4壓：結構線上已有標，右欄不准再貼同價
     for anch in tip_anchors:
-        if round(float(anch), 1) in tip_skip:
+        if round(float(anch), 1) in tip_skip or abs(float(anch) - 43135.0) < 0.6:
+            tip_skip.add(round(float(anch), 1))
             continue
         right_notes.append(
             {

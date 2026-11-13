@@ -3313,9 +3313,16 @@ def test_micro_eight_wave_inset_and_retest_path_in_source():
     assert "_paint_eight_wave_inset" in c60
     assert "此刻＝大C｜內＝C4進行中" in c60
     assert "_paint_micro_retest_then_rise_schematic" in c60
-    assert "至少回測" in inspect.getsource(_paint_micro_retest_then_rise_schematic)
-    assert "新五波升" in inspect.getsource(_paint_micro_retest_then_rise_schematic)
+    path_src = inspect.getsource(_paint_micro_retest_then_rise_schematic)
+    assert "新五波升" in path_src
+    # 回測價只留右欄一口；虛線端不准再貼「至少回測」
+    assert 'f"至少回測' not in path_src
+    assert "右欄" in path_src
     assert "量欄" in inspect.getsource(_eight_wave_inset_rect_on_vol)
+    paint = inspect.getsource(
+        __import__("biaoke_level_learn", fromlist=["_paint_huang_c60_structure"])._paint_huang_c60_structure
+    )
+    assert "C4 起段" in paint or "不准佔右欄" in paint
 
 
 def test_micro_retest_path_skips_when_already_below():
