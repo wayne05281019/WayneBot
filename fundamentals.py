@@ -10,7 +10,7 @@ import sqlite3
 import threading
 import time
 from html.parser import HTMLParser
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import requests
 
@@ -1328,6 +1328,62 @@ def get_latest_income(db_path: str, stock_id: str) -> Optional[Dict[str, Any]]:
     return dict(row) if row else None
 
 
+def list_quarterly_income(
+    db_path: str, stock_id: str, *, limit: int = 16
+) -> List[Dict[str, Any]]:
+    """該檔綜合損益列（新→舊）；興櫃季框右半 EPS 只認這裡，不准造假。"""
+    ensure_fundamentals_tables(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        """
+        SELECT * FROM quarterly_income
+        WHERE stock_id=?
+        ORDER BY year DESC, season DESC
+        LIMIT ?
+        """,
+        (str(stock_id).strip(), max(1, int(limit))),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def attach_quarter_box_eps(
+    boxes: List[Dict[str, Any]],
+    income_rows: Optional[Sequence[Dict[str, Any]]] = None,
+) -> List[Dict[str, Any]]:
+    """季框併官方季 EPS；該年季無綜合損益列 → eps 空，不准填假數。"""
+    by: Dict[Tuple[int, int], Dict[str, Any]] = {}
+    for r in income_rows or ():
+        try:
+            by[(int(r["year"]), int(r["season"]))] = r
+        except (KeyError, TypeError, ValueError):
+            continue
+    out: List[Dict[str, Any]] = []
+    for raw in boxes or ():
+        b = dict(raw)
+        try:
+            key = (int(b["year"]), int(b["season"]))
+        except (KeyError, TypeError, ValueError):
+            b["eps"] = None
+            b["eps_lab"] = ""
+            out.append(b)
+            continue
+        row = by.get(key)
+        if row is None:
+            b["eps"] = None
+            b["eps_lab"] = ""
+        else:
+            try:
+                eps_v = float(row.get("eps") or 0)
+            except (TypeError, ValueError):
+                eps_v = 0.0
+            b["eps"] = eps_v
+            b["eps_lab"] = f"{eps_v:.2f}"
+        out.append(b)
+    return out
+
+
 def list_monthly_revenue(db_path: str, stock_id: str, *, limit: int = 36) -> List[Dict[str, Any]]:
     """近 N 個月營收列（新→舊）。興櫃＝t187ap05_R 當期＋NAS rotc 歷史。"""
     ensure_fundamentals_tables(db_path)
@@ -1565,6 +1621,9 @@ def month_quarter_split_rows(
                 "title": parts["title"],
                 "amount": parts["amount"],
                 "trend": parts["trend"],
+                # 預設空；glance 再併官方 quarterly_income EPS
+                "eps": None,
+                "eps_lab": "",
             }
         )
     # 與左列 1→12 同向：Q1 在上、Q2 在下
@@ -1717,6 +1776,11 @@ def glance_fund_split_layout(stock_id: str, db_path: str = None) -> Optional[Dic
             }
         )
     q = get_latest_income(path, sid)
+    income_rows = list_quarterly_income(path, sid, limit=16)
+    quarter_boxes = attach_quarter_box_eps(
+        list((split or {}).get("quarter_boxes") or []),
+        income_rows,
+    )
     bottom: List[Tuple[str, str]] = []
     bottom_season = ""
     if q:
@@ -1741,7 +1805,7 @@ def glance_fund_split_layout(stock_id: str, db_path: str = None) -> Optional[Dic
     return {
         "emerging": True,
         "month_rows": month_rows,
-        "quarter_boxes": list((split or {}).get("quarter_boxes") or []),
+        "quarter_boxes": quarter_boxes,
         "chart_points": chart_points,
         "bottom": bottom,
         "bottom_season": bottom_season,

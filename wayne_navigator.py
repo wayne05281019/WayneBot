@@ -505,7 +505,7 @@ def try_glance_memo(
         fund_fp,
         int(GLANCE_PNG_DPI),
         int(LOOKUP_JPEG_QUALITY),
-        "match-card-076-fund-rev2line-v77-card-price",
+        "match-card-076-fund-rev2line-v78-q-eps-half",
     )
     return _lookup_render_memo_get(memo_key, save_path) or ""
 
@@ -5399,7 +5399,7 @@ def render_first_glance_png(
         fund_fp,
         int(GLANCE_PNG_DPI),
         int(LOOKUP_JPEG_QUALITY),
-        "match-card-076-fund-rev2line-v77-card-price",
+        "match-card-076-fund-rev2line-v78-q-eps-half",
     )
     hit = _lookup_render_memo_get(memo_key, save_path)
     if hit:
@@ -6035,53 +6035,99 @@ def render_first_glance_png(
                         (q_x + pad_in, box_bot + 0.45), q_w - 2 * pad_in, bh - 0.9,
                         boxstyle="round,pad=0,rounding_size=0.4",
                         facecolor=C["white"], edgecolor="#D7DEE8", linewidth=0.9, zorder=3))
-                    # 結構化三行：標／金額／較上季；各自量寬縮字，不准溢出
+                    # 左右半：左＝季營收三行；右＝該季官方 EPS（缺列留空，不准造假）
                     title = str(qb.get("title") or "").strip()
                     amount = str(qb.get("amount") or "").strip()
                     trend = str(qb.get("trend") or "").strip()
+                    eps_lab = str(qb.get("eps_lab") or "").strip()
                     if not (title or amount):
                         text = str(qb.get("text") or "").strip()
                         chunks = [c for c in text.split("　") if c]
                         title = chunks[0] if chunks else text
                         amount = chunks[1] if len(chunks) > 1 else ""
                         trend = chunks[2] if len(chunks) > 2 else ""
-                    avail = max(4.0, q_w - 2 * pad_in - 1.4)
-                    cx = q_x + q_w / 2
+                    box_inner_left = q_x + pad_in + 0.35
+                    box_inner_right = q_x + q_w - pad_in - 0.35
                     box_inner_top = box_top - 0.9
                     box_inner_bot = box_bot + 0.9
                     ih = max(box_inner_top - box_inner_bot, 4.0)
+                    mid_x = (box_inner_left + box_inner_right) * 0.5
+                    # 中縫：左右各半，單位對齊不互壓
+                    ax.plot(
+                        [mid_x, mid_x],
+                        [box_inner_bot + 0.35, box_inner_top - 0.35],
+                        color="#E2E8F0",
+                        lw=0.85,
+                        zorder=3.5,
+                        solid_capstyle="round",
+                    )
+                    left_avail = max(3.2, mid_x - box_inner_left - 0.55)
+                    right_avail = max(3.0, box_inner_right - mid_x - 0.55)
+                    left_cx = (box_inner_left + mid_x) * 0.5
+                    right_cx = (mid_x + box_inner_right) * 0.5
                     lines = [x for x in (title, amount, trend) if x]
                     if len(lines) >= 3:
-                        # 上中下三等分內緣；字級對齊高低卡：表頭／主數字／註
                         ys = (
                             box_inner_bot + ih * 0.78,
                             box_inner_bot + ih * 0.50,
                             box_inner_bot + ih * 0.22,
                         )
                         fss = (
-                            _fit_center(title, 11.2, avail),
-                            _fit_center(amount, 13.0, avail),
-                            _fit_center(trend, 10.5, avail, fs_min=9.0),
+                            _fit_center(title, 10.6, left_avail),
+                            _fit_center(amount, 12.2, left_avail),
+                            _fit_center(trend, 9.8, left_avail, fs_min=8.4),
                         )
                         cols = (C["navy"], C["ink"], C["ink_soft"])
                         for yy, lab, fs, col in zip(ys, (title, amount, trend), fss, cols):
-                            ax.text(cx, yy, lab, fontproperties=_fp(fs, "bold"),
+                            ax.text(left_cx, yy, lab, fontproperties=_fp(fs, "bold"),
                                     color=col, ha="center", va="center", zorder=4)
                     elif len(lines) == 2:
                         ys = (
                             box_inner_bot + ih * 0.66,
                             box_inner_bot + ih * 0.34,
                         )
-                        ax.text(cx, ys[0], lines[0],
-                                fontproperties=_fp(_fit_center(lines[0], 11.2, avail), "bold"),
+                        ax.text(left_cx, ys[0], lines[0],
+                                fontproperties=_fp(_fit_center(lines[0], 10.6, left_avail), "bold"),
                                 color=C["navy"], ha="center", va="center", zorder=4)
-                        ax.text(cx, ys[1], lines[1],
-                                fontproperties=_fp(_fit_center(lines[1], 13.0, avail), "bold"),
+                        ax.text(left_cx, ys[1], lines[1],
+                                fontproperties=_fp(_fit_center(lines[1], 12.2, left_avail), "bold"),
                                 color=C["ink"], ha="center", va="center", zorder=4)
                     elif lines:
-                        ax.text(cx, (box_inner_top + box_inner_bot) / 2, lines[0],
-                                fontproperties=_fp(_fit_center(lines[0], 11.2, avail), "bold"),
+                        ax.text(left_cx, (box_inner_top + box_inner_bot) / 2, lines[0],
+                                fontproperties=_fp(_fit_center(lines[0], 10.6, left_avail), "bold"),
                                 color=C["navy"], ha="center", va="center", zorder=4)
+                    if eps_lab:
+                        ax.text(
+                            right_cx,
+                            box_inner_bot + ih * 0.66,
+                            "EPS",
+                            fontproperties=_fp(_fit_center("EPS", 10.2, right_avail), "bold"),
+                            color=C["navy"],
+                            ha="center",
+                            va="center",
+                            zorder=4,
+                        )
+                        ax.text(
+                            right_cx,
+                            box_inner_bot + ih * 0.34,
+                            eps_lab,
+                            fontproperties=_fp(_fit_center(eps_lab, 12.4, right_avail), "bold"),
+                            color=C["ink"],
+                            ha="center",
+                            va="center",
+                            zorder=4,
+                        )
+                    else:
+                        ax.text(
+                            right_cx,
+                            (box_inner_top + box_inner_bot) / 2,
+                            "EPS —",
+                            fontproperties=_fp(_fit_center("EPS —", 9.6, right_avail, fs_min=8.0), "bold"),
+                            color=C["ink_mute"],
+                            ha="center",
+                            va="center",
+                            zorder=4,
+                        )
                 # 未滿三個月的季：有任一官方月才淡字；全年空槽季留白等補
                 for season in (1, 2, 3, 4):
                     idxs = []
