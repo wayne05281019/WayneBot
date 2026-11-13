@@ -506,7 +506,7 @@ def try_glance_memo(
         fund_fp,
         int(GLANCE_PNG_DPI),
         int(LOOKUP_JPEG_QUALITY),
-        "match-card-076-fund-rev2line-v79-q-eps-red",
+        "match-card-076-fund-rev2line-v80-qrev-q-eps",
     )
     return _lookup_render_memo_get(memo_key, save_path) or ""
 
@@ -5400,7 +5400,7 @@ def render_first_glance_png(
         fund_fp,
         int(GLANCE_PNG_DPI),
         int(LOOKUP_JPEG_QUALITY),
-        "match-card-076-fund-rev2line-v79-q-eps-red",
+        "match-card-076-fund-rev2line-v80-qrev-q-eps",
     )
     hit = _lookup_render_memo_get(memo_key, save_path)
     if hit:

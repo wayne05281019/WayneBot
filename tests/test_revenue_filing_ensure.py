@@ -247,6 +247,6 @@ def test_glance_memo_includes_fund_fingerprint():
     assert "stock_fundamentals_fingerprint" in src
     assert "ensure_stock_fundamentals" in src
     assert (
-        "match-card-076-fund-rev2line-v79-q-eps-red" in src
-        or "match-card-076-fund-rev2line-v78-q-eps-half" in src
+        "match-card-076-fund-rev2line-v80-qrev-q-eps" in src
+        or "match-card-076-fund-rev2line-v79-q-eps-red" in src
     )
