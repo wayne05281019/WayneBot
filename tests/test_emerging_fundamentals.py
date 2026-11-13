@@ -268,6 +268,12 @@ def test_month_quarter_split_rows_boxes():
     assert next(b for b in filled if b["season"] == 2)["eps_lab"] == "1.25"
     assert next(b for b in filled if b["season"] == 1)["eps_lab"] == "-0.50"
     assert next(b for b in filled if b["season"] == 2)["eps"] == 1.25
+    # Q2 EPS 1.25 > Q1 -0.50 → 紅字旗
+    assert next(b for b in filled if b["season"] == 2)["eps_better"] is True
+    assert next(b for b in filled if b["season"] == 1)["eps_better"] is False
+    # 本 fixture Q2 營收＜Q1（較上季大減）→ 不准紅字
+    assert next(b for b in boxes if b["season"] == 2).get("rev_better") is False
+    assert "較上季大減" in (next(b for b in boxes if b["season"] == 2).get("trend") or "")
 
 
 def test_glance_split_layout_emerging_only(tmp_path, monkeypatch):

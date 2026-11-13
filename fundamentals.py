@@ -1352,7 +1352,10 @@ def attach_quarter_box_eps(
     boxes: List[Dict[str, Any]],
     income_rows: Optional[Sequence[Dict[str, Any]]] = None,
 ) -> List[Dict[str, Any]]:
-    """季框併官方季 EPS；該年季無綜合損益列 → eps 空，不准填假數。"""
+    """季框併官方季 EPS；該年季無綜合損益列 → eps 空，不准填假數。
+
+    eps_better＝有上季官方 EPS 且本季＞上季（話筒紅字）。
+    """
     by: Dict[Tuple[int, int], Dict[str, Any]] = {}
     for r in income_rows or ():
         try:
@@ -1362,6 +1365,8 @@ def attach_quarter_box_eps(
     out: List[Dict[str, Any]] = []
     for raw in boxes or ():
         b = dict(raw)
+        b.setdefault("rev_better", False)
+        b["eps_better"] = False
         try:
             key = (int(b["year"]), int(b["season"]))
         except (KeyError, TypeError, ValueError):
@@ -1369,6 +1374,11 @@ def attach_quarter_box_eps(
             b["eps_lab"] = ""
             out.append(b)
             continue
+        y, s = key
+        if s == 1:
+            prev_key = (y - 1, 4)
+        else:
+            prev_key = (y, s - 1)
         row = by.get(key)
         if row is None:
             b["eps"] = None
@@ -1380,6 +1390,14 @@ def attach_quarter_box_eps(
                 eps_v = 0.0
             b["eps"] = eps_v
             b["eps_lab"] = f"{eps_v:.2f}"
+            prev = by.get(prev_key)
+            if prev is not None:
+                try:
+                    prev_eps = float(prev.get("eps") or 0)
+                except (TypeError, ValueError):
+                    prev_eps = None
+                if prev_eps is not None and eps_v > prev_eps:
+                    b["eps_better"] = True
         out.append(b)
     return out
 
@@ -1569,16 +1587,39 @@ def _quarter_right_label(
     return body
 
 
+def _quarter_rev_better(
+    qq: Dict[str, Any],
+    by_key: Dict[Tuple[int, int], Dict[str, Any]],
+) -> bool:
+    """本季營收＞上季官方季營收才算更好（話筒紅字）。"""
+    y, s = int(qq["year"]), int(qq["season"])
+    rev = float(qq.get("revenue") or 0)
+    if s == 1:
+        prev_key = (y - 1, 4)
+    else:
+        prev_key = (y, s - 1)
+    prev = by_key.get(prev_key)
+    if not prev:
+        return False
+    try:
+        prev_rev = float(prev.get("revenue") or 0)
+    except (TypeError, ValueError):
+        return False
+    return prev_rev > 0 and rev > prev_rev
+
+
 def _quarter_box_parts(
     qq: Dict[str, Any],
     by_key: Dict[Tuple[int, int], Dict[str, Any]],
-) -> Dict[str, str]:
-    """季框三行分開：標／金額／較上季，畫圖時可各自對齊、縮字。"""
+) -> Dict[str, Any]:
+    """季框三行分開：標／金額／較上季；rev_better 供金額紅字。"""
     s = int(qq["season"])
     return {
         "title": f"第{s}季合計",
         "amount": format_yi(float(qq.get("revenue") or 0)),
         "trend": _quarter_qoq_short(qq, by_key),
+        "rev_better": _quarter_rev_better(qq, by_key),
+        "season": s,
     }
 
 
@@ -1621,9 +1662,11 @@ def month_quarter_split_rows(
                 "title": parts["title"],
                 "amount": parts["amount"],
                 "trend": parts["trend"],
+                "rev_better": bool(parts.get("rev_better")),
                 # 預設空；glance 再併官方 quarterly_income EPS
                 "eps": None,
                 "eps_lab": "",
+                "eps_better": False,
             }
         )
     # 與左列 1→12 同向：Q1 在上、Q2 在下
