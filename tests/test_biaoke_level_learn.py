@@ -1029,6 +1029,60 @@ def test_paint_panels_trio_skips_us_and_tx60_in_source():
     assert block.rfind('mode == "full"', 0, tx_at) > 0
 
 
+def test_prepare_wave_live_pack_refreshes_biaoke_posts_with_bars():
+    """三窗準備：日K與飆大文同輪刷新；不准行情新、口頭庫停多天前。"""
+    from pathlib import Path
+
+    import biaoke_level_learn as bll
+
+    src = Path(__file__).resolve().parents[1].joinpath("biaoke_level_learn.py").read_text(
+        encoding="utf-8"
+    )
+    prep = src[
+        src.index("def prepare_wave_live_pack") : src.index("def render_oral_dual_path_schematic")
+    ]
+    assert "_ensure_teach_index_bars" in prep
+    assert "_ensure_teach_biaoke_posts_fresh" in prep
+    bars_at = prep.index("_ensure_teach_index_bars")
+    posts_at = prep.index("_ensure_teach_biaoke_posts_fresh")
+    build_at = prep.index("_build_live_pack")
+    assert bars_at < posts_at < build_at
+
+    calls: list[dict] = []
+
+    def _fake_ingest(*, db_path="", max_ids=0, refresh_latest=0, **_kw):
+        calls.append(
+            {
+                "db_path": db_path,
+                "max_ids": max_ids,
+                "refresh_latest": refresh_latest,
+            }
+        )
+        return {"ok": True, "added": 0, "updated": 1, "replies": 2, "n": 9}
+
+    bll._TEACH_BIAOKE_FRESH_AT.clear()
+    monkey = pytest.MonkeyPatch()
+    try:
+        monkey.setattr(
+            "biaoke_ingest.ingest_public_posts",
+            _fake_ingest,
+            raising=False,
+        )
+        # 直接測 ensure：第一次真抓、第二次節流
+        db = "/tmp/wayne_teach_biaoke_fresh_probe.db"
+        open(db, "a").close()
+        r1 = bll._ensure_teach_biaoke_posts_fresh(db, force=True)
+        assert r1.get("ok") is True
+        assert r1.get("skipped") is not True
+        assert calls and calls[0]["max_ids"] >= 12
+        r2 = bll._ensure_teach_biaoke_posts_fresh(db, force=False)
+        assert r2.get("skipped") is True
+        assert len(calls) == 1
+    finally:
+        monkey.undo()
+        bll._TEACH_BIAOKE_FRESH_AT.clear()
+
+
 def test_schedule_ingest_paint_defaults_to_full_panels():
     """排程／ingest 活畫走預設 full，不准寫死 panels=trio。"""
     from pathlib import Path
@@ -3528,6 +3582,91 @@ def test_fill_live_twii_when_official_lags(monkeypatch):
     )
     assert pack.get("live_twii")
     assert abs(float(pack["live_twii"]["price"]) - 39701.64) < 0.01
+
+
+def test_fill_live_twii_when_today_volume_zero(monkeypatch):
+    """Yahoo 已寫今日但量=0：合併窗內仍疊 MIS，不准假收盤白底。"""
+    from biaoke_level_learn import _fill_live_twii_when_official_lags
+
+    monkeypatch.setattr(
+        "trading_calendar.is_tw_open_calendar_day", lambda d: True
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._twii_chart_as_of", lambda _db: "20261113"
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._twii_db_today_volume", lambda _db, _d: 0.0
+    )
+    monkeypatch.setattr(
+        "live_quote.is_live_merge_window", lambda _now=None: True
+    )
+    monkeypatch.setattr(
+        "live_quote.fetch_mis_index_quote",
+        lambda fresh=False, require_session=True: {
+            "price": 43680.0,
+            "date": "20261113",
+            "volume": 9000,
+        },
+    )
+    pack = _fill_live_twii_when_official_lags(
+        {"chart_as_of": "20261113"},
+        "/tmp/x.db",
+        now=datetime(2026, 11, 13, 14, 10, tzinfo=TAIPEI),
+    )
+    assert pack.get("live_twii")
+    assert abs(float(pack["live_twii"]["price"]) - 43680.0) < 0.01
+
+
+def test_merge_live_twii_overlays_when_today_volume_zero(monkeypatch):
+    """合併窗外但今日量=0：仍准 MIS 疊，並標收盤。"""
+    from biaoke_level_learn import _merge_live_twii_display_bar
+
+    monkeypatch.setattr("live_quote.is_live_merge_window", lambda: False)
+    monkeypatch.setattr(
+        "biaoke_level_learn._twii_cash_session_live", lambda _now=None: False
+    )
+    bars = [
+        {
+            "date": "20261113",
+            "open": 43700,
+            "high": 44400,
+            "low": 43500,
+            "close": 43675,
+            "volume": 0,
+        }
+    ]
+    live = {
+        "price": 43680.0,
+        "open": 43700.0,
+        "high": 44490.0,
+        "low": 43530.0,
+        "volume": 9500,
+        "date": "20261113",
+    }
+    out = _merge_live_twii_display_bar(bars, live)
+    assert abs(float(out[-1]["close"]) - 43680.0) < 0.01
+    assert float(out[-1]["volume"]) == 9500.0
+    assert int(out[-1].get("live_session") or 0) == 0
+
+
+def test_teach_trio_pipeline_table_locked():
+    """三窗步驟表鎖死：改順序／漏步要先改測試。"""
+    from biaoke_level_learn import TEACH_TRIO_PIPELINE, prepare_wave_live_pack
+    import inspect
+
+    ids = [a for a, _ in TEACH_TRIO_PIPELINE]
+    assert ids[:4] == [
+        "01_index_bars",
+        "02_posts_fresh",
+        "03_build_pack",
+        "04_live_twii",
+    ]
+    assert "09_paint_far" in ids and "10_paint_near" in ids
+    src = inspect.getsource(prepare_wave_live_pack)
+    assert "_ensure_teach_index_bars" in src
+    assert "_ensure_teach_biaoke_posts_fresh" in src
+    assert "_ensure_teach_tx_day_row" in src
+    assert "compute_teach_tip_snapshot" in src
 
 
 def test_merge_live_sox_display_bar_overlays_session():

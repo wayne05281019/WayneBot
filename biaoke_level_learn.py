@@ -632,12 +632,18 @@ def _merge_live_twii_display_bar(
     except Exception:
         in_window = False
     if not in_window:
-        # 官方已有今日（或更新）收盤柱 → 不准再用 MIS 蓋
+        # 官方已有今日且量>0 → 不准再用 MIS 蓋；量=0 仍准疊（Yahoo 未齊）
         if last_d and last_d >= today:
-            return out
+            try:
+                last_vol = float((out[-1] or {}).get("volume") or 0)
+            except (TypeError, ValueError):
+                last_vol = 0.0
+            if last_vol > 0:
+                return out
     merged = _merge_live_index_display_bar(bars, live, today=today)
-    # 盤後空窗疊 MIS 末筆＝當日已收價；標收盤（live_session=0），不准還寫盤中
-    if merged and not in_window:
+    # 非盤中現金窗：疊完一律標收盤（live_session=0），不准還寫盤中
+    # （含 13:30–16:30 合併窗外／週末；合併窗內由牆鐘決定是否仍盤中）
+    if merged and not _twii_cash_session_live():
         last = dict(merged[-1])
         if int(last.get("live_session") or 0) == 1:
             last["live_session"] = 0
@@ -1082,6 +1088,62 @@ def _twii_bars_for_teach(
     return [_sanitize_bar_ohlc(r) for r in bars]
 
 
+# 教具準備：飆大文節流（行情每次可抓；貼文網頁不要連打爆）
+_TEACH_BIAOKE_FRESH_AT: Dict[str, float] = {}
+_TEACH_BIAOKE_FRESH_SEC = 180.0  # 盤中／活畫 3 分內同庫只補一次
+
+
+def _ensure_teach_biaoke_posts_fresh(
+    db_path: str, *, now: Optional[datetime] = None, force: bool = False
+) -> Dict[str, Any]:
+    """三窗／波浪準備：行情會即時補，飆大公開文也要跟上（失敗不擋出圖）。
+
+    根因：本機／agent 庫常停在舊 snapshot，但 Yahoo／MIS 每次都抓到當下 →
+    白底／漲幅是新的、口頭標籤卻停在多天前。Render 常駐 ingest 沒這洞。
+    這裡跟 ``_ensure_teach_index_bars`` 同層；節流避免三張連打公開頁。
+    """
+    out: Dict[str, Any] = {"ok": False, "skipped": False, "reason": ""}
+    path = str(db_path or "").strip()
+    if not path:
+        out["reason"] = "no_db"
+        return out
+    dt = now or datetime.now(TAIPEI)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=TAIPEI)
+    else:
+        dt = dt.astimezone(TAIPEI)
+    import time as _time
+
+    key = os.path.abspath(path)
+    age = _time.time() - float(_TEACH_BIAOKE_FRESH_AT.get(key) or 0.0)
+    if (not force) and age < float(_TEACH_BIAOKE_FRESH_SEC):
+        out["ok"] = True
+        out["skipped"] = True
+        out["reason"] = "throttled"
+        out["age_s"] = round(age, 1)
+        return out
+    try:
+        from biaoke_ingest import ingest_public_posts
+
+        # 輕量：只補最近幾則主文＋討論串；seed 1709 在 ingest 內已是缺才補
+        stats = ingest_public_posts(
+            db_path=path, max_ids=16, refresh_latest=4
+        ) or {}
+        _TEACH_BIAOKE_FRESH_AT[key] = _time.time()
+        out["ok"] = bool(stats.get("ok", True))
+        out["stats"] = {
+            k: stats.get(k)
+            for k in ("added", "updated", "replies", "n", "fetched", "ok", "reason")
+            if k in stats
+        }
+        out["as_of"] = dt.strftime("%Y%m%d")
+        return out
+    except Exception:
+        logger.exception("教具補飆大公開文略過")
+        out["reason"] = "ingest_failed"
+        return out
+
+
 def _ensure_teach_index_bars(db_path: str) -> None:
     """活畫前補齊加權／費半最新官方日K（失敗不擋出圖）。"""
     if not db_path:
@@ -1092,6 +1154,13 @@ def _ensure_teach_index_bars(db_path: str) -> None:
         sync_index_daily(db_path, range_="3mo")
     except Exception:
         logger.exception("教具補加權日K略過")
+    # Yahoo 常留量=0：節流打 FMTQIK 補官方全日量（沒真數不寫）
+    try:
+        from taiwan_market import _maybe_fill_zero_index_volumes
+
+        _maybe_fill_zero_index_volumes(db_path)
+    except Exception:
+        logger.debug("教具補加權量略過", exc_info=True)
     # 加權軸要比到「最近一個台股開市日」：週末／假日也要補齊上一個開市收
     # （舊邏輯只在開市日且 asof<today 才短窗 sync → 週日仍停週四時，
     #  費半周五會變成延長格，四欄共用軸被標成「11/6費半」、下三欄右緣像缺K）
@@ -1119,12 +1188,34 @@ def _ensure_teach_index_bars(db_path: str) -> None:
         logger.exception("教具補費半日K略過")
 
 
+def _twii_db_today_volume(db_path: str, today: str) -> float:
+    """庫內加權今日成交量；缺列／讀失敗＝0（當未齊）。"""
+    day = _ymd(today)
+    if not db_path or len(day) != 8:
+        return 0.0
+    try:
+        from biaoke_wave import _load_twii_bars
+
+        bars = list(_load_twii_bars(db_path, n=6, teach=True) or [])
+    except Exception:
+        return 0.0
+    for r in reversed(bars):
+        if _ymd((r or {}).get("date")) == day:
+            try:
+                return float((r or {}).get("volume") or 0)
+            except (TypeError, ValueError):
+                return 0.0
+    return 0.0
+
+
 def _fill_live_twii_when_official_lags(
     pack: Dict[str, Any], db_path: str, *, now: Optional[datetime] = None
 ) -> Dict[str, Any]:
     """開市日官方日K還沒到今天：用 MIS 最後一筆疊顯示柱（盤中＋盤後入庫空窗）。
 
     話筒波浪鍵連盤中／剛收盤都要看得到今日加權＋量；不准卡在昨日收盤黃框。
+    Yahoo 常先寫今日 OHLC、量仍 0：視為未齊，16:30 前仍要疊 MIS，
+    不准因 asof==今天就標「收盤」卻留下量 0／錯價（遠／近白底日期％會漂）。
     """
     out = dict(pack or {})
     if out.get("live_twii"):
@@ -1143,7 +1234,20 @@ def _fill_live_twii_when_official_lags(
     except Exception:
         return out
     asof = _ymd(out.get("chart_as_of")) or _twii_chart_as_of(db_path)
-    if asof and asof >= today:
+    need = False
+    if not asof or asof < today:
+        need = True
+    else:
+        # 今日列已在、量仍 0：合併窗內仍當官方落後
+        try:
+            from live_quote import is_live_merge_window
+
+            in_merge = bool(is_live_merge_window(dt))
+        except Exception:
+            in_merge = False
+        if in_merge and _twii_db_today_volume(db_path, today) <= 0:
+            need = True
+    if not need:
         return out
     try:
         from live_quote import fetch_mis_index_quote
@@ -2389,6 +2493,48 @@ def _ensure_latest_tx_night_row(db_path: str) -> None:
         logger.debug("補最新台指夜盤列略過 cap=%s", cap, exc_info=True)
 
 
+def _ensure_teach_tx_day_row(db_path: str, *, now: Optional[datetime] = None) -> None:
+    """教具準備：開市日補齊大台日盤 regular（失敗不擋）。
+
+    缺今日日盤時，遠窗電子盤戳只能退昨夜、加權已是今日收 → 三欄日期看起來「錯」。
+    """
+    if not db_path:
+        return
+    dt = now or datetime.now(TAIPEI)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=TAIPEI)
+    else:
+        dt = dt.astimezone(TAIPEI)
+    today = dt.strftime("%Y%m%d")
+    try:
+        from trading_calendar import is_tw_open_calendar_day
+
+        if not is_tw_open_calendar_day(today):
+            return
+    except Exception:
+        return
+    # 日盤未收完前不强抓；13:30 後才補今日 regular
+    if _twii_cash_session_live(dt):
+        return
+    have = False
+    try:
+        rows = _load_tx_futures_daily(db_path, session="regular", since=today)
+        for r in rows or []:
+            if _ymd((r or {}).get("date")) == today and float((r or {}).get("close") or 0) > 0:
+                have = True
+                break
+    except Exception:
+        have = False
+    if have:
+        return
+    try:
+        from taiwan_market import sync_futures_daily
+
+        sync_futures_daily(db_path, dates=[today])
+    except Exception:
+        logger.debug("教具補台指日盤略過 day=%s", today, exc_info=True)
+
+
 def _resolve_tx_after_hours_tip(
     db_path: str, pack: Optional[Dict[str, Any]] = None
 ) -> Optional[Dict[str, Any]]:
@@ -2601,11 +2747,17 @@ def _paint_tx_after_hours_tip(
     # 週末／休市／非夜盤窗：呼叫端殘旗也不准硬寫盤中
     if live and not _tx_night_session_live(wall):
         live = False
-    when = _stamp_when_bit(
-        asof,
-        live=live,
-        query_hm=_stamp_query_hm(pack) if live else "",
-    )
+    if live:
+        when = _stamp_when_bit(
+            asof,
+            live=True,
+            query_hm=_stamp_query_hm(pack),
+        )
+    else:
+        # 夜盤已收：寫「夜收」＋起日，不准跟加權「日盤收」同一天卻看不出差源
+        # （例：加權 11/13收盤、電子盤 11/12夜收 — 不是戳日期壞掉）
+        md = _md(asof)
+        when = f"{md}夜收" if md else "夜收"
     meta = f"{str(label_prefix or '台指電子盤').strip()} {when}".strip()
     del clock  # MIS 末筆鐘不准寫進查詢當下
     fsz = _teach_stamp_fsz(meta, px_s, pct_s, pts_s)
@@ -18289,13 +18441,32 @@ def verify_live_hyps_with_speech(db_path: str, snippet: str) -> int:
     return n
 
 
+# 三窗成品鎖死步驟（改圖前先對這表；漏一步＝殘破）
+# 順序＝prepare → paint；倒推＝從出圖往回查哪步漂了
+TEACH_TRIO_PIPELINE: Tuple[Tuple[str, str], ...] = (
+    ("01_index_bars", "補加權／費半官方日K"),
+    ("02_posts_fresh", "補飆大公開文（節流）；口頭題旨／右標跟貼文庫"),
+    ("03_build_pack", "_build_live_pack：題旨≤查詢日＋pred／量價位"),
+    ("04_live_twii", "MIS 疊加權；今日量=0 視為未齊仍疊"),
+    ("05_live_sox", "費半即時（現金盤中才標盤中）"),
+    ("06_tx_night_day", "補夜盤 cap 列＋收後補日盤 regular"),
+    ("07_teach_tip", "凍白底戳三價／漲幅％（遠近超近同口）"),
+    ("08_sox_pred", "費半撐壓階梯對最新價"),
+    ("09_paint_far", "遠窗：費半｜電子盤｜加權｜量＋白底戳"),
+    ("10_paint_near", "近窗：日K浪線＋黃帶＋右欄口頭（回測帶壓41500）"),
+    ("11_paint_micro", "超近60m：今日底色／粗藍折／細白碎浪／右欄"),
+    ("12_persist", "落 biaoke_open_day_paints＋teach_tip"),
+)
+
+
 def prepare_wave_live_pack(
     db_path: str, *, now: Optional[datetime] = None
 ) -> Dict[str, Any]:
-    """波浪／教具共用準備：ensure 加權／費半日K＋組 pack＋盤中 MIS／SOX 疊柱。
+    """波浪／教具共用準備：ensure 加權／費半日K＋飆大公開文＋組 pack＋盤中 MIS／SOX。
 
     話筒遠／近／超近同按一次只准跑一回；paint 可帶 pack 進來不再重抓。
-    盤中未收不當官方收；不寫庫。
+    行情與口頭必須同輪刷新：不准出現「白底／漲幅是當下、貼文庫還停多天前」。
+    盤中未收不當官方收。步驟表見 ``TEACH_TRIO_PIPELINE``。
     """
     dt = now or datetime.now(TAIPEI)
     if dt.tzinfo is None:
@@ -18307,7 +18478,17 @@ def prepare_wave_live_pack(
             _ensure_teach_index_bars(db_path)
         except Exception:
             logger.debug("prepare_wave ensure 略過", exc_info=True)
+        # 與日K同層：三窗題旨／右欄口頭標跟得上當下貼文（節流；失敗不擋）
+        try:
+            pack_fresh = _ensure_teach_biaoke_posts_fresh(db_path, now=dt)
+        except Exception:
+            logger.debug("prepare_wave 飆大文略過", exc_info=True)
+            pack_fresh = {"ok": False, "reason": "ensure_exc"}
+    else:
+        pack_fresh = {"ok": False, "reason": "no_db"}
     pack = dict(_build_live_pack(db_path, now=dt) or {})
+    if isinstance(pack_fresh, dict) and pack_fresh:
+        pack["_biaoke_posts_fresh"] = pack_fresh
     try:
         from live_quote import fetch_mis_index_quote, is_live_merge_window
 
@@ -18343,6 +18524,11 @@ def prepare_wave_live_pack(
         _ensure_latest_tx_night_row(db_path)
     except Exception:
         logger.debug("prepare_wave 補最新夜盤列略過", exc_info=True)
+    # 日盤收後補今日 TX regular，避免三欄日期各停一天
+    try:
+        _ensure_teach_tx_day_row(db_path, now=dt)
+    except Exception:
+        logger.debug("prepare_wave 補台指日盤略過", exc_info=True)
     try:
         if _tx_night_session_live(dt):
             _ensure_paint_live_tx(pack, now=dt)
