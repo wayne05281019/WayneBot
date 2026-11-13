@@ -860,6 +860,8 @@ class WayneTelegramBot:
         self._screening_gate = asyncio.Lock()
         # 大盤教具重渲單飛：連按不准疊三輪五張 matplotlib
         self._market_teach_paint_lock = asyncio.Lock()
+        # 波浪位階：一人一次；連按不准雙開 prep／paint（第二次會全沒）
+        self._wave_locks: Dict[str, asyncio.Lock] = {}
         self._screening_global_owner: str = ""
         self._screening_build_task = None
         # 建檔認領鎖：兩次按在讀快取 await 後同時醒來時，不准各開一輪全掃
@@ -5721,42 +5723,60 @@ class WayneTelegramBot:
         """波浪位階：層級敘述＋遠／近／超近三張（非買訊）。"""
         msg = update.effective_message
         uid = self._uid_from_message(msg)
-        # 敘述與 ensure／pack 重疊；出圖路徑接走同一包，不准再重抓
-        pack_task = None
-        try:
-            from biaoke_level_learn import prepare_wave_live_pack
-
-            pack_task = asyncio.create_task(
-                asyncio.to_thread(prepare_wave_live_pack, self.db_path)
-            )
-        except Exception:
-            pack_task = None
-        brief = ""
-        try:
-            from biaoke_digest import format_teach_brief
-
-            brief = await asyncio.to_thread(format_teach_brief, self.db_path) or ""
-        except Exception:
-            logger.exception("波浪位階敘述略過")
-            brief = ""
-        if brief:
-            try:
-                await msg.reply_html(
-                    brief[:3500],
-                    disable_web_page_preview=True,
-                    reply_markup=self._keyboard(),
-                )
-            except Exception:
-                await msg.reply_text(
-                    "波浪位階（預估・非買訊）",
-                    reply_markup=self._keyboard(),
-                )
-        else:
+        actor = self._actor_key(msg, uid=uid)
+        wave_lock = self._wave_locks.setdefault(actor, asyncio.Lock())
+        # 檢查與 acquire 之間不准 await：concurrent_updates 重入會雙開 prep／paint
+        if wave_lock.locked():
             await msg.reply_text(
-                "波浪位階（預估・非買訊）\n先送遠／近／超近三張；敘述這次沒湊齊。",
+                "上一組波浪位階還在出圖，請稍候再按。",
                 reply_markup=self._keyboard(),
             )
-        await self._send_market_wave_charts(msg, uid=uid, pack_task=pack_task)
+            return
+        await wave_lock.acquire()
+        pack_task = None
+        try:
+            # 敘述與 ensure／pack 重疊；出圖路徑接走同一包，不准再重抓
+            try:
+                from biaoke_level_learn import prepare_wave_live_pack
+
+                pack_task = asyncio.create_task(
+                    asyncio.to_thread(prepare_wave_live_pack, self.db_path)
+                )
+            except Exception:
+                pack_task = None
+            brief = ""
+            try:
+                from biaoke_digest import format_teach_brief
+
+                brief = await asyncio.to_thread(format_teach_brief, self.db_path) or ""
+            except Exception:
+                logger.exception("波浪位階敘述略過")
+                brief = ""
+            if brief:
+                try:
+                    await msg.reply_html(
+                        brief[:3500],
+                        disable_web_page_preview=True,
+                        reply_markup=self._keyboard(),
+                    )
+                except Exception:
+                    await msg.reply_text(
+                        "波浪位階（預估・非買訊）",
+                        reply_markup=self._keyboard(),
+                    )
+            else:
+                await msg.reply_text(
+                    "波浪位階（預估・非買訊）\n先送遠／近／超近三張；敘述這次沒湊齊。",
+                    reply_markup=self._keyboard(),
+                )
+            await self._send_market_wave_charts(msg, uid=uid, pack_task=pack_task)
+        finally:
+            if pack_task is not None and not pack_task.done():
+                pack_task.cancel()
+            try:
+                wave_lock.release()
+            except RuntimeError:
+                pass
 
     async def leave_zero_cmd(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE, pick: str = ""

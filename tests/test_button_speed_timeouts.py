@@ -51,6 +51,8 @@ def test_button_timeouts_are_not_too_tight():
     assert "波浪位階" in page
     wave = inspect.getsource(WayneTelegramBot.wave_status_cmd)
     assert "_send_market_wave_charts" in wave
+    assert "_wave_locks" in wave
+    assert "上一組波浪位階還在出圖" in wave
 
 
 def test_leave_zero_pick_defers_mis_to_candidates_only():

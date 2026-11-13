@@ -545,7 +545,11 @@ def load_michael_votes() -> Dict[str, float]:
 
 
 def extract_michael_corpus(conn: sqlite3.Connection, *, limit_articles: int = 12) -> Dict[str, Any]:
-    """近窗討論串：被點名感謝的麥可長文落檔（學習材料，不當飆大判斷）。"""
+    """近窗討論串：被點名感謝的麥可長文落檔（學習材料，不當飆大判斷）。
+
+    另併：近窗口吻長文（15K 名詞／當沖不留倉／送分題），即使感謝尚未堆滿也收，
+    避免最新回文漏檔。
+    """
     thanks = conn.execute(
         """
         SELECT reply_to, COUNT(*) n
@@ -560,7 +564,7 @@ def extract_michael_corpus(conn: sqlite3.Connection, *, limit_articles: int = 12
         ORDER BY n DESC
         """
     ).fetchall()
-    rows_out = []
+    by_id: Dict[str, Dict[str, Any]] = {}
     for reply_to, n in thanks:
         art = str(reply_to).split("-")[0]
         cid = f"{art}:c{reply_to}"
@@ -580,22 +584,58 @@ def extract_michael_corpus(conn: sqlite3.Connection, *, limit_articles: int = 12
             ).fetchone()
         if not row or len(str(row[4] or "")) < 200:
             continue
-        rows_out.append(
-            {
-                "id": row[0],
-                "article_id": row[1],
-                "date": row[2],
-                "time": row[3],
-                "thanks_n": int(n),
-                "text": row[4],
-                "voice": "michael",
-            }
-        )
+        by_id[str(row[0])] = {
+            "id": row[0],
+            "article_id": row[1],
+            "date": row[2],
+            "time": row[3],
+            "thanks_n": int(n),
+            "text": row[4],
+            "voice": "michael",
+            "via": "thanks",
+        }
+    # 口吻長文：15K 定義／當沖不留倉／送分題（最新回文即使尚無感謝也收）
+    voice_rows = conn.execute(
+        """
+        SELECT id, article_id, date, time, text FROM biaoke_thread
+        WHERE length(text) >= 350
+          AND (
+            text LIKE '%15K60%' OR text LIKE '%15K120%' OR text LIKE '%15K10%'
+            OR text LIKE '%送分題%' OR text LIKE '%當沖%不留%'
+            OR text LIKE '%15分鐘的K線%'
+          )
+          AND (
+            text LIKE '%老人家%' OR text LIKE '%我常說%' OR text LIKE '%我做的是%'
+            OR text LIKE '%進出遊戲規則%' OR text LIKE '%北上高鐵%'
+          )
+        ORDER BY date DESC, time DESC
+        LIMIT 24
+        """
+    ).fetchall()
+    for row in voice_rows:
+        rid = str(row[0])
+        if rid in by_id:
+            continue
+        by_id[rid] = {
+            "id": row[0],
+            "article_id": row[1],
+            "date": row[2],
+            "time": row[3],
+            "thanks_n": 0,
+            "text": row[4],
+            "voice": "michael",
+            "via": "voice_markers",
+        }
+    rows_out = sorted(
+        by_id.values(),
+        key=lambda r: (str(r.get("date") or ""), str(r.get("time") or ""), int(r.get("thanks_n") or 0)),
+        reverse=True,
+    )
     out = {
         "written_at": _now(),
         "tz": "Asia/Taipei",
         "n": len(rows_out),
-        "note_zh": "自研材料：麥可長文；加測用；不當飆大判斷；不上話筒",
+        "note_zh": "自研材料：麥可長文（感謝點名＋口吻近窗）；加測用；不當飆大判斷；不上話筒",
         "posts": [
             {
                 "id": r["id"],
@@ -603,6 +643,7 @@ def extract_michael_corpus(conn: sqlite3.Connection, *, limit_articles: int = 12
                 "date": r["date"],
                 "time": r["time"],
                 "thanks_n": r["thanks_n"],
+                "via": r.get("via") or "thanks",
                 "snip": (r["text"] or "")[:400],
             }
             for r in rows_out

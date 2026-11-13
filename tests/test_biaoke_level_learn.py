@@ -1083,6 +1083,33 @@ def test_prepare_wave_live_pack_refreshes_biaoke_posts_with_bars():
         bll._TEACH_BIAOKE_FRESH_AT.clear()
 
 
+def test_teach_biaoke_posts_fresh_hard_timeout(monkeypatch):
+    """ingest／walk 卡住不准拖死波浪三窗；逾時略過並節流。"""
+    import time as _time
+
+    import biaoke_level_learn as bll
+
+    def _hang(**_kwargs):
+        _time.sleep(30)
+        return {"ok": True}
+
+    bll._TEACH_BIAOKE_FRESH_AT.clear()
+    monkeypatch.setattr(bll, "_TEACH_BIAOKE_INGEST_TIMEOUT_SEC", 0.2)
+    monkeypatch.setattr("biaoke_ingest.ingest_public_posts", _hang, raising=False)
+    db = "/tmp/wayne_teach_biaoke_fresh_timeout.db"
+    open(db, "a").close()
+    t0 = _time.time()
+    out = bll._ensure_teach_biaoke_posts_fresh(db, force=True)
+    elapsed = _time.time() - t0
+    assert out.get("reason") == "ingest_timeout"
+    assert out.get("skipped") is True
+    assert elapsed < 5.0
+    # 逾時也寫節流，緊接再叫不重踩
+    out2 = bll._ensure_teach_biaoke_posts_fresh(db, force=False)
+    assert out2.get("reason") == "throttled"
+    bll._TEACH_BIAOKE_FRESH_AT.clear()
+
+
 def test_schedule_ingest_paint_defaults_to_full_panels():
     """排程／ingest 活畫走預設 full，不准寫死 panels=trio。"""
     from pathlib import Path
