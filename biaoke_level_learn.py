@@ -12899,7 +12899,7 @@ def _paint_micro_retest_then_rise_schematic(
     ax.text(
         x_lab,
         y_lab,
-        "C走完→新五波升\n（示意・非買訊）",
+        "撑完大C→新八浪循環\n（示意・待走完・≠自動・非買訊）",
         fontproperties=fp(7.4, "bold"),
         color="#40c4ff",
         ha="left",
@@ -12919,6 +12919,127 @@ def _paint_micro_retest_then_rise_schematic(
     out["fut_y"] = max(float(y_up), float(y_lab))
     out["xlim_right"] = max(float(n) + 1.2, float(x_lab) + 4.6, float(x_tip) + 2.2)
     return out
+
+
+def _oral_535_now_tip(*, short: bool = False) -> str:
+    """三窗八浪黃框／題旨共用：當令5-3-5；不准叠大C第幾。"""
+    if short:
+        return "此刻＝大C｜細＝5-3-5｜今≈小b近完｜下＝小c五↓"
+    return (
+        "此刻＝大C｜細＝5-3-5 abc｜今≈小b近完｜下＝小c五段↓｜"
+        "撑完大C→新八浪（示意・待走完・≠自動）"
+    )
+
+
+def _oral_535_header_bit() -> str:
+    return "細＝5-3-5｜今≈小b近完｜下＝小c五↓｜撑完大C→新八浪示意・≠自動"
+
+
+def _paint_oral_535_status_marks(
+    ax,
+    *,
+    i_now: int,
+    y_now: float,
+    fp,
+    span_y: float,
+    n: int,
+    compact: bool = False,
+) -> None:
+    """三窗釘當令位：今≈小b；下＝小c五段↓示意。
+
+    不准發明 a／b 尖點價位；小c 只畫預估箭，非買訊。
+    """
+    if ax is None or fp is None:
+        return
+    try:
+        i0 = int(i_now)
+        y0 = float(y_now)
+        sp = max(float(span_y), 1.0)
+    except (TypeError, ValueError):
+        return
+    if y0 <= 0:
+        return
+    dy = sp * (0.045 if compact else 0.055)
+    # 今＝小b近完（釘在最新柱上方，離開右欄）
+    try:
+        ax.text(
+            float(i0) - (0.35 if compact else 0.55),
+            float(y0) + dy,
+            "今≈小b近完",
+            ha="right",
+            va="bottom",
+            fontproperties=fp(7.6 if compact else 8.2, "bold"),
+            color="#ffd54f",
+            zorder=9.2,
+            clip_on=False,
+            bbox={
+                "boxstyle": "round,pad=0.12",
+                "facecolor": "#1a1400",
+                "edgecolor": "#ffd54f",
+                "linewidth": 0.85,
+                "alpha": 0.92,
+            },
+        )
+    except Exception:
+        logger.debug("535 小b標略過", exc_info=True)
+    # 下＝小c五段↓（自今往右下示意數根，不准寫死目標價）
+    x1 = float(i0) + (3.2 if compact else 4.2)
+    y1 = float(y0) - max(sp * 0.10, 520.0)
+    try:
+        ax.annotate(
+            "",
+            xy=(float(x1), float(y1)),
+            xytext=(float(i0) + 0.35, float(y0) - dy * 0.35),
+            arrowprops={
+                "arrowstyle": "-|>",
+                "color": "#ea80fc",
+                "lw": 1.55 if compact else 1.85,
+                "linestyle": (0, (4.0, 2.0)),
+                "mutation_scale": 12.0 if compact else 15.0,
+                "shrinkA": 0,
+                "shrinkB": 0,
+                "alpha": 0.9,
+            },
+            zorder=8.6,
+            clip_on=False,
+        )
+        ax.text(
+            float(x1) + 0.15,
+            float(y1),
+            "下＝小c五段↓\n（預估・非買訊）",
+            ha="left",
+            va="center",
+            fontproperties=fp(7.0 if compact else 7.6, "bold"),
+            color="#ea80fc",
+            zorder=9.0,
+            linespacing=1.05,
+            clip_on=False,
+            bbox={
+                "boxstyle": "round,pad=0.10",
+                "facecolor": "#160818",
+                "edgecolor": "#ea80fc",
+                "linewidth": 0.7,
+                "alpha": 0.9,
+            },
+        )
+    except Exception:
+        logger.debug("535 小c示意略過", exc_info=True)
+    # 撑完大C→新八浪：只註在小c箭外側，鐵律≠自動
+    if not compact:
+        try:
+            ax.text(
+                min(float(n) + 1.2, float(x1) + 0.2),
+                float(y1) - max(sp * 0.045, 180.0),
+                "撑完大C→新八浪循環（示意・待走完・≠自動）",
+                ha="left",
+                va="top",
+                fontproperties=fp(6.6, "bold"),
+                color="#80cbc4",
+                zorder=8.8,
+                clip_on=False,
+            )
+        except Exception:
+            logger.debug("535 新八浪註略過", exc_info=True)
 
 
 def _paint_eight_wave_inset(
@@ -15824,7 +15945,8 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         0.05,
         0.961,
         f"{_macro_wave_calendar_line()}｜藍⑤｜粉A｜金虛B｜紫C｜"
-        f"費半＋台指電子盤同時段｜C走完≠新五波升{sox_bit}{_pb_bit}",
+        f"{_oral_535_header_bit()}｜費半＋台指電子盤同時段｜"
+        f"C走完≠自動新八浪{sox_bit}{_pb_bit}",
         fontproperties=_fp(9, "bold"),
         color="#ce93d8",
         ha="left",
@@ -15990,6 +16112,18 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     except Exception:
         pass
     _c9_far = _c9_extension_active(pack)
+    try:
+        _paint_oral_535_status_marks(
+            ax,
+            i_now=int(i_now),
+            y_now=float(y_now),
+            fp=_fp,
+            span_y=float(max(ymax - ymin, 1.0)),
+            n=int(n_tw),
+            compact=True,
+        )
+    except Exception:
+        logger.debug("遠窗535位標略過", exc_info=True)
     _paint_eight_wave_inset(
         fig,
         fp=_fp,
@@ -15999,6 +16133,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         title="九波擴延" if _c9_far else "八浪",
         c9_ext=_c9_far,
         flash_pivots=_c9_pivots_far if _c9_far else None,
+        now_tip=_oral_535_now_tip(short=True),
     )
     # 黃標／AI標：同一 x，貼縮圖右外側；再右挪離開大A底尖點（區帶後畫會蓋）
     _zx = _zone_label_x_clear_of_inset(
@@ -16361,8 +16496,8 @@ def _render_twii_c_wave_60_dark(
             y=0.922,
             text=(
                 "浪線怎麼畫：底色C1–C4＝黃教導層｜粗藍折＝大段高低（C1→C2→C3底→C4高）｜"
-                "細白＝碎浪｜當令細分＝5-3-5 abc（小B近完→下小C五）｜"
-                "大房間仍大C・不准叠成大C第幾｜非買訊"
+                "細白＝碎浪｜當令細分＝5-3-5 abc（今≈小b近完→下小c五↓）｜"
+                "大房間仍大C・不准叠成大C第幾｜撑完大C→新八浪示意・≠自動｜非買訊"
             ),
         )
     right_notes: List[Dict[str, Any]] = [
@@ -16544,6 +16679,18 @@ def _render_twii_c_wave_60_dark(
         ax=ax,
         db_path=db_path,
     )
+    try:
+        _paint_oral_535_status_marks(
+            ax,
+            i_now=int(i_now),
+            y_now=float(y_now),
+            fp=_fp,
+            span_y=float(max(ymax - ymin, 1.0)),
+            n=int(n),
+            compact=False,
+        )
+    except Exception:
+        logger.debug("超近535位標略過", exc_info=True)
     # 八浪縮圖：量欄左側空帶；黃框＝大房間大C＋當令5-3-5 abc（不叠大C第幾／黃C4）
     _micro_ins = _eight_wave_inset_rect_on_vol(axv, fig, scale=0.95, left_frac=0.05)
     _paint_eight_wave_inset(
@@ -16553,7 +16700,7 @@ def _render_twii_c_wave_60_dark(
         detail=True,
         rect=_micro_ins,
         title="八浪・對位",
-        now_tip="此刻＝大C｜細＝5-3-5 abc｜今≈小B近完｜下＝小C五段",
+        now_tip=_oral_535_now_tip(),
     )
     try:
         fig.savefig(save_path, facecolor=_LIVE_BG, bbox_inches="tight", pad_inches=0.22)
@@ -17248,7 +17395,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         0.03,
         0.945,
         f"{str(ladder.get('one_line') or '他說現在：C進行中')[:40]}｜"
-        f"{_macro_wave_calendar_line()}｜細＝5-3-5 abc｜小B近完→小C五｜C走完≠新五波升",
+        f"{_macro_wave_calendar_line()}｜{_oral_535_header_bit()}",
         fontproperties=_fp(9, "bold"),
         color="#ce93d8",
         ha="left",
@@ -17260,7 +17407,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         y=0.918,
         text=(
             "浪線怎麼畫：尖點對尖點連直線｜藍⑤→粉A→金虛B→紫C（只連官方柱高低）｜"
-            "當令細分＝5-3-5 abc（不叠大C第幾）｜非買訊"
+            "當令細分＝5-3-5 abc（不叠大C第幾）｜撑完大C→新八浪示意・≠自動｜非買訊"
         ),
     )
     # 近窗白底戳：跟遠窗同一套鎖主圖 axes 框內左上（不准出框、不准擋九波／縮圖K）
@@ -17365,6 +17512,18 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
             pin_bottom=True,
         )
     _c9_near = _c9_extension_active(pack)
+    try:
+        _paint_oral_535_status_marks(
+            ax,
+            i_now=int(i_now),
+            y_now=float(y_now),
+            fp=_fp,
+            span_y=float(max(ymax - ymin, 1.0)),
+            n=int(n),
+            compact=True,
+        )
+    except Exception:
+        logger.debug("近窗535位標略過", exc_info=True)
     _paint_eight_wave_inset(
         fig,
         fp=_fp,
@@ -17374,6 +17533,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         title="九波擴延" if _c9_near else "八浪",
         c9_ext=_c9_near,
         flash_pivots=_c9_pivots_near if _c9_near else None,
+        now_tip=_oral_535_now_tip(short=True),
     )
     # 近窗：兩標齊頭；清過九波縮圖，且右挪離開大A末／7/29（區帶後畫會蓋尖點）
     _zx_n = _zone_label_x_clear_of_inset(

@@ -3349,12 +3349,14 @@ def test_near_micro_wave_draw_howto_in_source():
     assert "_paint_wave_draw_howto" in near
     assert "_paint_macro_wave_seg_tags" in near
     assert "尖點對尖點" in near
-    assert "5-3-5 abc" in near
+    assert "_oral_535_header_bit" in near
+    assert "_paint_oral_535_status_marks" in near
     assert howto.strip()
     assert "_paint_wave_draw_howto" in micro
     assert "粗藍折＝大段高低" in micro
     assert "C1→C2→C3底→C4高" in micro
     assert "5-3-5 abc" in micro
+    assert "_paint_oral_535_status_marks" in micro
     assert '"⑤"' in tags and '"A"' in tags and '"B"' in tags
     assert '", "C"' not in tags and "\"C\", \"#ea80fc\"" not in tags
     assert "不准再貼段中孤" in tags
@@ -3371,13 +3373,14 @@ def test_micro_eight_wave_inset_and_retest_path_in_source():
     c60 = inspect.getsource(_render_twii_c_wave_60_dark)
     assert "_eight_wave_inset_rect_on_vol" in c60
     assert "_paint_eight_wave_inset" in c60
-    assert "此刻＝大C｜細＝5-3-5 abc｜今≈小B近完｜下＝小C五段" in c60
+    assert "_oral_535_now_tip" in c60
+    assert "_paint_oral_535_status_marks" in c60
     assert "不准叠成大C第幾" in c60
     assert "_paint_micro_retest_then_rise_schematic" in c60
     assert "_paint_micro_today_session_bg" in c60
     assert "float(n) + 8.8" in c60  # 右欄左緣進空帶，不准壓K
     path_src = inspect.getsource(_paint_micro_retest_then_rise_schematic)
-    assert "新五波升" in path_src
+    assert "新八浪循環" in path_src
     # 回測價只留右欄；虛線端不准再貼「至少回測」；升段用紅箭＋圈5指到右側標
     assert 'f"至少回測' not in path_src
     assert "annotate" in path_src
