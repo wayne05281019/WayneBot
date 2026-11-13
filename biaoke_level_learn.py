@@ -5590,15 +5590,16 @@ def _paint_c3_group12_span_labels(
             return
         _ = edge
         x_a, x_b = float(i_a) - 0.45, float(i_b) + 0.45
+        # 底色極淡：只提示段界，不准洗掉縮圖K（使用者：不要連基本K圖都沒有）
         ax.axvspan(
             x_a,
             x_b,
             facecolor=face,
-            alpha=0.08,
-            zorder=1.05,
+            alpha=0.035,
+            zorder=0.9,
             linewidth=0,
         )
-        # 直排正立：橫向太長改一字一行；英／國字都不旋轉
+        # 直排正立：橫向太長改一字一行；英／國字都不旋轉；標貼底緣，不准蓋K實體
         ax.text(
             (float(i_a) + float(i_b)) * 0.5,
             y_band,
@@ -5607,15 +5608,15 @@ def _paint_c3_group12_span_labels(
             va="bottom",
             fontproperties=fp(9.2, "bold"),
             color=fg,
-            zorder=42,
+            zorder=3.5,
             linespacing=1.05,
             rotation=0,
             bbox={
-                "boxstyle": "round,pad=0.22",
+                "boxstyle": "round,pad=0.18",
                 "facecolor": face,
                 "edgecolor": "#ffffff",
-                "linewidth": 1.0,
-                "alpha": 0.78,
+                "linewidth": 0.8,
+                "alpha": 0.45,
             },
             clip_on=False,
         )
@@ -10033,7 +10034,8 @@ def _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_up) ->
         up = candle_up(c_i, prev_c, o_i)
         color = _LIVE_UP if up else _LIVE_DOWN
         # wick/body z 高於底帶、低於空心 tip；末根另蓋回
-        ax.vlines(i, l_i, h_i, color=color, linewidth=1.35, zorder=5)
+        # z 高過 C1–C4 底色／黃白帶；標完跨度後還會再蓋一層，基本K不准被蓋沒
+        ax.vlines(i, l_i, h_i, color=color, linewidth=1.55, zorder=8)
         y0, h_body = _candle_body_y0_height(o_i, c_i, float(min_body))
         ax.add_patch(
             plt.Rectangle(
@@ -10042,8 +10044,8 @@ def _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_up) ->
                 h_body,
                 facecolor=color,
                 edgecolor=color,
-                linewidth=0.45,
-                zorder=6,
+                linewidth=0.55,
+                zorder=9,
             )
         )
         if axv is not None and i < len(vols):
@@ -15762,6 +15764,21 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     _paint_c3_group12_span_labels(
         ax, bars, fp=_fp, pack=pack, lows=lows, highs=highs
     )
+    # 跨度標之後再蓋回縮圖K：基本K永遠可見，不准只剩色帶／折線
+    _paint_live_candles(
+        ax, None, opens, highs, lows, closes, vols, candle_body_up_taiwan
+    )
+    _finish_last_twii_candle(
+        ax,
+        i_now=int(i_now),
+        opens=opens,
+        highs=highs,
+        lows=lows,
+        closes=closes,
+        candle_up=candle_body_up_taiwan,
+        ymin=float(ax.get_ylim()[0]),
+        ymax=float(ax.get_ylim()[1]),
+    )
     # 腳註多行：thesis＋預測點按｜分行；壓在 x 軸日期下方，不准互疊、不准裁半截
     foot_main = str(
         pack.get("thesis") or "推進⑤＝4/1→6/23｜大A底7/29→大B→大C進行中（預估）"
@@ -17110,6 +17127,21 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     _paint_c3_group12_span_labels(
         ax, bars, fp=_fp, pack=pack, lows=lows, highs=highs
     )
+    # 跨度標之後再蓋回縮圖K＋量：基本K永遠可見
+    _paint_live_candles(
+        ax, axv, opens, highs, lows, closes, vols, candle_body_up_taiwan
+    )
+    _finish_last_twii_candle(
+        ax,
+        i_now=int(i_now),
+        opens=opens,
+        highs=highs,
+        lows=lows,
+        closes=closes,
+        candle_up=candle_body_up_taiwan,
+        ymin=float(ax.get_ylim()[0]),
+        ymax=float(ax.get_ylim()[1]),
+    )
     # 單行腳：不准雙行疊字蓋數字
     intent_foot = str(pack.get("intent_note") or pack.get("vol_note") or "")
     intent_one = intent_foot.split("；")[0] if intent_foot else ""
@@ -18452,8 +18484,8 @@ TEACH_TRIO_PIPELINE: Tuple[Tuple[str, str], ...] = (
     ("06_tx_night_day", "補夜盤 cap 列＋收後補日盤 regular"),
     ("07_teach_tip", "凍白底戳三價／漲幅％（遠近超近同口）"),
     ("08_sox_pred", "費半撐壓階梯對最新價"),
-    ("09_paint_far", "遠窗：費半｜電子盤｜加權｜量＋白底戳"),
-    ("10_paint_near", "近窗：日K浪線＋黃帶＋右欄口頭（回測帶壓41500）"),
+    ("09_paint_far", "遠窗：費半｜電子盤｜加權｜量＋白底戳；跨度標後再蓋回縮圖K"),
+    ("10_paint_near", "近窗：日K浪線＋黃帶＋右欄口頭；跨度標後再蓋回縮圖K"),
     ("11_paint_micro", "超近60m：今日底色／粗藍折／細白碎浪／右欄"),
     ("12_persist", "落 biaoke_open_day_paints＋teach_tip"),
 )

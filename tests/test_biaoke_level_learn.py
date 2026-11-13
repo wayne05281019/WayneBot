@@ -3669,6 +3669,31 @@ def test_teach_trio_pipeline_table_locked():
     assert "compute_teach_tip_snapshot" in src
 
 
+def test_far_near_repaint_candles_after_c_spans():
+    """遠／近：C1–C4 跨度標後必須再蓋縮圖K，不准只剩色帶。"""
+    from pathlib import Path
+
+    src = Path(__file__).resolve().parents[1].joinpath("biaoke_level_learn.py").read_text(
+        encoding="utf-8"
+    )
+    far = src[
+        src.index("def _render_twii_far_dark") : src.index("def _render_twii_live_dark")
+    ]
+    near = src[
+        src.index("def _render_twii_live_dark") : src.index(
+            "def _render_twii_super_near_dark"
+        )
+    ]
+    for block, name in ((far, "far"), (near, "near")):
+        span_at = block.index("_paint_c3_group12_span_labels")
+        # 跨度之後還要再出現一次 _paint_live_candles
+        after = block[span_at:]
+        assert after.count("_paint_live_candles") >= 1, name
+        assert after.index("_paint_live_candles") < after.index(
+            "_finish_last_twii_candle"
+        ), name
+
+
 def test_merge_live_sox_display_bar_overlays_session():
     """費半盤中 Yahoo 疊顯示柱：跟 live date 走、不寫庫。"""
     from biaoke_level_learn import _merge_live_sox_display_bar
