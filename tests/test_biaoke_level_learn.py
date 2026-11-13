@@ -3239,6 +3239,67 @@ def test_teach_twii_bars_include_latest_index_day_past_complete_bar():
     assert _ymd(bars[-1].get("date")) == teach_last
 
 
+def test_mark_intraday_incomplete_twii_bar_flags_vol0(monkeypatch):
+    """盤中現金窗：Yahoo 今日柱量=0 → 標 live_session，不准誤寫收盤。"""
+    from biaoke_level_learn import _mark_intraday_incomplete_twii_bar
+
+    now = datetime(2026, 11, 13, 11, 27, tzinfo=TAIPEI)
+    pack = {"query_at": now.isoformat()}
+    out = _mark_intraday_incomplete_twii_bar(
+        [
+            {
+                "date": "20261113",
+                "open": 43700,
+                "high": 44400,
+                "low": 43700,
+                "close": 44000,
+                "volume": 0,
+            }
+        ],
+        now=now,
+        pack=pack,
+    )
+    assert int(out[-1].get("live_session") or 0) == 1
+    # 有量＝已可認 → 不改
+    kept = _mark_intraday_incomplete_twii_bar(
+        [
+            {
+                "date": "20261113",
+                "open": 43700,
+                "high": 44400,
+                "low": 43700,
+                "close": 44000,
+                "volume": 12000000,
+            }
+        ],
+        now=now,
+        pack=pack,
+    )
+    assert int(kept[-1].get("live_session") or 0) == 0
+
+
+def test_near_micro_wave_draw_howto_in_source():
+    """近／超近要寫清浪線怎麼畫；近窗段中⑤／A／B／C 短標。"""
+    from biaoke_level_learn import (
+        _paint_macro_wave_seg_tags,
+        _paint_wave_draw_howto,
+        _render_twii_c_wave_60_dark,
+        _render_twii_live_dark,
+    )
+
+    near = inspect.getsource(_render_twii_live_dark)
+    micro = inspect.getsource(_render_twii_c_wave_60_dark)
+    howto = inspect.getsource(_paint_wave_draw_howto)
+    tags = inspect.getsource(_paint_macro_wave_seg_tags)
+    assert "_paint_wave_draw_howto" in near
+    assert "_paint_macro_wave_seg_tags" in near
+    assert "尖點對尖點" in near
+    assert howto.strip()
+    assert "_paint_wave_draw_howto" in micro
+    assert "藍折＝C1→C2" in micro
+    assert '"⑤"' in tags and '"A"' in tags and '"B"' in tags and '"C"' in tags
+
+
 def test_merge_live_twii_display_bar_overlays_today(monkeypatch):
     """盤中 MIS 疊顯示柱：只渲染、不寫庫、標 live_session。"""
     from biaoke_level_learn import _merge_live_twii_display_bar

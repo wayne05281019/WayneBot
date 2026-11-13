@@ -1025,6 +1025,40 @@ def _sanitize_bar_ohlc(row: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
+def _mark_intraday_incomplete_twii_bar(
+    bars: Sequence[Dict[str, Any]],
+    *,
+    now: Optional[datetime] = None,
+    pack: Optional[Dict[str, Any]] = None,
+) -> List[Dict[str, Any]]:
+    """盤中現金窗：Yahoo 已寫今日柱但量=0／未標 live → 當盤中未收顯示。
+
+    MIS 抓不到時，不准因 index_daily 有今日就誤標「收盤」。
+    量>0 視為已有可認成交量（通常已收）→ 不改。非開市日／非盤中窗不改。
+    """
+    out = [dict(r) for r in (bars or [])]
+    if not out:
+        return out
+    dt = _query_now_from_pack(pack, now=now)
+    if not _twii_cash_session_live(dt):
+        return out
+    today = dt.strftime("%Y%m%d")
+    last = out[-1]
+    if _ymd(last.get("date")) != today:
+        return out
+    if int(last.get("live_session") or 0) == 1:
+        return out
+    try:
+        vol = float(last.get("volume") or 0)
+    except (TypeError, ValueError):
+        vol = 0.0
+    # Yahoo 盤中常先寫 OHLC、量仍 0；此時一定是未收
+    if vol > 0:
+        return out
+    out[-1] = {**last, "live_session": 1}
+    return out
+
+
 def _twii_bars_for_teach(
     db_path: str, n: int, pack: Optional[Dict[str, Any]] = None
 ) -> List[Dict[str, Any]]:
@@ -1044,6 +1078,7 @@ def _twii_bars_for_teach(
     live = (pack or {}).get("live_twii") if isinstance(pack, dict) else None
     if live:
         bars = _merge_live_twii_display_bar(bars, live)
+    bars = _mark_intraday_incomplete_twii_bar(bars, pack=pack)
     return [_sanitize_bar_ohlc(r) for r in bars]
 
 
@@ -5219,6 +5254,84 @@ def _resolve_huang_c_daily_spans(
     }
 
 
+def _paint_wave_draw_howto(
+    fig,
+    *,
+    fp,
+    text: str,
+    y: float = 0.918,
+    color: str = "#90caf9",
+) -> None:
+    """近／超近浪線畫法一口（figure 頂、不進主圖壓 K）。"""
+    if fig is None or fp is None:
+        return
+    msg = str(text or "").strip()
+    if not msg:
+        return
+    try:
+        fig.text(
+            0.03,
+            float(y),
+            msg,
+            fontproperties=fp(8.0, "bold"),
+            color=color,
+            ha="left",
+            va="top",
+        )
+    except Exception:
+        return
+
+
+def _paint_macro_wave_seg_tags(
+    ax,
+    *,
+    i5s: int,
+    i5e: int,
+    i_alow: int,
+    i_b_end: int,
+    i_now: int,
+    y5s: float,
+    y5e: float,
+    y_alow: float,
+    y_b_end: float,
+    y_now: float,
+    fp,
+    span_y: float,
+) -> None:
+    """近窗：⑤／A／B／C 段中點短標，一眼對上色線（尖點對尖點連）。"""
+    if ax is None or fp is None:
+        return
+    tags = (
+        ((i5s + i5e) * 0.5, (y5s + y5e) * 0.5, "⑤", "#40c4ff", "#01579b"),
+        ((i5e + i_alow) * 0.5, (y5e + y_alow) * 0.5, "A", "#ff8a80", "#b71c1c"),
+        ((i_alow + i_b_end) * 0.5, (y_alow + y_b_end) * 0.5, "B", "#ffd54f", "#f57f17"),
+        ((i_b_end + i_now) * 0.5, (y_b_end + y_now) * 0.5, "C", "#ea80fc", "#6a1b9a"),
+    )
+    dy = max(float(span_y) * 0.012, 80.0)
+    for x, y, lab, fg, face in tags:
+        try:
+            ax.text(
+                float(x),
+                float(y) + dy,
+                lab,
+                ha="center",
+                va="bottom",
+                fontproperties=fp(8.2, "bold"),
+                color=fg,
+                zorder=9,
+                bbox={
+                    "boxstyle": "round,pad=0.12",
+                    "facecolor": face,
+                    "edgecolor": fg,
+                    "linewidth": 0.8,
+                    "alpha": 0.88,
+                },
+                clip_on=False,
+            )
+        except Exception:
+            continue
+
+
 def _paint_huang_c_degree_path(
     ax,
     spans: Optional[Dict[str, Any]],
@@ -5872,12 +5985,12 @@ def _paint_huang_c60_structure(
     if len(c3_seg) >= 3:
         xs3 = [float(p[0]) for p in c3_seg]
         ys3 = [float(p[1]) for p in c3_seg]
-        # 細白：深底略細＋白面更細（使用者：C3 區波浪線改細白）
+        # 細白：深底＋白面（加一點粗：超近窗才跟得上①～⑤折）
         ax.plot(
             xs3,
             ys3,
             color="#0b0f14",
-            lw=1.45,
+            lw=1.85,
             zorder=7.45,
             solid_capstyle="round",
             solid_joinstyle="round",
@@ -5886,7 +5999,7 @@ def _paint_huang_c60_structure(
             xs3,
             ys3,
             color="#f5f5f5",
-            lw=0.85,
+            lw=1.2,
             zorder=7.5,
             solid_capstyle="round",
             solid_joinstyle="round",
@@ -15213,18 +15326,15 @@ def _render_twii_c_wave_60_dark(
         )
     else:
         # 說明放標題列下方（figure），不准進主圖壓 K／折線／虛線
-        try:
-            fig.text(
-                0.03,
-                0.918,
-                "黃帶＝現在撐壓｜白帶＝下一層｜量黃／藍柱＝各帶那根60分K（月日幾點）｜非買訊",
-                fontproperties=_fp(8.0, "bold"),
-                color="#90caf9",
-                ha="left",
-                va="top",
-            )
-        except Exception:
-            pass
+        _paint_wave_draw_howto(
+            fig,
+            fp=_fp,
+            y=0.922,
+            text=(
+                "浪線怎麼畫：藍折＝C1→C2高低連｜白細折＝C3內①～⑤高低連｜"
+                "C4白折＝第四大波（不標浪號）｜黃帶＝現在撐壓｜非買訊"
+            ),
+        )
     right_notes: List[Dict[str, Any]] = [
         {
             "x": int(i_now),
@@ -15560,6 +15670,22 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
             solid_capstyle="round",
             solid_joinstyle="round",
         )  # 大C（有分色折線時改淡底）
+    # 段中短標：⑤／A／B／C 對色線（怎麼畫＝尖點連尖點）
+    _paint_macro_wave_seg_tags(
+        ax,
+        i5s=int(i5s),
+        i5e=int(i5e),
+        i_alow=int(i_alow),
+        i_b_end=int(i_b_end),
+        i_now=int(i_now),
+        y5s=float(y5s),
+        y5e=float(y5e),
+        y_alow=float(y_alow),
+        y_b_end=float(y_b_end),
+        y_now=float(y_now),
+        fp=_fp,
+        span_y=float(max(ymax - ymin, 1.0)),
+    )
     c_sub = _c_subwave_anchors_vs_biaoke60(
         highs, lows, bars, i_c=i_c, i_now=i_now
     )
@@ -16034,6 +16160,12 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         color="#ce93d8",
         ha="left",
         va="top",
+    )
+    _paint_wave_draw_howto(
+        fig,
+        fp=_fp,
+        y=0.918,
+        text="浪線怎麼畫：尖點對尖點連直線｜藍⑤→粉A→金虛B→紫C（只連官方柱高低）｜非買訊",
     )
     # 近窗白底戳：跟遠窗同一套鎖主圖 axes 框內左上（不准出框、不准擋九波／縮圖K）
     fig.subplots_adjust(left=0.05, right=0.98, top=0.90, bottom=0.07)
