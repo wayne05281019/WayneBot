@@ -3,7 +3,7 @@
 做法：
 - 公開 RSS（channel_id 固定）每天列片→落庫→回傳當日 hint 給 huang_teach_sync
 - 標題／摘要先吸收；完整影音優先雲端硬碟 ``MMDD黃培碩.mp4``（gdown）→抽影格＋whisper
-- YouTube 完整影音需 HUANG_YT_COOKIES 才准 yt-dlp（雲端 IP 常被擋）
+- YouTube 完整影音需 HUANG_YT_COOKIES 才准 yt-dlp；yt-dlp≥2026.10.26 才能破 SABR（舊版雲端 IP 403）
 - 看影片＝影格＋口播；不准只當標題／不准假造 video_id
 - 非買訊；不寄話筒
 """
