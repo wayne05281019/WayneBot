@@ -4591,6 +4591,10 @@ def test_retest_avg_min_from_latest_band_oral():
         and str(r.get("role") or "") in {"回測平均", "回測最低", "至少回測"}
         for r in tw
     )
+    # 「43000之下」是路徑句，不准裸抽成「飆預測43,000」再標已破
+    assert not any(
+        abs(float(r.get("level") or 0) - 43000.0) < 0.6 for r in tw
+    )
 
 
 def test_pressure_break_labels_split_slant_vs_41760():

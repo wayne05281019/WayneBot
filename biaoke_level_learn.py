@@ -8200,6 +8200,7 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
 
     # 他最新文抽出的大盤／台指點位 → 進預測列（虛線／右標跟著換；不准發明）
     seen_tw = {round(float(r["level"]), 1) for r in out["tw"]}
+    _rb_skip = _retest_avg_min_from_text(s)
     try:
         from biaoke_walk import extract_index_levels
 
@@ -8213,6 +8214,22 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
             # 有 C9／改口低點區：舊劇本一 35000／38000 不准再當裸抽點（38000 已上「已破」）
             if (has_c9_zone or has_foot2_zone) and (
                 abs(lv - 35000.0) < 1.0 or abs(lv - 38000.0) < 1.0
+            ):
+                continue
+            # 「N之下／以下」＝下行路徑必經，不是撐壓預測；不准標成「飆預測・已破」
+            ctx = str(hit.get("ctx") or "")
+            lv_i = int(round(lv))
+            if re.search(
+                rf"{lv_i}\s*(?:之)?下|{lv_i}\s*以下|(?:到|至|會到)\s*{lv_i}\s*(?:之)?下",
+                ctx,
+            ) or re.search(
+                rf"(?:絕對)?(?:會)?到\s*{lv_i}\s*(?:之)?下",
+                s,
+            ):
+                continue
+            # 已落在當令回測帶內：由回測平均／最低兩口涵蓋，不准再裸抽
+            if _rb_skip is not None and (
+                float(_rb_skip["lo"]) - 1.0 <= lv <= float(_rb_skip["hi"]) + 1.0
             ):
                 continue
             key = round(lv, 1)
