@@ -321,6 +321,70 @@ def test_fetch_intraday_em_prefers_db_afternoon(tmp_path, monkeypatch):
     assert got["times"][-1].hour >= 15
 
 
+def test_emerging_intraday_incomplete_afternoon_refetches(tmp_path, monkeypatch):
+    """半截午後落庫（末根 14:20）不准鎖死；要重抓補到近 15:00。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    import intraday_open_close_chart as ioc
+
+    db = os.path.join(tmp_path, "em_half.db")
+    TP = ZoneInfo("Asia/Taipei")
+    ymd = "20261113"
+    half_times = [
+        datetime(2026, 11, 13, 9, 0, tzinfo=TP),
+        datetime(2026, 11, 13, 13, 40, tzinfo=TP),
+        datetime(2026, 11, 13, 14, 20, tzinfo=TP),
+    ]
+    half = {
+        "times": half_times,
+        "opens": [600.0, 590.0, 580.0],
+        "highs": [605.0, 595.0, 585.0],
+        "lows": [595.0, 585.0, 575.0],
+        "closes": [600.0, 590.0, 580.0],
+        "volumes_lots": [1.0, 1.0, 1.0],
+        "source": "yahoo:priceByTimes:1m:3595.TWO",
+        "n_after_1330": 2,
+    }
+    assert ioc.save_emerging_intraday_1m(db, "3595", ymd, half) == 3
+    assert not ioc.emerging_intraday_path_complete(half)
+
+    full_times = half_times + [
+        datetime(2026, 11, 13, 14, 55, tzinfo=TP),
+        datetime(2026, 11, 13, 14, 59, tzinfo=TP),
+    ]
+    full = {
+        "times": full_times,
+        "opens": [600.0, 590.0, 580.0, 578.0, 588.0],
+        "highs": [605.0, 595.0, 585.0, 580.0, 590.0],
+        "lows": [595.0, 585.0, 575.0, 570.0, 580.0],
+        "closes": [600.0, 590.0, 580.0, 578.0, 588.0],
+        "volumes_lots": [1.0, 1.0, 1.0, 0.5, 0.5],
+        "source": "yahoo:priceByTimes:1m:3595.TWO",
+        "n_after_1330": 4,
+    }
+    called = {"n": 0}
+
+    def _live(*_a, **_k):
+        called["n"] += 1
+        return full
+
+    monkeypatch.setattr(ioc, "fetch_yahoo_price_by_times", _live)
+
+    def _boom(*_a, **_k):
+        raise AssertionError("不准退 Yahoo 1m chart")
+
+    monkeypatch.setattr(ioc, "fetch_yahoo_1m_path", _boom)
+    got = ioc.fetch_intraday_path("3595", "EM", db_path=db, ymd=ymd)
+    assert called["n"] == 1
+    assert got is not None
+    assert got["times"][-1].hour * 100 + got["times"][-1].minute >= 1455
+    # 補完後再查應吃完整落庫、不再打網
+    got2 = ioc.fetch_intraday_path("3595", "EM", db_path=db, ymd=ymd)
+    assert called["n"] == 1
+    assert got2["times"][-1].minute >= 55
+
+
 def test_sync_emerging_triggers_intraday_snapshot():
     import inspect
 
