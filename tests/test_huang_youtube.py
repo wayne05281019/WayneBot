@@ -53,6 +53,9 @@ def test_discover_stores_and_hint(tmp_path, monkeypatch):
 
     db = str(tmp_path / "t.db")
     monkeypatch.setattr(hy, "fetch_rss", lambda **kw: hy.parse_rss_xml(SAMPLE_RSS))
+    # 本測只驗 RSS 入庫；不准被已知 Drive id 搶成 drive_mp4（CI 無 ffmpeg）
+    monkeypatch.setattr(hy, "resolve_drive_file_id", lambda *_a, **_k: "")
+    monkeypatch.setattr(hy, "_should_ingest_media", lambda *_a, **_k: False)
     got = hy.discover_day_video(db, "20261112", fetch=True, want_transcript=False)
     assert got["video_id"] == "UT2NBDSu6PI"
     assert got["source"] == "youtube_rss"

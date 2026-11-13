@@ -35,6 +35,8 @@ HUANG_DRIVE_FOLDER_ID_DEFAULT = "1JkZ3P_AjAq4QigGplenKZ4o5CNaUvtfR"
 HUANG_DRIVE_KNOWN_IDS = {
     "20261110": "1m5GHbPCxjWZz5NHHdHgtzOJiITUeDj9I",
     "20261111": "1efllG90yQBmFPC-3yFuba2TxW0FLA2jh",
+    # 使用者 2026-11-13 上傳雲端「1112黃培碩.mp4」
+    "20261112": "12_RN9rsLBKjzbKNihFa5NceSGCJeWlm_",
 }
 _ATOM = {"atom": "http://www.w3.org/2005/Atom", "yt": "http://www.youtube.com/xml/schemas/2015", "media": "http://search.yahoo.com/mrss/"}
 

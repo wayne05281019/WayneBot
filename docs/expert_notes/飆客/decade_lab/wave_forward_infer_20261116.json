@@ -1,0 +1,135 @@
+{
+  "as_of_taipei": "2026-11-13T16:50:00+0800",
+  "as_of_day": "20261113",
+  "infer_for": "20261116",
+  "today_job": "post_close_next_session_infer",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "certainty": false,
+  "segment_numbers": "REQUIRED",
+  "calendar_zh": "11/14～11/15休市；下一開市日＝11/16。",
+  "from_eod_zh": "11/13 日盤 TWII L43534.12／C43675.12 V12357048：M2收復43135成立；M1回測41760未觸；N1日盤未再探43000下、未進419～427（夜盤TX L42371曾進帶）；M3未觸發。",
+  "from_oral_zh": "11/13 飆大：5-3-5 abc修正・今＝小B第3波反彈可能性近高・下星期最後小C。大房間仍大C；不准叠成大C第幾段。",
+  "paths": [
+    {
+      "id": "M2_retest_43135_as_support",
+      "priority": 1,
+      "status": "推論／未定案",
+      "must_happen_zh": "已收復43135→下一開市日優先回測43135是否當撐",
+      "segments_provisional": [
+        {
+          "label": "post_hold_reclaim",
+          "role": "昨已收復",
+          "level": 43135.92
+        },
+        {
+          "label": "post_hold_43135_retest",
+          "role": "回測43135撐",
+          "level": 43135.92
+        }
+      ],
+      "levels": {
+        "support": 43135.92,
+        "failed_hold_prev": 41760.0
+      },
+      "invalidate_zh": "日盤低遠高於43135且收續穩上＝回測延後／延續觀察（仍不准標新五波①）"
+    },
+    {
+      "id": "M1_retest_41760_after_43135_fail",
+      "priority": 2,
+      "status": "推論／未定案",
+      "must_happen_zh": "若有效失守43135→升權回測41760撐",
+      "segments_provisional": [
+        {
+          "label": "post_hold_43135_fail",
+          "role": "43135再撤銷",
+          "level": 43135.92
+        },
+        {
+          "label": "B-a_hold_retest",
+          "role": "回測41760撐",
+          "level": 41760.0
+        }
+      ],
+      "levels": {
+        "fail": 43135.92,
+        "support": 41760.0
+      },
+      "invalidate_zh": "失守後迅速收回並收穩43135上＝假跌破該層"
+    },
+    {
+      "id": "N1_continue_below_43000_then_band",
+      "priority": 3,
+      "status": "推論／未定案（教法鏈／平行）",
+      "must_happen_zh": "若再轉弱：再探43000下並進入41900～42700帶；夜盤已先行探過帶內",
+      "segments_provisional": [
+        {
+          "label": "path_below_43000",
+          "role": "再探43000下",
+          "level": 43000.0
+        },
+        {
+          "label": "enter_419_427",
+          "role": "他點名低點帶",
+          "lo": 41900.0,
+          "hi": 42700.0
+        }
+      ],
+      "levels": {
+        "path_below": 43000.0,
+        "band_lo": 41900.0,
+        "band_hi": 42700.0
+      },
+      "invalidate_zh": "強收並有效站穩43135上延續＝弱勢路徑暫降權"
+    },
+    {
+      "id": "M3_lose_41760_then_friday",
+      "priority": 4,
+      "status": "推論／未定案",
+      "must_happen_zh": "若有效失守41760→升權回測週五低37837（假跌破另計）",
+      "segments_provisional": [
+        {
+          "label": "B-a_hold_fail",
+          "role": "41760撤銷",
+          "level": 41760.0
+        },
+        {
+          "label": "B-b",
+          "role": "回測C3底／週五低",
+          "level": 37837.05
+        }
+      ],
+      "levels": {
+        "fail": 41760.0,
+        "retest": 37837.05
+      },
+      "invalidate_zh": "失守後迅速收回並收穩＝假跌破該層"
+    }
+  ],
+  "stock_parallel_zh": "他11/13：這次abc修正偏快偏溫和→操作看個股技術、指標股走勢；指數本身非買訊。",
+  "not_buy_signal": true,
+  "preferred_infer": "M2_retest_43135_as_support",
+  "tx_lead_zh": "休市週末先看台指期夜盤是否仍站在43135／大量區上方；先行弱→加權開市偏回測43135或失守下看。",
+  "three_layer_zh": "夜盤電子盤大方向 → 台指期二次確認 → 加權日盤驗證。11/16依序讀。",
+  "sox_link_zh": "同時看費半是否助漲／助跌，不單看加權。",
+  "bottom_band": {
+    "lo": 41900.0,
+    "hi": 42700.0,
+    "source": "188400106:c188400106-352",
+    "his_confidence": 0.95
+  },
+  "evidence_gate_zh": "S8：本窗 preferred＝回測43135撐，憑據＝11/13官方收復C43675＞43135；無憑據不升權37837。",
+  "evidence_for_preferred": [
+    {
+      "kind": "official_eod",
+      "zh": "11/13 TWII C43675.12＞43135.92／L43534.12",
+      "as_of": "20261113"
+    },
+    {
+      "kind": "path_contrast",
+      "zh": "昨preferred41760未觸；今走出M2收復"
+    }
+  ],
+  "huang_biaoke_align_zh": "黃第四／第五大波與飆大大ABC分層看：不把第五大波念成大C第五跌段。",
+  "not_new_impulse1_zh": "C走完≠自動新五波升；收復43135≠標新①。"
+}
