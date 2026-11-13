@@ -10552,12 +10552,7 @@ def _paint_tx_now_price_rail(
             )
         bits.append(f"←{_md(hit.get('date'))}曾到")
     if near_sup and float(near_sup.get("low") or 0) > 0:
-        sm = _md(near_sup.get("date")) if _ymd(near_sup.get("date")) else ""
-        if sm:
-            bits.append(f"近撐{sm} {_px(float(near_sup['low']))}")
-        else:
-            bits.append(f"近撐 {_px(float(near_sup['low']))}")
-        # 近撐也畫一條淡青虛線，方便跟現價紫線對照
+        # 近撐只畫淡青虛線；不准併進現價戳長句（會長到蓋住右欄飆預測／同價標）
         try:
             sy = float(near_sup["low"])
             ax.plot(
@@ -10575,12 +10570,14 @@ def _paint_tx_now_price_rail(
             pass
     # 矛點釘末根 tip；標籤與虛線同一水平（真價）
     # 點字盤：盤中＝白底＋螢光黃框；收盤＝白底＋黑框（與三窗查詢戳同規）
+    # 只留「月日盤中／收盤＋價」＋可選「曾到」；近撐價留給右欄／青虛，不准寬盒蓋右標
+    tip_txt = "｜".join(bits[:2]) if bits else ""
     _spear_ring(ax, float(tip), y, color="#ea80fc", zorder=9.5, hot=True)
     stamp_live = bool(live)
     ax.text(
         x_lab,
         y,
-        "｜".join(bits),
+        tip_txt,
         fontproperties=fp(8, "bold"),
         color=_TEACH_STAMP_META,
         ha="left",
@@ -11327,12 +11324,19 @@ def _place_live_right_labels(
     box_gap = max(gap * 0.95, span * (0.078 if n_items_est >= 5 else 0.062))
     if n_items_est >= 7:
         box_gap = max(box_gap, span * 0.088)
+    # 視覺框全高（價軸）：框疊框就丟／改次欄；密區寧可少標
+    vis_full = max(box_gap * 0.92, span * 0.052, 480.0)
+    if n_items_est >= 6:
+        vis_full = max(vis_full, span * 0.058, 520.0)
 
     def _tier(t: str) -> int:
         """0=浪／細浪／今（必留）→1=飆預測等→2=Fib／切／錨（可丟）。"""
         s = str(t or "")
         if s.startswith("Fib") or s.startswith("切") or s.startswith("錨"):
             return 2
+        # 大量撐壓／下一層＝次優先（不准跟今／A低搶同一視覺席）
+        if "大量壓" in s or "大量撐" in s or "下一層" in s:
+            return 1
         if (
             "c4細" in s
             or "c5細" in s
@@ -11342,8 +11346,7 @@ def _place_live_right_labels(
             or s.startswith("C今")
             or s.startswith("今 ")
             or s.startswith("今　")
-            or s.startswith("費")
-            or "電盤大量" in s
+            or (s.startswith("費") and "大量" not in s)
             or "電盤即時" in s
             or "C-7" in s
             or "C-8" in s
@@ -11380,11 +11383,42 @@ def _place_live_right_labels(
             return 1
         return 1
 
-    def _pri(d: Dict[str, Any]) -> Tuple[int, int, float]:
+    def _is_now_label(t: str) -> bool:
+        s = str(t or "")
+        return (
+            s.startswith("今 ")
+            or s.startswith("今　")
+            or s.startswith("C今")
+            or "大C今" in s
+            or "費C今" in s
+            or "電盤即時" in s
+        )
+
+    def _price_box_label(t0: str) -> bool:
+        s0 = str(t0 or "")
+        return any(
+            x in s0
+            for x in (
+                "回測",
+                "飆預測",
+                "台指壓力",
+                "C3底",
+                "絕對不破",
+                "不再假跌破",
+                "大量壓",
+                "大量撐",
+                "下一層壓",
+                "下一層撐",
+                "近撐",
+            )
+        )
+
+    def _pri(d: Dict[str, Any]) -> Tuple[int, int, int, float]:
         t = str(d.get("text") or "")
-        # 同 tier 內：雙軌關鍵價優於一般「已破／今」浪標，避免 38000已破擠掉 37837
+        # 同 tier：今／C今 > 雙軌關鍵 > 其餘；避免 A低擠掉費C今
         dual_rank = 0 if _is_dual_key(t) else 1
-        return (_tier(t), dual_rank, -float(d["y"]))
+        now_rank = 0 if _is_now_label(t) else 1
+        return (_tier(t), now_rank, dual_rank, -float(d["y"]))
 
     def _is_dual_key(t: str) -> bool:
         s = str(t or "")
@@ -11429,24 +11463,52 @@ def _place_live_right_labels(
             other_t = kt_texts[i] if i < len(kt_texts) else ""
             if _is_dual_key(text) or _is_dual_key(other_t):
                 thresh = max(span * 0.012, 180.0)
-            # 右欄價標字盒約 400–500 點高：回測／飆預測互近必蓋字（42300↔41900）
-            def _price_box(t0: str) -> bool:
-                s0 = str(t0 or "")
-                return any(
-                    x in s0
-                    for x in (
-                        "回測",
-                        "飆預測",
-                        "台指壓力",
-                        "C3底",
-                        "絕對不破",
-                        "不再假跌破",
-                    )
-                )
-
-            if _price_box(text) and _price_box(other_t):
+            # 右欄價標字盒約 400–500 點高：回測／飆預測／大量互近必蓋字
+            if _price_box_label(text) and _price_box_label(other_t):
                 thresh = max(thresh, span * 0.05, 650.0)
+            # 大量／下一層 vs 浪標：也要字盒級間距（費大量壓↔費A低）
+            if _price_box_label(text) or _price_box_label(other_t):
+                thresh = max(thresh, span * 0.048, 520.0)
             if abs(y0 - ky) < thresh:
+                return True
+        return False
+
+    def _is_c_sub_label(t: str) -> bool:
+        s = str(t or "")
+        return "c4細" in s or "c5細" in s
+
+    def _visual_stack(
+        y0: float,
+        tier: int,
+        kept_ys: List[float],
+        kept_texts: List[str],
+        text: str,
+    ) -> bool:
+        """真價距 < 字盒高 → 框必互壓（次欄也救不了）。
+
+        特例：c4／c5／今 差值≥gap_wave（約465）必須雙留；不准被 vis_full 誤丟。
+        """
+        for i, ky in enumerate(kept_ys):
+            dy = abs(float(y0) - float(ky))
+            other = kept_texts[i] if i < len(kept_texts) else ""
+            need = float(vis_full)
+            # 純浪標互近略鬆（仍不准框實體互壓）
+            if (
+                tier == 0
+                and _tier(other) == 0
+                and not _price_box_label(text)
+                and not _price_box_label(other)
+            ):
+                need = max(span * 0.042, 380.0)
+            # c4／c5／今 互留：跟 gap_wave 對齊（45677↔45212＝465 必雙留）
+            if (_is_c_sub_label(text) or _is_now_label(text)) and (
+                _is_c_sub_label(other) or _is_now_label(other)
+            ):
+                need = max(float(gap_wave) * 0.95, span * 0.028, 340.0)
+            elif _is_now_label(text) or _is_now_label(other):
+                # 今 vs A低／大量等：字盒級，寧可丟鄰標
+                need = max(need, span * 0.055, 480.0)
+            if dy < need:
                 return True
         return False
 
@@ -11474,10 +11536,11 @@ def _place_live_right_labels(
         t = str(it.get("text") or "")
         tier = _tier(t)
         it = dict(it)
+        # 先看視覺框：gap_wave 鬆、字盒仍疊時也要丟（費A低↔費C今）
+        if _visual_stack(y0, tier, kept_ys, kept_texts, t):
+            continue
         if _collide(y0, tier, kept_ys, kept_tiers, text=t, kept_texts=kept_texts):
-            # 真價互撞：改次欄（X 左移），Y 仍鎖真價；視覺框仍太近才丟
-            if any(abs(y0 - ky) < max(box_gap * 0.55, span * 0.028) for ky in kept_ys):
-                continue
+            # 軟撞：改次欄（X 左移），Y 仍鎖真價
             it["_col2"] = True
         kept.append(it)
         kept_ys.append(y0)
@@ -11490,6 +11553,7 @@ def _place_live_right_labels(
             range(len(kept)),
             key=lambda i: (
                 int(kept_tiers[i]),
+                0 if _is_now_label(kept_texts[i]) else 1,
                 0 if _is_dual_key(kept_texts[i]) else 1,
                 -float(kept[i]["y"]),
             ),
@@ -11513,7 +11577,9 @@ def _place_live_right_labels(
             continue
         t = str(it.get("text") or "")
         tier = _tier(t)
-        # 真價互撞：已標 _col2 則收進次欄；否則丟低優先。不准漂 Y。
+        # 視覺框疊 → 丟；軟撞且已標 _col2 → 次欄。不准漂 Y。
+        if _visual_stack(y_true, tier, placed, placed_texts, t):
+            continue
         if _collide(
             y_true, tier, placed, placed_tiers, text=t, kept_texts=placed_texts
         ):
@@ -11535,7 +11601,8 @@ def _place_live_right_labels(
         # 鎖死：標籤 Y＝真價；虛線同水平；不准上下漂
         y_draw = float(y_true)
         color = str(it.get("color") or _LIVE_MUTED)
-        x_this = float(x_label) - (2.35 if it.get("_col2") else 0.0)
+        # 次欄再拉開一截，長標才不會跟主欄字盒橫向互壓
+        x_this = float(x_label) - (3.55 if it.get("_col2") else 0.0)
         try:
             x_from = float(it.get("x"))
         except (TypeError, ValueError):
@@ -12909,19 +12976,23 @@ def _paint_micro_retest_then_rise_schematic(
             )
         except Exception:
             logger.debug("新五波升圈5略過", exc_info=True)
-    # 標籤進右側空帶（與右欄同欄）；上移右移，不准壓今標／紅箭／圈5
+    # 示意標：貼主升端上方、右欄左側；不准跟右欄「今／回測」同欄互壓
     try:
-        x_lab = float(x_label_col) if x_label_col is not None else float(n) + 8.8
+        x_right = float(x_label_col) if x_label_col is not None else float(n) + 8.8
     except (TypeError, ValueError):
-        x_lab = float(n) + 8.8
-    x_lab = max(float(x_lab), float(x_tip) + 2.6, float(n) + 10.2)
-    y_lab = float(y_tip) + max(abs(float(y_up) - float(y_mid)) * 0.14, 260.0)
+        x_right = float(n) + 8.8
+    x_lab = min(float(x2) + 0.6, float(x_right) - 5.8, float(x_tip) + 1.2)
+    x_lab = max(float(x_lab), float(x1) + 0.8)
+    y_lab = float(y_up) + max(abs(float(y_up) - float(y_mid)) * 0.28, 480.0)
+    # 仍貼近「今」價 → 再上推，離開右欄今標字盒
+    if abs(float(y_lab) - float(y0)) < max(abs(float(y0) - float(y_rt)) * 0.22, 900.0):
+        y_lab = float(y0) + max(abs(float(y_up) - float(y_mid)) * 0.42, 1100.0)
     if FancyArrowPatch is not None:
         try:
             ax.add_patch(
                 FancyArrowPatch(
                     (float(x_tip), float(y_tip)),
-                    (float(x_lab) - 0.12, float(y_lab)),
+                    (float(x_lab) + 0.15, float(y_lab)),
                     arrowstyle="-",
                     linestyle=(0, (2.2, 1.6)),
                     color="#40c4ff",
@@ -12936,8 +13007,8 @@ def _paint_micro_retest_then_rise_schematic(
     ax.text(
         x_lab,
         y_lab,
-        "撑完大C→新八浪循環\n（示意・待走完・≠自動・非買訊）",
-        fontproperties=fp(7.4, "bold"),
+        "撑完大C→新八浪\n（示意・≠自動・非買訊）",
+        fontproperties=fp(7.2, "bold"),
         color="#40c4ff",
         ha="left",
         va="bottom",
@@ -12952,9 +13023,9 @@ def _paint_micro_retest_then_rise_schematic(
         },
         clip_on=False,
     )
-    out["fut_x"] = max(float(x2), float(x_lab) + 3.4)
+    out["fut_x"] = max(float(x2), float(x_lab) + 2.8, float(x_right) + 0.2)
     out["fut_y"] = max(float(y_up), float(y_lab))
-    out["xlim_right"] = max(float(n) + 1.2, float(x_lab) + 4.6, float(x_tip) + 2.2)
+    out["xlim_right"] = max(float(n) + 1.2, float(x_right) + 4.2, float(x_tip) + 2.2)
     return out
 
 
@@ -13019,8 +13090,8 @@ def _paint_oral_535_status_marks(
         )
     except Exception:
         logger.debug("535 小b標略過", exc_info=True)
-    # 下＝小c五段↓（自今往右下示意數根，不准寫死目標價）
-    x1 = float(i0) + (3.2 if compact else 4.2)
+    # 下＝小c五段↓：箭可往右下，字盒 ha=right 向左長，不准伸進右欄價標席
+    x1 = min(float(i0) + (2.6 if compact else 3.4), float(n) + 2.8)
     y1 = float(y0) - max(sp * 0.10, 520.0)
     try:
         ax.annotate(
@@ -13041,10 +13112,10 @@ def _paint_oral_535_status_marks(
             clip_on=False,
         )
         ax.text(
-            float(x1) + 0.15,
+            float(x1) - 0.05,
             float(y1),
             "下＝小c五段↓\n（預估・非買訊）",
-            ha="left",
+            ha="right",
             va="center",
             fontproperties=fp(7.0 if compact else 7.6, "bold"),
             color="#ea80fc",
@@ -13061,14 +13132,14 @@ def _paint_oral_535_status_marks(
         )
     except Exception:
         logger.debug("535 小c示意略過", exc_info=True)
-    # 撑完大C→新八浪：只註在小c箭外側，鐵律≠自動
+    # 撑完大C→新八浪：compact 略過（超近已有主升示意標）；非 compact 也貼左，不准進右欄
     if not compact:
         try:
             ax.text(
-                min(float(n) + 1.2, float(x1) + 0.2),
+                min(float(n) - 0.4, float(x1) - 0.35),
                 float(y1) - max(sp * 0.045, 180.0),
-                "撑完大C→新八浪循環（示意・待走完・≠自動）",
-                ha="left",
+                "撑完大C→新八浪（示意・≠自動）",
+                ha="right",
                 va="top",
                 fontproperties=fp(6.6, "bold"),
                 color="#80cbc4",
@@ -16724,7 +16795,8 @@ def _render_twii_c_wave_60_dark(
             fp=_fp,
             span_y=float(max(ymax - ymin, 1.0)),
             n=int(n),
-            compact=False,
+            # compact：略過第三行撑完大C（主升示意已有），減右欄密區互壓
+            compact=True,
         )
     except Exception:
         logger.debug("超近535位標略過", exc_info=True)

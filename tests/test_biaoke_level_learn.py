@@ -3407,12 +3407,12 @@ def test_micro_eight_wave_inset_and_retest_path_in_source():
     assert "_paint_micro_today_session_bg" in c60
     assert "float(n) + 8.8" in c60  # 右欄左緣進空帶，不准壓K
     path_src = inspect.getsource(_paint_micro_retest_then_rise_schematic)
-    assert "新八浪循環" in path_src
-    # 回測價只留右欄；虛線端不准再貼「至少回測」；升段用紅箭＋圈5指到右側標
+    assert "撑完大C→新八浪" in path_src
+    # 回測價只留右欄；虛線端不准再貼「至少回測」；升段用紅箭＋圈5；示意標離開右欄今／回測
     assert 'f"至少回測' not in path_src
     assert "annotate" in path_src
     assert '"5"' in path_src or "'5'" in path_src
-    assert "不准壓今標" in path_src
+    assert "不准跟右欄" in path_src or "右欄左側" in path_src
     assert "右欄" in path_src
     assert "量欄" in inspect.getsource(_eight_wave_inset_rect_on_vol)
     paint = inspect.getsource(
@@ -4114,6 +4114,56 @@ def test_place_live_right_labels_keeps_c4_c5_now():
     assert any("c4細" in t for t in texts), texts
     assert any("c5細" in t for t in texts), texts
     assert any(t.startswith("今") for t in texts), texts
+
+
+def test_place_live_right_labels_drops_vol_box_over_now():
+    """右欄密區：大量壓字盒蓋到費C今／費A低 → 丟大量，今必留；Y 仍鎖真價。"""
+    import inspect
+
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from biaoke_level_learn import _place_live_right_labels, _px
+    from wayne_navigator import _fp
+
+    src = inspect.getsource(_place_live_right_labels)
+    assert "_visual_stack" in src
+    assert "大量壓" in src
+    assert "now_rank" in src or "_is_now_label" in src
+
+    fig, ax = plt.subplots()
+    notes = [
+        {"x": 10, "y": 13857.0, "text": f"費⑤終 {_px(13857.0)}", "color": "#40c4ff"},
+        {"x": 12, "y": 13350.0, "text": f"費B末 {_px(13350.0)}", "color": "#ffd54f"},
+        {"x": 14, "y": 10957.0, "text": f"10/30 費大量壓 {_px(10957.0)}", "color": "#ffeb3b"},
+        {"x": 16, "y": 10445.0, "text": f"費A低 {_px(10445.0)}", "color": "#ff8a80"},
+        {"x": 18, "y": 9973.0, "text": f"費C今 {_px(9973.0)}", "color": "#ea80fc"},
+        {"x": 0, "y": 9838.0, "text": f"11/5 費大量撐 {_px(9838.0)}", "color": "#fff59d"},
+    ]
+    _place_live_right_labels(
+        ax,
+        notes,
+        n=20,
+        ymin=8500,
+        ymax=16000,
+        fp=_fp,
+        level_dash=True,
+        min_gap=(16000 - 8500) * 0.062,
+        nudge=True,
+    )
+    texts = [t.get_text() for t in ax.texts]
+    assert any("費C今" in t for t in texts), texts
+    # 費A低↔費C今字盒互壓 → 丟A低（尖點釘仍在圖上）；不准 A低＋大量壓同留互壓
+    assert not any("費A低" in t for t in texts), texts
+    assert not (
+        any("大量壓" in t for t in texts) and any("費A低" in t for t in texts)
+    ), texts
+    for t in ax.texts:
+        if "費C今" in t.get_text():
+            assert abs(float(t.get_position()[1]) - 9973.0) < 1e-6
+            assert t.get_va() == "center"
+    plt.close(fig)
 
 
 def test_paint_left_sr_label_locks_va_center():
