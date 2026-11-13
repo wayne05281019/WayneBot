@@ -155,6 +155,33 @@ def _session_end_hm(market: str) -> int:
     return 1500 if str(market).upper() == "EM" else 1330
 
 
+def _path_last_hm(path: Optional[Dict[str, Any]]) -> int:
+    """路徑末根 HHMM；無則 0。"""
+    if not path:
+        return 0
+    times = path.get("times") or []
+    if not times:
+        return 0
+    t = times[-1]
+    try:
+        return int(t.hour) * 100 + int(t.minute)
+    except (AttributeError, TypeError, ValueError):
+        return 0
+
+
+def emerging_intraday_path_complete(path: Optional[Dict[str, Any]]) -> bool:
+    """興櫃當日路徑是否可當完整收盤鎖庫。
+
+    只要午後有點就鎖死＝盤中／半截落庫會讓話筒永遠停在 14:xx。
+    末根須貼近 15:00（容許尾盤無成交差幾分）。
+    """
+    if not path:
+        return False
+    if int(path.get("n_after_1330") or 0) <= 0:
+        return False
+    return _path_last_hm(path) >= 1455
+
+
 def _densify_1m_path(
     times: List[datetime],
     opens: List[float],
@@ -623,7 +650,8 @@ def snapshot_emerging_intraday_day(
             continue
         out["tried"] += 1
         cached = load_emerging_intraday_1m(db_path, sid, day)
-        if cached and int(cached.get("n_after_1330") or 0) > 0:
+        # 半截午後不准 skip；要重抓補到近 15:00
+        if emerging_intraday_path_complete(cached):
             out["skipped"] += 1
             continue
         path = fetch_yahoo_price_by_times(sid, ymd=day, yahoo_suffix="TWO")
@@ -763,8 +791,9 @@ def fetch_intraday_path(
         cached = None
         if db_path and len(day) == 8:
             cached = load_emerging_intraday_1m(db_path, stock_id, day)
-            # 已有午後＝完整當日，直接用（隔日 Yahoo 已吐不出該日）
-            if cached and int(cached.get("n_after_1330") or 0) > 0:
+            # 末根貼近 15:00 才當完整日（隔日 Yahoo 常吐不出該日）
+            # 半截午後（例 14:20）不准鎖死，要重抓補尾
+            if emerging_intraday_path_complete(cached):
                 return cached
         path = fetch_yahoo_price_by_times(stock_id, ymd=ymd, yahoo_suffix="TWO")
         if path is not None:
@@ -775,7 +804,7 @@ def fetch_intraday_path(
                     logger.exception("興櫃分時落庫失敗 sid=%s ymd=%s", stock_id, day)
             return path
         if cached is not None:
-            # 至少有上午落庫也比 1m 假切 13:30 好（仍可能 gap）
+            # 至少有上午／半截午後落庫也比 1m 假切 13:30 好（仍可能 gap）
             return cached
         sys.stderr.write(f"[em-fallback-1m] {stock_id}: priceByTimes miss → chart 1m\n")
     return fetch_yahoo_1m_path(stock_id, market, db_path=db_path, ymd=ymd)
