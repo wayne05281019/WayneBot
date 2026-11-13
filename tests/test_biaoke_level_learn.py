@@ -4256,7 +4256,7 @@ def test_huang_c60_window_caps_x_keeps_latest():
 
 
 def test_huang_c60_anchors_and_wave_paint_wired():
-    """超近60分：C2上下虛框、C3／C4粗折連高低＋細白芯；C4不標浪號。"""
+    """超近60分：C2上下虛框、粗藍折大段高低、細白碎浪；C4不標浪號。"""
     import inspect
 
     from biaoke_level_learn import (
@@ -4309,9 +4309,11 @@ def test_huang_c60_anchors_and_wave_paint_wired():
     assert "_wave_lab" in paint  # 標籤側邊讓開折線／K
     assert "c3_seg" in paint
     assert "_spear_ring" in paint
-    assert 'face="#ffffff"' in paint and "lw=2.55" in paint  # C3／C4 粗折＋細白芯
-    assert "粗折" in paint and "細白芯" in paint and "edge_extra" in paint
-    assert "不准藍折進 C3" in paint
+    assert "C3底→C4高" in paint or "C1→C2→C3底→C4高" in paint
+    assert "碎浪" in paint
+    assert 'face="#42a5f5"' in paint  # 大段粗藍折延伸到 C3／C4
+    assert "#f5f5f5" in paint  # 細白碎浪
+    assert "不准藍折進 C3" not in paint  # 已改：藍折要進 C3底／C4高
     assert "次級4壓" in paint
     assert "⑤壓" not in paint  # 不准再把 C3④ 誤標成 C4⑤壓
     # C1–C4 只靠四色底分界；_span 不准再畫豎虛線
@@ -4324,7 +4326,7 @@ def test_huang_c60_anchors_and_wave_paint_wired():
     assert "fig.text" in c60  # 說明不進主圖
     assert "次級4壓" in c60
     assert "C4白細①～⑤" not in c60
-    assert "粗折＝各段高低連" in c60 or "粗折內細白芯" in c60
+    assert "粗藍折＝大段高低連" in c60 or "細白＝該段碎浪" in c60
     assert "_window_huang_c60_rows" in c60
     # 圖上標題不准寫人名／飆大（使用者 2026-11-10）
     title_lns = [ln for ln in c60.splitlines() if "60分C波（定長滾" in ln]
