@@ -61,11 +61,31 @@ def test_detect_hits_synthetic_spike_exchange(tmp_path):
 def test_attach_puts_badge_not_buy(tmp_path):
     db = str(tmp_path / "vce2.db")
     _seed(db)
-    card = {"stock_id": "9999", "badges": ["整理格局"]}
+    # remember_rows 要當日開高低收＋量齊；用種子最後一日當 as_of
+    last = "20261039"
+    card = {
+        "stock_id": "9999",
+        "stock_name": "測爆量",
+        "badges": ["整理格局"],
+        "close": 105.0,
+        "gain_pct": 5.0,
+        "latest_date": last,
+    }
     attach_vol_chip_exchange_observe(card, db, "9999")
     assert card["vol_chip_exchange"]["hit"] is True
     assert BADGE_ZH in card["badges"]
     assert card["vol_chip_exchange"]["buy_signal"] is False
+    from judge_tape import store_path
+
+    import sqlite3 as _sq
+
+    sp = store_path(db)
+    conn = _sq.connect(sp)
+    n = conn.execute(
+        "SELECT COUNT(*) FROM live_judge WHERE kind='vol_chip_exchange' AND sid='9999'"
+    ).fetchone()[0]
+    conn.close()
+    assert n >= 1
 
 
 def test_no_hit_when_flat_volume(tmp_path):

@@ -185,7 +185,10 @@ def detect_recent_vol_chip_exchange(
 def attach_vol_chip_exchange_observe(
     card: Optional[dict], db_path: str, stock_id: str = ""
 ) -> Optional[Dict[str, Any]]:
-    """寫進決策卡：hit 才掛徽章與 observe 欄；永遠 buy_signal=False。"""
+    """寫進決策卡：hit 才掛徽章與 observe 欄；永遠 buy_signal=False。
+
+    hit 當日默默落檔（kind=vol_chip_exchange），供後續對質；不上話筒報過程。
+    """
     if not isinstance(card, dict) or card.get("error"):
         return None
     sid = str(stock_id or card.get("stock_id") or "").strip()
@@ -198,4 +201,30 @@ def attach_vol_chip_exchange_observe(
     if badge not in badges:
         badges.insert(0, badge)
     card["badges"] = badges
+    try:
+        from judge_tape import remember_rows
+
+        spikes = hit.get("spike_dates") or []
+        remember_rows(
+            db_path,
+            "vol_chip_exchange",
+            [
+                {
+                    "stock_id": sid,
+                    "stock_name": str(card.get("stock_name") or ""),
+                    "close": card.get("close"),
+                    "profit_pct": card.get("gain_pct"),
+                    "why": (
+                        f"n_top={hit.get('n_top')} best={hit.get('best_rank')} "
+                        f"spikes={','.join(str(x) for x in spikes[:6])}"
+                    ),
+                    "src": "lookup",
+                }
+            ],
+            as_of=str(card.get("latest_date") or card.get("as_of") or ""),
+            pick="observe",
+            src="lookup",
+        )
+    except Exception:
+        pass
     return hit
