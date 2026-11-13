@@ -4536,7 +4536,9 @@ def test_huang_c60_anchors_and_wave_paint_wired():
     assert "fig.text" in c60  # 說明不進主圖
     assert "次級4壓" in c60
     assert "C4白細①～⑤" not in c60
-    assert "粗藍折＝大段高低連" in c60 or "細白＝該段碎浪" in c60
+    # 圖下 howto：粗藍＝大段高低、細白＝碎浪（文案可略調，關鍵語意要在）
+    assert "粗藍折＝大段高低" in c60
+    assert "細白＝碎浪" in c60 or "細白＝該段碎浪" in c60
     assert "_window_huang_c60_rows" in c60
     # 圖上標題不准寫人名／飆大（使用者 2026-11-10）
     title_lns = [ln for ln in c60.splitlines() if "60分C波（定長滾" in ln]
