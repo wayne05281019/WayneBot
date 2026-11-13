@@ -12379,11 +12379,13 @@ def _paint_micro_retest_then_rise_schematic(
     retest_y: float,
     fp: Any,
     n: int,
+    x_label_col: Optional[float] = None,
 ) -> Dict[str, Any]:
     """超近窗預估虛線：今→他釘回測位；再示意「C走完→新五波升」。
 
     回測價只認當令「回測平均」（無則最低／舊單點）；主升不准發明目標價。
-    右欄另標回測平均／回測最低；虛線端不准再貼價標。非買訊；會改。
+    右欄另標回測平均／回測最低；虛線端不准再貼價標。
+    x_label_col＝右側空帶欄位，示意標對齊右欄，不准擋K／浪折。非買訊；會改。
     """
     out: Dict[str, Any] = {"fut_x": float(i_now + 4), "retest_y": float(retest_y)}
     if ax is None or fp is None:
@@ -12503,8 +12505,12 @@ def _paint_micro_retest_then_rise_schematic(
             )
         except Exception:
             logger.debug("新五波升圈5略過", exc_info=True)
-    # 標籤再往右：箭尖→字用青虛線接，讓開回測平均／最低
-    x_lab = max(float(x_tip) + 1.1, float(n) + 1.05)
+    # 標籤進右側空帶（與右欄同欄）；箭尖→字用青虛線接，不准擋K／浪折
+    try:
+        x_lab = float(x_label_col) if x_label_col is not None else float(n) + 6.2
+    except (TypeError, ValueError):
+        x_lab = float(n) + 6.2
+    x_lab = max(float(x_lab), float(x_tip) + 1.0, float(n) + 5.5)
     y_lab = float(y_tip) + max(abs(float(y_up) - float(y_mid)) * 0.03, 70.0)
     if FancyArrowPatch is not None:
         try:
@@ -15990,7 +15996,8 @@ def _render_twii_c_wave_60_dark(
         )
     )
     ax.set_ylim(float(ymin), float(ymax))
-    x_col = float(n) + 1.75
+    # 右欄推到末K右側空帶（使用者紅框區），水平虛線接真價；不准壓在K／浪折上
+    x_col = float(n) + 6.2
     _place_live_right_labels(
         ax,
         right_notes,
@@ -16036,6 +16043,7 @@ def _render_twii_c_wave_60_dark(
         retest_y=float(_retest_y),
         fp=_fp,
         n=int(n),
+        x_label_col=float(x_col),
     )
     # 虛線端若低於現 ylim，抬一截；上折示意也要進框
     try:
@@ -16051,7 +16059,8 @@ def _render_twii_c_wave_60_dark(
         tip_xlim=max(float(tip.get("fut_x") or n), float(_path.get("fut_x") or n))
         + 1.6,
         right_col=float(x_col),
-        extra=-2.8,
+        # 右側空帶要裝得下右欄標；不准再負 extra 把標擠回K線上
+        extra=2.4,
     )
     # 左緣貼 C 起，不准再留大B空位
     ax.set_xlim(-0.35, x_right)
