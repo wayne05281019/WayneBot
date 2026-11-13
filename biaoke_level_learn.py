@@ -6371,6 +6371,7 @@ def _active_oral_now_line(pack: Optional[Dict[str, Any]] = None) -> str:
                 line = (
                     f"回測平均＝最低{_px(_rb_line['min'])}；"
                     "絕對不破週五低37837；"
+                    "週五低不再假跌破；"
                     "他說已過C3下降壓（口述斜線・無報價）"
                 )
             else:
@@ -6378,6 +6379,7 @@ def _active_oral_now_line(pack: Optional[Dict[str, Any]] = None) -> str:
                     f"回測平均{_px(_rb_line['avg'])}；"
                     f"回測最低{_px(_rb_line['min'])}；"
                     "絕對不破週五低37837；"
+                    "週五低不再假跌破；"
                     "他說已過C3下降壓（口述斜線・無報價）"
                 )
             if "41760" in blob or "台指壓" in blob:
@@ -6386,6 +6388,7 @@ def _active_oral_now_line(pack: Optional[Dict[str, Any]] = None) -> str:
         if _text_has_retest_41500(blob) or "至少回測41500" in blob:
             line = (
                 f"回測平均＝最低{_px(41500)}；絕對不破週五低37837；"
+                "週五低不再假跌破；"
                 "他說已過C3下降壓（口述斜線・無報價）"
             )
             if "41760" in blob or "台指壓" in blob:
@@ -12236,6 +12239,7 @@ def _wave_now_ladder(pack: Optional[Dict[str, Any]] = None, *, blob: str = "") -
                 oral_now = (
                     f"回測平均＝最低{_px(_rb_now['min'])}；"
                     "絕對不破週五低37837；"
+                    "週五低不再假跌破；"
                     "他說已過C3下降壓（口述斜線・無報價）"
                 )
             else:
@@ -12243,6 +12247,7 @@ def _wave_now_ladder(pack: Optional[Dict[str, Any]] = None, *, blob: str = "") -
                     f"回測平均{_px(_rb_now['avg'])}；"
                     f"回測最低{_px(_rb_now['min'])}；"
                     "絕對不破週五低37837；"
+                    "週五低不再假跌破；"
                     "他說已過C3下降壓（口述斜線・無報價）"
                 )
             if "41760" in text:
@@ -12250,6 +12255,7 @@ def _wave_now_ladder(pack: Optional[Dict[str, Any]] = None, *, blob: str = "") -
         elif _text_has_retest_41500(text) or "至少回測41500" in text:
             oral_now = (
                 f"回測平均＝最低{_px(41500)}；絕對不破週五低37837；"
+                "週五低不再假跌破；"
                 "他說已過C3下降壓（口述斜線・無報價）"
             )
             if "41760" in text:
@@ -12832,9 +12838,13 @@ def _paint_micro_retest_then_rise_schematic(
         )
     except Exception:
         logger.debug("新五波升示意紅箭略過", exc_info=True)
-    # 圈5貼紅箭中段外側（對附圖）
-    x_c5 = float(x_arr) + (float(x_tip) - float(x_arr)) * 0.55
-    y_c5 = float(y_arr) + (float(y_tip) - float(y_arr)) * 0.40
+    # 圈5貼紅箭外側（離開箭身／今標；對附圖示意）
+    x_c5 = float(x_arr) + (float(x_tip) - float(x_arr)) * 0.38
+    y_c5 = (
+        float(y_arr)
+        + (float(y_tip) - float(y_arr)) * 0.58
+        + max(abs(float(y_up) - float(y_mid)) * 0.10, 220.0)
+    )
     if Circle is not None:
         try:
             # 圓半徑用點數（transform 會依軸），改 annotate 圓點＋字較穩
@@ -12862,13 +12872,13 @@ def _paint_micro_retest_then_rise_schematic(
             )
         except Exception:
             logger.debug("新五波升圈5略過", exc_info=True)
-    # 標籤進右側空帶（與右欄同欄）；箭尖→字用青虛線接，不准擋K／浪折
+    # 標籤進右側空帶（與右欄同欄）；上移右移，不准壓今標／紅箭／圈5
     try:
         x_lab = float(x_label_col) if x_label_col is not None else float(n) + 8.8
     except (TypeError, ValueError):
         x_lab = float(n) + 8.8
-    x_lab = max(float(x_lab), float(x_tip) + 1.0, float(n) + 8.0)
-    y_lab = float(y_tip) + max(abs(float(y_up) - float(y_mid)) * 0.03, 70.0)
+    x_lab = max(float(x_lab), float(x_tip) + 2.6, float(n) + 10.2)
+    y_lab = float(y_tip) + max(abs(float(y_up) - float(y_mid)) * 0.14, 260.0)
     if FancyArrowPatch is not None:
         try:
             ax.add_patch(
@@ -16350,8 +16360,9 @@ def _render_twii_c_wave_60_dark(
             fp=_fp,
             y=0.922,
             text=(
-                "浪線怎麼畫：底色分C1–C4｜粗藍折＝大段高低連（C1→C2→C3底→C4高）｜"
-                "細白＝該段碎浪（C3①～⑤；C4不標浪號）｜黃帶＝現在撐壓｜非買訊"
+                "浪線怎麼畫：底色C1–C4＝黃教導層｜粗藍折＝大段高低（C1→C2→C3底→C4高）｜"
+                "細白＝碎浪｜當令細分＝5-3-5 abc（小B近完→下小C五）｜"
+                "大房間仍大C・不准叠成大C第幾｜非買訊"
             ),
         )
     right_notes: List[Dict[str, Any]] = [
@@ -16533,7 +16544,7 @@ def _render_twii_c_wave_60_dark(
         ax=ax,
         db_path=db_path,
     )
-    # 八浪縮圖：量欄左側空帶（紅框區）＋黃框標此刻＝大C（內＝C4進行中）
+    # 八浪縮圖：量欄左側空帶；黃框＝大房間大C＋當令5-3-5 abc（不叠大C第幾／黃C4）
     _micro_ins = _eight_wave_inset_rect_on_vol(axv, fig, scale=0.95, left_frac=0.05)
     _paint_eight_wave_inset(
         fig,
@@ -16542,7 +16553,7 @@ def _render_twii_c_wave_60_dark(
         detail=True,
         rect=_micro_ins,
         title="八浪・對位",
-        now_tip="此刻＝大C｜內＝C4進行中",
+        now_tip="此刻＝大C｜細＝5-3-5 abc｜今≈小B近完｜下＝小C五段",
     )
     try:
         fig.savefig(save_path, facecolor=_LIVE_BG, bbox_inches="tight", pad_inches=0.22)
@@ -17237,7 +17248,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         0.03,
         0.945,
         f"{str(ladder.get('one_line') or '他說現在：C進行中')[:40]}｜"
-        f"{_macro_wave_calendar_line()}｜細＝C內c4／c5｜C走完≠新五波升",
+        f"{_macro_wave_calendar_line()}｜細＝5-3-5 abc｜小B近完→小C五｜C走完≠新五波升",
         fontproperties=_fp(9, "bold"),
         color="#ce93d8",
         ha="left",
@@ -17247,7 +17258,10 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         fig,
         fp=_fp,
         y=0.918,
-        text="浪線怎麼畫：尖點對尖點連直線｜藍⑤→粉A→金虛B→紫C（只連官方柱高低）｜非買訊",
+        text=(
+            "浪線怎麼畫：尖點對尖點連直線｜藍⑤→粉A→金虛B→紫C（只連官方柱高低）｜"
+            "當令細分＝5-3-5 abc（不叠大C第幾）｜非買訊"
+        ),
     )
     # 近窗白底戳：跟遠窗同一套鎖主圖 axes 框內左上（不准出框、不准擋九波／縮圖K）
     fig.subplots_adjust(left=0.05, right=0.98, top=0.90, bottom=0.07)
