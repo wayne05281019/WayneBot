@@ -4502,7 +4502,7 @@ def test_teach_vol_sr_60m_label_shows_bar_hhmm():
 
 
 def test_retest_41500_oral_beats_unpriced_pressure_wait(tmp_path):
-    """11/10 口頭：至少回測41500／絕對不破週五低；右標與等待句要有價。"""
+    """11/10 口頭：至少回測41500／絕對不破週五低→回測平均＝最低。"""
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
@@ -4527,7 +4527,10 @@ def test_retest_41500_oral_beats_unpriced_pressure_wait(tmp_path):
     tw = preds.get("tw") or []
     hit415 = [r for r in tw if abs(float(r.get("level") or 0) - 41500.0) < 0.6]
     hit378 = [r for r in tw if abs(float(r.get("level") or 0) - 37837.0) < 0.6]
-    assert hit415 and "至少回測" in str(hit415[0].get("label") or "")
+    assert hit415 and (
+        "回測最低" in str(hit415[0].get("label") or "")
+        or "回測平均" in str(hit415[0].get("label") or "")
+    )
     assert hit378 and (
         "絕對不破" in str(hit378[0].get("label") or "")
         or "不再假跌破" in str(hit378[0].get("label") or "")
@@ -4548,7 +4551,7 @@ def test_retest_41500_oral_beats_unpriced_pressure_wait(tmp_path):
         db, as_of="20261110", now=datetime(2026, 11, 10, 12, 0, tzinfo=tz)
     ) or {}
     wait = str(th.get("wait_struct") or "")
-    assert "41500" in wait
+    assert "41500" in wait or "41,500" in wait
     assert "絕對不破" in wait or "37837" in wait
     pack = {
         "thesis": th.get("thesis"),
@@ -4558,8 +4561,36 @@ def test_retest_41500_oral_beats_unpriced_pressure_wait(tmp_path):
         "pred_levels": preds,
     }
     oral = _active_oral_now_line(pack)
-    assert "41500" in oral
+    assert "41500" in oral or "41,500" in oral
     assert "絕對不破" in oral or "37837" in oral
+
+
+def test_retest_avg_min_from_latest_band_oral():
+    """11/12 區間：回測平均＝中點、回測最低＝下緣；後文壓單點41500。"""
+    from biaoke_level_learn import (
+        _LOW_BAND_419_427_ORAL_SNIP,
+        _parse_retest_band_lo_hi,
+        _retest_avg_min_from_text,
+        _thesis_pred_levels,
+    )
+
+    snip = _LOW_BAND_419_427_ORAL_SNIP + " 應該至少回測到41500，絕對不會破上星期五低點。"
+    band = _parse_retest_band_lo_hi(snip)
+    assert band == (41900.0, 42700.0)
+    rb = _retest_avg_min_from_text(snip)
+    assert rb is not None
+    assert abs(float(rb["min"]) - 41900.0) < 0.6
+    assert abs(float(rb["avg"]) - 42300.0) < 0.6
+    tw = (_thesis_pred_levels(snip).get("tw") or [])
+    roles = {str(r.get("role") or ""): float(r.get("level") or 0) for r in tw}
+    assert abs(roles.get("回測平均", 0) - 42300.0) < 0.6
+    assert abs(roles.get("回測最低", 0) - 41900.0) < 0.6
+    # 有區間時不准再把 41500 當當令終點列
+    assert not any(
+        abs(float(r.get("level") or 0) - 41500.0) < 0.6
+        and str(r.get("role") or "") in {"回測平均", "回測最低", "至少回測"}
+        for r in tw
+    )
 
 
 def test_pressure_break_labels_split_slant_vs_41760():

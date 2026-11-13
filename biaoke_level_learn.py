@@ -3203,6 +3203,17 @@ def _latest_level_thesis(
             snip = f"{_RETEST_41500_ORAL_SNIP} {snip}".strip()
     except Exception:
         logger.debug("41500 回測口頭題旨覆寫略過", exc_info=True)
+    # 後文：低點帶 41900～42700（11/12；壓單點 41500 當令終點）
+    try:
+        if cap >= _LOW_BAND_419_427_ORAL_AS_OF:
+            _ensure_low_band_419_427_oral_thesis_snap(db_path, as_of=cap)
+        if cap >= _LOW_BAND_419_427_ORAL_AS_OF and not _text_has_low_band_419_427(
+            snip
+        ):
+            snip = f"{_LOW_BAND_419_427_ORAL_SNIP} {snip}".strip()
+            post_id = post_id or _LOW_BAND_419_427_ORAL_POST_ID
+    except Exception:
+        logger.debug("41900～42700 低點帶口頭題旨覆寫略過", exc_info=True)
     morph_blob = snip + " " + " ".join(str(r["snippet"] or "") for r in (extra or []))
     if post_snip:
         morph_blob = f"{morph_blob} {post_snip}"
@@ -3264,26 +3275,44 @@ def _latest_level_thesis(
     has_c9 = bool(re.search(r"C\s*[-–]\s*9", snip))
     has_41760 = bool(re.search(r"41760", snip))
     has_41500 = _text_has_retest_41500(snip) or bool(re.search(r"41500", snip))
+    has_low_band = _text_has_low_band_419_427(snip)
     # 夜盤第二組落底（C3-5完成）優先於舊 C3-3 題旨；後文改口壓前文
     if has_pressure_break:
         # 他最新改口：夜盤過 C3 下降壓；上週五低不再假跌破；拉回回測下降壓（非買訊）
-        # 斜線回測 ≠ 水平台指壓41760；11/10 後文釘至少回測 41500／絕對不破週五低
+        # 斜線回測 ≠ 水平台指壓41760；11/12 低點帶壓 11/10 單點41500
         thesis = "大A→大B→大C｜夜盤過C3下降壓・週五低不再假跌破（預估）"
         wait_bits = [
             "拉回回測下降壓力線（口述斜線・圖上紫帶C3・粉虛下降壓示意／無報價）",
             "清洗籌碼",
             "資金可5~6成",
         ]
-        if has_41500:
+        if has_low_band:
+            _rb = _retest_avg_min_from_text(snip) or {
+                "min": _LOW_BAND_419_427_LO,
+                "avg": _LOW_BAND_419_427_MID,
+                "hi": _LOW_BAND_419_427_HI,
+            }
             wait_bits = [
-                "至少回測41500",
+                f"回測平均{_px(_rb['avg'])}",
+                f"回測最低{_px(_rb['min'])}",
+                "路徑先到43000下",
+                "絕對不破週五低37837",
+                "拉回回測下降壓力線（口述斜線・無報價）",
+                "清洗籌碼",
+            ]
+        elif has_41500:
+            wait_bits = [
+                f"回測平均{_px(41500)}",
+                f"回測最低{_px(41500)}",
                 "絕對不破週五低37837",
                 "拉回回測下降壓力線（口述斜線・無報價）",
                 "清洗籌碼",
             ]
         if has_41760:
             # 未到 11/10「至少回測41500」口頭前，不准在等待句寫 41500（會誤觸絕對不破文案）
-            if has_41500:
+            if has_low_band:
+                wait_bits.insert(0, "水平台指壓41760（≠回測帶／≠口述下降壓）")
+            elif has_41500:
                 wait_bits.insert(0, "水平台指壓41760（≠41500回測／≠口述下降壓）")
             else:
                 wait_bits.insert(0, "水平台指壓41760（≠口述下降壓）")
@@ -4997,8 +5026,10 @@ def _tw_pred_break_tag(
         and _tw_has_c9_low_zone(pack)
     ):
         return "已破"
-    # 拉回「至少回測」目標：只看最近一根有沒有測到；不准拿急跌全程最低誤標已破
-    if role_s == "至少回測" or abs(lv - 41500.0) < 0.6:
+    # 回測平均／最低／舊「至少回測」：只看最近一根有沒有測到；不准拿急跌全程最低誤標已破
+    if role_s in {"回測平均", "回測最低", "至少回測", "低點帶"} or abs(
+        lv - 41500.0
+    ) < 0.6:
         if lows:
             try:
                 last_lo = float(lows[-1])
@@ -6141,11 +6172,29 @@ def _active_oral_now_line(pack: Optional[Dict[str, Any]] = None) -> str:
     )
     thesis = str((pack or {}).get("thesis") or "")
     if _pack_pressure_break_on(pack) or _text_has_c3_pressure_break(blob):
-        # 寫死分開：斜線口述下降壓 ≠ 水平41760；11/10 後文＝至少回測41500
+        # 寫死分開：斜線口述下降壓 ≠ 水平41760；回測平均／最低跟最新口頭
         # 不准只因對照句「≠41500」就切絕對不破（11/9 下降壓當令仍用不再假跌破）
+        _rb_line = _retest_avg_min_from_text(blob)
+        if _rb_line is not None:
+            if abs(float(_rb_line["avg"]) - float(_rb_line["min"])) < 0.6:
+                line = (
+                    f"回測平均＝最低{_px(_rb_line['min'])}；"
+                    "絕對不破週五低37837；"
+                    "他說已過C3下降壓（口述斜線・無報價）"
+                )
+            else:
+                line = (
+                    f"回測平均{_px(_rb_line['avg'])}；"
+                    f"回測最低{_px(_rb_line['min'])}；"
+                    "絕對不破週五低37837；"
+                    "他說已過C3下降壓（口述斜線・無報價）"
+                )
+            if "41760" in blob or "台指壓" in blob:
+                line = "水平台指壓41760（≠回測帶）；" + line
+            return line
         if _text_has_retest_41500(blob) or "至少回測41500" in blob:
             line = (
-                "至少回測41500；絕對不破週五低37837；"
+                f"回測平均＝最低{_px(41500)}；絕對不破週五低37837；"
                 "他說已過C3下降壓（口述斜線・無報價）"
             )
             if "41760" in blob or "台指壓" in blob:
@@ -6215,6 +6264,31 @@ _RETEST_41500_ORAL_SNIP = (
     "但今天下半場到明後天一定會有拉回回測下降壓力線。"
 )
 
+# 飆大口頭（已確認・11/12）：低點帶 41900～42700（約95%）；路徑先到 43000 下
+# 後文壓前文：當令回測終點帶＝這兩數字，不是單點 41500（41500＝11/10「至少」更深口）
+# 話筒標只認「回測平均／回測最低」兩口；區間異動＝從最新原文重算，不准鎖死舊價
+_LOW_BAND_419_427_ORAL_AS_OF = "20261112"
+_LOW_BAND_419_427_ORAL_POST_ID = "oral-low-band-419-427"
+_LOW_BAND_419_427_LO = 41900.0
+_LOW_BAND_419_427_HI = 42700.0
+_LOW_BAND_419_427_MID = 42300.0
+_LOW_BAND_419_427_ORAL_SNIP = (
+    "絕對會到43000之下。"
+    "不用害怕 低點絕對不會破，低點應該在41900~42700左右…這個區間95%。"
+)
+
+# 回測帶：4xxxx～4xxxx（低點／回測／區間／95% 語境）；後文最新一組壓前文
+_RETEST_BAND_PAIR_RE = re.compile(
+    r"(?:低點|回測|區間|95\s*%).{0,40}?"
+    r"(?P<a>4[0-9]{4})\s*[-~～到至\-]\s*(?P<b>4[0-9]{4})"
+    r"|"
+    r"(?P<a2>4[0-9]{4})\s*[-~～到至\-]\s*(?P<b2>4[0-9]{4})"
+    r".{0,40}?(?:低點|回測|區間|95\s*%)",
+)
+_RETEST_SINGLE_MIN_RE = re.compile(
+    r"(?:至少)?回測(?:到)?\s*(?P<v>4[0-9]{4})|(?P<v2>4[0-9]{4}).{0,12}(?:至少)?回測"
+)
+
 
 def _text_has_retest_41500(blob: str) -> bool:
     """他釘：至少回測 41500；絕對不破上週五低。"""
@@ -6229,6 +6303,125 @@ def _text_has_retest_41500(blob: str) -> bool:
             s,
         )
     )
+
+
+def _parse_retest_band_lo_hi(blob: str) -> Optional[Tuple[float, float]]:
+    """從原文抓最新回測／低點區間（lo, hi）。只認他寫的兩個 4xxxx，不准發明。"""
+    s = str(blob or "")
+    if not s.strip():
+        return None
+    last: Optional[Tuple[float, float]] = None
+    for m in _RETEST_BAND_PAIR_RE.finditer(s):
+        raw_a = m.group("a") or m.group("a2")
+        raw_b = m.group("b") or m.group("b2")
+        try:
+            a = float(raw_a)
+            b = float(raw_b)
+        except (TypeError, ValueError):
+            continue
+        if a < 30000 or b < 30000 or a > 60000 or b > 60000:
+            continue
+        lo, hi = (a, b) if a <= b else (b, a)
+        # 區間太寬／太窄都不像回測帶（防誤抓無關兩價）
+        if hi - lo < 80.0 or hi - lo > 6000.0:
+            continue
+        last = (lo, hi)
+    return last
+
+
+def _parse_retest_single_min(blob: str) -> Optional[float]:
+    """單點「至少回測 N」→ 回測最低；無區間時才用。"""
+    s = str(blob or "")
+    if not s.strip():
+        return None
+    last: Optional[float] = None
+    for m in _RETEST_SINGLE_MIN_RE.finditer(s):
+        raw = m.group("v") or m.group("v2")
+        try:
+            v = float(raw)
+        except (TypeError, ValueError):
+            continue
+        if 30000 <= v <= 60000:
+            last = v
+    return last
+
+
+def _retest_avg_min_from_text(blob: str) -> Optional[Dict[str, float]]:
+    """回測平均／回測最低：區間優先；只有單點「至少回測」則平均＝最低＝該點。"""
+    band = _parse_retest_band_lo_hi(blob)
+    if band is not None:
+        lo, hi = band
+        return {
+            "lo": float(lo),
+            "hi": float(hi),
+            "min": float(lo),
+            "avg": float(round((lo + hi) / 2.0, 1)),
+        }
+    single = _parse_retest_single_min(blob)
+    if single is not None:
+        v = float(single)
+        return {"lo": v, "hi": v, "min": v, "avg": v}
+    return None
+
+
+def _retest_avg_min_from_pack(
+    pack: Optional[Dict[str, Any]],
+) -> Optional[Dict[str, float]]:
+    """題旨包／pred 取當令回測平均＋最低（後文最新）。"""
+    blob = " ".join(
+        str(x or "")
+        for x in (
+            (pack or {}).get("snippet"),
+            (pack or {}).get("thesis"),
+            (pack or {}).get("wait_struct"),
+            (pack or {}).get("wait"),
+        )
+    )
+    got = _retest_avg_min_from_text(blob)
+    if got is not None:
+        return got
+    avg_lv = None
+    min_lv = None
+    for row in ((pack or {}).get("pred_levels") or {}).get("tw") or []:
+        try:
+            role = str(row.get("role") or "")
+            lv = float(row.get("level") or 0)
+        except (TypeError, ValueError):
+            continue
+        if role == "回測平均":
+            avg_lv = lv
+        elif role == "回測最低":
+            min_lv = lv
+    if avg_lv is not None and min_lv is not None:
+        lo, hi = (min_lv, avg_lv) if min_lv <= avg_lv else (avg_lv, min_lv)
+        # 平均在中間時：用 2*avg-min 還原 hi
+        if abs(avg_lv - min_lv) > 1.0:
+            hi = float(round(2.0 * avg_lv - min_lv, 1))
+            lo = float(min_lv)
+        return {
+            "lo": float(lo),
+            "hi": float(hi),
+            "min": float(min_lv),
+            "avg": float(avg_lv),
+        }
+    if min_lv is not None:
+        return {
+            "lo": float(min_lv),
+            "hi": float(min_lv),
+            "min": float(min_lv),
+            "avg": float(min_lv),
+        }
+    return None
+
+
+def _text_has_low_band_419_427(blob: str) -> bool:
+    """相容舊呼叫：文內是否有回測／低點雙價區間。"""
+    return _parse_retest_band_lo_hi(blob) is not None
+
+
+def _pack_has_low_band_419_427(pack: Optional[Dict[str, Any]]) -> bool:
+    """題旨／等待／pred 是否已有回測區間（或平均／最低兩標）。"""
+    return _retest_avg_min_from_pack(pack) is not None
 
 
 def _text_has_c3_pressure_break(blob: str) -> bool:
@@ -6639,6 +6832,28 @@ def _ensure_retest_41500_oral_thesis_snap(db_path: str, *, as_of: str = "") -> N
         )
     except Exception:
         logger.debug("補41500回測口頭題旨 snap 略過", exc_info=True)
+
+
+def _ensure_low_band_419_427_oral_thesis_snap(db_path: str, *, as_of: str = "") -> None:
+    """題旨庫補 11/12 口頭：低點帶 41900～42700；路徑先到 43000 下。"""
+    if not db_path:
+        return
+    day = str(as_of or "").replace("-", "")[:8]
+    if not day or day < _LOW_BAND_419_427_ORAL_AS_OF:
+        return
+    oral_day = _LOW_BAND_419_427_ORAL_AS_OF
+    try:
+        _upsert_snap(
+            db_path,
+            post_id=_LOW_BAND_419_427_ORAL_POST_ID,
+            as_of=oral_day,
+            post_date=f"{oral_day[:4]}-{oral_day[4:6]}-{oral_day[6:8]}",
+            post_time="13:05",
+            snippet=_LOW_BAND_419_427_ORAL_SNIP,
+            chart_path="",
+        )
+    except Exception:
+        logger.debug("補41900～42700低點帶口頭題旨 snap 略過", exc_info=True)
 
 
 # 主圖／右下九波縮圖共用色（C1…C9）：奇數浪偏暖紅、偶數浪偏冷青／綠，C7 最醒目，虛線 C9 淡紫
@@ -7435,7 +7650,8 @@ def _tw_level_role(pack: Optional[Dict[str, Any]], level: float) -> str:
     if abs(lv - 41760.0) < 0.6:
         return "台指壓力"
     if abs(lv - 41500.0) < 0.6:
-        return "至少回測"
+        # 無區間時 41500 當回測最低；有平均列則由 pred role 覆蓋
+        return "回測最低"
     return ""
 
 
@@ -7455,8 +7671,13 @@ def _format_tw_pred_note(
         role=role,
         highs=list(highs or []) if highs is not None else None,
     )
+    if role == "回測平均":
+        return f"回測平均／{_px(level)}・{br}"
+    if role == "回測最低":
+        return f"回測最低／{_px(level)}・{br}"
     if role == "至少回測" or abs(float(level) - 41500.0) < 0.6:
-        return f"至少回測／{_px(level)}・{br}"
+        # 舊單點口頭：同時當平均＋最低顯示語意（右欄仍可由 pred 拆兩口）
+        return f"回測最低／{_px(level)}・{br}"
     if role == "台指壓力" or abs(float(level) - 41760.0) < 0.6:
         lab = f"台指壓力／{_px(level)}・{br}"
         # 下降壓改口當令：水平41760 不准被讀成 C3 下降壓線
@@ -7720,16 +7941,44 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
             tag="未到",
             label=_lab41760,
         )
-    # 11/10：至少回測 41500（他原文；≠41760 台指壓、≠無報價下降壓斜線）
-    if re.search(r"41500", s) or _text_has_retest_41500(s):
-        _add(
-            "tw",
-            level=41500.0,
-            ref_ymd="",
-            role="至少回測",
-            tag="未到",
-            label=f"至少回測／{_px(41500)}",
-        )
+    # 回測平均＋回測最低：從最新原文區間／單點重算（後文壓前文；不准鎖死舊價）
+    _rb = _retest_avg_min_from_text(s)
+    if _rb is None and (re.search(r"41500", s) or _text_has_retest_41500(s)):
+        _rb = {
+            "lo": 41500.0,
+            "hi": 41500.0,
+            "min": 41500.0,
+            "avg": 41500.0,
+        }
+    if _rb is not None:
+        _avg = float(_rb["avg"])
+        _min = float(_rb["min"])
+        if abs(_avg - _min) < 0.6:
+            _add(
+                "tw",
+                level=_min,
+                ref_ymd="",
+                role="回測最低",
+                tag="未到",
+                label=f"回測平均＝最低／{_px(_min)}",
+            )
+        else:
+            _add(
+                "tw",
+                level=_avg,
+                ref_ymd="",
+                role="回測平均",
+                tag="未到",
+                label=f"回測平均／{_px(_avg)}",
+            )
+            _add(
+                "tw",
+                level=_min,
+                ref_ymd="",
+                role="回測最低",
+                tag="未到",
+                label=f"回測最低／{_px(_min)}",
+            )
     # 11/8 雙軌點位（只認原文）：37837／37164／35579／31705
     # 右欄：最佳買點 37837＋深殺上緣 35579＋深殺端 31705；39000／37164 改走黃底帶
     # 下降壓改口：37837＝已確認最低／不再假跌破；止跌確認後文未改口前＝再測／假跌破觀察
@@ -10628,10 +10877,12 @@ def _place_live_right_labels(
             or "最佳買點" in s
             or "AI結束" in s
             or "五波末" in s
-            # 水平台指壓41760／至少回測41500：當令必留
+            # 水平台指壓41760／回測平均／回測最低：當令必留
             or "台指壓力" in s
             or "41,760" in s
             or "41760" in s
+            or "回測平均" in s
+            or "回測最低" in s
             or "至少回測" in s
             or "41,500" in s
             or "41500" in s
@@ -10668,6 +10919,8 @@ def _place_live_right_labels(
                 "台指壓力",
                 "41,760",
                 "41760",
+                "回測平均",
+                "回測最低",
                 "至少回測",
                 "41,500",
                 "41500",
@@ -11516,9 +11769,26 @@ def _wave_now_ladder(pack: Optional[Dict[str, Any]] = None, *, blob: str = "") -
         day_bit = ""
     # 下降壓改口／止跌確認／雙軌／改口第二隻腳／9波擴延：話筒／超近說明用人話，不准只丟代號
     if "止跌確認・已過C3下降壓" in steps or has_pressure_ladder:
-        if _text_has_retest_41500(text) or "至少回測41500" in text:
+        _rb_now = _retest_avg_min_from_text(text)
+        if _rb_now is not None:
+            if abs(float(_rb_now["avg"]) - float(_rb_now["min"])) < 0.6:
+                oral_now = (
+                    f"回測平均＝最低{_px(_rb_now['min'])}；"
+                    "絕對不破週五低37837；"
+                    "他說已過C3下降壓（口述斜線・無報價）"
+                )
+            else:
+                oral_now = (
+                    f"回測平均{_px(_rb_now['avg'])}；"
+                    f"回測最低{_px(_rb_now['min'])}；"
+                    "絕對不破週五低37837；"
+                    "他說已過C3下降壓（口述斜線・無報價）"
+                )
+            if "41760" in text:
+                oral_now = "水平台指壓41760（≠回測帶）；" + oral_now
+        elif _text_has_retest_41500(text) or "至少回測41500" in text:
             oral_now = (
-                "至少回測41500；絕對不破週五低37837；"
+                f"回測平均＝最低{_px(41500)}；絕對不破週五低37837；"
                 "他說已過C3下降壓（口述斜線・無報價）"
             )
             if "41760" in text:
@@ -12008,8 +12278,8 @@ def _paint_micro_retest_then_rise_schematic(
 ) -> Dict[str, Any]:
     """超近窗預估虛線：今→他釘回測位；再示意「C走完→新五波升」。
 
-    回測價只認已說過的水平（預設 41500）；主升不准發明目標價，只畫示意上折＋字。
-    非買訊；會改。
+    回測價只認當令「回測平均」（無則最低／舊單點）；主升不准發明目標價。
+    右欄另標回測平均／回測最低；虛線端不准再貼價標。非買訊；會改。
     """
     out: Dict[str, Any] = {"fut_x": float(i_now + 4), "retest_y": float(retest_y)}
     if ax is None or fp is None:
@@ -12031,7 +12301,7 @@ def _paint_micro_retest_then_rise_schematic(
     y_mid = float(y_rt)
     # 主升示意端：略高於回測位即可，不准拉高到跟「今」右標互壓、不准寫死目標價
     y_up = float(y_rt) + max(abs(float(y0) - float(y_rt)) * 0.28, 520.0)
-    # 底描＋紫虛＝回測
+    # 底描＋紫虛＝回測（對準平均）
     ax.plot(
         [i0, x1],
         [y0, y_mid],
@@ -12049,7 +12319,7 @@ def _paint_micro_retest_then_rise_schematic(
         zorder=5.95,
     )
     _spear_ring(ax, x1, y_mid, color="#ea80fc", zorder=7, hot=True)
-    # 回測價標只留右欄「至少回測／41500」一口；不准虛線端再貼第二個
+    # 回測價標只留右欄「回測平均／回測最低」；不准虛線端再貼價
     # 青虛＝C走完後新五波升示意（無目標價）
     ax.plot(
         [x1, x2],
@@ -12909,8 +13179,12 @@ def _tw_pred_right_notes(
                 if tag == "未到"
                 else tag
             )
-            if role == "至少回測" or abs(lv - 41500.0) < 0.6:
-                text = f"至少回測／{_px(lv)}・{br}"
+            if role == "回測平均":
+                text = f"回測平均／{_px(lv)}・{br}"
+            elif role == "回測最低":
+                text = f"回測最低／{_px(lv)}・{br}"
+            elif role == "至少回測" or abs(lv - 41500.0) < 0.6:
+                text = f"回測最低／{_px(lv)}・{br}"
             elif role == "台指壓力":
                 # 壓力位保留原文角色，不准改寫成「飆預測・已破」（低點誤破）
                 text = f"台指壓力／{_px(lv)}・{br}"
@@ -13006,8 +13280,10 @@ def _tw_pred_right_notes(
         # 水平台指壓：白／淺黃，跟紫大C斜線路徑分色
         if role == "台指壓力" or abs(lv - 41760.0) < 0.6:
             col = "#ffe082"
-        elif role == "至少回測" or abs(lv - 41500.0) < 0.6:
-            col = "#80cbc4"
+        elif role in {"回測平均", "回測最低", "至少回測"} or abs(
+            lv - 41500.0
+        ) < 0.6:
+            col = "#80cbc4" if role != "回測平均" else "#26a69a"
         out.append(
             {
                 "x": x_note,
@@ -15482,9 +15758,24 @@ def _render_twii_c_wave_60_dark(
         },
     ]
     tip_skip = {round(float(y_now), 1), 43135.0, round(43135.0, 1)}
+    # 當令已有回測區間：舊單點 41500 不准再進右欄（後文壓前文）
+    _rb_skip = _retest_avg_min_from_pack(pack)
+    if _rb_skip is not None and abs(
+        float(_rb_skip["avg"]) - float(_rb_skip["min"])
+    ) >= 0.6:
+        tip_skip.add(41500.0)
+        tip_skip.add(round(41500.0, 1))
     # 43135＝次級4壓：結構線上已有標，右欄不准再貼同價
     for anch in tip_anchors:
-        if round(float(anch), 1) in tip_skip or abs(float(anch) - 43135.0) < 0.6:
+        if (
+            round(float(anch), 1) in tip_skip
+            or abs(float(anch) - 43135.0) < 0.6
+            or (
+                _rb_skip is not None
+                and abs(float(_rb_skip["avg"]) - float(_rb_skip["min"])) >= 0.6
+                and abs(float(anch) - 41500.0) < 0.6
+            )
+        ):
             tip_skip.add(round(float(anch), 1))
             continue
         right_notes.append(
@@ -15530,15 +15821,19 @@ def _render_twii_c_wave_60_dark(
         ymin=float(ymin),
         ymax=float(ymax),
     )
-    # 預估虛線：他釘至少回測41500 → 示意 C走完後新五波升（不准發明主升目標價）
-    _retest_y = 41500.0
-    try:
-        for _a in tip_anchors:
-            if abs(float(_a) - 41500.0) < 0.6:
-                _retest_y = float(_a)
-                break
-    except (TypeError, ValueError):
+    # 預估虛線：對準當令「回測平均」（區間中點／單點）；無則退回最低；再示意新五波升
+    _rb_live = _retest_avg_min_from_pack(pack)
+    if _rb_live is not None:
+        _retest_y = float(_rb_live["avg"])
+    else:
         _retest_y = 41500.0
+        try:
+            for _a in tip_anchors:
+                if abs(float(_a) - 41500.0) < 0.6:
+                    _retest_y = float(_a)
+                    break
+        except (TypeError, ValueError):
+            _retest_y = 41500.0
     _path = _paint_micro_retest_then_rise_schematic(
         ax,
         i_now=int(i_now),
