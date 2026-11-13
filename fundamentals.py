@@ -22,8 +22,11 @@ except Exception:
 
 logger = logging.getLogger("WayneBot.Fundamentals")
 
+# 不准帶 br：證交所 OpenAPI 回 brotli 時 urllib3/brotli 會解碼炸掉，
+# 上市月營收整批寫不進庫，介紹卡近窗就少掉最新月（例：2383 十月）。
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Accept-Encoding": "gzip, deflate",
 }
 
 TWSE_MONTHLY = "https://openapi.twse.com.tw/v1/opendata/t187ap05_L"
