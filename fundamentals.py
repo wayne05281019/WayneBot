@@ -22,8 +22,11 @@ except Exception:
 
 logger = logging.getLogger("WayneBot.Fundamentals")
 
+# 不准帶 br：證交所 OpenAPI 回 brotli 時 urllib3/brotli 會解碼炸掉，
+# 上市月營收整批寫不進庫，介紹卡近窗就少掉最新月（例：2383 十月）。
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Accept-Encoding": "gzip, deflate",
 }
 
 TWSE_MONTHLY = "https://openapi.twse.com.tw/v1/opendata/t187ap05_L"
@@ -1890,18 +1893,15 @@ def glance_fundamentals_plain(
             rows.extend(monthly_revenue_window_rows(months, limit=win_n))
         elif m:
             rows.extend(monthly_revenue_window_rows([m], limit=1))
-        if q_from_m:
+        # 有綜合損益：季營收只認損益表營收（與毛利／EPS 同口徑）。
+        # 月彙季不准再用 format_season_zh（會把單季 3 誤標成「前三季」）。
+        if q_from_m and not q:
             by_key = {(int(x["year"]), int(x["season"])): x for x in q_from_m}
             show = q_from_m[:8]
             for i, qq in enumerate(show):
                 y, s = int(qq["year"]), int(qq["season"])
                 rev = float(qq.get("revenue") or 0)
-                try:
-                    from industry_brief import format_season_zh
-
-                    q_lab = format_season_zh(y, s)
-                except Exception:
-                    q_lab = f"{y}Q{s}"
+                q_lab = f"{y}年第{s}季合計"
                 yoy_q = by_key.get((y - 1, s))
                 if s == 1:
                     prev_key = (y - 1, 4)
@@ -1923,12 +1923,11 @@ def glance_fundamentals_plain(
                     if t and t != "—"
                 )
                 lab = "季營收" if i == 0 else f"季營收{i + 1}"
-                # 無增減標時不加「—」，避免 ha=right 時短尾把億元撐離右緣
                 q_val = f"{q_lab}　{format_yi(rev)}"
                 if tag:
                     q_val = f"{q_val}　{tag}"
                 rows.append((lab, q_val))
-        elif emerging and (months or m):
+        elif emerging and (months or m) and not q:
             rows.append(("季營收", "月數未滿三個月齊，暫不彙季（不造假）"))
         if q:
             rev = float(q.get("revenue") or 0)
@@ -1940,10 +1939,8 @@ def glance_fundamentals_plain(
                 q_lab = format_season_zh(q["year"], q["season"])
             except Exception:
                 q_lab = f"{q['year']}Q{q['season']}"
-            if not q_from_m:
-                rows.append(("季報", f"{q_lab}　營收 {format_yi(q.get('revenue') or 0)}"))
-            else:
-                rows.append(("季報", f"{q_lab}（綜合損益）"))
+            # 季營收＝綜合損益營業收入；與毛利／毛利率／EPS 同一列來源
+            rows.append(("季營收", f"{q_lab}　{format_yi(rev)}"))
             if float(q.get("gross_profit") or 0) or float(q.get("gross_margin_pct") or 0):
                 rows.append(("毛利", format_yi(q.get("gross_profit") or 0)))
                 rows.append(("毛利率", f"{float(q['gross_margin_pct']):.1f}%"))
