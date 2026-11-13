@@ -11961,6 +11961,150 @@ def _flash_spec_from_pivots(
     return spec
 
 
+def _eight_wave_inset_rect_on_vol(
+    axv: Any,
+    fig: Any,
+    *,
+    scale: float = 0.92,
+    left_frac: float = 0.06,
+) -> Tuple[float, float, float, float]:
+    """超近窗：八浪縮圖貼量欄左側空帶（使用者紅框區），不准壓右半爆量柱。"""
+    w, h = _teach_eight_wave_inset_wh(fig)
+    sc = max(0.45, min(1.05, float(scale or 1.0)))
+    w, h = float(w) * sc, float(h) * sc
+    try:
+        pos = axv.get_position()
+        left = float(pos.x0) + float(pos.width) * max(0.02, min(0.20, float(left_frac)))
+        # 垂直置中於量欄；略上移避開 x 刻度
+        bottom = float(pos.y0) + float(pos.height) * 0.18
+        max_h = float(pos.height) * 0.78
+        if h > max_h:
+            w *= max_h / h
+            h = max_h
+        max_w = float(pos.width) * 0.42
+        if w > max_w:
+            h *= max_w / w
+            w = max_w
+        if bottom + h > float(pos.y1) - 0.01:
+            bottom = max(float(pos.y0) + 0.01, float(pos.y1) - 0.01 - h)
+        return (float(left), float(bottom), float(w), float(h))
+    except Exception:
+        return (0.06, 0.08, float(w), float(h))
+
+
+def _paint_micro_retest_then_rise_schematic(
+    ax: Any,
+    *,
+    i_now: int,
+    y_now: float,
+    retest_y: float,
+    fp: Any,
+    n: int,
+) -> Dict[str, Any]:
+    """超近窗預估虛線：今→他釘回測位；再示意「C走完→新五波升」。
+
+    回測價只認已說過的水平（預設 41500）；主升不准發明目標價，只畫示意上折＋字。
+    非買訊；會改。
+    """
+    out: Dict[str, Any] = {"fut_x": float(i_now + 4), "retest_y": float(retest_y)}
+    if ax is None or fp is None:
+        return out
+    try:
+        y_rt = float(retest_y)
+        y0 = float(y_now)
+        i0 = int(i_now)
+    except (TypeError, ValueError):
+        return out
+    if y_rt <= 0 or y0 <= 0:
+        return out
+    # 今已低於回測位：不再畫「往下回測」假路徑（只留主升示意會誤導）
+    if float(y0) <= float(y_rt) + 1.0:
+        return out
+    # 兩段 x：回測折點 → 主升示意端（只延長幾根，不准拉爆右欄）
+    x1 = float(i0 + 3)
+    x2 = float(i0 + 7)
+    y_mid = float(y_rt)
+    # 主升示意端：從回測位往上回到「今與回測中點之上」，不准寫死新目標價
+    y_up = float(y_rt) + max(abs(float(y0) - float(y_rt)) * 0.55, 900.0)
+    # 底描＋紫虛＝回測
+    ax.plot(
+        [i0, x1],
+        [y0, y_mid],
+        color="#0b0f14",
+        lw=2.7,
+        ls=(0, (4.0, 2.0)),
+        zorder=5.85,
+    )
+    ax.plot(
+        [i0, x1],
+        [y0, y_mid],
+        color="#ea80fc",
+        lw=1.85,
+        ls=(0, (4.0, 2.0)),
+        zorder=5.95,
+    )
+    _spear_ring(ax, x1, y_mid, color="#ea80fc", zorder=7, hot=True)
+    ax.text(
+        x1,
+        y_mid - max(abs(y0 - y_mid) * 0.04, 180.0),
+        f"至少回測 {_px(y_rt)}",
+        fontproperties=fp(8.0, "bold"),
+        color="#ea80fc",
+        ha="center",
+        va="top",
+        zorder=8,
+        bbox={
+            "boxstyle": "round,pad=0.12",
+            "facecolor": "#1a0a24",
+            "edgecolor": "#ea80fc",
+            "linewidth": 0.7,
+            "alpha": 0.88,
+        },
+        clip_on=False,
+    )
+    # 青虛＝C走完後新五波升示意（無目標價）
+    ax.plot(
+        [x1, x2],
+        [y_mid, y_up],
+        color="#0b0f14",
+        lw=2.5,
+        ls=(0, (3.0, 2.2)),
+        zorder=5.85,
+    )
+    ax.plot(
+        [x1, x2],
+        [y_mid, y_up],
+        color="#40c4ff",
+        lw=1.7,
+        ls=(0, (3.0, 2.2)),
+        zorder=5.95,
+    )
+    _spear_ring(ax, x2, y_up, color="#40c4ff", zorder=7, hot=False)
+    ax.text(
+        x2,
+        y_up + max(abs(y_up - y_mid) * 0.04, 160.0),
+        "C走完→新五波升\n（示意・非買訊）",
+        fontproperties=fp(7.6, "bold"),
+        color="#40c4ff",
+        ha="center",
+        va="bottom",
+        zorder=8,
+        linespacing=1.05,
+        bbox={
+            "boxstyle": "round,pad=0.12",
+            "facecolor": "#061018",
+            "edgecolor": "#40c4ff",
+            "linewidth": 0.7,
+            "alpha": 0.88,
+        },
+        clip_on=False,
+    )
+    out["fut_x"] = float(x2)
+    out["fut_y"] = float(y_up)
+    out["xlim_right"] = max(float(n) + 1.2, float(x2) + 2.4)
+    return out
+
+
 def _paint_eight_wave_inset(
     fig: Any,
     *,
@@ -11972,10 +12116,12 @@ def _paint_eight_wave_inset(
     rect: Sequence[float] = (0.72, 0.62, 0.26, 0.28),
     title: str = "八浪對位",
     c9_ext: bool = False,
+    now_tip: str = "",
 ) -> None:
     """三張教具共用：教科書八浪縮圖；detail 框此刻；c_flash＝超近在C內畫下殺閃折①～⑤。
 
     c9_ext＝True：C 內改畫 9 波擴延（C1…C9）；此刻七走完→C-8，C8→C9 虛線（教具示意，非買訊）。
+    now_tip＝覆寫黃框「此刻＝…」字（超近可寫大C＋內C4）。
     """
     try:
         import matplotlib.pyplot as plt
@@ -12390,6 +12536,9 @@ def _paint_eight_wave_inset(
                 tip = "此刻＝C-7轉C-8｜虛線＝C-9"
             elif c_flash and flash_step:
                 tip = f"此刻＝{nk}・閃①～⑤之{flash_step}"
+            tip_override = str(now_tip or "").strip()
+            if tip_override:
+                tip = tip_override
             ax.text(
                 (x_l + x_r) / 2,
                 min(1.05, y_t + 0.02),
@@ -15390,9 +15539,36 @@ def _render_twii_c_wave_60_dark(
         ymin=float(ymin),
         ymax=float(ymax),
     )
+    # 預估虛線：他釘至少回測41500 → 示意 C走完後新五波升（不准發明主升目標價）
+    _retest_y = 41500.0
+    try:
+        for _a in tip_anchors:
+            if abs(float(_a) - 41500.0) < 0.6:
+                _retest_y = float(_a)
+                break
+    except (TypeError, ValueError):
+        _retest_y = 41500.0
+    _path = _paint_micro_retest_then_rise_schematic(
+        ax,
+        i_now=int(i_now),
+        y_now=float(y_now),
+        retest_y=float(_retest_y),
+        fp=_fp,
+        n=int(n),
+    )
+    # 虛線端若低於現 ylim，抬一截；上折示意也要進框
+    try:
+        _ymin0, _ymax0 = ax.get_ylim()
+        _need_lo = min(float(_retest_y), float(y_now)) - 420.0
+        _need_hi = max(float(_path.get("fut_y") or y_now), float(y_now)) + 520.0
+        ax.set_ylim(min(float(_ymin0), _need_lo), max(float(_ymax0), _need_hi))
+        ymin, ymax = ax.get_ylim()
+    except Exception:
+        pass
     x_right = _teach_xlim_right(
         int(n),
-        tip_xlim=float(tip.get("fut_x") or n) + 1.6,
+        tip_xlim=max(float(tip.get("fut_x") or n), float(_path.get("fut_x") or n))
+        + 1.6,
         right_col=float(x_col),
         extra=-2.8,
     )
@@ -15462,6 +15638,17 @@ def _render_twii_c_wave_60_dark(
         va="top",
         ax=ax,
         db_path=db_path,
+    )
+    # 八浪縮圖：量欄左側空帶（紅框區）＋黃框標此刻＝大C（內＝C4進行中）
+    _micro_ins = _eight_wave_inset_rect_on_vol(axv, fig, scale=0.95, left_frac=0.05)
+    _paint_eight_wave_inset(
+        fig,
+        fp=_fp,
+        now_key=_eight_wave_now_key(pack) or "C",
+        detail=True,
+        rect=_micro_ins,
+        title="八浪・對位",
+        now_tip="此刻＝大C｜內＝C4進行中",
     )
     try:
         fig.savefig(save_path, facecolor=_LIVE_BG, bbox_inches="tight", pad_inches=0.22)

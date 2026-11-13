@@ -3300,6 +3300,47 @@ def test_near_micro_wave_draw_howto_in_source():
     assert '"⑤"' in tags and '"A"' in tags and '"B"' in tags and '"C"' in tags
 
 
+def test_micro_eight_wave_inset_and_retest_path_in_source():
+    """超近：量欄八浪縮圖＋此刻大C／C4；虛線回測41500→新五波升示意。"""
+    from biaoke_level_learn import (
+        _eight_wave_inset_rect_on_vol,
+        _paint_micro_retest_then_rise_schematic,
+        _render_twii_c_wave_60_dark,
+    )
+
+    c60 = inspect.getsource(_render_twii_c_wave_60_dark)
+    assert "_eight_wave_inset_rect_on_vol" in c60
+    assert "_paint_eight_wave_inset" in c60
+    assert "此刻＝大C｜內＝C4進行中" in c60
+    assert "_paint_micro_retest_then_rise_schematic" in c60
+    assert "至少回測" in inspect.getsource(_paint_micro_retest_then_rise_schematic)
+    assert "新五波升" in inspect.getsource(_paint_micro_retest_then_rise_schematic)
+    assert "量欄" in inspect.getsource(_eight_wave_inset_rect_on_vol)
+
+
+def test_micro_retest_path_skips_when_already_below():
+    """今已低於回測位 → 不准再畫往下假回測。"""
+    from biaoke_level_learn import _paint_micro_retest_then_rise_schematic
+
+    class _Ax:
+        def plot(self, *a, **k):
+            raise AssertionError("should not plot")
+
+        def text(self, *a, **k):
+            raise AssertionError("should not text")
+
+    out = _paint_micro_retest_then_rise_schematic(
+        _Ax(),
+        i_now=10,
+        y_now=40000.0,
+        retest_y=41500.0,
+        fp=lambda *a, **k: None,
+        n=20,
+    )
+    assert float(out.get("retest_y") or 0) == 41500.0
+    assert float(out.get("fut_x") or 0) == 14.0  # i_now+4 default stub
+
+
 def test_merge_live_twii_display_bar_overlays_today(monkeypatch):
     """盤中 MIS 疊顯示柱：只渲染、不寫庫、標 live_session。"""
     from biaoke_level_learn import _merge_live_twii_display_bar
