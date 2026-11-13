@@ -4284,7 +4284,7 @@ def test_huang_c60_anchors_and_wave_paint_wired():
 
 
 def test_teach_vol_sr_preview_below_next_layer_60m():
-    """未破主撐也預覽往下下一層；60分高低擴成當日全日包絡（對齊遠／近日K）。
+    """未破主撐也預覽往下下一層；60分白帶高低認最大量單根（不准全日包絡拉長）。
 
     末日收若暫跌破主撐，broke_support 會翻 True（cascade 非 preview）。
     自末日往前縮日，找到「未破＋preview」切片再驗；找不到就 skip。
@@ -4344,12 +4344,12 @@ def test_teach_vol_sr_preview_below_next_layer_60m():
     assert nxt.get("date") == "20261106"
     assert bool(nxt.get("preview")) is True
     assert abs(float(nxt.get("high") or 0) - 40435.8) < 1.0
-    assert abs(float(nxt.get("low") or 0) - 37837.05) < 1.0  # 全日低，非單根 10:00 低
+    assert abs(float(nxt.get("low") or 0) - 38929.1) < 1.0  # 10:00 單根低，非全日 09:00 低
     tag = _teach_vol_day_tag(nxt.get("date"), nxt.get("ts"))
     assert "11/6" in tag
     assert "10:00" in tag  # 最大量那根
     bit = _teach_vol_sr_title_bit(sr)
-    assert "下一層" in bit and "37,837" in bit.replace(",", ",")
+    assert "下一層" in bit and "38,929" in bit.replace(",", ",")
     # 下一層同日：最大量 10:00、次大量 11:00
     rank = _teach_day_vol_rank_indices(rows, "20261106", top_n=2)
     assert len(rank) >= 2

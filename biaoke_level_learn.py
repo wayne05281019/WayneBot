@@ -8551,38 +8551,11 @@ def _teach_vol_rows_merge_deep(
 
 
 def _teach_rows_have_intraday_ts(rows: Sequence[Dict[str, Any]]) -> bool:
-    """軸上是否為 60 分列（有 HH:MM ts）→ 下一層高低可擴成當日全日包絡對齊日K窗。"""
+    """軸上是否為 60 分列（有 HH:MM ts）→ 豎導／標籤對最大量那根。"""
     for r in rows or []:
         if _teach_bar_hhmm((r or {}).get("ts")):
             return True
     return False
-
-
-def _teach_day_hl_extremes(
-    rows: Sequence[Dict[str, Any]], ymd: str
-) -> Optional[Tuple[float, float]]:
-    """同交易日全部柱的最高／最低（60分對齊遠／近日K下一層包絡）。"""
-    day = _ymd(ymd)
-    if not day:
-        return None
-    hi = None
-    lo = None
-    for r in rows or []:
-        rd = _ymd((r or {}).get("date")) or _ymd((r or {}).get("ts"))
-        if rd != day:
-            continue
-        try:
-            rh = float((r or {}).get("high") or 0)
-            rl = float((r or {}).get("low") or 0)
-        except (TypeError, ValueError):
-            continue
-        if rh <= 0 or rl <= 0 or rh < rl:
-            continue
-        hi = rh if hi is None else max(hi, rh)
-        lo = rl if lo is None else min(lo, rl)
-    if hi is None or lo is None or hi < lo:
-        return None
-    return (float(hi), float(lo))
 
 
 def _teach_day_max_vol_ts(
@@ -8636,8 +8609,8 @@ def _resolve_teach_vol_sr(
 
     primary＝volume_first 仍有效爆大量日高低。
     下一層：破撐／過壓後 cascade；教具預設未破也預覽往下的次大量區
-    （「若往下會進哪層」），preview=True。60 分軸下一層高低擴成當日全日包絡，
-    與遠／近日K下一層對齊（例 11/6 壓 40,436／撐 37,837）。
+    （「若往下會進哪層」），preview=True。60 分軸白帶高低認該大量單根
+    （與黃帶同；例 11/6 10:00 壓 40,436／撐 38,929），不准用全日包絡拉長。
     """
     rows = list(bars or [])
     out: Dict[str, Any] = {
@@ -8731,18 +8704,13 @@ def _resolve_teach_vol_sr(
         nhi = float(nxt.get("high") or nxt.get("pressure") or 0)
         nlo = float(nxt.get("low") or nxt.get("support") or 0)
         nts = str(nxt.get("ts") or "").strip()
-        # 60分：下一層改用該日全日高低（對齊遠／近日K包絡；主區仍認單根60分）
-        if nd and _teach_rows_have_intraday_ts(rows):
-            day_hl = _teach_day_hl_extremes(rows, nd)
-            if day_hl:
-                nhi, nlo = float(day_hl[0]), float(day_hl[1])
-            if not nts:
-                nts = _teach_day_max_vol_ts(rows, nd)
+        # 60分：豎導／時刻標對最大量那根；高低認該根單柱（與黃帶同）
+        if nd and _teach_rows_have_intraday_ts(rows) and not nts:
+            nts = _teach_day_max_vol_ts(rows, nd)
         i_nx = _teach_vol_match_bar_index(
             rows, ymd=nd, high=nhi, low=nlo, ts=nts
         )
         if i_nx is None and nd:
-            # 全日包絡對不到單根高低 → 對最大量那根做豎導
             if not nts:
                 nts = _teach_day_max_vol_ts(rows, nd)
             i_nx = _teach_vol_match_bar_index(
@@ -8756,7 +8724,7 @@ def _resolve_teach_vol_sr(
         ts_2nd = ""
         if i_nx2 is not None:
             ts_2nd = str((rows[int(i_nx2)] or {}).get("ts") or "").strip()
-        # 豎導優先對最大量根；rank[0] 可校正包絡對不齊時的索引
+        # 豎導優先對最大量根
         if rank and (i_nx is None or int(rank[0]) != int(i_nx)):
             if nts and str((rows[int(rank[0])] or {}).get("ts") or "").startswith(
                 str(nts)[:12]
@@ -8765,6 +8733,19 @@ def _resolve_teach_vol_sr(
             elif not nts:
                 i_nx = int(rank[0])
                 nts = str((rows[int(i_nx)] or {}).get("ts") or "").strip()
+        # 60分：高低強制跟豎導那根走，白帶不准比對應K更高／更低
+        if (
+            i_nx is not None
+            and 0 <= int(i_nx) < len(rows)
+            and _teach_rows_have_intraday_ts(rows)
+        ):
+            try:
+                bh = float((rows[int(i_nx)] or {}).get("high") or 0)
+                bl = float((rows[int(i_nx)] or {}).get("low") or 0)
+            except (TypeError, ValueError):
+                bh, bl = 0.0, 0.0
+            if bh > 0 and bl > 0 and bh >= bl:
+                nhi, nlo = bh, bl
         out["next"] = {
             "date": nd,
             "ts": nts,
@@ -8772,7 +8753,6 @@ def _resolve_teach_vol_sr(
             "high": nhi,
             "low": nlo,
             "direction": str(nxt.get("direction") or "below"),
-            # 標籤跟最終高低走（60分全日包絡後不准留單根舊價）
             "label_hold": f"下一層撐 {_px(nlo)}" if nlo > 0 else str(nxt.get("label_hold") or ""),
             "label_press": f"下一層壓 {_px(nhi)}" if nhi > 0 else str(nxt.get("label_press") or ""),
             "preview": bool(nxt_preview),
