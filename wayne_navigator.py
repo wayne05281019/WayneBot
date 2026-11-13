@@ -209,6 +209,7 @@ def _lookup_card_fingerprint(card: Optional[dict]) -> tuple:
         trend_note,
         nrows,
         int(bool(card.get("is_live"))),
+        int(bool((card.get("vol_chip_exchange") or {}).get("hit"))),
     )
 
 
@@ -1538,6 +1539,12 @@ class NavigatorEngine:
                 low_raw.tolist(),
                 df["volume"].tolist() if "volume" in df.columns else None,
             )
+        except Exception:
+            pass
+        try:
+            from vol_chip_exchange_observe import attach_vol_chip_exchange_observe
+
+            attach_vol_chip_exchange_observe(payload, self.db_path, stock_id)
         except Exception:
             pass
         try:
@@ -3830,6 +3837,28 @@ def temp_trend_note_cell_style(note: str, base: str):
     return base or C["white"], C["ink_mute"]
 
 
+def _trim_lookup_badges(badges: list, monthly: str = "") -> list:
+    """查股徽章最多 5；爆量換手觀察優先保留，其次月K。"""
+    out = []
+    for b in list(badges or []):
+        b = str(b or "").strip()
+        if b and "None" not in b and b not in out:
+            out.append(b)
+    monthly = str(monthly or "").strip()
+    if monthly and monthly not in out:
+        out.append(monthly)
+    keep_vol = next((b for b in out if "爆量換手" in b), "")
+    if len(out) > 5:
+        reserved = [b for b in (keep_vol, monthly) if b]
+        core = [b for b in out if b not in reserved][: 5 - len(reserved)]
+        merged = []
+        for b in list(reserved[:1]) + core + ([monthly] if monthly and monthly != keep_vol else []):
+            if b and b not in merged:
+                merged.append(b)
+        out = merged[:5]
+    return out[:5] or ["整理格局"]
+
+
 def _badge_style(text: str):
     """徽章：狀態用實心白字；已除權這類事實才白底描邊。"""
     C = _CARD
@@ -3838,6 +3867,9 @@ def _badge_style(text: str):
         return C["white"], C["neutral_fg"]
     if t.startswith("月K"):
         return C["navy"], C["white"]
+    if "爆量換手" in t:
+        # 觀察注記：琥珀底白字，跟紀律粉紅／多空冷熱分開
+        return "#E65100", C["white"]
     hot_keys = ("創", "新高", "少追", "過熱", "多頭", "上坡", "突破", "注意", "背離")
     cold_keys = ("低", "冷", "超跌", "止跌", "下坡", "箱型")
     if any(k in t for k in hot_keys) or ("高" in t and "低" not in t):
@@ -4358,19 +4390,10 @@ def _decision_card_stack_h(card: dict) -> float:
         CARD_FIG_W,
     )
     stance_h = float(stance_plan["h"])
-    badges = []
-    for b in list(card.get("badges") or []):
-        b = str(b or "").strip()
-        if b and "None" not in b and b not in badges:
-            badges.append(b)
-    monthly = str(card.get("monthly_stage") or "").strip()
-    if monthly and monthly not in badges:
-        badges.append(monthly)
-    if len(badges) > 5:
-        keep_m = monthly if monthly in badges else ""
-        core = [b for b in badges if b != keep_m][: 5 - (1 if keep_m else 0)]
-        badges = (core + [keep_m]) if keep_m else core
-    badges = badges[:5] or ["整理格局"]
+    badges = _trim_lookup_badges(
+        list(card.get("badges") or []),
+        str(card.get("monthly_stage") or ""),
+    )
     badge_w = [_text_w(b, 10.4, CARD_FIG_W, 900) + 3.4 for b in badges]
     badge_rows = _pack_badge_rows(list(zip(badges, badge_w)))
     try:
@@ -4472,19 +4495,10 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     stance_h = float(stance_plan["h"])
 
     fig_w = CARD_FIG_W
-    badges = []
-    for b in list(card.get("badges") or []):
-        b = str(b or "").strip()
-        if b and "None" not in b and b not in badges:
-            badges.append(b)
-    monthly = str(card.get("monthly_stage") or "").strip()
-    if monthly and monthly not in badges:
-        badges.append(monthly)
-    if len(badges) > 5:
-        keep_m = monthly if monthly in badges else ""
-        core = [b for b in badges if b != keep_m][: 5 - (1 if keep_m else 0)]
-        badges = (core + [keep_m]) if keep_m else core
-    badges = badges[:5] or ["整理格局"]
+    badges = _trim_lookup_badges(
+        list(card.get("badges") or []),
+        str(card.get("monthly_stage") or ""),
+    )
     badge_w = [_text_w(b, 10.4, fig_w, 900) + 3.4 for b in badges]
     badge_rows = _pack_badge_rows(list(zip(badges, badge_w)))
     try:
@@ -5462,6 +5476,21 @@ def render_first_glance_png(
     if exn:
         footer_src = [exn] + [n for n in footer_src if n != exn]
     footer_src = [n for n in footer_src if n][:3]
+    # 爆量換手＝觀察條（不是紀律、不是買訊）
+    observe_src = []
+    try:
+        vce = (card or {}).get("vol_chip_exchange") or {}
+        if vce.get("hit") and vce.get("note_zh"):
+            observe_src = [str(vce.get("note_zh"))]
+        elif not vce and dbp:
+            from vol_chip_exchange_observe import detect_recent_vol_chip_exchange
+
+            vce = detect_recent_vol_chip_exchange(dbp, str(stock_id or ""))
+            if vce.get("hit") and vce.get("note_zh"):
+                observe_src = [str(vce.get("note_zh"))]
+                card["vol_chip_exchange"] = vce
+    except Exception:
+        observe_src = []
 
     last = (tape or {}).get("last") or {}
     C = _CARD
@@ -5490,19 +5519,10 @@ def render_first_glance_png(
             listing=str(card.get("listing") or ""),
             stock_id=str(card.get("stock_id") or ""),
         )
-    badges = []
-    for b in list(card.get("badges") or []):
-        b = str(b or "").strip()
-        if b and "None" not in b and b not in badges:
-            badges.append(b)
-    monthly = str(card.get("monthly_stage") or "").strip()
-    if monthly and monthly not in badges:
-        badges.append(monthly)
-    if len(badges) > 5:
-        keep_m = monthly if monthly in badges else ""
-        core = [b for b in badges if b != keep_m][: 5 - (1 if keep_m else 0)]
-        badges = (core + [keep_m]) if keep_m else core
-    badges = badges[:5] or ["整理格局"]
+    badges = _trim_lookup_badges(
+        list(card.get("badges") or []),
+        str(card.get("monthly_stage") or ""),
+    )
     badge_w = [_text_w(b, 10.4, fig_w, 900) + 3.4 for b in badges]
     # 跟高低卡同一套：徽章只佔左欄，右欄留給收盤價；4 顆上二下二。
     badge_rows = _pack_badge_rows(list(zip(badges, badge_w)))
@@ -5592,6 +5612,9 @@ def render_first_glance_png(
     wrapped_notes = []
     for n in footer_src:
         wrapped_notes.extend((_wrap_fit(n, 12.5, row_w, fig_w) or [n])[:2])
+    wrapped_observe = []
+    for n in observe_src:
+        wrapped_observe.extend((_wrap_fit(n, 12.5, row_w, fig_w) or [n])[:2])
 
     lr_box_h, lr_gap = 7.4, 0.95
     space_n_rows = 2 if long_lows else 1
@@ -5635,6 +5658,7 @@ def render_first_glance_png(
         fund_drawn or conflict_lines or split_month_rows
     ) else 0.0
     note_h = (3.2 + 2.55 * len(wrapped_notes) + 1.0) if wrapped_notes else 0.0
+    observe_h = (3.2 + 2.55 * len(wrapped_observe) + 1.0) if wrapped_observe else 0.0
 
     def _glance_stack(gap_v: float):
         if em_rev_chart:
@@ -5655,6 +5679,7 @@ def render_first_glance_png(
             + (gap_v + ht_h if ht_h else 0)
             + (gap_v + ch_h if ch_h else 0)
             + (gap_v + fund_h if fund_h else 0)
+            + (gap_v + observe_h if observe_h else 0)
             + (gap_v + note_h if note_h else 0)
             + m_bot
         )
@@ -5665,7 +5690,7 @@ def render_first_glance_png(
     card_inch = _decision_card_stack_h(card) * 0.076
     target_h = card_inch / inch
     flex = 1 + sum(
-        1 for v in (rev_chart_h, space_h, heat_h, chips_h, fund_h, note_h) if v
+        1 for v in (rev_chart_h, space_h, heat_h, chips_h, fund_h, observe_h, note_h) if v
     )
     if flex and abs(H - target_h) > 0.35:
         gap = min(2.6, max(0.85, gap + (target_h - H) / flex))
@@ -6191,6 +6216,26 @@ def render_first_glance_png(
                     value_ha="right",
                 )
             fy -= 0.7
+
+    if observe_h:
+        y -= gap + observe_h
+        pane(pad_x, y, pane_w, observe_h, fc="#FFF3E0", ec="#E65100")
+        ax.text(
+            inner_l, y + observe_h - 1.55, "觀察",
+            fontproperties=_fp(12, "bold"), color="#E65100", va="center", zorder=3,
+        )
+        oy = y + observe_h - 4.0
+        for ln in wrapped_observe:
+            nw = min(tw(ln, 12.5) + 2.6, inner_r - inner_l + 0.6)
+            ax.add_patch(patches.FancyBboxPatch(
+                (inner_l - 0.8, oy - 1.2), nw, 2.4,
+                boxstyle="round,pad=0,rounding_size=0.4",
+                facecolor="#FFE0B2", edgecolor="none", zorder=3))
+            ax.text(
+                inner_l, oy, ln, fontproperties=_fp(12.5, "bold"),
+                color="#E65100", va="center", zorder=4,
+            )
+            oy -= 2.55
 
     if note_h:
         y -= gap + note_h
