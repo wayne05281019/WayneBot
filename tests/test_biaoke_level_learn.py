@@ -3315,8 +3315,10 @@ def test_micro_eight_wave_inset_and_retest_path_in_source():
     assert "_paint_micro_retest_then_rise_schematic" in c60
     path_src = inspect.getsource(_paint_micro_retest_then_rise_schematic)
     assert "新五波升" in path_src
-    # 回測價只留右欄一口；虛線端不准再貼「至少回測」
+    # 回測價只留右欄；虛線端不准再貼「至少回測」；升段用紅箭＋圈5指到右側標
     assert 'f"至少回測' not in path_src
+    assert "annotate" in path_src
+    assert '"5"' in path_src or "'5'" in path_src
     assert "右欄" in path_src
     assert "量欄" in inspect.getsource(_eight_wave_inset_rect_on_vol)
     paint = inspect.getsource(
@@ -4595,6 +4597,20 @@ def test_retest_avg_min_from_latest_band_oral():
     assert not any(
         abs(float(r.get("level") or 0) - 43000.0) < 0.6 for r in tw
     )
+    # 過期單點 41500 不准殘留成點位／回測標
+    assert not any(abs(float(r.get("level") or 0) - 41500.0) < 0.6 for r in tw)
+    # 41760 備注跟當令帶：≠回測帶，不准再寫 ≠41500
+    lab417 = next(
+        (
+            str(r.get("label") or "")
+            for r in tw
+            if abs(float(r.get("level") or 0) - 41760.0) < 0.6
+        ),
+        "",
+    )
+    if lab417:
+        assert "≠41500" not in lab417
+        assert "≠回測帶" in lab417 or "≠口述" in lab417
 
 
 def test_pressure_break_labels_split_slant_vs_41760():

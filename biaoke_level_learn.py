@@ -7675,25 +7675,35 @@ def _format_tw_pred_note(
         return f"回測平均／{_px(level)}・{br}"
     if role == "回測最低":
         return f"回測最低／{_px(level)}・{br}"
+    _rb_fmt = _retest_avg_min_from_pack(pack)
+    _band_fmt = bool(
+        _rb_fmt is not None
+        and abs(float(_rb_fmt["avg"]) - float(_rb_fmt["min"])) >= 0.6
+    )
     if role == "至少回測" or abs(float(level) - 41500.0) < 0.6:
-        # 舊單點口頭：同時當平均＋最低顯示語意（右欄仍可由 pred 拆兩口）
+        # 有當令回測帶時 41500 過期，不准再格式成回測最低
+        if _band_fmt:
+            return ""
         return f"回測最低／{_px(level)}・{br}"
     if role == "台指壓力" or abs(float(level) - 41760.0) < 0.6:
         lab = f"台指壓力／{_px(level)}・{br}"
         # 下降壓改口當令：水平41760 不准被讀成 C3 下降壓線
         if _pack_pressure_break_on(pack):
             lab = f"{lab}｜≠口述下降壓"
-        _pack_blob = " ".join(
-            str(x or "")
-            for x in (
-                (pack or {}).get("thesis"),
-                (pack or {}).get("snippet"),
-                (pack or {}).get("snippet_full"),
-                (pack or {}).get("wait_struct"),
+        if _band_fmt:
+            lab = f"{lab}｜≠回測帶"
+        else:
+            _pack_blob = " ".join(
+                str(x or "")
+                for x in (
+                    (pack or {}).get("thesis"),
+                    (pack or {}).get("snippet"),
+                    (pack or {}).get("snippet_full"),
+                    (pack or {}).get("wait_struct"),
+                )
             )
-        )
-        if _text_has_retest_41500(_pack_blob) or "至少回測41500" in _pack_blob:
-            lab = f"{lab}｜≠41500回測"
+            if _text_has_retest_41500(_pack_blob) or "至少回測41500" in _pack_blob:
+                lab = f"{lab}｜≠41500回測"
         return lab
     return _biaoke_pred_label(float(level), br)
 
@@ -7931,7 +7941,14 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
             "不再假跌破" in s and re.search(r"下降壓", s)
         ):
             _lab41760 = f"{_lab41760}｜≠口述下降壓"
-        if _text_has_retest_41500(s) or "至少回測41500" in s:
+        _rb417 = _retest_avg_min_from_text(s)
+        if (
+            _rb417 is not None
+            and abs(float(_rb417["avg"]) - float(_rb417["min"])) >= 0.6
+        ):
+            # 後文回測帶當令：備注對齊「≠回測帶」，不准再寫過期 ≠41500
+            _lab41760 = f"{_lab41760}｜≠回測帶"
+        elif _text_has_retest_41500(s) or "至少回測41500" in s:
             _lab41760 = f"{_lab41760}｜≠41500回測"
         _add(
             "tw",
@@ -8232,6 +8249,26 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
                 float(_rb_skip["lo"]) - 1.0 <= lv <= float(_rb_skip["hi"]) + 1.0
             ):
                 continue
+            # 後文已有雙價回測帶：舊「至少回測」單點（如41500）過期，不准再裸抽
+            if (
+                _rb_skip is not None
+                and abs(float(_rb_skip["avg"]) - float(_rb_skip["min"])) >= 0.6
+                and (
+                    abs(lv - 41500.0) < 0.6
+                    or (
+                        re.search(
+                            rf"(?:至少)?回測(?:到)?\s*{lv_i}",
+                            s,
+                        )
+                        and not (
+                            float(_rb_skip["lo"]) - 1.0
+                            <= lv
+                            <= float(_rb_skip["hi"]) + 1.0
+                        )
+                    )
+                )
+            ):
+                continue
             key = round(lv, 1)
             if key in seen_tw:
                 continue
@@ -8271,8 +8308,58 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
             label=f"費半{_px(lv)}",
         )
 
+    # 過期標／備注最後再濾一次（後文壓前文）
+    out = _purge_stale_tw_pred_levels(out, snip=s)
     # 庫內最新費半價：9865 已破就掛 2/25 8498（盤中 live 在 prepare 再刷一次）
     return _refresh_sox_pred_cascade(out, db_path)
+
+
+def _purge_stale_tw_pred_levels(
+    pred: Dict[str, Any], *, snip: str = ""
+) -> Dict[str, Any]:
+    """過濾過期加權標／備注：有當令回測帶就丟舊單點41500、路徑裸點、過期≠41500備注。"""
+    out = dict(pred or {})
+    rows_in = list(out.get("tw") or [])
+    if not rows_in:
+        return out
+    blob = str(snip or "")
+    rb = _retest_avg_min_from_text(blob)
+    band_on = bool(
+        rb is not None and abs(float(rb["avg"]) - float(rb["min"])) >= 0.6
+    )
+    keep: List[Dict[str, Any]] = []
+    for row in rows_in:
+        r = dict(row)
+        try:
+            lv = float(r.get("level") or 0)
+        except (TypeError, ValueError):
+            keep.append(r)
+            continue
+        role = str(r.get("role") or "")
+        lab = str(r.get("label") or "")
+        if band_on:
+            # 舊至少回測單點／同價裸抽＝過期
+            if abs(lv - 41500.0) < 0.6:
+                continue
+            if role in {"點位", "至少回測"} and abs(lv - float(rb["avg"])) > 0.6 and abs(
+                lv - float(rb["min"])
+            ) > 0.6:
+                # 路徑句殘留或舊單點
+                if abs(lv - 43000.0) < 0.6 or "至少回測" in lab or "飆預測" in lab:
+                    continue
+            if role == "台指壓力" and "≠41500" in lab:
+                r["label"] = lab.replace("≠41500回測", "≠回測帶").replace(
+                    "≠41500", "≠回測帶"
+                )
+        else:
+            # 無區間時仍清路徑裸點「43000之下」誤標
+            if role == "點位" and abs(lv - 43000.0) < 0.6 and re.search(
+                r"43000\s*(?:之)?下", blob
+            ):
+                continue
+        keep.append(r)
+    out["tw"] = keep
+    return out
 
 
 def _tw_support_ladder(pack: Optional[Dict[str, Any]] = None) -> Tuple[float, ...]:
@@ -12355,29 +12442,109 @@ def _paint_micro_retest_then_rise_schematic(
         zorder=5.95,
     )
     _spear_ring(ax, x2, y_up, color="#40c4ff", zorder=7, hot=False)
-    # 標在虛線折點左側，不准貼右欄跟「今」黏成一條
+    # 上升虛線中段取點：附圖式紅箭＋圈5 → 細虛指引到右側標（不准擠折點／右欄）
+    try:
+        from matplotlib.patches import Circle, FancyArrowPatch
+    except Exception:
+        Circle = None  # type: ignore
+        FancyArrowPatch = None  # type: ignore
+    t_arr = 0.62
+    x_arr = float(x1) + (float(x2) - float(x1)) * t_arr
+    y_arr = float(y_mid) + (float(y_up) - float(y_mid)) * t_arr
+    # 箭尖略往右上，離開K線／折點擁擠區
+    x_tip = float(x_arr) + max(2.2, (float(n) - float(x_arr)) * 0.22 + 1.2)
+    y_tip = float(y_arr) + max(abs(float(y_up) - float(y_mid)) * 0.85, 680.0)
+    try:
+        ax.annotate(
+            "",
+            xy=(float(x_tip), float(y_tip)),
+            xytext=(float(x_arr), float(y_arr)),
+            arrowprops={
+                "arrowstyle": "-|>",
+                "color": "#ff1744",
+                "lw": 2.35,
+                "mutation_scale": 18.0,
+                "shrinkA": 0,
+                "shrinkB": 0,
+                "alpha": 0.88,
+            },
+            zorder=7.5,
+            clip_on=False,
+        )
+    except Exception:
+        logger.debug("新五波升示意紅箭略過", exc_info=True)
+    # 圈5貼紅箭中段外側（對附圖）
+    x_c5 = float(x_arr) + (float(x_tip) - float(x_arr)) * 0.55
+    y_c5 = float(y_arr) + (float(y_tip) - float(y_arr)) * 0.40
+    if Circle is not None:
+        try:
+            # 圓半徑用點數（transform 會依軸），改 annotate 圓點＋字較穩
+            ax.plot(
+                [x_c5],
+                [y_c5],
+                marker="o",
+                markersize=13,
+                markerfacecolor="#101418",
+                markeredgecolor="#ffffff",
+                markeredgewidth=1.2,
+                zorder=8.2,
+                clip_on=False,
+            )
+            ax.text(
+                x_c5,
+                y_c5,
+                "5",
+                ha="center",
+                va="center",
+                fontproperties=fp(8.0, "bold"),
+                color="#ffffff",
+                zorder=8.3,
+                clip_on=False,
+            )
+        except Exception:
+            logger.debug("新五波升圈5略過", exc_info=True)
+    # 標籤再往右：箭尖→字用青虛線接，讓開回測平均／最低
+    x_lab = max(float(x_tip) + 1.1, float(n) + 1.05)
+    y_lab = float(y_tip) + max(abs(float(y_up) - float(y_mid)) * 0.03, 70.0)
+    if FancyArrowPatch is not None:
+        try:
+            ax.add_patch(
+                FancyArrowPatch(
+                    (float(x_tip), float(y_tip)),
+                    (float(x_lab) - 0.12, float(y_lab)),
+                    arrowstyle="-",
+                    linestyle=(0, (2.2, 1.6)),
+                    color="#40c4ff",
+                    linewidth=0.95,
+                    mutation_scale=1,
+                    zorder=7.6,
+                    clip_on=False,
+                )
+            )
+        except Exception:
+            logger.debug("新五波升指引線略過", exc_info=True)
     ax.text(
-        x2 - 0.55,
-        y_up + max(abs(y_up - y_mid) * 0.05, 140.0),
+        x_lab,
+        y_lab,
         "C走完→新五波升\n（示意・非買訊）",
         fontproperties=fp(7.4, "bold"),
         color="#40c4ff",
-        ha="right",
+        ha="left",
         va="bottom",
-        zorder=8,
+        zorder=8.4,
         linespacing=1.05,
         bbox={
             "boxstyle": "round,pad=0.10",
             "facecolor": "#061018",
             "edgecolor": "#40c4ff",
             "linewidth": 0.7,
-            "alpha": 0.88,
+            "alpha": 0.9,
         },
         clip_on=False,
     )
-    out["fut_x"] = float(x2)
-    out["fut_y"] = float(y_up)
-    out["xlim_right"] = max(float(n) + 1.2, float(x2) + 2.4)
+    out["fut_x"] = max(float(x2), float(x_lab) + 3.4)
+    out["fut_y"] = max(float(y_up), float(y_lab))
+    out["xlim_right"] = max(float(n) + 1.2, float(x_lab) + 4.6, float(x_tip) + 2.2)
     return out
 
 
@@ -13151,6 +13318,11 @@ def _tw_pred_right_notes(
     bb_dual_active = _text_has_bb_dual_path(blob_tw) or (
         "B-b" in blob_tw or "五波跌完" in blob_tw or "備線九波" in blob_tw
     )
+    _rb_right = _retest_avg_min_from_pack(pack) or _retest_avg_min_from_text(blob_tw)
+    _band_right = bool(
+        _rb_right is not None
+        and abs(float(_rb_right["avg"]) - float(_rb_right["min"])) >= 0.6
+    )
     for row in ((pack or {}).get("pred_levels") or {}).get("tw") or []:
         try:
             lv = float(row.get("level"))
@@ -13160,6 +13332,12 @@ def _tw_pred_right_notes(
             continue
         tag = str(row.get("tag") or "")
         role = str(row.get("role") or "")
+        # 當令回測帶已上：過期 41500／路徑 43000 裸標不准進右欄
+        if _band_right and (
+            abs(lv - 41500.0) < 0.6
+            or (role in {"點位", "至少回測"} and abs(lv - 43000.0) < 0.6)
+        ):
+            continue
         # 41760 台指壓標刪：已破、右欄不再掛（使用者 2026-11-10）
         if role == "台指壓力" or abs(lv - 41760.0) < 0.6:
             continue
