@@ -6080,25 +6080,25 @@ def _paint_huang_c60_structure(
             alpha=0.9,
             zorder=6.2,
         )
-        # 標在 C4 起段線上內側，不准佔右欄跟「今／回測／黃帶」互壓
+        # 標在 C4 起段線上方；價已由 C3④ 標出，這裡只寫「次級4壓」不准再疊數字
         try:
-            x_lab = float(i3) + max(1.2, (float(n) - float(i3)) * 0.08)
+            x_lab = float(i3) + max(2.0, (float(n) - float(i3)) * 0.12)
         except Exception:
             x_lab = max(0.0, float(n) * 0.55)
         ax.text(
             x_lab,
-            float(y_press) + span_y * 0.018,
-            f"次級4壓 {_px(float(y_press))}",
+            float(y_press) + span_y * 0.022,
+            "次級4壓",
             ha="left",
             va="bottom",
-            fontproperties=fp(7.6, "bold"),
+            fontproperties=fp(7.4, "bold"),
             color="#ff1744",
             zorder=41,
             bbox={
-                "boxstyle": "round,pad=0.12",
+                "boxstyle": "round,pad=0.10",
                 "facecolor": "#1a0808",
                 "edgecolor": "#ff1744",
-                "linewidth": 0.85,
+                "linewidth": 0.8,
                 "alpha": 0.9,
             },
             clip_on=False,
@@ -12029,8 +12029,8 @@ def _paint_micro_retest_then_rise_schematic(
     x1 = float(i0 + 3)
     x2 = float(i0 + 7)
     y_mid = float(y_rt)
-    # 主升示意端：從回測位往上回到「今與回測中點之上」，不准寫死新目標價
-    y_up = float(y_rt) + max(abs(float(y0) - float(y_rt)) * 0.55, 900.0)
+    # 主升示意端：略高於回測位即可，不准拉高到跟「今」右標互壓、不准寫死目標價
+    y_up = float(y_rt) + max(abs(float(y0) - float(y_rt)) * 0.28, 520.0)
     # 底描＋紫虛＝回測
     ax.plot(
         [i0, x1],
@@ -12068,18 +12068,19 @@ def _paint_micro_retest_then_rise_schematic(
         zorder=5.95,
     )
     _spear_ring(ax, x2, y_up, color="#40c4ff", zorder=7, hot=False)
+    # 標在虛線折點左側，不准貼右欄跟「今」黏成一條
     ax.text(
-        x2,
-        y_up + max(abs(y_up - y_mid) * 0.04, 160.0),
+        x2 - 0.55,
+        y_up + max(abs(y_up - y_mid) * 0.05, 140.0),
         "C走完→新五波升\n（示意・非買訊）",
-        fontproperties=fp(7.6, "bold"),
+        fontproperties=fp(7.4, "bold"),
         color="#40c4ff",
-        ha="center",
+        ha="right",
         va="bottom",
         zorder=8,
         linespacing=1.05,
         bbox={
-            "boxstyle": "round,pad=0.12",
+            "boxstyle": "round,pad=0.10",
             "facecolor": "#061018",
             "edgecolor": "#40c4ff",
             "linewidth": 0.7,
