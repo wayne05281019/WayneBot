@@ -8605,9 +8605,9 @@ def _paint_micro_today_session_bg(
     *,
     pack: Optional[Dict[str, Any]] = None,
     now: Optional[datetime] = None,
-    alpha: float = 0.50,
+    alpha: float = 0.22,
 ) -> List[int]:
-    """超近窗：今開盤→查詢當下每根 60 分 K 白底半透明（預設 50%）。
+    """超近窗：今開盤→查詢當下每根 60 分 K 白底半透明（預設 22%，50% 太洗）。
 
     一眼看出今天第一根；價／量同段。不是買訊。
     """

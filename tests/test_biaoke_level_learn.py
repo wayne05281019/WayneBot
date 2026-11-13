@@ -3330,7 +3330,7 @@ def test_micro_eight_wave_inset_and_retest_path_in_source():
 
 
 def test_micro_today_session_bg_indices_at_1300():
-    """13:00 查詢→今開盤起通常四根（09/10/11/12）；白底 alpha=0.50。"""
+    """13:00 查詢→今開盤起通常四根（09/10/11/12）；白底預設 alpha=0.22（50%太洗）。"""
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
@@ -3367,13 +3367,12 @@ def test_micro_today_session_bg_indices_at_1300():
         axv,
         rows,
         now=datetime(2026, 11, 13, 12, 45, tzinfo=ZoneInfo("Asia/Taipei")),
-        alpha=0.50,
     )
     assert painted == [1, 2, 3, 4]
     spans = [p for p in ax.patches if hasattr(p, "get_facecolor")]
     assert spans, "應有白底 axvspan"
     fc = spans[0].get_facecolor()
-    assert abs(float(fc[3]) - 0.50) < 0.02  # alpha 50%
+    assert abs(float(fc[3]) - 0.22) < 0.02  # 預設 22%，不准再回 50% 洗 K
     plt.close(fig)
 
 
