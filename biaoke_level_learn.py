@@ -5816,10 +5816,11 @@ def _paint_huang_c60_structure(
     fp,
     pack: Optional[Dict[str, Any]] = None,
 ) -> bool:
-    """超近窗 60 分：C1–C4 四色底＋C2上下虛框＋C3內①～⑤細白折＋C4第四大波白細折（不標浪號）。
+    """超近窗 60 分：C1–C4 四色底＋各段粗折連高低＋C3①～⑤／C4 細白芯（不標浪號）。
 
-    段界只靠四色底，不准再畫豎虛線（多餘）。不是買訊。折線／錨只連官方柱真高低。
-    話筒價位仍跟飆大口頭，不准把黃培碩段號當進出場。
+    底色已分 C1–C4；每段還要粗折把高低連成一線（同規藍 C1→C2）。
+    粗折內疊細白芯＝浪折細節。段界不准再畫豎虛線。不是買訊。
+    折線／錨只連官方柱真高低；不准把黃培碩段號當進出場。
     """
     if ax is None or fp is None or not rows:
         return False
@@ -5880,13 +5881,23 @@ def _paint_huang_c60_structure(
             clip_on=False,
         )
 
-    def _poly(xs: Sequence[float], ys: Sequence[float], *, edge: str, face: str, lw: float) -> None:
+    def _poly(
+        xs: Sequence[float],
+        ys: Sequence[float],
+        *,
+        edge: str,
+        face: str,
+        lw: float,
+        edge_extra: float = 1.15,
+        z0: float = 7.2,
+    ) -> None:
+        """粗邊＋亮芯：高低連成一線；芯＝細白／藍色浪折。"""
         ax.plot(
             list(xs),
             list(ys),
             color=edge,
-            lw=lw + 1.15,
-            zorder=7.2,
+            lw=float(lw) + float(edge_extra),
+            zorder=float(z0),
             solid_capstyle="round",
             solid_joinstyle="round",
         )
@@ -5895,7 +5906,7 @@ def _paint_huang_c60_structure(
             list(ys),
             color=face,
             lw=lw,
-            zorder=7.3,
+            zorder=float(z0) + 0.1,
             solid_capstyle="round",
             solid_joinstyle="round",
         )
@@ -6011,29 +6022,20 @@ def _paint_huang_c60_structure(
             dx=0.9,
         )
 
-    # C3 內段細白折＋①②③④⑤（④＝43135、⑤＝37837；標在側邊，不准壓K／折線）
+    # C3：粗折連高低（同規藍折粗細）＋細白芯＝①～⑤浪折；④＝43135、⑤＝37837
     c3_seg = list(anc.get("c3_seg") or [])
     if len(c3_seg) >= 3:
         xs3 = [float(p[0]) for p in c3_seg]
         ys3 = [float(p[1]) for p in c3_seg]
-        # 細白：深底＋白面（加一點粗：超近窗才跟得上①～⑤折）
-        ax.plot(
+        # 粗折＝高低連成一線（深邊加寬）；細白芯＝①～⑤浪折（話筒縮圖也要跟得上藍折）
+        _poly(
             xs3,
             ys3,
-            color="#0b0f14",
-            lw=1.85,
-            zorder=7.45,
-            solid_capstyle="round",
-            solid_joinstyle="round",
-        )
-        ax.plot(
-            xs3,
-            ys3,
-            color="#f5f5f5",
-            lw=1.2,
-            zorder=7.5,
-            solid_capstyle="round",
-            solid_joinstyle="round",
+            edge="#000000",
+            face="#ffffff",
+            lw=2.55,
+            edge_extra=1.85,
+            z0=7.5,
         )
         for ii, yy, lab in c3_seg:
             if not lab:
@@ -6058,28 +6060,19 @@ def _paint_huang_c60_structure(
                 dx=0.7,
             )
 
-    # C4：白細反彈折（路徑對手繪；線色用白）— 不准標①～⑤
+    # C4：粗折連高低＋細白芯（第四大波；不准標①～⑤）
     c4 = list(anc.get("c4") or anc.get("red") or [])
     if len(c4) >= 2:
         xs = [float(p[0]) for p in c4]
         ys = [float(p[1]) for p in c4]
-        ax.plot(
+        _poly(
             xs,
             ys,
-            color="#0b0f14",
-            lw=2.05,
-            zorder=7.55,
-            solid_capstyle="round",
-            solid_joinstyle="round",
-        )
-        ax.plot(
-            xs,
-            ys,
-            color="#f5f5f5",
-            lw=1.15,
-            zorder=7.6,
-            solid_capstyle="round",
-            solid_joinstyle="round",
+            edge="#000000",
+            face="#ffffff",
+            lw=2.55,
+            edge_extra=1.85,
+            z0=7.55,
         )
         for ii, yy, lab in c4:
             _spear_ring(ax, float(ii), float(yy), color="#ffffff", zorder=8.6, hot=False)
@@ -16005,8 +15998,8 @@ def _render_twii_c_wave_60_dark(
             fp=_fp,
             y=0.922,
             text=(
-                "浪線怎麼畫：藍折＝C1→C2高低連｜白細折＝C3內①～⑤高低連｜"
-                "C4白折＝第四大波（不標浪號）｜黃帶＝現在撐壓｜非買訊"
+                "浪線怎麼畫：底色分C1–C4｜粗折＝各段高低連成一線（藍C1→C2／白C3／白C4）｜"
+                "粗折內細白芯＝浪折（C3①～⑤；C4不標浪號）｜黃帶＝現在撐壓｜非買訊"
             ),
         )
     right_notes: List[Dict[str, Any]] = [
