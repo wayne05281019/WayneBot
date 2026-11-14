@@ -1026,6 +1026,32 @@ def verify_teach_stamp_preflight(
     else:
         fails.append({"code": "tw_bars_missing", "detail": "無加權末根可對"})
 
+    # —— 加權 tip 不得落後最近已收開市日（週末／夜盤仍要比到上一個開市收）——
+    # 根因：日K 停 11/11、60 分已到 11/13 → 超近對、遠／近白底仍卡舊收
+    try:
+        from trading_calendar import last_open_calendar_day_on_or_before
+
+        wall_ymd = wall.strftime("%Y%m%d") if hasattr(wall, "strftime") else ""
+        target = (
+            last_open_calendar_day_on_or_before(wall_ymd) if len(wall_ymd) == 8 else ""
+        )
+        tip_tw2 = _ymd(tip0.get("tw_asof"))
+        if (
+            tip_tw2
+            and target
+            and tip_tw2 < target
+            and not _twii_cash_session_live(wall)
+            and int(tip0.get("tw_live") or 0) != 1
+        ):
+            fails.append(
+                {
+                    "code": "tw_asof_behind_session",
+                    "detail": f"加權 tip {tip_tw2} < 最近開市 {target}",
+                }
+            )
+    except Exception:
+        logger.debug("stamp preflight 最近開市對質略過", exc_info=True)
+
     # —— 費半：tip＝真實美股末日；tip 缺但庫有 → 當場補上，不准空 tip 擋圖 ——
     try:
         sox_rows = _load_us_daily(db_path, "SOX", "20260101") if db_path else []
@@ -1185,6 +1211,60 @@ def ensure_teach_tip_preflight(
     except Exception:
         logger.exception("preflight 重算 tip 失敗")
     tip0 = pack.get("teach_tip") if isinstance(pack.get("teach_tip"), dict) else {}
+    # 加權日K 落後最近開市／60 分末日 → 先補官方再凍 tip（遠／近白底卡舊、超近已對）
+    try:
+        from trading_calendar import last_open_calendar_day_on_or_before
+
+        wall = _query_now_from_pack(pack)
+        wall_ymd = wall.strftime("%Y%m%d") if hasattr(wall, "strftime") else ""
+        target = (
+            last_open_calendar_day_on_or_before(wall_ymd) if len(wall_ymd) == 8 else ""
+        )
+        tip_tw = _ymd((tip0 or {}).get("tw_asof"))
+        m60 = ""
+        try:
+            rows60 = _load_twii60_day_rows(db_path, since_ymd="20261001")
+            if rows60:
+                m60 = _ymd(rows60[-1].get("date"))
+        except Exception:
+            m60 = ""
+        lag = bool(
+            tip_tw
+            and not _twii_cash_session_live(wall)
+            and int((tip0 or {}).get("tw_live") or 0) != 1
+            and (
+                (target and tip_tw < target)
+                or (m60 and tip_tw < m60)
+            )
+        )
+        if lag:
+            logger.warning(
+                "preflight 加權 tip 落後 tip=%s target=%s m60=%s → 再補日K",
+                tip_tw,
+                target,
+                m60,
+            )
+            try:
+                _ensure_teach_index_bars(db_path)
+            except Exception:
+                logger.exception("preflight 補加權日K失敗")
+            try:
+                _ensure_latest_tx_night_row(db_path)
+            except Exception:
+                logger.exception("preflight 補電子盤夜盤失敗")
+            try:
+                pack["teach_tip"] = compute_teach_tip_snapshot(
+                    db_path, pack, reuse_frozen=False
+                )
+            except Exception:
+                logger.exception("preflight 落後補後重算 tip 失敗")
+            tip0 = (
+                pack.get("teach_tip")
+                if isinstance(pack.get("teach_tip"), dict)
+                else {}
+            )
+    except Exception:
+        logger.exception("preflight 加權落後對質略過")
     if not float((tip0 or {}).get("sox_close") or 0):
         try:
             _ensure_teach_index_bars(db_path)
@@ -2640,6 +2720,56 @@ def _paint_stamp_hbox(
     host.add_artist(ab)
 
 
+def _teach_stamp_tw_mouth(
+    bars: Sequence[Dict[str, Any]],
+    *,
+    pack: Optional[Dict[str, Any]] = None,
+    close: Optional[float] = None,
+    db_path: str = "",
+) -> Dict[str, Any]:
+    """加權白底一口：asof／收／盤中旗必須同來源，不准 tip 日＋柱價拆兩日。
+
+    tip 新於圖軸末根（近窗截短／日K尚未補上）→ 跟 tip。
+    tip 舊於末根 → 跟圖軸。
+    同日 → 跟 tip（三窗同口、preflight 已對官方）。
+    """
+    as_of = _ymd(bars[-1].get("date")) if bars else ""
+    live = bool(bars) and int((bars[-1] or {}).get("live_session") or 0) == 1
+    wall = _query_now_from_pack(pack)
+    if live and not _twii_cash_session_live(wall):
+        live = False
+    bar_c = 0.0
+    if close is not None:
+        try:
+            bar_c = float(close or 0)
+        except (TypeError, ValueError):
+            bar_c = 0.0
+    if bar_c <= 0 and bars:
+        try:
+            bar_c = float((bars[-1] or {}).get("close") or 0)
+        except (TypeError, ValueError):
+            bar_c = 0.0
+    tip0 = (pack or {}).get("teach_tip") if isinstance(pack, dict) else None
+    if not isinstance(tip0, dict) or float(tip0.get("tw_close") or 0) <= 0:
+        return {"asof": as_of, "close": bar_c, "live": live, "src": "bars"}
+    tip_asof = _ymd(tip0.get("tw_asof"))
+    try:
+        tip_c = float(tip0.get("tw_close") or 0)
+    except (TypeError, ValueError):
+        tip_c = 0.0
+    tip_live = bool(int(tip0.get("tw_live") or 0))
+    if tip_live and not _twii_cash_session_live(wall):
+        tip_live = False
+    # 只比加權腿：費半缺／電子盤舊不准拖加權改吃舊柱（sox_degraded 時仍要對官方加權收）
+    if tip_asof and as_of and tip_asof > as_of and tip_c > 0:
+        return {"asof": tip_asof, "close": tip_c, "live": tip_live, "src": "tip_newer"}
+    if tip_asof and as_of and tip_asof < as_of:
+        return {"asof": as_of, "close": bar_c, "live": live, "src": "bars_newer"}
+    if tip_asof and tip_c > 0:
+        return {"asof": tip_asof or as_of, "close": tip_c, "live": tip_live, "src": "tip"}
+    return {"asof": as_of, "close": bar_c, "live": live, "src": "bars"}
+
+
 def _paint_teach_query_stamp(
     fig,
     bars: Sequence[Dict[str, Any]],
@@ -2670,34 +2800,15 @@ def _paint_teach_query_stamp(
             return
     from matplotlib.offsetbox import TextArea
 
-    as_of = _ymd(bars[-1].get("date")) if bars else ""
-    live = int((bars[-1] or {}).get("live_session") or 0) == 1
-    if live and not _twii_cash_session_live(_query_now_from_pack(pack)):
-        live = False
-    # prep 凍結 tip：三窗加權戳同口；tip 落後圖軸末根 → 改吃圖軸（不准日期／價拆兩日）
-    tip0 = (pack or {}).get("teach_tip") if isinstance(pack, dict) else None
-    _tip_stale_tw = bool(
-        isinstance(tip0, dict)
-        and _teach_tip_stale_vs_bars(
-            tip0, bars, db_path=str(db_path or ""), pack=pack
-        )
+    mouth = _teach_stamp_tw_mouth(
+        bars, pack=pack, close=close, db_path=str(db_path or "")
     )
-    if (
-        isinstance(tip0, dict)
-        and str(label_prefix or "").strip() in {"", "加權"}
-        and float(tip0.get("tw_close") or 0) > 0
-        and not _tip_stale_tw
-    ):
-        as_of = _ymd(tip0.get("tw_asof")) or as_of
-        live = bool(int(tip0.get("tw_live") or 0))
-        if close is None:
-            close = float(tip0["tw_close"])
-    elif isinstance(tip0, dict) and _tip_stale_tw:
-        # 過期 tip：白底強制跟末根縮圖K 同日同價
-        close = None
-        live = int((bars[-1] or {}).get("live_session") or 0) == 1 if bars else False
-        if live and not _twii_cash_session_live(_query_now_from_pack(pack)):
-            live = False
+    as_of = _ymd(mouth.get("asof"))
+    live = bool(mouth.get("live"))
+    try:
+        px_v = float(mouth.get("close") or 0)
+    except (TypeError, ValueError):
+        px_v = 0.0
     when = _stamp_when_bit(
         as_of,
         live=live,
@@ -2705,8 +2816,7 @@ def _paint_teach_query_stamp(
     )
     prefix = str(label_prefix or "").strip()
     meta = f"{prefix} {when}".strip() if prefix else when
-    px_v = close
-    if px_v is None:
+    if px_v <= 0:
         try:
             px_v = float(bars[-1].get("close") or 0)
         except (TypeError, ValueError):
@@ -2716,7 +2826,12 @@ def _paint_teach_query_stamp(
     except (TypeError, ValueError):
         px_s = "—"
     db = str(db_path or (pack or {}).get("db_path") or "").strip()
-    chg = _day_change_vs_prev(px_v, _prev_bar_close(bars, db_path=db))
+    # 漲跌對白底 asof 前一開市日；tip 新於窗末時不准用窗末日去對％
+    prev_bars: Sequence[Dict[str, Any]] = bars
+    bar_last = _ymd((bars[-1] or {}).get("date")) if bars else ""
+    if as_of and bar_last and as_of != bar_last:
+        prev_bars = list(bars) + [{"date": as_of, "close": px_v}]
+    chg = _day_change_vs_prev(px_v, _prev_bar_close(prev_bars, db_path=db))
     pct_s = str(chg.get("pct_text") or "").strip()
     pts_s = str(chg.get("pts_text") or "").strip()
     chg_col = _chg_paint_color(int(chg.get("sign") or 0))
