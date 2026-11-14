@@ -3,6 +3,7 @@
 import sqlite3
 
 from fundamentals import (
+    attach_quarter_box_eps,
     emerging_income_seasons,
     ensure_fundamentals_tables,
     glance_fund_split_layout,
@@ -100,6 +101,14 @@ def _seed_emerging_7853(db: str) -> None:
         "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
         ("7853", 2025, 2, "政美應用", "EM", 185166, 104999, 80167, 43.29, -42198, -54199, -1.37),
     )
+    # 2026 單季：讓季框右半能對上官方 EPS（Q3 月未滿季故不進框）
+    for season, eps in ((1, 0.37), (2, 0.95)):
+        conn.execute(
+            "INSERT INTO quarterly_income(stock_id,year,season,stock_name,market,revenue,cogs,"
+            "gross_profit,gross_margin_pct,operating_income,net_income,eps) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            ("7853", 2026, season, "政美應用", "EM", 100000, 50000, 50000, 50.0, 20000, 15000, eps),
+        )
     conn.commit()
     conn.close()
 
@@ -249,8 +258,22 @@ def test_month_quarter_split_rows_boxes():
     assert "0.82億元" in (q2.get("amount") or "")
     assert "・" not in (q2.get("trend") or "")  # 框內短句，不准拖・後續
     assert q2["yyyymms"] == ["202604", "202605", "202606"]
+    assert q2.get("eps") is None and q2.get("eps_lab") == ""
     # 1→12：Q1 在前
     assert boxes[0]["season"] <= boxes[-1]["season"]
+    filled = attach_quarter_box_eps(
+        boxes,
+        [{"year": 2026, "season": 2, "eps": 1.25}, {"year": 2026, "season": 1, "eps": -0.5}],
+    )
+    assert next(b for b in filled if b["season"] == 2)["eps_lab"] == "1.25"
+    assert next(b for b in filled if b["season"] == 1)["eps_lab"] == "-0.50"
+    assert next(b for b in filled if b["season"] == 2)["eps"] == 1.25
+    # Q2 EPS 1.25 > Q1 -0.50 → 紅字旗
+    assert next(b for b in filled if b["season"] == 2)["eps_better"] is True
+    assert next(b for b in filled if b["season"] == 1)["eps_better"] is False
+    # 本 fixture Q2 營收＜Q1（較上季大減）→ 不准紅字
+    assert next(b for b in boxes if b["season"] == 2).get("rev_better") is False
+    assert "較上季大減" in (next(b for b in boxes if b["season"] == 2).get("trend") or "")
 
 
 def test_glance_split_layout_emerging_only(tmp_path, monkeypatch):
@@ -275,6 +298,10 @@ def test_glance_split_layout_emerging_only(tmp_path, monkeypatch):
     assert "上半年" in lay["bottom_season"] or "前三季" in lay["bottom_season"] or "第1季" in lay["bottom_season"] or "全年" in lay["bottom_season"]
     assert len(lay["quarter_boxes"]) >= 2
     assert any(b["season"] == 2 for b in lay["quarter_boxes"])
+    q1 = next(b for b in lay["quarter_boxes"] if b["season"] == 1)
+    q2 = next(b for b in lay["quarter_boxes"] if b["season"] == 2)
+    assert q1.get("eps_lab") == "0.37"
+    assert q2.get("eps_lab") == "0.95"
     # 左列 1→12
     assert lay["month_rows"][0]["yyyymm"] == "202601"
     assert lay["month_rows"][-1]["yyyymm"] == "202612"

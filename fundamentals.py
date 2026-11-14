@@ -10,7 +10,7 @@ import sqlite3
 import threading
 import time
 from html.parser import HTMLParser
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import requests
 
@@ -22,8 +22,11 @@ except Exception:
 
 logger = logging.getLogger("WayneBot.Fundamentals")
 
+# 不准帶 br：證交所 OpenAPI 回 brotli 時 urllib3/brotli 會解碼炸掉，
+# 上市月營收整批寫不進庫，介紹卡近窗就少掉最新月（例：2383 十月）。
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Accept-Encoding": "gzip, deflate",
 }
 
 TWSE_MONTHLY = "https://openapi.twse.com.tw/v1/opendata/t187ap05_L"
@@ -1328,6 +1331,80 @@ def get_latest_income(db_path: str, stock_id: str) -> Optional[Dict[str, Any]]:
     return dict(row) if row else None
 
 
+def list_quarterly_income(
+    db_path: str, stock_id: str, *, limit: int = 16
+) -> List[Dict[str, Any]]:
+    """該檔綜合損益列（新→舊）；興櫃季框右半 EPS 只認這裡，不准造假。"""
+    ensure_fundamentals_tables(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        """
+        SELECT * FROM quarterly_income
+        WHERE stock_id=?
+        ORDER BY year DESC, season DESC
+        LIMIT ?
+        """,
+        (str(stock_id).strip(), max(1, int(limit))),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def attach_quarter_box_eps(
+    boxes: List[Dict[str, Any]],
+    income_rows: Optional[Sequence[Dict[str, Any]]] = None,
+) -> List[Dict[str, Any]]:
+    """季框併官方季 EPS；該年季無綜合損益列 → eps 空，不准填假數。
+
+    eps_better＝有上季官方 EPS 且本季＞上季（話筒紅字）。
+    """
+    by: Dict[Tuple[int, int], Dict[str, Any]] = {}
+    for r in income_rows or ():
+        try:
+            by[(int(r["year"]), int(r["season"]))] = r
+        except (KeyError, TypeError, ValueError):
+            continue
+    out: List[Dict[str, Any]] = []
+    for raw in boxes or ():
+        b = dict(raw)
+        b.setdefault("rev_better", False)
+        b["eps_better"] = False
+        try:
+            key = (int(b["year"]), int(b["season"]))
+        except (KeyError, TypeError, ValueError):
+            b["eps"] = None
+            b["eps_lab"] = ""
+            out.append(b)
+            continue
+        y, s = key
+        if s == 1:
+            prev_key = (y - 1, 4)
+        else:
+            prev_key = (y, s - 1)
+        row = by.get(key)
+        if row is None:
+            b["eps"] = None
+            b["eps_lab"] = ""
+        else:
+            try:
+                eps_v = float(row.get("eps") or 0)
+            except (TypeError, ValueError):
+                eps_v = 0.0
+            b["eps"] = eps_v
+            b["eps_lab"] = f"{eps_v:.2f}"
+            prev = by.get(prev_key)
+            if prev is not None:
+                try:
+                    prev_eps = float(prev.get("eps") or 0)
+                except (TypeError, ValueError):
+                    prev_eps = None
+                if prev_eps is not None and eps_v > prev_eps:
+                    b["eps_better"] = True
+        out.append(b)
+    return out
+
+
 def list_monthly_revenue(db_path: str, stock_id: str, *, limit: int = 36) -> List[Dict[str, Any]]:
     """近 N 個月營收列（新→舊）。興櫃＝t187ap05_R 當期＋NAS rotc 歷史。"""
     ensure_fundamentals_tables(db_path)
@@ -1513,16 +1590,39 @@ def _quarter_right_label(
     return body
 
 
+def _quarter_rev_better(
+    qq: Dict[str, Any],
+    by_key: Dict[Tuple[int, int], Dict[str, Any]],
+) -> bool:
+    """本季營收＞上季官方季營收才算更好（話筒紅字）。"""
+    y, s = int(qq["year"]), int(qq["season"])
+    rev = float(qq.get("revenue") or 0)
+    if s == 1:
+        prev_key = (y - 1, 4)
+    else:
+        prev_key = (y, s - 1)
+    prev = by_key.get(prev_key)
+    if not prev:
+        return False
+    try:
+        prev_rev = float(prev.get("revenue") or 0)
+    except (TypeError, ValueError):
+        return False
+    return prev_rev > 0 and rev > prev_rev
+
+
 def _quarter_box_parts(
     qq: Dict[str, Any],
     by_key: Dict[Tuple[int, int], Dict[str, Any]],
-) -> Dict[str, str]:
-    """季框三行分開：標／金額／較上季，畫圖時可各自對齊、縮字。"""
+) -> Dict[str, Any]:
+    """季框三行分開：標／金額／較上季；rev_better 供金額紅字。"""
     s = int(qq["season"])
     return {
         "title": f"第{s}季合計",
         "amount": format_yi(float(qq.get("revenue") or 0)),
         "trend": _quarter_qoq_short(qq, by_key),
+        "rev_better": _quarter_rev_better(qq, by_key),
+        "season": s,
     }
 
 
@@ -1565,6 +1665,11 @@ def month_quarter_split_rows(
                 "title": parts["title"],
                 "amount": parts["amount"],
                 "trend": parts["trend"],
+                "rev_better": bool(parts.get("rev_better")),
+                # 預設空；glance 再併官方 quarterly_income EPS
+                "eps": None,
+                "eps_lab": "",
+                "eps_better": False,
             }
         )
     # 與左列 1→12 同向：Q1 在上、Q2 在下
@@ -1717,6 +1822,11 @@ def glance_fund_split_layout(stock_id: str, db_path: str = None) -> Optional[Dic
             }
         )
     q = get_latest_income(path, sid)
+    income_rows = list_quarterly_income(path, sid, limit=16)
+    quarter_boxes = attach_quarter_box_eps(
+        list((split or {}).get("quarter_boxes") or []),
+        income_rows,
+    )
     bottom: List[Tuple[str, str]] = []
     bottom_season = ""
     if q:
@@ -1741,7 +1851,7 @@ def glance_fund_split_layout(stock_id: str, db_path: str = None) -> Optional[Dic
     return {
         "emerging": True,
         "month_rows": month_rows,
-        "quarter_boxes": list((split or {}).get("quarter_boxes") or []),
+        "quarter_boxes": quarter_boxes,
         "chart_points": chart_points,
         "bottom": bottom,
         "bottom_season": bottom_season,
@@ -1890,18 +2000,15 @@ def glance_fundamentals_plain(
             rows.extend(monthly_revenue_window_rows(months, limit=win_n))
         elif m:
             rows.extend(monthly_revenue_window_rows([m], limit=1))
-        if q_from_m:
+        # 有綜合損益：季營收只認損益表營收（與毛利／EPS 同口徑）。
+        # 月彙季不准再用 format_season_zh（會把單季 3 誤標成「前三季」）。
+        if q_from_m and not q:
             by_key = {(int(x["year"]), int(x["season"])): x for x in q_from_m}
             show = q_from_m[:8]
             for i, qq in enumerate(show):
                 y, s = int(qq["year"]), int(qq["season"])
                 rev = float(qq.get("revenue") or 0)
-                try:
-                    from industry_brief import format_season_zh
-
-                    q_lab = format_season_zh(y, s)
-                except Exception:
-                    q_lab = f"{y}Q{s}"
+                q_lab = f"{y}年第{s}季合計"
                 yoy_q = by_key.get((y - 1, s))
                 if s == 1:
                     prev_key = (y - 1, 4)
@@ -1923,12 +2030,11 @@ def glance_fundamentals_plain(
                     if t and t != "—"
                 )
                 lab = "季營收" if i == 0 else f"季營收{i + 1}"
-                # 無增減標時不加「—」，避免 ha=right 時短尾把億元撐離右緣
                 q_val = f"{q_lab}　{format_yi(rev)}"
                 if tag:
                     q_val = f"{q_val}　{tag}"
                 rows.append((lab, q_val))
-        elif emerging and (months or m):
+        elif emerging and (months or m) and not q:
             rows.append(("季營收", "月數未滿三個月齊，暫不彙季（不造假）"))
         if q:
             rev = float(q.get("revenue") or 0)
@@ -1940,10 +2046,8 @@ def glance_fundamentals_plain(
                 q_lab = format_season_zh(q["year"], q["season"])
             except Exception:
                 q_lab = f"{q['year']}Q{q['season']}"
-            if not q_from_m:
-                rows.append(("季報", f"{q_lab}　營收 {format_yi(q.get('revenue') or 0)}"))
-            else:
-                rows.append(("季報", f"{q_lab}（綜合損益）"))
+            # 季營收＝綜合損益營業收入；與毛利／毛利率／EPS 同一列來源
+            rows.append(("季營收", f"{q_lab}　{format_yi(rev)}"))
             if float(q.get("gross_profit") or 0) or float(q.get("gross_margin_pct") or 0):
                 rows.append(("毛利", format_yi(q.get("gross_profit") or 0)))
                 rows.append(("毛利率", f"{float(q['gross_margin_pct']):.1f}%"))

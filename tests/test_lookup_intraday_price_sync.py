@@ -144,7 +144,7 @@ def test_glance_prefers_card_over_stale_tape():
         __import__("wayne_navigator", fromlist=["render_first_glance_png"]).render_first_glance_png
     )
     assert "display_quote_from_card" in src
-    assert "match-card-076-fund-rev2line-v77-card-price" in src
+    assert "match-card-076-fund-rev2line-v80-qrev-q-eps" in src
 
 
 def test_structure_lookup_passes_card_into_spot():

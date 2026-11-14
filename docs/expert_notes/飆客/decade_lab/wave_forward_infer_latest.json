@@ -1,24 +1,48 @@
 {
-  "as_of_taipei": "2026-11-12T16:45:00+0800",
-  "as_of_day": "20261112",
-  "infer_for": "20261113",
+  "as_of_taipei": "2026-11-13T16:50:00+0800",
+  "as_of_day": "20261113",
+  "infer_for": "20261116",
   "today_job": "post_close_next_session_infer",
   "phone_sync": "blocked",
   "buy_signal": false,
   "certainty": false,
   "segment_numbers": "REQUIRED",
-  "from_teach_zh": "11/12 自回教法：反彈點未及→弱；期開宣判反彈結束；絕對到43000下；位階4整理。13:05 點名低點帶41900～42700（約95%・絕對不破語意）。舉一反三：夜高44911／夜收44606未及＝弱；I5大量撐階梯；I8＝該帶對齊11/10日K與15分／60分大量換手。",
-  "from_eod_zh": "11/12 日盤 TWII L42943.5／C43091.87：M1回測43135觸發但收失；M2失效；M3第一段43135撤銷成立，41760／37837未測。低已觸43000下、收略回上。他點名41900～42700帶未進。",
+  "calendar_zh": "11/14～11/15休市；下一開市日＝11/16。",
+  "from_eod_zh": "11/13 日盤 TWII L43534.12／C43675.12 V12357048：M2收復43135成立；M1回測41760未觸；N1日盤未再探43000下、未進419～427（夜盤TX L42371曾進帶）；M3未觸發。",
+  "from_oral_zh": "11/13 飆大：5-3-5 abc修正・今＝小B第3波反彈可能性近高・下星期最後小C。大房間仍大C；不准叠成大C第幾段。",
   "paths": [
     {
-      "id": "M1_retest_41760_after_43135_fail",
+      "id": "M2_retest_43135_as_support",
       "priority": 1,
       "status": "推論／未定案",
-      "must_happen_zh": "43135已收失→下一開市日優先回測41760是否當撐（壓轉撐第二拍）",
+      "must_happen_zh": "已收復43135→下一開市日優先回測43135是否當撐",
+      "segments_provisional": [
+        {
+          "label": "post_hold_reclaim",
+          "role": "昨已收復",
+          "level": 43135.92
+        },
+        {
+          "label": "post_hold_43135_retest",
+          "role": "回測43135撐",
+          "level": 43135.92
+        }
+      ],
+      "levels": {
+        "support": 43135.92,
+        "failed_hold_prev": 41760.0
+      },
+      "invalidate_zh": "日盤低遠高於43135且收續穩上＝回測延後／延續觀察（仍不准標新五波①）"
+    },
+    {
+      "id": "M1_retest_41760_after_43135_fail",
+      "priority": 2,
+      "status": "推論／未定案",
+      "must_happen_zh": "若有效失守43135→升權回測41760撐",
       "segments_provisional": [
         {
           "label": "post_hold_43135_fail",
-          "role": "昨已撤銷",
+          "role": "43135再撤銷",
           "level": 43135.92
         },
         {
@@ -28,21 +52,20 @@
         }
       ],
       "levels": {
-        "support": 41760.0,
-        "failed_hold": 43135.92,
-        "friday_low": 37837.05
+        "fail": 43135.92,
+        "support": 41760.0
       },
-      "invalidate_zh": "日盤低遠高於41760且有效收再站回並站穩43135上＝41760回測延後"
+      "invalidate_zh": "失守後迅速收回並收穩43135上＝假跌破該層"
     },
     {
       "id": "N1_continue_below_43000_then_band",
-      "priority": 2,
-      "status": "推論／未定案（教法鏈）",
-      "must_happen_zh": "續弱則再探43000下並進入41900～42700大量換手帶消化；帶內可對應個股分批（非指數買訊）",
+      "priority": 3,
+      "status": "推論／未定案（教法鏈／平行）",
+      "must_happen_zh": "若再轉弱：再探43000下並進入41900～42700帶；夜盤已先行探過帶內",
       "segments_provisional": [
         {
           "label": "path_below_43000",
-          "role": "昨低已觸、收未鎖→續追",
+          "role": "再探43000下",
           "level": 43000.0
         },
         {
@@ -57,37 +80,7 @@
         "band_lo": 41900.0,
         "band_hi": 42700.0
       },
-      "invalidate_zh": "強收並有效站穩43135上＝弱勢路徑暫降權"
-    },
-    {
-      "id": "N4_test_419_427_vol_band",
-      "priority": 3,
-      "status": "推論／未定案（他已點名）",
-      "must_happen_zh": "43000下之後，修正低點優先落在41900～42700大量換手帶消化；帶內可對應個股分批（他已開始接），指數本身仍非買訊",
-      "segments_provisional": [
-        {
-          "label": "below_43000",
-          "role": "先到43000下",
-          "level": 43000.0
-        },
-        {
-          "label": "enter_419_427",
-          "role": "進入他點名低點帶",
-          "lo": 41900.0,
-          "hi": 42700.0
-        },
-        {
-          "label": "digest_in_band",
-          "role": "帶內量價消化／分批接股並行"
-        }
-      ],
-      "levels": {
-        "band_lo": 41900.0,
-        "band_hi": 42700.0,
-        "path_below": 43000.0
-      },
-      "vol_align_zh": "日K11/10低41930／收42712；60分11/04～11/05與11/10 09:00大量；使用者15分同帶爆量",
-      "invalidate_zh": "有效失守41900且延續→N3升權37837；或他改口取消該帶"
+      "invalidate_zh": "強收並有效站穩43135上延續＝弱勢路徑暫降權"
     },
     {
       "id": "M3_lose_41760_then_friday",
@@ -102,7 +95,7 @@
         },
         {
           "label": "B-b",
-          "role": "回測C3-5低",
+          "role": "回測C3底／週五低",
           "level": 37837.05
         }
       ],
@@ -111,57 +104,32 @@
         "retest": 37837.05
       },
       "invalidate_zh": "失守後迅速收回並收穩＝假跌破該層"
-    },
-    {
-      "id": "M2_reclaim_43135",
-      "priority": 5,
-      "status": "對照／降權",
-      "must_happen_zh": "若 unexpectedly 再有效收穩43135上，才重開延續觀察（不准發明新五波1）",
-      "segments_provisional": [
-        {
-          "label": "post_hold_reclaim",
-          "role": "收復昨撐",
-          "level": 43135.92
-        }
-      ],
-      "levels": {
-        "reclaim": 43135.92
-      },
-      "invalidate_zh": "未收穩則忽略"
     }
   ],
-  "stock_parallel_zh": "大盤修正窗：底部出量龍頭候選→等量縮介入（智邦／光聖／台光電類）；非追指數反彈高。",
+  "stock_parallel_zh": "他11/13：這次abc修正偏快偏溫和→操作看個股技術、指標股走勢；指數本身非買訊。",
   "not_buy_signal": true,
-  "preferred_infer": "M1_retest_41760_after_43135_fail",
-  "tx_lead_zh": "下一開市日前先看台指期（夜收＋開盤）是否仍弱於上一大量區／相對夜高；先行弱→加權日盤偏下看43192／43000下。",
-  "three_layer_zh": "夜盤電子盤大方向 → 台指期二次確認 → 加權日盤驗證。下一開市日依序讀，不倒灌。",
-  "sox_link_zh": "三盤密不可分且與費半連動；下一窗同時看費半是否助跌／助漲，不單看加權。",
+  "preferred_infer": "M2_retest_43135_as_support",
+  "tx_lead_zh": "休市週末先看台指期夜盤是否仍站在43135／大量區上方；先行弱→加權開市偏回測43135或失守下看。",
+  "three_layer_zh": "夜盤電子盤大方向 → 台指期二次確認 → 加權日盤驗證。11/16依序讀。",
+  "sox_link_zh": "同時看費半是否助漲／助跌，不單看加權。",
   "bottom_band": {
     "lo": 41900.0,
     "hi": 42700.0,
     "source": "188400106:c188400106-352",
     "his_confidence": 0.95
   },
-  "evidence_gate_zh": "S8：本窗 preferred＝41760回測，憑據＝昨收失43135（官方）＋I5下一檔大量撐階梯；41900～42700另有他點名＋11/10低41930＋60分大量。無憑據不升權37837。",
-  "learner_method_file": "learner_evidence_infer_verify_20261112.json",
+  "evidence_gate_zh": "S8：本窗 preferred＝回測43135撐，憑據＝11/13官方收復C43675＞43135；無憑據不升權37837。",
   "evidence_for_preferred": [
     {
       "kind": "official_eod",
-      "zh": "11/12 TWII C43091.87＜43135.92／L42943.5",
-      "as_of": "20261112"
+      "zh": "11/13 TWII C43675.12＞43135.92／L43534.12",
+      "as_of": "20261113"
     },
     {
-      "kind": "vol_ladder",
-      "zh": "I5 下一檔大量撐候選41760",
-      "level": 41760.0
-    },
-    {
-      "kind": "his_named_band_parallel",
-      "zh": "他點名41900～42700（平行觀察，非本窗 preferred）"
+      "kind": "path_contrast",
+      "zh": "昨preferred41760未觸；今走出M2收復"
     }
   ],
-  "huang_biaoke_align_zh": "與黃C4／第4家族同向：修正消化優先41760／419～427帶；名稱定位不同不另發明浪號。",
-  "shared_biaoke_huang_file": "shared_biaoke_huang_ops_20261112.json",
-  "two_ranges_evidence_zh": "今天兩層有憑據：R1 43000下；R2 41900～42700。黃0.618≈42471落R2內。上週五低37837為更深不破／假跌破舊憑據。",
-  "fib618_gift_file": "huang_biaoke_fib618_gift_align_20261112.json"
+  "huang_biaoke_align_zh": "黃第四／第五大波與飆大大ABC分層看：不把第五大波念成大C第五跌段。",
+  "not_new_impulse1_zh": "C走完≠自動新五波升；收復43135≠標新①。"
 }

@@ -7,6 +7,7 @@ WayneBot 核心模組：買低賣高決策卡與 180 日 K 線趨勢圖引擎
 import itertools
 import copy
 import os
+import re
 import sqlite3
 import time
 import urllib.request
@@ -209,6 +210,7 @@ def _lookup_card_fingerprint(card: Optional[dict]) -> tuple:
         trend_note,
         nrows,
         int(bool(card.get("is_live"))),
+        int(bool((card.get("vol_chip_exchange") or {}).get("hit"))),
     )
 
 
@@ -505,7 +507,7 @@ def try_glance_memo(
         fund_fp,
         int(GLANCE_PNG_DPI),
         int(LOOKUP_JPEG_QUALITY),
-        "match-card-076-fund-rev2line-v77-card-price",
+        "match-card-076-fund-rev2line-v80-qrev-q-eps",
     )
     return _lookup_render_memo_get(memo_key, save_path) or ""
 
@@ -1538,6 +1540,12 @@ class NavigatorEngine:
                 low_raw.tolist(),
                 df["volume"].tolist() if "volume" in df.columns else None,
             )
+        except Exception:
+            pass
+        try:
+            from vol_chip_exchange_observe import attach_vol_chip_exchange_observe
+
+            attach_vol_chip_exchange_observe(payload, self.db_path, stock_id)
         except Exception:
             pass
         try:
@@ -3830,6 +3838,28 @@ def temp_trend_note_cell_style(note: str, base: str):
     return base or C["white"], C["ink_mute"]
 
 
+def _trim_lookup_badges(badges: list, monthly: str = "") -> list:
+    """查股徽章最多 5；爆量換手觀察優先保留，其次月K。"""
+    out = []
+    for b in list(badges or []):
+        b = str(b or "").strip()
+        if b and "None" not in b and b not in out:
+            out.append(b)
+    monthly = str(monthly or "").strip()
+    if monthly and monthly not in out:
+        out.append(monthly)
+    keep_vol = next((b for b in out if "爆量換手" in b), "")
+    if len(out) > 5:
+        reserved = [b for b in (keep_vol, monthly) if b]
+        core = [b for b in out if b not in reserved][: 5 - len(reserved)]
+        merged = []
+        for b in list(reserved[:1]) + core + ([monthly] if monthly and monthly != keep_vol else []):
+            if b and b not in merged:
+                merged.append(b)
+        out = merged[:5]
+    return out[:5] or ["整理格局"]
+
+
 def _badge_style(text: str):
     """徽章：狀態用實心白字；已除權這類事實才白底描邊。"""
     C = _CARD
@@ -3838,6 +3868,9 @@ def _badge_style(text: str):
         return C["white"], C["neutral_fg"]
     if t.startswith("月K"):
         return C["navy"], C["white"]
+    if "爆量換手" in t:
+        # 觀察注記：琥珀底白字，跟紀律粉紅／多空冷熱分開
+        return "#E65100", C["white"]
     hot_keys = ("創", "新高", "少追", "過熱", "多頭", "上坡", "突破", "注意", "背離")
     cold_keys = ("低", "冷", "超跌", "止跌", "下坡", "箱型")
     if any(k in t for k in hot_keys) or ("高" in t and "低" not in t):
@@ -4358,19 +4391,10 @@ def _decision_card_stack_h(card: dict) -> float:
         CARD_FIG_W,
     )
     stance_h = float(stance_plan["h"])
-    badges = []
-    for b in list(card.get("badges") or []):
-        b = str(b or "").strip()
-        if b and "None" not in b and b not in badges:
-            badges.append(b)
-    monthly = str(card.get("monthly_stage") or "").strip()
-    if monthly and monthly not in badges:
-        badges.append(monthly)
-    if len(badges) > 5:
-        keep_m = monthly if monthly in badges else ""
-        core = [b for b in badges if b != keep_m][: 5 - (1 if keep_m else 0)]
-        badges = (core + [keep_m]) if keep_m else core
-    badges = badges[:5] or ["整理格局"]
+    badges = _trim_lookup_badges(
+        list(card.get("badges") or []),
+        str(card.get("monthly_stage") or ""),
+    )
     badge_w = [_text_w(b, 10.4, CARD_FIG_W, 900) + 3.4 for b in badges]
     badge_rows = _pack_badge_rows(list(zip(badges, badge_w)))
     try:
@@ -4472,19 +4496,10 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     stance_h = float(stance_plan["h"])
 
     fig_w = CARD_FIG_W
-    badges = []
-    for b in list(card.get("badges") or []):
-        b = str(b or "").strip()
-        if b and "None" not in b and b not in badges:
-            badges.append(b)
-    monthly = str(card.get("monthly_stage") or "").strip()
-    if monthly and monthly not in badges:
-        badges.append(monthly)
-    if len(badges) > 5:
-        keep_m = monthly if monthly in badges else ""
-        core = [b for b in badges if b != keep_m][: 5 - (1 if keep_m else 0)]
-        badges = (core + [keep_m]) if keep_m else core
-    badges = badges[:5] or ["整理格局"]
+    badges = _trim_lookup_badges(
+        list(card.get("badges") or []),
+        str(card.get("monthly_stage") or ""),
+    )
     badge_w = [_text_w(b, 10.4, fig_w, 900) + 3.4 for b in badges]
     badge_rows = _pack_badge_rows(list(zip(badges, badge_w)))
     try:
@@ -5399,7 +5414,7 @@ def render_first_glance_png(
         fund_fp,
         int(GLANCE_PNG_DPI),
         int(LOOKUP_JPEG_QUALITY),
-        "match-card-076-fund-rev2line-v77-card-price",
+        "match-card-076-fund-rev2line-v80-qrev-q-eps",
     )
     hit = _lookup_render_memo_get(memo_key, save_path)
     if hit:
@@ -5462,6 +5477,21 @@ def render_first_glance_png(
     if exn:
         footer_src = [exn] + [n for n in footer_src if n != exn]
     footer_src = [n for n in footer_src if n][:3]
+    # 爆量換手＝觀察條（不是紀律、不是買訊）
+    observe_src = []
+    try:
+        vce = (card or {}).get("vol_chip_exchange") or {}
+        if vce.get("hit") and vce.get("note_zh"):
+            observe_src = [str(vce.get("note_zh"))]
+        elif not vce and dbp:
+            from vol_chip_exchange_observe import detect_recent_vol_chip_exchange
+
+            vce = detect_recent_vol_chip_exchange(dbp, str(stock_id or ""))
+            if vce.get("hit") and vce.get("note_zh"):
+                observe_src = [str(vce.get("note_zh"))]
+                card["vol_chip_exchange"] = vce
+    except Exception:
+        observe_src = []
 
     last = (tape or {}).get("last") or {}
     C = _CARD
@@ -5490,19 +5520,10 @@ def render_first_glance_png(
             listing=str(card.get("listing") or ""),
             stock_id=str(card.get("stock_id") or ""),
         )
-    badges = []
-    for b in list(card.get("badges") or []):
-        b = str(b or "").strip()
-        if b and "None" not in b and b not in badges:
-            badges.append(b)
-    monthly = str(card.get("monthly_stage") or "").strip()
-    if monthly and monthly not in badges:
-        badges.append(monthly)
-    if len(badges) > 5:
-        keep_m = monthly if monthly in badges else ""
-        core = [b for b in badges if b != keep_m][: 5 - (1 if keep_m else 0)]
-        badges = (core + [keep_m]) if keep_m else core
-    badges = badges[:5] or ["整理格局"]
+    badges = _trim_lookup_badges(
+        list(card.get("badges") or []),
+        str(card.get("monthly_stage") or ""),
+    )
     badge_w = [_text_w(b, 10.4, fig_w, 900) + 3.4 for b in badges]
     # 跟高低卡同一套：徽章只佔左欄，右欄留給收盤價；4 顆上二下二。
     badge_rows = _pack_badge_rows(list(zip(badges, badge_w)))
@@ -5592,6 +5613,9 @@ def render_first_glance_png(
     wrapped_notes = []
     for n in footer_src:
         wrapped_notes.extend((_wrap_fit(n, 12.5, row_w, fig_w) or [n])[:2])
+    wrapped_observe = []
+    for n in observe_src:
+        wrapped_observe.extend((_wrap_fit(n, 12.5, row_w, fig_w) or [n])[:2])
 
     lr_box_h, lr_gap = 7.4, 0.95
     space_n_rows = 2 if long_lows else 1
@@ -5635,6 +5659,7 @@ def render_first_glance_png(
         fund_drawn or conflict_lines or split_month_rows
     ) else 0.0
     note_h = (3.2 + 2.55 * len(wrapped_notes) + 1.0) if wrapped_notes else 0.0
+    observe_h = (3.2 + 2.55 * len(wrapped_observe) + 1.0) if wrapped_observe else 0.0
 
     def _glance_stack(gap_v: float):
         if em_rev_chart:
@@ -5655,6 +5680,7 @@ def render_first_glance_png(
             + (gap_v + ht_h if ht_h else 0)
             + (gap_v + ch_h if ch_h else 0)
             + (gap_v + fund_h if fund_h else 0)
+            + (gap_v + observe_h if observe_h else 0)
             + (gap_v + note_h if note_h else 0)
             + m_bot
         )
@@ -5665,7 +5691,7 @@ def render_first_glance_png(
     card_inch = _decision_card_stack_h(card) * 0.076
     target_h = card_inch / inch
     flex = 1 + sum(
-        1 for v in (rev_chart_h, space_h, heat_h, chips_h, fund_h, note_h) if v
+        1 for v in (rev_chart_h, space_h, heat_h, chips_h, fund_h, observe_h, note_h) if v
     )
     if flex and abs(H - target_h) > 0.35:
         gap = min(2.6, max(0.85, gap + (target_h - H) / flex))
@@ -6035,53 +6061,160 @@ def render_first_glance_png(
                         (q_x + pad_in, box_bot + 0.45), q_w - 2 * pad_in, bh - 0.9,
                         boxstyle="round,pad=0,rounding_size=0.4",
                         facecolor=C["white"], edgecolor="#D7DEE8", linewidth=0.9, zorder=3))
-                    # 結構化三行：標／金額／較上季；各自量寬縮字，不准溢出
+                    # 左右半：左＝季營收三行（拉開間距）；右＝該季官方 EPS
+                    # 季號 1–4 紅字；營收／EPS 優於上季亦紅字
                     title = str(qb.get("title") or "").strip()
                     amount = str(qb.get("amount") or "").strip()
                     trend = str(qb.get("trend") or "").strip()
+                    eps_lab = str(qb.get("eps_lab") or "").strip()
+                    rev_better = bool(qb.get("rev_better"))
+                    eps_better = bool(qb.get("eps_better"))
                     if not (title or amount):
                         text = str(qb.get("text") or "").strip()
                         chunks = [c for c in text.split("　") if c]
                         title = chunks[0] if chunks else text
                         amount = chunks[1] if len(chunks) > 1 else ""
                         trend = chunks[2] if len(chunks) > 2 else ""
-                    avail = max(4.0, q_w - 2 * pad_in - 1.4)
-                    cx = q_x + q_w / 2
+                    box_inner_left = q_x + pad_in + 0.35
+                    box_inner_right = q_x + q_w - pad_in - 0.35
                     box_inner_top = box_top - 0.9
                     box_inner_bot = box_bot + 0.9
                     ih = max(box_inner_top - box_inner_bot, 4.0)
+                    mid_x = (box_inner_left + box_inner_right) * 0.5
+                    ax.plot(
+                        [mid_x, mid_x],
+                        [box_inner_bot + 0.35, box_inner_top - 0.35],
+                        color="#E2E8F0",
+                        lw=0.85,
+                        zorder=3.5,
+                        solid_capstyle="round",
+                    )
+                    left_avail = max(3.2, mid_x - box_inner_left - 0.55)
+                    right_avail = max(3.0, box_inner_right - mid_x - 0.55)
+                    left_cx = (box_inner_left + mid_x) * 0.5
+                    right_cx = (mid_x + box_inner_right) * 0.5
+                    red = C["up"]
+
+                    def _paint_title_season_red(cx0: float, yy0: float, raw: str, fs0: float) -> None:
+                        """第N季合計：N＝1–4 紅字，其餘海軍藍。"""
+                        m = re.match(r"^(第)([1-4])(季.*)$", str(raw or ""))
+                        if not m:
+                            ax.text(
+                                cx0, yy0, raw,
+                                fontproperties=_fp(fs0, "bold"),
+                                color=C["navy"], ha="center", va="center", zorder=4,
+                            )
+                            return
+                        pre, digit, post = m.group(1), m.group(2), m.group(3)
+                        w_pre = tw(pre, fs0)
+                        w_d = tw(digit, fs0)
+                        w_post = tw(post, fs0)
+                        x0 = cx0 - (w_pre + w_d + w_post) * 0.5
+                        ax.text(
+                            x0, yy0, pre,
+                            fontproperties=_fp(fs0, "bold"),
+                            color=C["navy"], ha="left", va="center", zorder=4,
+                        )
+                        ax.text(
+                            x0 + w_pre, yy0, digit,
+                            fontproperties=_fp(fs0, "bold"),
+                            color=red, ha="left", va="center", zorder=4,
+                        )
+                        ax.text(
+                            x0 + w_pre + w_d, yy0, post,
+                            fontproperties=_fp(fs0, "bold"),
+                            color=C["navy"], ha="left", va="center", zorder=4,
+                        )
+
                     lines = [x for x in (title, amount, trend) if x]
                     if len(lines) >= 3:
-                        # 上中下三等分內緣；字級對齊高低卡：表頭／主數字／註
+                        # 上／中／下拉開：約 18% 邊距，三行不黏
                         ys = (
-                            box_inner_bot + ih * 0.78,
+                            box_inner_bot + ih * 0.84,
                             box_inner_bot + ih * 0.50,
-                            box_inner_bot + ih * 0.22,
+                            box_inner_bot + ih * 0.16,
                         )
-                        fss = (
-                            _fit_center(title, 11.2, avail),
-                            _fit_center(amount, 13.0, avail),
-                            _fit_center(trend, 10.5, avail, fs_min=9.0),
+                        title_fs = _fit_center(title, 10.6, left_avail)
+                        amt_fs = _fit_center(amount, 12.2, left_avail)
+                        trend_fs = _fit_center(trend, 9.8, left_avail, fs_min=8.4)
+                        _paint_title_season_red(left_cx, ys[0], title, title_fs)
+                        ax.text(
+                            left_cx, ys[1], amount,
+                            fontproperties=_fp(amt_fs, "bold"),
+                            color=red if rev_better else C["ink"],
+                            ha="center", va="center", zorder=4,
                         )
-                        cols = (C["navy"], C["ink"], C["ink_soft"])
-                        for yy, lab, fs, col in zip(ys, (title, amount, trend), fss, cols):
-                            ax.text(cx, yy, lab, fontproperties=_fp(fs, "bold"),
-                                    color=col, ha="center", va="center", zorder=4)
+                        ax.text(
+                            left_cx, ys[2], trend,
+                            fontproperties=_fp(trend_fs, "bold"),
+                            color=C["ink_soft"], ha="center", va="center", zorder=4,
+                        )
                     elif len(lines) == 2:
                         ys = (
-                            box_inner_bot + ih * 0.66,
-                            box_inner_bot + ih * 0.34,
+                            box_inner_bot + ih * 0.70,
+                            box_inner_bot + ih * 0.30,
                         )
-                        ax.text(cx, ys[0], lines[0],
-                                fontproperties=_fp(_fit_center(lines[0], 11.2, avail), "bold"),
-                                color=C["navy"], ha="center", va="center", zorder=4)
-                        ax.text(cx, ys[1], lines[1],
-                                fontproperties=_fp(_fit_center(lines[1], 13.0, avail), "bold"),
-                                color=C["ink"], ha="center", va="center", zorder=4)
+                        if lines[0] == title or str(lines[0]).startswith("第"):
+                            _paint_title_season_red(
+                                left_cx, ys[0], lines[0],
+                                _fit_center(lines[0], 10.6, left_avail),
+                            )
+                        else:
+                            ax.text(
+                                left_cx, ys[0], lines[0],
+                                fontproperties=_fp(_fit_center(lines[0], 10.6, left_avail), "bold"),
+                                color=C["navy"], ha="center", va="center", zorder=4,
+                            )
+                        ax.text(
+                            left_cx, ys[1], lines[1],
+                            fontproperties=_fp(_fit_center(lines[1], 12.2, left_avail), "bold"),
+                            color=red if (rev_better and lines[1] == amount) else C["ink"],
+                            ha="center", va="center", zorder=4,
+                        )
                     elif lines:
-                        ax.text(cx, (box_inner_top + box_inner_bot) / 2, lines[0],
-                                fontproperties=_fp(_fit_center(lines[0], 11.2, avail), "bold"),
-                                color=C["navy"], ha="center", va="center", zorder=4)
+                        if str(lines[0]).startswith("第"):
+                            _paint_title_season_red(
+                                left_cx, (box_inner_top + box_inner_bot) / 2, lines[0],
+                                _fit_center(lines[0], 10.6, left_avail),
+                            )
+                        else:
+                            ax.text(
+                                left_cx, (box_inner_top + box_inner_bot) / 2, lines[0],
+                                fontproperties=_fp(_fit_center(lines[0], 10.6, left_avail), "bold"),
+                                color=C["navy"], ha="center", va="center", zorder=4,
+                            )
+                    if eps_lab:
+                        ax.text(
+                            right_cx,
+                            box_inner_bot + ih * 0.70,
+                            "EPS",
+                            fontproperties=_fp(_fit_center("EPS", 10.2, right_avail), "bold"),
+                            color=C["navy"],
+                            ha="center",
+                            va="center",
+                            zorder=4,
+                        )
+                        ax.text(
+                            right_cx,
+                            box_inner_bot + ih * 0.30,
+                            eps_lab,
+                            fontproperties=_fp(_fit_center(eps_lab, 12.4, right_avail), "bold"),
+                            color=red if eps_better else C["ink"],
+                            ha="center",
+                            va="center",
+                            zorder=4,
+                        )
+                    else:
+                        ax.text(
+                            right_cx,
+                            (box_inner_top + box_inner_bot) / 2,
+                            "EPS —",
+                            fontproperties=_fp(_fit_center("EPS —", 9.6, right_avail, fs_min=8.0), "bold"),
+                            color=C["ink_mute"],
+                            ha="center",
+                            va="center",
+                            zorder=4,
+                        )
                 # 未滿三個月的季：有任一官方月才淡字；全年空槽季留白等補
                 for season in (1, 2, 3, 4):
                     idxs = []
@@ -6191,6 +6324,26 @@ def render_first_glance_png(
                     value_ha="right",
                 )
             fy -= 0.7
+
+    if observe_h:
+        y -= gap + observe_h
+        pane(pad_x, y, pane_w, observe_h, fc="#FFF3E0", ec="#E65100")
+        ax.text(
+            inner_l, y + observe_h - 1.55, "觀察",
+            fontproperties=_fp(12, "bold"), color="#E65100", va="center", zorder=3,
+        )
+        oy = y + observe_h - 4.0
+        for ln in wrapped_observe:
+            nw = min(tw(ln, 12.5) + 2.6, inner_r - inner_l + 0.6)
+            ax.add_patch(patches.FancyBboxPatch(
+                (inner_l - 0.8, oy - 1.2), nw, 2.4,
+                boxstyle="round,pad=0,rounding_size=0.4",
+                facecolor="#FFE0B2", edgecolor="none", zorder=3))
+            ax.text(
+                inner_l, oy, ln, fontproperties=_fp(12.5, "bold"),
+                color="#E65100", va="center", zorder=4,
+            )
+            oy -= 2.55
 
     if note_h:
         y -= gap + note_h
