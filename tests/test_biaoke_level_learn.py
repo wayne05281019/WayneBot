@@ -3414,7 +3414,15 @@ def test_micro_eight_wave_inset_and_retest_path_in_source():
     assert '"5"' in path_src or "'5'" in path_src
     assert "不准跟右欄" in path_src or "右欄左側" in path_src
     assert "右欄" in path_src
+    assert "不准穿過最後幾根縮圖K" in path_src or "末根右側空檔" in path_src
     assert "量欄" in inspect.getsource(_eight_wave_inset_rect_on_vol)
+    from biaoke_level_learn import _paint_oral_535_status_marks
+
+    oral = inspect.getsource(_paint_oral_535_status_marks)
+    assert "high_now" in oral
+    assert "不准壓末幾根縮圖K" in oral
+    # 口頭標／示意後必須再蓋回末根
+    assert c60.count("_finish_last_twii_candle") >= 2
     paint = inspect.getsource(
         __import__("biaoke_level_learn", fromlist=["_paint_huang_c60_structure"])._paint_huang_c60_structure
     )

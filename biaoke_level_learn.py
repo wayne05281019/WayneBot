@@ -12869,6 +12869,8 @@ def _paint_micro_retest_then_rise_schematic(
     if float(y0) <= float(y_rt) + 1.0:
         return out
     # 兩段 x：回測折點 → 主升示意端（只延長幾根，不准拉爆右欄）
+    # 虛線自末根右側空檔起畫，不准穿過最後幾根縮圖K實體
+    x0 = float(i0) + 0.72
     x1 = float(i0 + 3)
     x2 = float(i0 + 7)
     y_mid = float(y_rt)
@@ -12876,7 +12878,7 @@ def _paint_micro_retest_then_rise_schematic(
     y_up = float(y_rt) + max(abs(float(y0) - float(y_rt)) * 0.28, 520.0)
     # 底描＋紫虛＝回測（對準平均）
     ax.plot(
-        [i0, x1],
+        [x0, x1],
         [y0, y_mid],
         color="#0b0f14",
         lw=2.7,
@@ -12884,7 +12886,7 @@ def _paint_micro_retest_then_rise_schematic(
         zorder=5.85,
     )
     ax.plot(
-        [i0, x1],
+        [x0, x1],
         [y0, y_mid],
         color="#ea80fc",
         lw=1.85,
@@ -13052,10 +13054,14 @@ def _paint_oral_535_status_marks(
     span_y: float,
     n: int,
     compact: bool = False,
+    high_now: Optional[float] = None,
+    include_small_c: bool = True,
 ) -> None:
     """三窗釘當令位：今≈小b；下＝小c五段↓示意。
 
     不准發明 a／b 尖點價位；小c 只畫預估箭，非買訊。
+    字盒／箭不准壓末幾根縮圖K（左移＋抬高；末根稍後再蓋回）。
+    include_small_c=False：遠窗等只留小b，小c 改看標題（避免箭壓進V底K）。
     """
     if ax is None or fp is None:
         return
@@ -13067,18 +13073,23 @@ def _paint_oral_535_status_marks(
         return
     if y0 <= 0:
         return
-    dy = sp * (0.045 if compact else 0.055)
-    # 今＝小b近完（釘在最新柱上方，離開右欄）
+    dy = sp * (0.062 if compact else 0.078)
+    try:
+        y_clear = float(high_now) if high_now is not None else float(y0)
+    except (TypeError, ValueError):
+        y_clear = float(y0)
+    y_lab = max(float(y0) + dy, float(y_clear) + sp * 0.028)
+    # 今＝小b：釘在末根左側天空，字盒底緣離開末根高／影線
     try:
         ax.text(
-            float(i0) - (0.35 if compact else 0.55),
-            float(y0) + dy,
+            float(i0) - (1.95 if compact else 2.55),
+            float(y_lab),
             "今≈小b近完",
             ha="right",
             va="bottom",
             fontproperties=fp(7.6 if compact else 8.2, "bold"),
             color="#ffd54f",
-            zorder=9.2,
+            zorder=8.2,
             clip_on=False,
             bbox={
                 "boxstyle": "round,pad=0.12",
@@ -13090,14 +13101,17 @@ def _paint_oral_535_status_marks(
         )
     except Exception:
         logger.debug("535 小b標略過", exc_info=True)
-    # 下＝小c五段↓：箭可往右下，字盒 ha=right 向左長，不准伸進右欄價標席
-    x1 = min(float(i0) + (2.6 if compact else 3.4), float(n) + 2.8)
-    y1 = float(y0) - max(sp * 0.10, 520.0)
+    if not include_small_c:
+        return
+    # 下＝小c五段↓：箭自末根右側空檔起，字盒 ha=right 向左長，不准壓末K／右欄
+    x_from = float(i0) + 0.72
+    x1 = min(float(i0) + (3.0 if compact else 3.8), float(n) + 2.8)
+    y1 = float(y0) - max(sp * 0.11, 560.0)
     try:
         ax.annotate(
             "",
             xy=(float(x1), float(y1)),
-            xytext=(float(i0) + 0.35, float(y0) - dy * 0.35),
+            xytext=(float(x_from), float(y0) - dy * 0.25),
             arrowprops={
                 "arrowstyle": "-|>",
                 "color": "#ea80fc",
@@ -13108,7 +13122,7 @@ def _paint_oral_535_status_marks(
                 "shrinkB": 0,
                 "alpha": 0.9,
             },
-            zorder=8.6,
+            zorder=7.8,
             clip_on=False,
         )
         ax.text(
@@ -13119,7 +13133,7 @@ def _paint_oral_535_status_marks(
             va="center",
             fontproperties=fp(7.0 if compact else 7.6, "bold"),
             color="#ea80fc",
-            zorder=9.0,
+            zorder=8.0,
             linespacing=1.05,
             clip_on=False,
             bbox={
@@ -16229,9 +16243,23 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             span_y=float(max(ymax - ymin, 1.0)),
             n=int(n_tw),
             compact=True,
+            high_now=float(highs[i_now]) if i_now < len(highs) else float(y_now),
+            include_small_c=False,  # 遠窗小c 改看標題，箭不准壓進末段／V底K
         )
     except Exception:
         logger.debug("遠窗535位標略過", exc_info=True)
+    # 口頭標之後再蓋回末根縮圖K，不准標籤壓住最後幾根
+    _finish_last_twii_candle(
+        ax,
+        i_now=int(i_now),
+        opens=opens,
+        highs=highs,
+        lows=lows,
+        closes=closes,
+        candle_up=candle_body_up_taiwan,
+        ymin=float(ax.get_ylim()[0]),
+        ymax=float(ax.get_ylim()[1]),
+    )
     _paint_eight_wave_inset(
         fig,
         fp=_fp,
@@ -16797,9 +16825,22 @@ def _render_twii_c_wave_60_dark(
             n=int(n),
             # compact：略過第三行撑完大C（主升示意已有），減右欄密區互壓
             compact=True,
+            high_now=float(highs[i_now]) if i_now < len(highs) else float(y_now),
         )
     except Exception:
         logger.debug("超近535位標略過", exc_info=True)
+    # 示意虛線／口頭標之後再蓋回末根縮圖K
+    _finish_last_twii_candle(
+        ax,
+        i_now=int(i_now),
+        opens=opens,
+        highs=highs,
+        lows=lows,
+        closes=closes,
+        candle_up=candle_body_up_taiwan,
+        ymin=float(ymin),
+        ymax=float(ymax),
+    )
     # 八浪縮圖：量欄左側空帶；黃框＝大房間大C＋當令5-3-5 abc（不叠大C第幾／黃C4）
     _micro_ins = _eight_wave_inset_rect_on_vol(axv, fig, scale=0.95, left_frac=0.05)
     _paint_eight_wave_inset(
@@ -17195,19 +17236,20 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         fontsize=9,
         pivots=_c9_pivots_near,
     ):
-        # 浪名靠左：右欄已有「大C今＋價」，靠右會壓住「中」國字
+        # 浪名靠左上方：右欄已有「大C今＋價」；tip=high 離開末根實體
         _pin_pivot_name(
             ax,
             i_now,
-            y_now,
+            float(highs[i_now]) if i_now < len(highs) else float(y_now),
             "C進行中",
             "#ea80fc",
             _fp,
             side="left",
-            tip="mid",
+            tip="high",
             n=n,
-            pad_x=1.05,
+            pad_x=1.85,
             fontsize=9,
+            clear_dy=max((float(ymax) - float(ymin)) * 0.035, 420.0),
         )
     # c4／c5 只走右欄，不准再浮主圖壓紫C線／K
     # Fib／錨／撐壓虛線改走右標函式（自 note['x'] 連到同欄標左緣），不准再左一截短虛線
@@ -17630,9 +17672,22 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
             span_y=float(max(ymax - ymin, 1.0)),
             n=int(n),
             compact=True,
+            high_now=float(highs[i_now]) if i_now < len(highs) else float(y_now),
         )
     except Exception:
         logger.debug("近窗535位標略過", exc_info=True)
+    # 口頭標之後再蓋回末根縮圖K，不准標籤壓住最後幾根
+    _finish_last_twii_candle(
+        ax,
+        i_now=int(i_now),
+        opens=opens,
+        highs=highs,
+        lows=lows,
+        closes=closes,
+        candle_up=candle_body_up_taiwan,
+        ymin=float(ymin),
+        ymax=float(ymax),
+    )
     _paint_eight_wave_inset(
         fig,
         fp=_fp,
