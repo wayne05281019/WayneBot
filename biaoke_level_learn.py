@@ -1145,10 +1145,28 @@ def verify_teach_stamp_preflight(
     if int(tip0.get("tx_live") or 0) == 1 and not _tx_night_session_live(wall):
         fails.append({"code": "tx_fake_live", "detail": "電子盤假盤中旗"})
 
+    # 只缺費半庫存、加權＋電子盤 tip 齊 → 降級放行（不准整圖白擋）
+    soft_codes = {"sox_data_missing"}
+    hard_fails = [
+        f for f in fails if str((f or {}).get("code") or "") not in soft_codes
+    ]
+    ok = not hard_fails
+    sox_degraded = False
+    if ok and any(str((f or {}).get("code") or "") == "sox_data_missing" for f in fails):
+        if float(tip0.get("tw_close") or 0) > 0 and float(tip0.get("tx_close") or 0) > 0:
+            sox_degraded = True
+            tip0["_sox_degraded"] = 1
+            if isinstance(pack, dict):
+                pack["teach_tip"] = dict(tip0)
+                pack["_sox_stamp_degraded"] = 1
+        else:
+            ok = False
+
     return {
-        "ok": not fails,
-        "fails": fails,
+        "ok": ok,
+        "fails": (list(fails) if not ok else (list(fails) if sox_degraded else [])),
         "tip": tip0,
+        "sox_degraded": sox_degraded,
         "checked_at": wall.isoformat() if hasattr(wall, "isoformat") else "",
     }
 
@@ -1172,6 +1190,14 @@ def ensure_teach_tip_preflight(
             _ensure_teach_index_bars(db_path)
         except Exception:
             logger.exception("preflight 補費半日K失敗")
+        try:
+            _ensure_us_index_daily(db_path)
+        except Exception:
+            logger.exception("preflight 直補費半／納指失敗")
+        try:
+            _sox_daily_from_minutes(db_path)
+        except Exception:
+            logger.exception("preflight 費半分K日切失敗")
         try:
             pack["teach_tip"] = compute_teach_tip_snapshot(
                 db_path, pack, reuse_frozen=False
@@ -4496,18 +4522,30 @@ def _yahoo_us_index_upsert(
     from zoneinfo import ZoneInfo
 
     ny = ZoneInfo("America/New_York")
-    url = (
-        f"https://query1.finance.yahoo.com/v8/finance/chart/{yid}"
-        f"?interval=1d&range={range_}"
+    hosts = (
+        "https://query1.finance.yahoo.com",
+        "https://query2.finance.yahoo.com",
     )
+    stamps: List[Any] = []
+    q: Dict[str, Any] = {}
     try:
-        resp = requests.get(url, timeout=12, headers=ua)
-        if resp.status_code != 200:
+        for host in hosts:
+            url = f"{host}/v8/finance/chart/{yid}?interval=1d&range={range_}"
+            try:
+                resp = requests.get(url, timeout=20, headers=ua)
+            except Exception:
+                logger.debug("補%s日K %s 略過", sym, host, exc_info=True)
+                continue
+            if resp.status_code != 200:
+                continue
+            block = ((resp.json() or {}).get("chart") or {}).get("result") or [None]
+            block = block[0] or {}
+            stamps = list(block.get("timestamp") or [])
+            q = ((block.get("indicators") or {}).get("quote") or [{}])[0] or {}
+            if stamps:
+                break
+        if not stamps:
             return 0
-        block = ((resp.json() or {}).get("chart") or {}).get("result") or [None]
-        block = block[0] or {}
-        stamps = block.get("timestamp") or []
-        q = ((block.get("indicators") or {}).get("quote") or [{}])[0]
     except Exception:
         logger.exception("補%s日K失敗", sym)
         return 0

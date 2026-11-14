@@ -2770,6 +2770,62 @@ def test_tip_reuse_requires_sox_close():
     assert "frozen.get(\"sox_close\")" in src or "frozen.get('sox_close')" in src
 
 
+def test_stamp_preflight_soft_allows_when_only_sox_db_missing(monkeypatch):
+    """庫內真的沒費半、但加權＋電子盤 tip 齊 → 降級放行，不准整圖白擋。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_level_learn import verify_teach_stamp_preflight
+
+    wall = datetime(2026, 11, 14, 21, 40, tzinfo=ZoneInfo("Asia/Taipei"))
+    pack = {
+        "query_now": wall.isoformat(),
+        "teach_tip": {
+            "tw_asof": "20261113",
+            "tw_close": 43675.12,
+            "tw_live": 0,
+            "sox_asof": "",
+            "sox_close": None,
+            "sox_live": 0,
+            "tx_asof": "20261113",
+            "tx_close": 43706.0,
+            "tx_live": 0,
+        },
+    }
+    monkeypatch.setattr(
+        "biaoke_level_learn._query_now_from_pack", lambda *_a, **_k: wall
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._twii_bars_for_teach",
+        lambda *_a, **_k: [{"date": "20261113", "close": 43675.12}],
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._load_us_daily", lambda *_a, **_k: []
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._tx_night_evening_ymd", lambda ymd: "20261113"
+    )
+    import taiwan_market
+    import trading_calendar
+
+    monkeypatch.setattr(
+        taiwan_market,
+        "load_futures_night",
+        lambda *_a, **_k: {"date": "20261116", "close": 43706.0},
+    )
+    monkeypatch.setattr(
+        trading_calendar,
+        "futures_night_date_cap",
+        lambda *_a, **_k: "20261116",
+    )
+    gate = verify_teach_stamp_preflight("/tmp/fake.db", pack)
+    assert gate["ok"], gate.get("fails")
+    assert gate.get("sox_degraded")
+    assert any(
+        f.get("code") == "sox_data_missing" for f in (gate.get("fails") or [])
+    )
+
+
 def test_sox_axis_index_for_ymd_prefers_tw_then_extra():
     """費半 tip 索引：先加權同日格，再延長格。"""
     from biaoke_level_learn import _sox_axis_index_for_ymd
