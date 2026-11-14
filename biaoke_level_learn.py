@@ -13690,12 +13690,14 @@ def _paint_oral_535_status_marks(
     high_now: Optional[float] = None,
     low_now: Optional[float] = None,
     include_small_c: bool = True,
+    pack: Optional[Dict[str, Any]] = None,
 ) -> None:
     """三窗釘當令位：今≈小b；下＝小c五段↓示意。
 
     不准發明 a／b 尖點價位；小c 只畫預估箭，非買訊。
     字盒／箭不准壓末幾根縮圖K、不准互壓（末根稍後再蓋回）。
     include_small_c=False：遠窗等只留小b，小c 改看標題。
+    pack 命中 seal_big_c → 新八浪註改「大C已封」。
     """
     if ax is None or fp is None:
         return
@@ -13786,12 +13788,20 @@ def _paint_oral_535_status_marks(
     except Exception:
         logger.debug("535 小c示意略過", exc_info=True)
     # 撑完大C→新八浪：compact 略過（超近已有主升示意標）；非 compact 貼小c下方
+    # pack 命中 seal → 改「大C已封→新八浪①起示意」（仍≠自動・非買訊）
     if not compact:
         try:
+            _seal = bool(
+                resolve_wave_structure_paint_policy(pack).get("seal_big_c")
+            )
             ax.text(
                 float(x_arr),
                 float(y_box) - max(sp * 0.045, 200.0),
-                "撑完大C→新八浪（示意・≠自動）",
+                (
+                    "大C已封→新八浪①起（示意・≠自動）"
+                    if _seal
+                    else "撑完大C→新八浪（示意・≠自動）"
+                ),
                 ha="left",
                 va="top",
                 fontproperties=fp(6.6, "bold"),
@@ -16897,6 +16907,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             compact=True,
             high_now=float(highs[i_now]) if i_now < len(highs) else float(y_now),
             include_small_c=False,  # 遠窗小c 改看標題，箭不准壓進末段／V底K
+            pack=pack,
         )
     except Exception:
         logger.debug("遠窗535位標略過", exc_info=True)
@@ -17482,6 +17493,7 @@ def _render_twii_c_wave_60_dark(
             compact=True,
             high_now=float(highs[i_now]) if i_now < len(highs) else float(y_now),
             low_now=float(lows[i_now]) if i_now < len(lows) else float(y_now),
+            pack=pack,
         )
     except Exception:
         logger.debug("超近535位標略過", exc_info=True)
@@ -17498,14 +17510,21 @@ def _render_twii_c_wave_60_dark(
         ymax=float(ymax),
     )
     # 八浪縮圖：量欄左側空帶；黃框＝大房間大C＋當令5-3-5 abc（不叠大C第幾／黃C4）
+    # playbook：C五小段→開 c_flash；大C已封→題改新循環示意（折線重錨仍只認他說的錨）
+    _pol_m = resolve_wave_structure_paint_policy(pack)
     _micro_ins = _eight_wave_inset_rect_on_vol(axv, fig, scale=0.95, left_frac=0.05)
     _paint_eight_wave_inset(
         fig,
         fp=_fp,
-        now_key=_eight_wave_now_key(pack) or "C",
+        now_key=("1" if _pol_m.get("seal_big_c") else (_eight_wave_now_key(pack) or "C")),
         detail=True,
+        c_flash=bool(_pol_m.get("c_flash_five")) and not bool(_pol_m.get("seal_big_c")),
         rect=_micro_ins,
-        title="八浪・對位",
+        title=(
+            "八浪・新循環示意"
+            if _pol_m.get("seal_big_c")
+            else ("八浪・c五小段" if _pol_m.get("c_flash_five") else "八浪・對位")
+        ),
         now_tip=_oral_535_now_tip(pack=pack),
     )
     try:
@@ -18317,6 +18336,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
             compact=True,
             high_now=float(highs[i_now]) if i_now < len(highs) else float(y_now),
             low_now=float(lows[i_now]) if i_now < len(lows) else float(y_now),
+            pack=pack,
         )
     except Exception:
         logger.debug("近窗535位標略過", exc_info=True)
