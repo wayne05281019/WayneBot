@@ -4746,7 +4746,8 @@ def format_taiwan_market_brief_html(
         ),
         *pack_phone_bits(
             f"{_brief_lab('日')}　{_page_b(_fmt_signed_pct(snap.get('chg1_pct')))}",
-            f"{_brief_lab('5日')}　{_page_b(f'{float(snap.get('chg5_pct') or 0):+.2f}%')}",
+            # 不准巢狀 f'…get('x')…'：3.11 語法炸（Render 原生／舊快取會擋 import）
+            f"{_brief_lab('5日')}　{_page_b(_fmt_signed_pct(snap.get('chg5_pct')))}",
             f"{_brief_lab('20日')}　{_page_b(_fmt_signed_pct(snap.get('chg20_pct')))}",
         ),
         *pack_phone_bits(

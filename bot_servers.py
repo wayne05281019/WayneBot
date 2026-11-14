@@ -7086,11 +7086,30 @@ class WayneTelegramBot:
                     want_tip = dict(pre["tip"])
                 if not pre.get("ok"):
                     fails = pre.get("fails") or []
-                    bit = "、".join(
-                        str((f or {}).get("detail") or (f or {}).get("code") or "")
-                        for f in fails[:3]
-                        if f
-                    )
+                    bits: list = []
+                    for f in fails[:3]:
+                        if not f:
+                            continue
+                        code = str((f or {}).get("code") or "")
+                        detail = str((f or {}).get("detail") or "")
+                        # 不准把 Python 語法／traceback 甩上話筒
+                        if (
+                            "f-string" in detail
+                            or "SyntaxError" in detail
+                            or ".py, line" in detail
+                            or "Traceback" in detail
+                        ):
+                            bits.append("行情模組異常")
+                            logger.error(
+                                "stamp preflight 模組異常 code=%s detail=%s",
+                                code,
+                                detail[:200],
+                            )
+                        elif detail:
+                            bits.append(detail[:48])
+                        elif code:
+                            bits.append(code)
+                    bit = "、".join(bits)
                     await message.reply_text(
                         "大盤教具白底戳對不上官方收（"
                         + (bit or "加權／費半／電子盤")

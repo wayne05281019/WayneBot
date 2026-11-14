@@ -2689,6 +2689,18 @@ def test_paint_open_day_runs_stamp_preflight():
     send_src = inspect.getsource(WayneTelegramBot._send_market_wave_charts)
     assert "ensure_teach_tip_preflight" in send_src
     assert "白底戳對不上官方" in send_src
+    assert "行情模組異常" in send_src
+
+
+def test_taiwan_market_chg5_no_nested_fstring_quotes():
+    """5日漲跌％不准巢狀 f'…get('x')…'（3.11 會擋 import／話筒硬閘誤報）。"""
+    from pathlib import Path
+
+    text = Path("taiwan_market.py").read_text(encoding="utf-8")
+    assert "snap.get('chg5_pct') or 0):+.2f" not in text
+    assert "_fmt_signed_pct(snap.get('chg5_pct'))" in text
+    # 整模組在本機可編譯
+    compile(text, "taiwan_market.py", "exec")
 
 
 def test_sox_axis_index_for_ymd_prefers_tw_then_extra():
