@@ -19,6 +19,32 @@ def _png(path: str, w: int = 1200, h: int = 700) -> None:
     Image.fromarray(arr, mode="RGB").save(path, format="PNG", compress_level=1)
 
 
+_OK_TEACH_TIP = {
+    "tw_asof": "20261030",
+    "tw_close": 43000.0,
+    "tw_live": 0,
+    "sox_asof": "20261029",
+    "sox_close": 10000.0,
+    "sox_live": 0,
+    "tx_asof": "20261030",
+    "tx_close": 43100.0,
+    "tx_live": 0,
+}
+
+
+def _patch_stamp_preflight_ok(monkeypatch) -> None:
+    """trio 測無真庫：硬閘放行（仍測送圖順序／缺遠窗）。"""
+    tip = dict(_OK_TEACH_TIP)
+    monkeypatch.setattr(
+        "biaoke_level_learn.ensure_teach_tip_preflight",
+        lambda *_a, **_k: {"ok": True, "fails": [], "tip": dict(tip)},
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn.compute_teach_tip_snapshot",
+        lambda *_a, **_k: dict(tip),
+    )
+
+
 def test_market_teach_stored_reuse_requires_tip_match():
     """活畫失敗回退存檔：as_of 夠還要 tip 一口對；缺 tip／價差不准混舊戳。"""
     import inspect
@@ -27,10 +53,12 @@ def test_market_teach_stored_reuse_requires_tip_match():
 
     src = inspect.getsource(WayneTelegramBot._send_market_wave_charts)
     assert "compute_teach_tip_snapshot" in src
+    assert "ensure_teach_tip_preflight" in src
     assert "teach_tip_snapshots_match" in src
     assert "_stored_reuse_ok" in src
     assert "and _stored_asof_ok():" not in src
     assert "and _stored_reuse_ok():" in src
+    assert "白底戳對不上官方" in src
 
 
 def test_merge_market_teach_kit_fills_missing_far_and_micro(tmp_path):
@@ -116,6 +144,7 @@ def test_market_wave_sends_numbered_trio_far_first(tmp_path, monkeypatch):
         "thesis": "fresh",
         "chart_as_of": "20261030",
         "query_at": "2026-10-30T12:00:00+08:00",
+        "teach_tip": dict(_OK_TEACH_TIP),
     })
     monkeypatch.setattr("wayne_navigator.submit_mpl_paint", _submit)
     monkeypatch.setattr(
@@ -124,6 +153,7 @@ def test_market_wave_sends_numbered_trio_far_first(tmp_path, monkeypatch):
     )
     monkeypatch.setattr("live_quote.is_live_merge_window", lambda: False)
     monkeypatch.setattr("config.skip_chart_warmup", lambda: False)
+    _patch_stamp_preflight_ok(monkeypatch)
 
     msg = MagicMock()
     msg.reply_media_group = AsyncMock()
@@ -200,7 +230,7 @@ def test_market_wave_blocks_near_if_far_missing(tmp_path, monkeypatch):
     monkeypatch.setattr("config.skip_chart_warmup", lambda: False)
     monkeypatch.setattr(
         "biaoke_level_learn.prepare_wave_live_pack",
-        lambda *_a, **_k: {"thesis": "t"},
+        lambda *_a, **_k: {"thesis": "t", "teach_tip": dict(_OK_TEACH_TIP)},
     )
     monkeypatch.setattr(
         "biaoke_level_learn._wave_now_ladder",
@@ -218,6 +248,7 @@ def test_market_wave_blocks_near_if_far_missing(tmp_path, monkeypatch):
             "as_of": "20261031",
         },
     )
+    _patch_stamp_preflight_ok(monkeypatch)
 
     msg = MagicMock()
     msg.reply_photo = AsyncMock()

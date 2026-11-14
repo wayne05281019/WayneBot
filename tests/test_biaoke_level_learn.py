@@ -2413,6 +2413,7 @@ def test_compute_teach_tip_reuses_frozen_pack_tip(monkeypatch):
     from biaoke_level_learn import (
         compute_teach_tip_snapshot,
         _resolve_tx_after_hours_tip,
+        _teach_tip_stale_vs_bars,
     )
 
     frozen = {
@@ -2427,6 +2428,10 @@ def test_compute_teach_tip_reuses_frozen_pack_tip(monkeypatch):
         "tx_live": 0,
     }
     pack = {"teach_tip": dict(frozen)}
+    # 無圖軸可對 → 沿用凍結
+    monkeypatch.setattr(
+        "biaoke_level_learn._twii_bars_for_teach", lambda *_a, **_k: []
+    )
     a = compute_teach_tip_snapshot("/tmp/none.db", pack)
     b = compute_teach_tip_snapshot("/tmp/none.db", pack)
     assert a == b == frozen
@@ -2442,6 +2447,248 @@ def test_compute_teach_tip_reuses_frozen_pack_tip(monkeypatch):
     assert tip is not None
     assert float(tip["close"]) == 44606.0
     assert tip["asof"] == "20261112"
+    # 圖軸已到 11/13 → 凍結 11/12 算過期
+    assert _teach_tip_stale_vs_bars(
+        frozen, [{"date": "20261113", "close": 43675.0}]
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._twii_bars_for_teach",
+        lambda *_a, **_k: [
+            {"date": "20261112", "close": 43091.0},
+            {"date": "20261113", "close": 43675.12, "live_session": 0},
+        ],
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._load_us_daily", lambda *_a, **_k: []
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._resolve_tx_after_hours_tip",
+        lambda *_a, **_k: {"asof": "20261113", "close": 43706.0, "clock": ""},
+    )
+    fresh = compute_teach_tip_snapshot("/tmp/none.db", pack, reuse_frozen=True)
+    assert fresh["tw_asof"] == "20261113"
+    assert abs(float(fresh["tw_close"]) - 43675.12) < 0.01
+
+
+def test_teach_tip_stale_when_sox_or_tx_lags_even_if_tw_ok(monkeypatch):
+    """加權已對上圖軸、費半／電子盤仍舊日 → 不准沿用凍結 tip。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_level_learn import (
+        compute_teach_tip_snapshot,
+        _teach_tip_stale_vs_bars,
+        _ymd,
+    )
+    import taiwan_market
+    import trading_calendar
+
+    frozen = {
+        "tw_asof": "20261113",
+        "tw_close": 43675.12,
+        "tw_live": 0,
+        "sox_asof": "20261111",
+        "sox_close": 10564.11,
+        "sox_live": 0,
+        "tx_asof": "20261110",
+        "tx_close": 42522.0,
+        "tx_live": 0,
+    }
+    bars = [
+        {"date": "20261112", "close": 43091.0},
+        {"date": "20261113", "close": 43675.12, "live_session": 0},
+    ]
+    # 只對加權 → 不過期；加上庫內費半／夜盤 → 過期
+    assert not _teach_tip_stale_vs_bars(frozen, bars)
+    monkeypatch.setattr(
+        "biaoke_level_learn._load_us_daily",
+        lambda *_a, **_k: [
+            {"date": "20261111", "close": 10564.11},
+            {"date": "20261112", "close": 10506.67},
+            {"date": "20261113", "close": 10146.32},
+        ],
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._tx_night_evening_ymd",
+        lambda ymd: "20261113" if _ymd(ymd) == "20261116" else "",
+    )
+    monkeypatch.setattr(
+        taiwan_market,
+        "load_futures_night",
+        lambda *_a, **_k: {"date": "20261116", "close": 43706.0},
+    )
+    monkeypatch.setattr(
+        trading_calendar,
+        "futures_night_date_cap",
+        lambda *_a, **_k: "20261116",
+    )
+    wall = datetime(2026, 11, 14, 13, 40, tzinfo=ZoneInfo("Asia/Taipei"))
+    pack = {"teach_tip": dict(frozen), "query_now": wall.isoformat()}
+    monkeypatch.setattr(
+        "biaoke_level_learn._query_now_from_pack", lambda *_a, **_k: wall
+    )
+    assert _teach_tip_stale_vs_bars(
+        frozen, bars, db_path="/tmp/fake.db", pack=pack
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._twii_bars_for_teach", lambda *_a, **_k: bars
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._resolve_tx_after_hours_tip",
+        lambda *_a, **_k: {"asof": "20261113", "close": 43706.0, "clock": ""},
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._us_real_close_pair",
+        lambda rows, live=None: {
+            "close": 10146.32,
+            "prev_close": 10506.67,
+            "asof": "20261113",
+            "n": 3,
+        },
+    )
+    fresh = compute_teach_tip_snapshot("/tmp/fake.db", pack, reuse_frozen=True)
+    assert fresh["tw_asof"] == "20261113"
+    assert fresh["sox_asof"] == "20261113"
+    assert abs(float(fresh["sox_close"]) - 10146.32) < 0.01
+    assert fresh["tx_asof"] == "20261113"
+    assert abs(float(fresh["tx_close"]) - 43706.0) < 0.01
+
+
+def test_paint_sox_stamp_refuses_stale_tip():
+    """費半白底：tip 舊於真實美股日 → 不准覆寫 stamp 價／日。"""
+    import inspect
+
+    from biaoke_level_learn import _paint_index_last_chg_tip
+
+    src = inspect.getsource(_paint_index_last_chg_tip)
+    assert "use_tip_sox" in src
+    assert "tip_sox < real_sox" in src
+
+
+def test_verify_teach_stamp_preflight_catches_stale_legs(monkeypatch):
+    """出圖前硬閘：加權對上仍擋費半／電子盤舊 tip。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_level_learn import (
+        ensure_teach_tip_preflight,
+        verify_teach_stamp_preflight,
+    )
+
+    wall = datetime(2026, 11, 14, 14, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    frozen = {
+        "tw_asof": "20261113",
+        "tw_close": 43675.12,
+        "tw_live": 0,
+        "sox_asof": "20261111",
+        "sox_close": 10564.11,
+        "sox_live": 0,
+        "tx_asof": "20261110",
+        "tx_close": 42522.0,
+        "tx_live": 0,
+    }
+    pack = {"teach_tip": dict(frozen), "query_now": wall.isoformat()}
+    monkeypatch.setattr(
+        "biaoke_level_learn._query_now_from_pack", lambda *_a, **_k: wall
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._twii_bars_for_teach",
+        lambda *_a, **_k: [
+            {"date": "20261113", "close": 43675.12, "live_session": 0}
+        ],
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._load_us_daily",
+        lambda *_a, **_k: [
+            {"date": "20261111", "close": 10564.11},
+            {"date": "20261113", "close": 10146.32},
+        ],
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._tx_night_evening_ymd",
+        lambda ymd: "20261113" if str(ymd).startswith("20261116") else "",
+    )
+    import taiwan_market
+    import trading_calendar
+
+    monkeypatch.setattr(
+        taiwan_market,
+        "load_futures_night",
+        lambda *_a, **_k: {"date": "20261116", "close": 43706.0},
+    )
+    monkeypatch.setattr(
+        trading_calendar,
+        "futures_night_date_cap",
+        lambda *_a, **_k: "20261116",
+    )
+    bad = verify_teach_stamp_preflight("/tmp/fake.db", pack)
+    assert not bad["ok"]
+    codes = {f["code"] for f in bad["fails"]}
+    assert "sox_asof_stale" in codes
+    assert "tx_asof_stale" in codes
+    monkeypatch.setattr(
+        "biaoke_level_learn.compute_teach_tip_snapshot",
+        lambda *_a, **_k: {
+            "tw_asof": "20261113",
+            "tw_close": 43675.12,
+            "tw_live": 0,
+            "sox_asof": "20261113",
+            "sox_close": 10146.32,
+            "sox_live": 0,
+            "tx_asof": "20261113",
+            "tx_close": 43706.0,
+            "tx_live": 0,
+        },
+    )
+    good = ensure_teach_tip_preflight("/tmp/fake.db", pack)
+    assert good["ok"]
+    assert good["tip"]["sox_asof"] == "20261113"
+    assert good["tip"]["tx_asof"] == "20261113"
+
+
+def test_wave_structure_playbook_c_complete_and_c5():
+    """飆大改口預設：C走完→新八浪示意；C五小段→嵌閃折句。"""
+    from biaoke_level_learn import (
+        resolve_wave_structure_paint_policy,
+        _oral_535_now_tip,
+        _wave_now_ladder,
+    )
+
+    sealed = resolve_wave_structure_paint_policy(
+        {"thesis": "確定C波已經走完，開始完整的八浪循環開始"}
+    )
+    assert sealed["id"] == "c_complete_new_cycle"
+    assert sealed.get("seal_big_c")
+    assert "大C已封" in _oral_535_now_tip(
+        short=True, pack={"thesis": "確定C波已經走完，開始走上升五波"}
+    )
+    chain = _wave_now_ladder(
+        {"thesis": "確定C波已經走完，開始走上升五波"}
+    ).get("chain")
+    assert "大C已封" in chain
+    assert "新八浪示意" in chain
+    c5 = resolve_wave_structure_paint_policy(
+        {"thesis": "本週開始走abc的c波五小段"}
+    )
+    assert c5["id"] == "c_wave_five_micro"
+    assert "c1–c5" in _oral_535_now_tip(
+        pack={"thesis": "本週開始走abc的c波五小段"}
+    )
+
+
+def test_paint_open_day_runs_stamp_preflight():
+    """paint_open_day_hypothesis 必跑 stamp preflight；不過不准出圖。"""
+    import inspect
+
+    from biaoke_level_learn import paint_open_day_hypothesis
+    from bot_servers import WayneTelegramBot
+
+    src = inspect.getsource(paint_open_day_hypothesis)
+    assert "ensure_teach_tip_preflight" in src
+    assert 'error": "stamp_preflight"' in src or "stamp_preflight" in src
+    send_src = inspect.getsource(WayneTelegramBot._send_market_wave_charts)
+    assert "ensure_teach_tip_preflight" in send_src
+    assert "白底戳對不上官方" in send_src
 
 
 def test_sox_axis_index_for_ymd_prefers_tw_then_extra():
