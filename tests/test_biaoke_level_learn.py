@@ -2413,6 +2413,7 @@ def test_compute_teach_tip_reuses_frozen_pack_tip(monkeypatch):
     from biaoke_level_learn import (
         compute_teach_tip_snapshot,
         _resolve_tx_after_hours_tip,
+        _teach_tip_stale_vs_bars,
     )
 
     frozen = {
@@ -2427,6 +2428,10 @@ def test_compute_teach_tip_reuses_frozen_pack_tip(monkeypatch):
         "tx_live": 0,
     }
     pack = {"teach_tip": dict(frozen)}
+    # 無圖軸可對 → 沿用凍結
+    monkeypatch.setattr(
+        "biaoke_level_learn._twii_bars_for_teach", lambda *_a, **_k: []
+    )
     a = compute_teach_tip_snapshot("/tmp/none.db", pack)
     b = compute_teach_tip_snapshot("/tmp/none.db", pack)
     assert a == b == frozen
@@ -2442,6 +2447,27 @@ def test_compute_teach_tip_reuses_frozen_pack_tip(monkeypatch):
     assert tip is not None
     assert float(tip["close"]) == 44606.0
     assert tip["asof"] == "20261112"
+    # 圖軸已到 11/13 → 凍結 11/12 算過期
+    assert _teach_tip_stale_vs_bars(
+        frozen, [{"date": "20261113", "close": 43675.0}]
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._twii_bars_for_teach",
+        lambda *_a, **_k: [
+            {"date": "20261112", "close": 43091.0},
+            {"date": "20261113", "close": 43675.12, "live_session": 0},
+        ],
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._load_us_daily", lambda *_a, **_k: []
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._resolve_tx_after_hours_tip",
+        lambda *_a, **_k: {"asof": "20261113", "close": 43706.0, "clock": ""},
+    )
+    fresh = compute_teach_tip_snapshot("/tmp/none.db", pack, reuse_frozen=True)
+    assert fresh["tw_asof"] == "20261113"
+    assert abs(float(fresh["tw_close"]) - 43675.12) < 0.01
 
 
 def test_sox_axis_index_for_ymd_prefers_tw_then_extra():

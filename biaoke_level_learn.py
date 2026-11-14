@@ -736,6 +736,18 @@ def _ensure_paint_live_sox(
     return None
 
 
+def _teach_tip_stale_vs_bars(
+    frozen: Optional[Dict[str, Any]],
+    bars: Optional[Sequence[Dict[str, Any]]],
+) -> bool:
+    """凍結 tip 的加權 asof 是否已落後於圖軸末根（遠／近白底卡舊日根因）。"""
+    if not isinstance(frozen, dict) or not bars:
+        return False
+    tip_asof = _ymd(frozen.get("tw_asof"))
+    bar_asof = _ymd((bars[-1] or {}).get("date"))
+    return bool(tip_asof and bar_asof and tip_asof < bar_asof)
+
+
 def compute_teach_tip_snapshot(
     db_path: str,
     pack: Optional[Dict[str, Any]] = None,
@@ -747,16 +759,24 @@ def compute_teach_tip_snapshot(
     話筒存檔回退要比對這份；三張對不起來＝不准混用舊圖。
     pack 已有 prep 凍結的 teach_tip（含三價）→ 直接重用，遠／近／超近同口。
     prep 當下算凍結時傳 reuse_frozen=False。
+    圖軸末根已新過凍結 tip → 不准沿用（白底／今價卡 11/11 而柱到 11/13）。
     """
     pack = pack if isinstance(pack, dict) else {}
     frozen = pack.get("teach_tip") if isinstance(pack.get("teach_tip"), dict) else None
+    bars_probe: List[Dict[str, Any]] = []
+    try:
+        if db_path:
+            bars_probe = _twii_bars_for_teach(db_path, 4, pack)
+    except Exception:
+        bars_probe = []
     if (
         reuse_frozen
         and frozen
         and frozen.get("tw_close")
         and frozen.get("tx_close")
+        and not _teach_tip_stale_vs_bars(frozen, bars_probe)
     ):
-        # 已凍結：三窗 paint 重入不准重抓漂價
+        # 已凍結且未落後圖軸：三窗 paint 重入不准重抓漂價
         return {
             "tw_asof": _ymd(frozen.get("tw_asof")) or "",
             "tw_close": frozen.get("tw_close"),
@@ -820,6 +840,12 @@ def compute_teach_tip_snapshot(
             out["tx_live"] = 1 if night and str(tip.get("clock") or "").strip() else 0
     except Exception:
         logger.debug("teach tip tx 略過", exc_info=True)
+    # 重算後寫回 pack，避免後續戳／電子盤仍吃過期凍結
+    try:
+        if isinstance(pack, dict) and out.get("tw_close"):
+            pack["teach_tip"] = dict(out)
+    except Exception:
+        pass
     return out
 
 
@@ -2204,17 +2230,24 @@ def _paint_teach_query_stamp(
     live = int((bars[-1] or {}).get("live_session") or 0) == 1
     if live and not _twii_cash_session_live(_query_now_from_pack(pack)):
         live = False
-    # prep 凍結 tip：三窗加權戳同口（不准遠／近／超近各吃一版 MIS）
+    # prep 凍結 tip：三窗加權戳同口；tip 落後圖軸末根 → 改吃圖軸（不准日期／價拆兩日）
     tip0 = (pack or {}).get("teach_tip") if isinstance(pack, dict) else None
     if (
         isinstance(tip0, dict)
         and str(label_prefix or "").strip() in {"", "加權"}
         and float(tip0.get("tw_close") or 0) > 0
+        and not _teach_tip_stale_vs_bars(tip0, bars)
     ):
         as_of = _ymd(tip0.get("tw_asof")) or as_of
         live = bool(int(tip0.get("tw_live") or 0))
         if close is None:
             close = float(tip0["tw_close"])
+    elif isinstance(tip0, dict) and _teach_tip_stale_vs_bars(tip0, bars):
+        # 過期 tip：白底強制跟末根縮圖K 同日同價
+        close = None
+        live = int((bars[-1] or {}).get("live_session") or 0) == 1 if bars else False
+        if live and not _twii_cash_session_live(_query_now_from_pack(pack)):
+            live = False
     when = _stamp_when_bit(
         as_of,
         live=live,
@@ -2587,15 +2620,37 @@ def _resolve_tx_after_hours_tip(
     clock = ""
     night_live = _tx_night_session_live(_query_now_from_pack(pack))
     # prep 凍結 tip：日盤三窗電子盤戳同口（夜盤進行中仍走即時）
+    # tip.tx_asof 落後庫內最新夜盤 → 不准鎖死（遠窗「11/10夜收」卡舊根因）
     tip0 = (pack or {}).get("teach_tip") if isinstance(pack, dict) else None
     tip_locked = False
+    tip_asof0 = _ymd((tip0 or {}).get("tx_asof")) if isinstance(tip0, dict) else ""
+    latest_night_asof = ""
+    if db_path and not night_live:
+        try:
+            from taiwan_market import load_futures_night
+            from trading_calendar import futures_night_date_cap
+
+            wall0 = _query_now_from_pack(pack)
+            _ntip = load_futures_night(
+                db_path, futures_night_date_cap(wall0), now=wall0
+            )
+            if isinstance(_ntip, dict):
+                latest_night_asof = _ymd(_ntip.get("date"))
+        except Exception:
+            latest_night_asof = ""
+    tip_tx_stale = bool(
+        tip_asof0
+        and latest_night_asof
+        and tip_asof0 < latest_night_asof
+    )
     if (
         not night_live
+        and not tip_tx_stale
         and isinstance(tip0, dict)
         and float(tip0.get("tx_close") or 0) > 0
     ):
         close = float(tip0["tx_close"])
-        asof = _ymd(tip0.get("tx_asof")) or ""
+        asof = tip_asof0 or ""
         tip_locked = True
     # 0) pack 已抓的 live_tx（同口 OHLC＋ref）——只在夜盤進行中
     live0 = (pack or {}).get("live_tx") if isinstance(pack, dict) else None
