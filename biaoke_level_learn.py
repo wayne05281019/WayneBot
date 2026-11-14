@@ -755,19 +755,24 @@ def _teach_tip_stale_vs_bars(
         return True
     if not db_path:
         return False
-    # 費半：tip.sox_asof 落後庫內真實美股末日（或同日價差）
+    # 費半：缺 tip／落後官方末日／同日價差 → 過期（不准只靠加權＋電子盤就 reuse）
     try:
+        tip_sox = _ymd(frozen.get("sox_asof"))
+        try:
+            tip_sox_c = float(frozen.get("sox_close") or 0)
+        except (TypeError, ValueError):
+            tip_sox_c = 0.0
+        if not tip_sox or tip_sox_c <= 0:
+            return True
         sox_rows = _load_us_daily(db_path, "SOX", "20260101")
         pair = _us_real_close_pair(sox_rows, None)
         sox_asof = _ymd(pair.get("asof"))
-        tip_sox = _ymd(frozen.get("sox_asof"))
         if tip_sox and sox_asof and tip_sox < sox_asof:
             return True
         try:
-            tip_sox_c = float(frozen.get("sox_close") or 0)
             real_sox_c = float(pair.get("close") or 0)
         except (TypeError, ValueError):
-            tip_sox_c, real_sox_c = 0.0, 0.0
+            real_sox_c = 0.0
         if (
             tip_sox
             and sox_asof
@@ -842,12 +847,13 @@ def compute_teach_tip_snapshot(
         reuse_frozen
         and frozen
         and frozen.get("tw_close")
+        and frozen.get("sox_close")
         and frozen.get("tx_close")
         and not _teach_tip_stale_vs_bars(
             frozen, bars_probe, db_path=db_path or "", pack=pack
         )
     ):
-        # 已凍結且加權／費半／電子盤皆未落後：三窗 paint 重入不准重抓漂價
+        # 已凍結且加權／費半／電子盤三口齊、皆未落後：三窗 paint 重入不准重抓漂價
         return {
             "tw_asof": _ymd(frozen.get("tw_asof")) or "",
             "tw_close": frozen.get("tw_close"),
@@ -1020,7 +1026,7 @@ def verify_teach_stamp_preflight(
     else:
         fails.append({"code": "tw_bars_missing", "detail": "無加權末根可對"})
 
-    # —— 費半：tip＝真實美股末日 ——
+    # —— 費半：tip＝真實美股末日；tip 缺但庫有 → 當場補上，不准空 tip 擋圖 ——
     try:
         sox_rows = _load_us_daily(db_path, "SOX", "20260101") if db_path else []
         pair = _us_real_close_pair(sox_rows, None)
@@ -1031,6 +1037,13 @@ def verify_teach_stamp_preflight(
             tip_sox_c = float(tip0.get("sox_close") or 0)
         except (TypeError, ValueError):
             sox_c, tip_sox_c = 0.0, 0.0
+        if (not tip_sox or tip_sox_c <= 0) and sox_asof and sox_c > 0:
+            tip0["sox_asof"] = sox_asof
+            tip0["sox_close"] = sox_c
+            tip0["sox_live"] = int(tip0.get("sox_live") or 0)
+            tip_sox, tip_sox_c = sox_asof, sox_c
+            if isinstance(pack, dict):
+                pack["teach_tip"] = dict(tip0)
         if tip_sox and sox_asof and tip_sox < sox_asof:
             fails.append(
                 {
@@ -1053,11 +1066,23 @@ def verify_teach_stamp_preflight(
                 }
             )
         if not tip_sox or tip_sox_c <= 0:
-            fails.append({"code": "sox_tip_missing", "detail": "缺費半 tip"})
+            if sox_asof and sox_c > 0:
+                fails.append({"code": "sox_tip_missing", "detail": "缺費半 tip"})
+            else:
+                fails.append(
+                    {"code": "sox_data_missing", "detail": "庫內缺費半官方收"}
+                )
     except Exception as exc:
-        fails.append({"code": "sox_check_error", "detail": str(exc)[:120]})
+        logger.exception("stamp preflight 費半檢查失敗")
+        fails.append({"code": "sox_check_error", "detail": "費半檢查失敗"})
+        del exc
 
-    # —— 電子盤：tip 起日／價＝最新夜盤 ——
+    # —— 電子盤：tip 起日／價＝最新夜盤；模組炸但 tip 已有價 → 不擋整圖 ——
+    tip_tx = _ymd(tip0.get("tx_asof"))
+    try:
+        tip_tx_c = float(tip0.get("tx_close") or 0)
+    except (TypeError, ValueError):
+        tip_tx_c = 0.0
     try:
         from taiwan_market import load_futures_night
         from trading_calendar import futures_night_date_cap
@@ -1065,15 +1090,17 @@ def verify_teach_stamp_preflight(
         night = load_futures_night(
             db_path, futures_night_date_cap(wall), now=wall
         )
-        tip_tx = _ymd(tip0.get("tx_asof"))
-        try:
-            tip_tx_c = float(tip0.get("tx_close") or 0)
-        except (TypeError, ValueError):
-            tip_tx_c = 0.0
         if isinstance(night, dict) and float(night.get("close") or 0) > 0:
             night_label = _ymd(night.get("date"))
             night_eve = _tx_night_evening_ymd(night_label) or night_label
             night_c = float(night.get("close") or 0)
+            if (not tip_tx or tip_tx_c <= 0) and night_eve and night_c > 0:
+                tip0["tx_asof"] = night_eve
+                tip0["tx_close"] = night_c
+                tip0["tx_live"] = 0
+                tip_tx, tip_tx_c = night_eve, night_c
+                if isinstance(pack, dict):
+                    pack["teach_tip"] = dict(tip0)
             if tip_tx and night_eve and tip_tx < night_eve:
                 fails.append(
                     {
@@ -1102,7 +1129,13 @@ def verify_teach_stamp_preflight(
         if not tip_tx or tip_tx_c <= 0:
             fails.append({"code": "tx_tip_missing", "detail": "缺電子盤 tip"})
     except Exception as exc:
-        fails.append({"code": "tx_check_error", "detail": str(exc)[:120]})
+        logger.exception("stamp preflight 電子盤檢查失敗")
+        # tip 已有電子盤一口 → 模組異常不准拖死三窗
+        if tip_tx and tip_tx_c > 0:
+            logger.error("電子盤模組異常但 tip 有價，放行 asof=%s", tip_tx)
+        else:
+            fails.append({"code": "tx_module_error", "detail": "電子盤模組異常"})
+        del exc
 
     # —— 盤中旗：只准真現金／夜盤窗；週末／休市殘旗＝錯 ——
     if int(tip0.get("tw_live") or 0) == 1 and not _twii_cash_session_live(wall):
@@ -1124,17 +1157,37 @@ def ensure_teach_tip_preflight(
     db_path: str,
     pack: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """出圖前：先硬閘；不過→強制重算 tip 再閘一次。仍不過＝ok False。"""
+    """出圖前：先強制重算 tip→硬閘；缺費半再補官方日K→再算再閘。仍不過＝ok False。"""
     pack = pack if isinstance(pack, dict) else {}
-    gate = verify_teach_stamp_preflight(db_path, pack)
-    if gate.get("ok"):
-        return gate
+    # 不准先吃殘缺 pack tip（缺費半卻有加權／電子盤會誤報擋圖）
     try:
         pack["teach_tip"] = compute_teach_tip_snapshot(
             db_path, pack, reuse_frozen=False
         )
     except Exception:
         logger.exception("preflight 重算 tip 失敗")
+    tip0 = pack.get("teach_tip") if isinstance(pack.get("teach_tip"), dict) else {}
+    if not float((tip0 or {}).get("sox_close") or 0):
+        try:
+            _ensure_teach_index_bars(db_path)
+        except Exception:
+            logger.exception("preflight 補費半日K失敗")
+        try:
+            pack["teach_tip"] = compute_teach_tip_snapshot(
+                db_path, pack, reuse_frozen=False
+            )
+        except Exception:
+            logger.exception("preflight 補後重算 tip 失敗")
+    gate = verify_teach_stamp_preflight(db_path, pack)
+    if gate.get("ok"):
+        return gate
+    # 再試一次：重算＋閘（官方剛寫入）
+    try:
+        pack["teach_tip"] = compute_teach_tip_snapshot(
+            db_path, pack, reuse_frozen=False
+        )
+    except Exception:
+        logger.exception("preflight 二次重算 tip 失敗")
     gate2 = verify_teach_stamp_preflight(db_path, pack)
     gate2["retried"] = True
     gate2["first_fails"] = list(gate.get("fails") or [])

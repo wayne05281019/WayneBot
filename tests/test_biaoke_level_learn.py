@@ -2703,6 +2703,73 @@ def test_taiwan_market_chg5_no_nested_fstring_quotes():
     compile(text, "taiwan_market.py", "exec")
 
 
+def test_stamp_preflight_heals_missing_sox_tip(monkeypatch):
+    """pack tip 缺費半但庫有官方 → 當場補上放行，不准擋圖。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_level_learn import verify_teach_stamp_preflight
+
+    wall = datetime(2026, 11, 14, 18, 40, tzinfo=ZoneInfo("Asia/Taipei"))
+    pack = {
+        "query_now": wall.isoformat(),
+        "teach_tip": {
+            "tw_asof": "20261113",
+            "tw_close": 43675.12,
+            "tw_live": 0,
+            "sox_asof": "",
+            "sox_close": None,
+            "sox_live": 0,
+            "tx_asof": "20261113",
+            "tx_close": 43706.0,
+            "tx_live": 0,
+        },
+    }
+    monkeypatch.setattr(
+        "biaoke_level_learn._query_now_from_pack", lambda *_a, **_k: wall
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._twii_bars_for_teach",
+        lambda *_a, **_k: [{"date": "20261113", "close": 43675.12}],
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._load_us_daily",
+        lambda *_a, **_k: [{"date": "20261113", "close": 10146.32}],
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._tx_night_evening_ymd",
+        lambda ymd: "20261113",
+    )
+    import taiwan_market
+    import trading_calendar
+
+    monkeypatch.setattr(
+        taiwan_market,
+        "load_futures_night",
+        lambda *_a, **_k: {"date": "20261116", "close": 43706.0},
+    )
+    monkeypatch.setattr(
+        trading_calendar,
+        "futures_night_date_cap",
+        lambda *_a, **_k: "20261116",
+    )
+    gate = verify_teach_stamp_preflight("/tmp/fake.db", pack)
+    assert gate["ok"], gate.get("fails")
+    assert gate["tip"]["sox_asof"] == "20261113"
+    assert abs(float(gate["tip"]["sox_close"]) - 10146.32) < 0.01
+
+
+def test_tip_reuse_requires_sox_close():
+    """凍結 tip 缺費半不准 reuse（根因：只驗 tw+tx 會沿用空 SOX）。"""
+    import inspect
+
+    from biaoke_level_learn import compute_teach_tip_snapshot
+
+    src = inspect.getsource(compute_teach_tip_snapshot)
+    # reuse 閘必須三口齊
+    assert "frozen.get(\"sox_close\")" in src or "frozen.get('sox_close')" in src
+
+
 def test_sox_axis_index_for_ymd_prefers_tw_then_extra():
     """費半 tip 索引：先加權同日格，再延長格。"""
     from biaoke_level_learn import _sox_axis_index_for_ymd
