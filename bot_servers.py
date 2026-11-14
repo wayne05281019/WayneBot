@@ -7084,6 +7084,11 @@ class WayneTelegramBot:
                 pre = ensure_teach_tip_preflight(self.db_path, pack) or {}
                 if want_tip and pre.get("tip"):
                     want_tip = dict(pre["tip"])
+                if pre.get("sox_degraded"):
+                    logger.warning(
+                        "大盤教具費半官方收暫缺，降級出圖 fails=%s",
+                        pre.get("fails"),
+                    )
                 if not pre.get("ok"):
                     fails = pre.get("fails") or []
                     bits: list = []
