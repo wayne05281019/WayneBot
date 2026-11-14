@@ -1,0 +1,862 @@
+{
+  "version": "stock_blue_arrow_exit_assist_confront_lab_v1",
+  "as_of": "2026-11-11T01:31:20+08:00",
+  "tz": "Asia/Taipei",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "not_buy_signal": true,
+  "promote_lookup": false,
+  "promote_lab_signal": false,
+  "promote_candidates": [],
+  "best_candidate": null,
+  "gate_passed": false,
+  "status": "no_beat_keep_phone_stack_blocked",
+  "keep": "v106",
+  "soft_leader_invent": {
+    "status": "off",
+    "reason_zh": "soft_leader invent 三次 thicken 失敗；keep v106；本軌改對質藍▲出場協助",
+    "keep": "v106",
+    "thicken_failures_n": 3
+  },
+  "entry": "leave_zero_blue_tri",
+  "entry_note_zh": "固定 leave_zero 官方畫法；不准改公式；ma60_lower 本跑不重測進場",
+  "friction": 0.003,
+  "max_hold": 60,
+  "giveback": 0.08,
+  "random_seed": 20261110,
+  "smoke": false,
+  "n_stocks_meta": 104,
+  "elapsed_s": 214.3,
+  "method_zh": "leave_zero 次日開進；出場變體獨立對質；淨報酬扣 0.3% 摩擦",
+  "symbol_map": {
+    "leave_zero_blue_tri": {
+      "role": "entry_fixed",
+      "phone_now": true,
+      "glyph_zh": "藍▲紅框",
+      "note": "進場固定；公式不改"
+    },
+    "first_hi20": {
+      "role": "exit_assist",
+      "phone_now": false,
+      "glyph_zh": "出場◇（建議）",
+      "note": "進場後首碰20高；過閘才畫查股"
+    },
+    "sell_desync_cut": {
+      "role": "exit_assist",
+      "phone_now": "text_only",
+      "glyph_zh": "減碼◆（建議）",
+      "note": "如何賣不同步直接減碼；符號化待過閘"
+    },
+    "phone_stack": {
+      "role": "exit_baseline_current",
+      "phone_now": true,
+      "glyph_zh": "現況出場堆",
+      "note": "first_hi20→sell_desync→giveback8→max60"
+    },
+    "hold_max": {
+      "role": "exit_baseline",
+      "phone_now": false,
+      "glyph_zh": "抱滿60日",
+      "note": "基線"
+    },
+    "random_exit": {
+      "role": "exit_control",
+      "phone_now": false,
+      "glyph_zh": "隨機出場對照",
+      "note": "持有窗均勻抽日；過閘必須贏它"
+    }
+  },
+  "by_exit": {
+    "phone_stack": {
+      "n_trades": 10412,
+      "n_unique_entry_days": 3061,
+      "n_sids": 104,
+      "win_rate": 0.5660776027660391,
+      "wilson_ci95": [
+        0.5565350426848605,
+        0.575571420992544
+      ],
+      "avg_net": 0.0003466876232903756,
+      "median_net": 0.009039042478013019,
+      "expectancy": 0.0003466876232903756,
+      "avg_hold": 11.598155973876297,
+      "avg_mfe": 0.05251698280475833,
+      "avg_mae": -0.05062443828523169,
+      "exit_reason_counts": {
+        "sell_desync_cut": 2725,
+        "first_hi20": 3794,
+        "giveback_8pct": 3875,
+        "max_hold_60": 18
+      }
+    },
+    "first_hi20": {
+      "n_trades": 6989,
+      "n_unique_entry_days": 2632,
+      "n_sids": 104,
+      "win_rate": 0.6663328086993847,
+      "wilson_ci95": [
+        0.6551892906940258,
+        0.6772935729246781
+      ],
+      "avg_net": 0.007322016378927362,
+      "median_net": 0.018739292997358773,
+      "expectancy": 0.007322016378927362,
+      "avg_hold": 23.866647589068535,
+      "avg_mfe": 0.058667993262849424,
+      "avg_mae": -0.08007264652871332,
+      "exit_reason_counts": {
+        "first_hi20": 6539,
+        "max_hold_60": 450
+      }
+    },
+    "sell_desync_cut": {
+      "n_trades": 7466,
+      "n_unique_entry_days": 2716,
+      "n_sids": 104,
+      "win_rate": 0.6315296008572194,
+      "wilson_ci95": [
+        0.6205222217953625,
+        0.6424016934855186
+      ],
+      "avg_net": 0.0068965452575204984,
+      "median_net": 0.0148573377965916,
+      "expectancy": 0.0068965452575204984,
+      "avg_hold": 21.58545405839807,
+      "avg_mfe": 0.0591618609026532,
+      "avg_mae": -0.07417116101117453,
+      "exit_reason_counts": {
+        "sell_desync_cut": 7036,
+        "max_hold_60": 430
+      }
+    },
+    "hold_max": {
+      "n_trades": 4979,
+      "n_unique_entry_days": 2213,
+      "n_sids": 104,
+      "win_rate": 0.577023498694517,
+      "wilson_ci95": [
+        0.56324656880263,
+        0.5906816636340584
+      ],
+      "avg_net": 0.04401790549557097,
+      "median_net": 0.019231904295306305,
+      "expectancy": 0.04401790549557097,
+      "avg_hold": 59.47539666599719,
+      "avg_mfe": 0.1582894120210319,
+      "avg_mae": -0.1066454452884604,
+      "exit_reason_counts": {
+        "max_hold_60": 4979
+      }
+    },
+    "random_exit": {
+      "n_trades": 7419,
+      "n_unique_entry_days": 2802,
+      "n_sids": 104,
+      "win_rate": 0.5427955250033697,
+      "wilson_ci95": [
+        0.5314403693761012,
+        0.5541063840397336
+      ],
+      "avg_net": 0.018558597393425042,
+      "median_net": 0.005836385326211449,
+      "expectancy": 0.018558597393425042,
+      "avg_hold": 30.474861841218495,
+      "avg_mfe": 0.09514999426856446,
+      "avg_mae": -0.07333550084141358,
+      "exit_reason_counts": {
+        "random_exit": 7419
+      }
+    }
+  },
+  "wr_d": {
+    "phone_stack": {
+      "wr": 0.5660776027660391,
+      "d": 3061,
+      "E": 0.0003466876232903756,
+      "n_trades": 10412,
+      "avg_hold": 11.598155973876297,
+      "exit_reason_counts": {
+        "sell_desync_cut": 2725,
+        "first_hi20": 3794,
+        "giveback_8pct": 3875,
+        "max_hold_60": 18
+      }
+    },
+    "first_hi20": {
+      "wr": 0.6663328086993847,
+      "d": 2632,
+      "E": 0.007322016378927362,
+      "n_trades": 6989,
+      "avg_hold": 23.866647589068535,
+      "exit_reason_counts": {
+        "first_hi20": 6539,
+        "max_hold_60": 450
+      }
+    },
+    "sell_desync_cut": {
+      "wr": 0.6315296008572194,
+      "d": 2716,
+      "E": 0.0068965452575204984,
+      "n_trades": 7466,
+      "avg_hold": 21.58545405839807,
+      "exit_reason_counts": {
+        "sell_desync_cut": 7036,
+        "max_hold_60": 430
+      }
+    },
+    "hold_max": {
+      "wr": 0.577023498694517,
+      "d": 2213,
+      "E": 0.04401790549557097,
+      "n_trades": 4979,
+      "avg_hold": 59.47539666599719,
+      "exit_reason_counts": {
+        "max_hold_60": 4979
+      }
+    },
+    "random_exit": {
+      "wr": 0.5427955250033697,
+      "d": 2802,
+      "E": 0.018558597393425042,
+      "n_trades": 7419,
+      "avg_hold": 30.474861841218495,
+      "exit_reason_counts": {
+        "random_exit": 7419
+      }
+    }
+  },
+  "comparisons_vs_phone_stack": {
+    "first_hi20_vs_phone_stack": {
+      "gate_n20": true,
+      "assist_fired": true,
+      "expectancy_delta": 0.006975328755636986,
+      "win_rate_delta": 0.10025520593334558,
+      "beats_phone_stack": true,
+      "beats_random_exit": false,
+      "beats_hold_max": false,
+      "tag_days": 2632,
+      "phone_days": 3061,
+      "random_days": 2802
+    },
+    "sell_desync_cut_vs_phone_stack": {
+      "gate_n20": true,
+      "assist_fired": true,
+      "expectancy_delta": 0.0065498576342301225,
+      "win_rate_delta": 0.0654519980911803,
+      "beats_phone_stack": true,
+      "beats_random_exit": false,
+      "beats_hold_max": false,
+      "tag_days": 2716,
+      "phone_days": 3061,
+      "random_days": 2802
+    },
+    "hold_max_vs_phone_stack": {
+      "gate_n20": true,
+      "assist_fired": true,
+      "expectancy_delta": 0.04367121787228059,
+      "win_rate_delta": 0.010945895928477833,
+      "beats_phone_stack": true,
+      "beats_random_exit": true,
+      "beats_hold_max": false,
+      "tag_days": 2213,
+      "phone_days": 3061,
+      "random_days": 2802
+    },
+    "random_exit_vs_phone_stack": {
+      "gate_n20": true,
+      "assist_fired": true,
+      "expectancy_delta": 0.018211909770134666,
+      "win_rate_delta": -0.02328207776266944,
+      "beats_phone_stack": false,
+      "beats_random_exit": false,
+      "beats_hold_max": false,
+      "tag_days": 2802,
+      "phone_days": 3061,
+      "random_days": 2802
+    }
+  },
+  "must_named": {
+    "6442": {
+      "name": "光聖",
+      "data": {
+        "source": "lab_daily:yahoo_lab",
+        "years": 12.640657084188911,
+        "span": {
+          "d0": "20140317",
+          "d1": "20261106",
+          "n": 3083
+        },
+        "adj_kind": "yahoo_adjclose",
+        "name": "光聖"
+      },
+      "by_exit": {
+        "phone_stack": {
+          "n_trades": 63,
+          "n_unique_entry_days": 63,
+          "n_sids": 1,
+          "win_rate": 0.5396825396825397,
+          "wilson_ci95": [
+            0.41789036921596123,
+            0.656913345835743
+          ],
+          "avg_net": 0.0028416766656446735,
+          "median_net": 0.010874183803486374,
+          "expectancy": 0.0028416766656446735,
+          "avg_hold": 11.761904761904763,
+          "avg_mfe": 0.06903775252061843,
+          "avg_mae": -0.05782827158651075,
+          "exit_reason_counts": {
+            "sell_desync_cut": 15,
+            "giveback_8pct": 28,
+            "first_hi20": 20
+          }
+        },
+        "first_hi20": {
+          "n_trades": 41,
+          "n_unique_entry_days": 41,
+          "n_sids": 1,
+          "win_rate": 0.6097560975609756,
+          "wilson_ci95": [
+            0.45726583898692563,
+            0.7434406478467289
+          ],
+          "avg_net": 0.009654841659908993,
+          "median_net": 0.029858730689355076,
+          "expectancy": 0.009654841659908993,
+          "avg_hold": 24.609756097560975,
+          "avg_mfe": 0.07898848576959147,
+          "avg_mae": -0.10281959976429533,
+          "exit_reason_counts": {
+            "first_hi20": 37,
+            "max_hold_60": 4
+          }
+        },
+        "sell_desync_cut": {
+          "n_trades": 43,
+          "n_unique_entry_days": 43,
+          "n_sids": 1,
+          "win_rate": 0.5581395348837209,
+          "wilson_ci95": [
+            0.4110735806551171,
+            0.6956691437607867
+          ],
+          "avg_net": 0.02589716362812313,
+          "median_net": 0.02143276077156087,
+          "expectancy": 0.02589716362812313,
+          "avg_hold": 24.58139534883721,
+          "avg_mfe": 0.10417191136466349,
+          "avg_mae": -0.09818396306749304,
+          "exit_reason_counts": {
+            "sell_desync_cut": 38,
+            "max_hold_60": 5
+          }
+        },
+        "hold_max": {
+          "n_trades": 32,
+          "n_unique_entry_days": 32,
+          "n_sids": 1,
+          "win_rate": 0.5,
+          "wilson_ci95": [
+            0.33630614316859386,
+            0.6636938568314061
+          ],
+          "avg_net": 0.16862877072234916,
+          "median_net": 0.000600038328584354,
+          "expectancy": 0.16862877072234916,
+          "avg_hold": 58.4375,
+          "avg_mfe": 0.3460795165403619,
+          "avg_mae": -0.1361753339068961,
+          "exit_reason_counts": {
+            "max_hold_60": 32
+          }
+        },
+        "random_exit": {
+          "n_trades": 51,
+          "n_unique_entry_days": 51,
+          "n_sids": 1,
+          "win_rate": 0.5098039215686274,
+          "wilson_ci95": [
+            0.37680695448409596,
+            0.641427378576938
+          ],
+          "avg_net": 0.04851024559328432,
+          "median_net": 0.00020172753239811308,
+          "expectancy": 0.04851024559328432,
+          "avg_hold": 24.980392156862745,
+          "avg_mfe": 0.143000123900875,
+          "avg_mae": -0.08284470629822542,
+          "exit_reason_counts": {
+            "random_exit": 51
+          }
+        }
+      }
+    },
+    "2383": {
+      "name": "台光電",
+      "data": {
+        "source": "lab_daily:yahoo_lab",
+        "years": 20.843258042436688,
+        "span": {
+          "d0": "20060102",
+          "d1": "20261106",
+          "n": 5109
+        },
+        "adj_kind": "yahoo_adjclose",
+        "name": "台光電"
+      },
+      "by_exit": {
+        "phone_stack": {
+          "n_trades": 103,
+          "n_unique_entry_days": 103,
+          "n_sids": 1,
+          "win_rate": 0.5242718446601942,
+          "wilson_ci95": [
+            0.428696500548807,
+            0.6181017503197686
+          ],
+          "avg_net": -0.0019390753567229246,
+          "median_net": 0.005086252560063567,
+          "expectancy": -0.0019390753567229246,
+          "avg_hold": 9.79611650485437,
+          "avg_mfe": 0.06533341839036097,
+          "avg_mae": -0.06128843043555302,
+          "exit_reason_counts": {
+            "giveback_8pct": 50,
+            "sell_desync_cut": 31,
+            "first_hi20": 22
+          }
+        },
+        "first_hi20": {
+          "n_trades": 63,
+          "n_unique_entry_days": 63,
+          "n_sids": 1,
+          "win_rate": 0.7301587301587301,
+          "wilson_ci95": [
+            0.6096985641796893,
+            0.8241629831201958
+          ],
+          "avg_net": 0.01595317947149127,
+          "median_net": 0.04338480405956202,
+          "expectancy": 0.01595317947149127,
+          "avg_hold": 24.095238095238095,
+          "avg_mfe": 0.08344279262137469,
+          "avg_mae": -0.10720839357673084,
+          "exit_reason_counts": {
+            "first_hi20": 57,
+            "max_hold_60": 6
+          }
+        },
+        "sell_desync_cut": {
+          "n_trades": 74,
+          "n_unique_entry_days": 74,
+          "n_sids": 1,
+          "win_rate": 0.6891891891891891,
+          "wilson_ci95": [
+            0.5766117525232517,
+            0.7830930839652068
+          ],
+          "avg_net": 0.010043502643757946,
+          "median_net": 0.030182308295856667,
+          "expectancy": 0.010043502643757946,
+          "avg_hold": 20.68918918918919,
+          "avg_mfe": 0.07324432993693412,
+          "avg_mae": -0.0945707830884529,
+          "exit_reason_counts": {
+            "sell_desync_cut": 70,
+            "max_hold_60": 4
+          }
+        },
+        "hold_max": {
+          "n_trades": 50,
+          "n_unique_entry_days": 50,
+          "n_sids": 1,
+          "win_rate": 0.68,
+          "wilson_ci95": [
+            0.5418944286372394,
+            0.792419559060006
+          ],
+          "avg_net": 0.09185273798706113,
+          "median_net": 0.08039104071518766,
+          "expectancy": 0.09185273798706113,
+          "avg_hold": 58.86,
+          "avg_mfe": 0.2211502973670823,
+          "avg_mae": -0.1303361227792051,
+          "exit_reason_counts": {
+            "max_hold_60": 50
+          }
+        },
+        "random_exit": {
+          "n_trades": 70,
+          "n_unique_entry_days": 70,
+          "n_sids": 1,
+          "win_rate": 0.5285714285714286,
+          "wilson_ci95": [
+            0.4132168390581603,
+            0.6409531680922806
+          ],
+          "avg_net": 0.047555494697119,
+          "median_net": 0.013560070762903335,
+          "expectancy": 0.047555494697119,
+          "avg_hold": 31.12857142857143,
+          "avg_mfe": 0.13374320651058394,
+          "avg_mae": -0.09139921157137522,
+          "exit_reason_counts": {
+            "random_exit": 70
+          }
+        }
+      }
+    },
+    "6274": {
+      "name": "台燿",
+      "data": {
+        "source": "daily_quotes_official",
+        "years": 20.851471594798085,
+        "span": {
+          "d0": "20060102",
+          "d1": "20261109",
+          "n": 4936
+        },
+        "adj_kind": "raw_quote",
+        "name": "台燿"
+      },
+      "by_exit": {
+        "phone_stack": {
+          "n_trades": 106,
+          "n_unique_entry_days": 106,
+          "n_sids": 1,
+          "win_rate": 0.5377358490566038,
+          "wilson_ci95": [
+            0.44316673901352743,
+            0.6296654120112208
+          ],
+          "avg_net": 0.0006666403046136103,
+          "median_net": 0.009724378405783222,
+          "expectancy": 0.0006666403046136103,
+          "avg_hold": 9.462264150943396,
+          "avg_mfe": 0.06728853929237329,
+          "avg_mae": -0.05880475761806983,
+          "exit_reason_counts": {
+            "giveback_8pct": 51,
+            "first_hi20": 16,
+            "sell_desync_cut": 39
+          }
+        },
+        "first_hi20": {
+          "n_trades": 59,
+          "n_unique_entry_days": 59,
+          "n_sids": 1,
+          "win_rate": 0.6271186440677966,
+          "wilson_ci95": [
+            0.49953356682142136,
+            0.7391618196741485
+          ],
+          "avg_net": 0.012231996302219997,
+          "median_net": 0.01808433734939763,
+          "expectancy": 0.012231996302219997,
+          "avg_hold": 26.389830508474578,
+          "avg_mfe": 0.08059821180060028,
+          "avg_mae": -0.11621352460219717,
+          "exit_reason_counts": {
+            "first_hi20": 55,
+            "max_hold_60": 4
+          }
+        },
+        "sell_desync_cut": {
+          "n_trades": 66,
+          "n_unique_entry_days": 66,
+          "n_sids": 1,
+          "win_rate": 0.5757575757575758,
+          "wilson_ci95": [
+            0.4556043708792928,
+            0.6875767704462209
+          ],
+          "avg_net": 0.013287752672695547,
+          "median_net": 0.02015930388219556,
+          "expectancy": 0.013287752672695547,
+          "avg_hold": 21.96969696969697,
+          "avg_mfe": 0.08479677393047336,
+          "avg_mae": -0.09921254279496927,
+          "exit_reason_counts": {
+            "sell_desync_cut": 63,
+            "max_hold_60": 3
+          }
+        },
+        "hold_max": {
+          "n_trades": 45,
+          "n_unique_entry_days": 45,
+          "n_sids": 1,
+          "win_rate": 0.5333333333333333,
+          "wilson_ci95": [
+            0.3907720886241046,
+            0.6706509605798527
+          ],
+          "avg_net": 0.10039448654403928,
+          "median_net": 0.017676691729323294,
+          "expectancy": 0.10039448654403928,
+          "avg_hold": 58.71111111111111,
+          "avg_mfe": 0.25347744395031796,
+          "avg_mae": -0.14904843645192997,
+          "exit_reason_counts": {
+            "max_hold_60": 45
+          }
+        },
+        "random_exit": {
+          "n_trades": 63,
+          "n_unique_entry_days": 63,
+          "n_sids": 1,
+          "win_rate": 0.5714285714285714,
+          "wilson_ci95": [
+            0.44861395082594024,
+            0.6860327362671276
+          ],
+          "avg_net": 0.03408578897364598,
+          "median_net": 0.027120481927710775,
+          "expectancy": 0.03408578897364598,
+          "avg_hold": 32.79365079365079,
+          "avg_mfe": 0.13607864952063958,
+          "avg_mae": -0.09943971032289704,
+          "exit_reason_counts": {
+            "random_exit": 63
+          }
+        }
+      }
+    },
+    "3081": {
+      "name": "聯亞",
+      "data": {
+        "source": "daily_quotes_official",
+        "years": 11.299110198494182,
+        "span": {
+          "d0": "20150723",
+          "d1": "20261109",
+          "n": 2628
+        },
+        "adj_kind": "raw_quote",
+        "name": "聯亞"
+      },
+      "by_exit": {
+        "phone_stack": {
+          "n_trades": 61,
+          "n_unique_entry_days": 61,
+          "n_sids": 1,
+          "win_rate": 0.5245901639344263,
+          "wilson_ci95": [
+            0.4015694171531101,
+            0.6446971771320402
+          ],
+          "avg_net": 0.007660486687649764,
+          "median_net": 0.006756097560975618,
+          "expectancy": 0.007660486687649764,
+          "avg_hold": 8.081967213114755,
+          "avg_mfe": 0.08256433023340412,
+          "avg_mae": -0.06504932841493309,
+          "exit_reason_counts": {
+            "first_hi20": 13,
+            "giveback_8pct": 32,
+            "sell_desync_cut": 16
+          }
+        },
+        "first_hi20": {
+          "n_trades": 38,
+          "n_unique_entry_days": 38,
+          "n_sids": 1,
+          "win_rate": 0.6578947368421053,
+          "wilson_ci95": [
+            0.49891811629074545,
+            0.7878777997354105
+          ],
+          "avg_net": 0.04000717029889615,
+          "median_net": 0.05608584169453734,
+          "expectancy": 0.04000717029889615,
+          "avg_hold": 21.63157894736842,
+          "avg_mfe": 0.12846291880199442,
+          "avg_mae": -0.12445805060703673,
+          "exit_reason_counts": {
+            "first_hi20": 36,
+            "max_hold_60": 2
+          }
+        },
+        "sell_desync_cut": {
+          "n_trades": 37,
+          "n_unique_entry_days": 37,
+          "n_sids": 1,
+          "win_rate": 0.7027027027027027,
+          "wilson_ci95": [
+            0.5421656082795643,
+            0.825106976535918
+          ],
+          "avg_net": 0.044928417100902736,
+          "median_net": 0.051000000000000045,
+          "expectancy": 0.044928417100902736,
+          "avg_hold": 24.324324324324323,
+          "avg_mfe": 0.1497820988471176,
+          "avg_mae": -0.12200014036925014,
+          "exit_reason_counts": {
+            "sell_desync_cut": 33,
+            "max_hold_60": 4
+          }
+        },
+        "hold_max": {
+          "n_trades": 26,
+          "n_unique_entry_days": 26,
+          "n_sids": 1,
+          "win_rate": 0.5769230769230769,
+          "wilson_ci95": [
+            0.3894829692111983,
+            0.744558100972706
+          ],
+          "avg_net": 0.10824509709815763,
+          "median_net": 0.02885356015399998,
+          "expectancy": 0.10824509709815763,
+          "avg_hold": 58.15384615384615,
+          "avg_mfe": 0.317076656604553,
+          "avg_mae": -0.1840900359098356,
+          "exit_reason_counts": {
+            "max_hold_60": 26
+          }
+        },
+        "random_exit": {
+          "n_trades": 37,
+          "n_unique_entry_days": 37,
+          "n_sids": 1,
+          "win_rate": 0.5945945945945946,
+          "wilson_ci95": [
+            0.4348568313132931,
+            0.7365370416005986
+          ],
+          "avg_net": 0.05263363890467769,
+          "median_net": 0.010215859030837108,
+          "expectancy": 0.05263363890467769,
+          "avg_hold": 30.37837837837838,
+          "avg_mfe": 0.18776556910448058,
+          "avg_mae": -0.11746266697567205,
+          "exit_reason_counts": {
+            "random_exit": 37
+          }
+        }
+      }
+    },
+    "8299": {
+      "name": "群聯",
+      "data": {
+        "source": "daily_quotes_official",
+        "years": 20.851471594798085,
+        "span": {
+          "d0": "20060102",
+          "d1": "20261109",
+          "n": 4804
+        },
+        "adj_kind": "raw_quote",
+        "name": "群聯"
+      },
+      "by_exit": {
+        "phone_stack": {
+          "n_trades": 108,
+          "n_unique_entry_days": 108,
+          "n_sids": 1,
+          "win_rate": 0.48148148148148145,
+          "wilson_ci95": [
+            0.3895121132367203,
+            0.5747230193078783
+          ],
+          "avg_net": -0.006810198377308396,
+          "median_net": -0.001896247240618096,
+          "expectancy": -0.006810198377308396,
+          "avg_hold": 8.518518518518519,
+          "avg_mfe": 0.06655613368109334,
+          "avg_mae": -0.07053612018947693,
+          "exit_reason_counts": {
+            "sell_desync_cut": 35,
+            "first_hi20": 18,
+            "giveback_8pct": 55
+          }
+        },
+        "first_hi20": {
+          "n_trades": 61,
+          "n_unique_entry_days": 61,
+          "n_sids": 1,
+          "win_rate": 0.5573770491803278,
+          "wilson_ci95": [
+            0.4330314670045551,
+            0.6749239196607956
+          ],
+          "avg_net": 0.009028737265156636,
+          "median_net": 0.03262340966921118,
+          "expectancy": 0.009028737265156636,
+          "avg_hold": 26.37704918032787,
+          "avg_mfe": 0.0929907659484171,
+          "avg_mae": -0.13013972221622216,
+          "exit_reason_counts": {
+            "first_hi20": 55,
+            "max_hold_60": 6
+          }
+        },
+        "sell_desync_cut": {
+          "n_trades": 64,
+          "n_unique_entry_days": 64,
+          "n_sids": 1,
+          "win_rate": 0.515625,
+          "wilson_ci95": [
+            0.3958139224399903,
+            0.6336665143421609
+          ],
+          "avg_net": -0.008110230283959867,
+          "median_net": 0.004095410628019327,
+          "expectancy": -0.008110230283959867,
+          "avg_hold": 23.1875,
+          "avg_mfe": 0.07723320869542696,
+          "avg_mae": -0.12217137490375421,
+          "exit_reason_counts": {
+            "sell_desync_cut": 57,
+            "max_hold_60": 7
+          }
+        },
+        "hold_max": {
+          "n_trades": 46,
+          "n_unique_entry_days": 46,
+          "n_sids": 1,
+          "win_rate": 0.5,
+          "wilson_ci95": [
+            0.3611870167007236,
+            0.6388129832992764
+          ],
+          "avg_net": 0.02353947430693021,
+          "median_net": -0.0023147301152209834,
+          "expectancy": 0.02353947430693021,
+          "avg_hold": 58.97826086956522,
+          "avg_mfe": 0.2010251085135733,
+          "avg_mae": -0.16135465295908985,
+          "exit_reason_counts": {
+            "max_hold_60": 46
+          }
+        },
+        "random_exit": {
+          "n_trades": 71,
+          "n_unique_entry_days": 71,
+          "n_sids": 1,
+          "win_rate": 0.5352112676056338,
+          "wilson_ci95": [
+            0.4203903355696419,
+            0.6464174290959985
+          ],
+          "avg_net": 0.011159890667783319,
+          "median_net": 0.01238461538461533,
+          "expectancy": 0.011159890667783319,
+          "avg_hold": 29.43661971830986,
+          "avg_mfe": 0.11615924342345411,
+          "avg_mae": -0.11667456884657593,
+          "exit_reason_counts": {
+            "random_exit": 71
+          }
+        }
+      }
+    }
+  },
+  "gate_one_liner": "entry=leave_zero fixed; phone_stack wr=0.5660776027660391 E=0.0003466876232903756 d=3061; first_hi20 wr=0.6663328086993847 E=0.007322016378927362 d=2632; sell_desync wr=0.6315296008572194 E=0.0068965452575204984 d=2716; random wr=0.5427955250033697 E=0.018558597393425042; gate=FAIL promote=[] phone_sync=blocked",
+  "errors_n": 0,
+  "errors_sample": [],
+  "parent_track": "phone_trade_confront_latest.json",
+  "finding_zh": "藍▲出場協助對質：gate=不過；候選=無；soft_leader invent 已關 keep v106；不准改 leave_zero／不上話筒。",
+  "next_zh": "出場◇／減碼◆未同時贏現況堆＋隨機對照 → 維持 text_only／不畫；下一刀可試先觸發順序或合併門檻，仍固定 leave_zero 進場",
+  "honest_caveat_zh": "過閘只證明出場符號相對現況堆＋隨機有增量；真畫查股另過 §13。隨機贏 leave_zero 進場的 caveat 仍在。"
+}
