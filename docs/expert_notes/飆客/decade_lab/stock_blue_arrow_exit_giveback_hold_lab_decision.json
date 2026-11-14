@@ -1,0 +1,335 @@
+{
+  "version": "stock_blue_arrow_exit_giveback_hold_lab_v1",
+  "as_of": "2026-11-11T01:52:34+08:00",
+  "tz": "Asia/Taipei",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "promote_lookup": false,
+  "promote_lab_signal": false,
+  "promote_candidates": [],
+  "best_candidate": null,
+  "gate_passed": false,
+  "status": "no_beat_keep_phone_stack_blocked",
+  "keep": "v106",
+  "soft_leader_invent": {
+    "status": "off",
+    "reason_zh": "soft_leader invent 三次 thicken 失敗；keep v106；本軌改對質藍▲出場 giveback／持有過濾",
+    "keep": "v106",
+    "thicken_failures_n": 3
+  },
+  "entry": "leave_zero_blue_tri",
+  "smoke": false,
+  "n_stocks_meta": 104,
+  "wr_d": {
+    "phone_stack": {
+      "wr": 0.5660776027660391,
+      "d": 3061,
+      "E": 0.0003466876232903756,
+      "n_trades": 10412,
+      "avg_hold": 11.598155973876297,
+      "exit_reason_counts": {
+        "sell_desync_cut": 2725,
+        "first_hi20": 3794,
+        "giveback_8pct": 3875,
+        "max_hold_60": 18
+      }
+    },
+    "phone_stack_nogb": {
+      "wr": 0.6393421559809842,
+      "d": 2759,
+      "E": 0.0045168821614407825,
+      "n_trades": 7783,
+      "avg_hold": 18.59707053835282,
+      "exit_reason_counts": {
+        "sell_desync_cut": 3441,
+        "first_hi20": 4146,
+        "max_hold_60": 196
+      }
+    },
+    "giveback_only": {
+      "wr": 0.4278640558181409,
+      "d": 2846,
+      "E": 0.01018635344390571,
+      "n_trades": 8886,
+      "avg_hold": 27.14686022957461,
+      "exit_reason_counts": {
+        "giveback_8pct": 7270,
+        "max_hold_60": 1616
+      }
+    },
+    "first_hi20": {
+      "wr": 0.6663328086993847,
+      "d": 2632,
+      "E": 0.007322016378927362,
+      "n_trades": 6989,
+      "avg_hold": 23.866647589068535,
+      "exit_reason_counts": {
+        "first_hi20": 6539,
+        "max_hold_60": 450
+      }
+    },
+    "sell_desync_cut": {
+      "wr": 0.6315296008572194,
+      "d": 2716,
+      "E": 0.0068965452575204984,
+      "n_trades": 7466,
+      "avg_hold": 21.58545405839807,
+      "exit_reason_counts": {
+        "sell_desync_cut": 7036,
+        "max_hold_60": 430
+      }
+    },
+    "first_hi20_giveback": {
+      "wr": 0.5417616169622511,
+      "d": 3035,
+      "E": 0.0012390461078887562,
+      "n_trades": 10093,
+      "avg_hold": 13.342811849796888,
+      "exit_reason_counts": {
+        "first_hi20": 5601,
+        "giveback_8pct": 4474,
+        "max_hold_60": 18
+      }
+    },
+    "sell_desync_giveback": {
+      "wr": 0.5506304558680892,
+      "d": 3048,
+      "E": 0.0009454488305006692,
+      "n_trades": 10310,
+      "avg_hold": 12.73462657613967,
+      "exit_reason_counts": {
+        "sell_desync_cut": 6008,
+        "giveback_8pct": 4270,
+        "max_hold_60": 32
+      }
+    },
+    "first_hi20_mh2": {
+      "wr": 0.6663322344847356,
+      "d": 2630,
+      "E": 0.007572941741118844,
+      "n_trades": 6977,
+      "avg_hold": 23.97219435287373,
+      "exit_reason_counts": {
+        "first_hi20": 6527,
+        "max_hold_60": 450
+      }
+    },
+    "sell_desync_mh2": {
+      "wr": 0.6282567821649208,
+      "d": 2709,
+      "E": 0.007006951865949705,
+      "n_trades": 7446,
+      "avg_hold": 21.72535589578297,
+      "exit_reason_counts": {
+        "sell_desync_cut": 7013,
+        "max_hold_60": 433
+      }
+    },
+    "first_hi20_giveback_mh2": {
+      "wr": 0.5417410271663692,
+      "d": 3034,
+      "E": 0.0014132253852307348,
+      "n_trades": 10086,
+      "avg_hold": 13.400852667063257,
+      "exit_reason_counts": {
+        "first_hi20": 5584,
+        "giveback_8pct": 4484,
+        "max_hold_60": 18
+      }
+    },
+    "sell_desync_giveback_mh2": {
+      "wr": 0.5475820547679161,
+      "d": 3046,
+      "E": 0.0010064953452580065,
+      "n_trades": 10298,
+      "avg_hold": 12.817051854729074,
+      "exit_reason_counts": {
+        "sell_desync_cut": 5978,
+        "giveback_8pct": 4287,
+        "max_hold_60": 33
+      }
+    },
+    "hold_max": {
+      "wr": 0.577023498694517,
+      "d": 2213,
+      "E": 0.04401790549557097,
+      "n_trades": 4979,
+      "avg_hold": 59.47539666599719,
+      "exit_reason_counts": {
+        "max_hold_60": 4979
+      }
+    },
+    "random_exit": {
+      "wr": 0.5381617844665413,
+      "d": 2784,
+      "E": 0.018317292293274442,
+      "n_trades": 7442,
+      "avg_hold": 30.114082235958076,
+      "exit_reason_counts": {
+        "random_exit": 7442
+      }
+    }
+  },
+  "comparisons_vs_phone_stack": {
+    "phone_stack_nogb_vs_phone_stack": {
+      "gate_n20": true,
+      "assist_fired": true,
+      "expectancy_delta": 0.0041701945381504065,
+      "win_rate_delta": 0.07326455321494507,
+      "beats_phone_stack": true,
+      "beats_random_exit": false,
+      "beats_hold_max": false,
+      "tag_days": 2759,
+      "phone_days": 3061,
+      "random_days": 2784
+    },
+    "giveback_only_vs_phone_stack": {
+      "gate_n20": true,
+      "assist_fired": true,
+      "expectancy_delta": 0.009839665820615334,
+      "win_rate_delta": -0.13821354694789822,
+      "beats_phone_stack": false,
+      "beats_random_exit": false,
+      "beats_hold_max": false,
+      "tag_days": 2846,
+      "phone_days": 3061,
+      "random_days": 2784
+    },
+    "first_hi20_vs_phone_stack": {
+      "gate_n20": true,
+      "assist_fired": true,
+      "expectancy_delta": 0.006975328755636986,
+      "win_rate_delta": 0.10025520593334558,
+      "beats_phone_stack": true,
+      "beats_random_exit": false,
+      "beats_hold_max": false,
+      "tag_days": 2632,
+      "phone_days": 3061,
+      "random_days": 2784
+    },
+    "sell_desync_cut_vs_phone_stack": {
+      "gate_n20": true,
+      "assist_fired": true,
+      "expectancy_delta": 0.0065498576342301225,
+      "win_rate_delta": 0.0654519980911803,
+      "beats_phone_stack": true,
+      "beats_random_exit": false,
+      "beats_hold_max": false,
+      "tag_days": 2716,
+      "phone_days": 3061,
+      "random_days": 2784
+    },
+    "first_hi20_giveback_vs_phone_stack": {
+      "gate_n20": true,
+      "assist_fired": true,
+      "expectancy_delta": 0.0008923584845983806,
+      "win_rate_delta": -0.02431598580378802,
+      "beats_phone_stack": false,
+      "beats_random_exit": false,
+      "beats_hold_max": false,
+      "tag_days": 3035,
+      "phone_days": 3061,
+      "random_days": 2784
+    },
+    "sell_desync_giveback_vs_phone_stack": {
+      "gate_n20": true,
+      "assist_fired": true,
+      "expectancy_delta": 0.0005987612072102936,
+      "win_rate_delta": -0.015447146897949904,
+      "beats_phone_stack": false,
+      "beats_random_exit": false,
+      "beats_hold_max": false,
+      "tag_days": 3048,
+      "phone_days": 3061,
+      "random_days": 2784
+    },
+    "first_hi20_mh2_vs_phone_stack": {
+      "gate_n20": true,
+      "assist_fired": true,
+      "expectancy_delta": 0.007226254117828468,
+      "win_rate_delta": 0.10025463171869642,
+      "beats_phone_stack": true,
+      "beats_random_exit": false,
+      "beats_hold_max": false,
+      "tag_days": 2630,
+      "phone_days": 3061,
+      "random_days": 2784
+    },
+    "sell_desync_mh2_vs_phone_stack": {
+      "gate_n20": true,
+      "assist_fired": true,
+      "expectancy_delta": 0.006660264242659329,
+      "win_rate_delta": 0.06217917939888162,
+      "beats_phone_stack": true,
+      "beats_random_exit": false,
+      "beats_hold_max": false,
+      "tag_days": 2709,
+      "phone_days": 3061,
+      "random_days": 2784
+    },
+    "first_hi20_giveback_mh2_vs_phone_stack": {
+      "gate_n20": true,
+      "assist_fired": true,
+      "expectancy_delta": 0.0010665377619403591,
+      "win_rate_delta": -0.024336575599669952,
+      "beats_phone_stack": false,
+      "beats_random_exit": false,
+      "beats_hold_max": false,
+      "tag_days": 3034,
+      "phone_days": 3061,
+      "random_days": 2784
+    },
+    "sell_desync_giveback_mh2_vs_phone_stack": {
+      "gate_n20": true,
+      "assist_fired": true,
+      "expectancy_delta": 0.0006598077219676309,
+      "win_rate_delta": -0.01849554799812303,
+      "beats_phone_stack": false,
+      "beats_random_exit": false,
+      "beats_hold_max": false,
+      "tag_days": 3046,
+      "phone_days": 3061,
+      "random_days": 2784
+    },
+    "hold_max_vs_phone_stack": {
+      "gate_n20": true,
+      "assist_fired": true,
+      "expectancy_delta": 0.04367121787228059,
+      "win_rate_delta": 0.010945895928477833,
+      "beats_phone_stack": true,
+      "beats_random_exit": true,
+      "beats_hold_max": false,
+      "tag_days": 2213,
+      "phone_days": 3061,
+      "random_days": 2784
+    },
+    "random_exit_vs_phone_stack": {
+      "gate_n20": true,
+      "assist_fired": true,
+      "expectancy_delta": 0.017970604669984066,
+      "win_rate_delta": -0.027915818299497852,
+      "beats_phone_stack": false,
+      "beats_random_exit": false,
+      "beats_hold_max": false,
+      "tag_days": 2784,
+      "phone_days": 3061,
+      "random_days": 2784
+    }
+  },
+  "random_e_wall": {
+    "hit": true,
+    "beat_phone_lose_random_e": [
+      "phone_stack_nogb",
+      "first_hi20_mh2",
+      "sell_desync_mh2"
+    ],
+    "beat_both": [],
+    "random_exit_E": 0.018317292293274442,
+    "note_zh": "候選全贏 phone_stack 但 E 仍低於 random_exit → random-E 牆；無清楚出路則暫停藍▲出場軌"
+  },
+  "gate_one_liner": "entry=leave_zero fixed; phone_stack wr=0.5660776027660391 E=0.0003466876232903756 d=3061; phone_stack_nogb wr=0.6393421559809842 E=0.0045168821614407825 d=2759; giveback_only wr=0.4278640558181409 E=0.01018635344390571 d=2846; first_hi20_giveback wr=0.5417616169622511 E=0.0012390461078887562 d=3035; sell_desync_giveback wr=0.5506304558680892 E=0.0009454488305006692 d=3048; first_hi20_mh2 wr=0.6663322344847356 E=0.007572941741118844 d=2630; random_exit wr=0.5381617844665413 E=0.018317292293274442 d=2784; gate=FAIL promote=[] phone_sync=blocked",
+  "finding_zh": "藍▲出場 giveback／持有過濾對質：gate=不過；候選=無；random_e_wall=True；soft_leader invent 已關 keep v106；不准改 leave_zero／不上話筒。",
+  "next_key": "pause_blue_exit_track_report_blocker",
+  "next_zh": "GIVEBACK on/off＋單符／min_hold2 仍撞 random-E 牆（贏 phone_stack wr+E 但 E＜random）；無清楚出路 → NEXT=pause_blue_exit_track_report_blocker；keep v106；停藍▲出場軌空轉",
+  "parent_track": "stock_blue_arrow_exit_order_merge_lab"
+}
