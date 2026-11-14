@@ -1,0 +1,67 @@
+{
+  "as_of_taipei": "2026-11-14T11:55:00+08:00",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "title_zh": "三窗圖缺陷歸類（對話匡已報＋預判）",
+  "user_lock_zh": "2026-11-14 使用者：歸類過去改過的錯、左裁右長、舊點被新點取代、圖塊不亂跳、新文同步；統一想一次再動作",
+  "defect_classes": [
+    {
+      "id": "D1_label_on_label",
+      "zh": "右欄／口頭標互壓（C進行中壓今≈小b、大量壓壓今）",
+      "fix": "_place_live_right_labels 視覺盒碰撞丟低優先；近窗不釘 C進行中"
+    },
+    {
+      "id": "D2_label_on_k",
+      "zh": "標籤壓末幾根縮圖K／影線",
+      "fix": "口頭標抬高＋末根再蓋回 _finish_last_twii_candle；小c 未來空檔"
+    },
+    {
+      "id": "D3_label_on_arrow",
+      "zh": "標籤壓箭／示意線（圈5壓紅箭、小c盒壓箭尖）",
+      "fix": "圈5在箭尖外側；字盒在箭尖下方"
+    },
+    {
+      "id": "D4_window_grow_thin",
+      "zh": "新K一直加、左不裁→K變瘦／右欄相對位漂",
+      "fix": "定長滾：遠152／近130／超近=C60 150；進一根刪最左；soft 硬封168"
+    },
+    {
+      "id": "D5_panel_jump",
+      "zh": "圖塊區突然大幅異動（ylim／soft 延長）",
+      "fix": "_teach_ylim_stable 取整；示意擴張最多 span×8%；soft 不准無限"
+    },
+    {
+      "id": "D6_stale_levels",
+      "zh": "新點位上了舊標價還在右欄",
+      "fix": "_purge_stale_tw_pred_levels：當令文沒寫到的裸點丟掉；同價只留一列；右欄再濾一次"
+    },
+    {
+      "id": "D7_biaoke_lag",
+      "zh": "飆大新文／自回沒進三窗與細線",
+      "fix": "prepare_wave_live_pack→_ensure_teach_biaoke_posts_fresh→pred_levels→右欄／細線"
+    },
+    {
+      "id": "D8_wave_line_ghost",
+      "zh": "浪階日滾出窗外仍釘幽靈尖點",
+      "fix": "_clamp_macro_wave_to_window；滾出不釘幽靈"
+    },
+    {
+      "id": "D9_far_sox_missing_k",
+      "zh": "遠窗費半縮圖K缺／過細",
+      "fix": "_FAR_SOX_MIN_BODY_FRAC；費半近窗刷新不准卡過期日"
+    },
+    {
+      "id": "D10_paint_timeout",
+      "zh": "第一次只出遠窗／第二次三張都沒出",
+      "fix": "出圖逾時／雙擊鎖（#907）；抓文新鮮度與 paint 分軌"
+    }
+  ],
+  "window_policy_zh": "滿長後：右進一根＝左刪一根。未滿：從結構地板長到最新。soft 只為大量撐壓日／C3 底，硬封 soft_max。超近定長＝150（＝C60），不准改回55跳版。",
+  "level_policy_zh": "新文抽出點位後必跑 purge；結構帶角色可留；裸點位／舊飆預測必須仍出現在當令文數字才准佔右欄。",
+  "predicted_next_bugs_zh": [
+    "盤中 live 末根改寫造成右欄今價與口頭標再疊",
+    "soft 延長日與硬滾日交替→n 在152↔168抖（已硬封；對質時盯 n）",
+    "題旨 concat 舊文數字被再抽進 pred（靠 orphan 濾）",
+    "細線與右欄同價雙掛（靠 tip_skip／同價一列）"
+  ]
+}

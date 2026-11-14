@@ -1897,9 +1897,15 @@ def test_thesis_reads_333_to_334_without_c_prefix(tmp_path):
 
 def test_far_teach_rolls_left_when_over_max():
     """遠窗超過固定根數 → 只留最右一段（新日進來刪最左）。"""
-    from biaoke_level_learn import _FAR_TEACH_MAX_BARS, _far_teach_roll_bars
+    from biaoke_level_learn import (
+        _FAR_TEACH_MAX_BARS,
+        _HUANG_C60_MAX_BARS,
+        _MICRO_TEACH_MAX_BARS,
+        _far_teach_roll_bars,
+    )
 
     assert _FAR_TEACH_MAX_BARS == 152
+    assert _MICRO_TEACH_MAX_BARS == _HUANG_C60_MAX_BARS == 150
     rows = [{"date": f"2026{i:04d}", "close": float(i)} for i in range(1, 180)]
     got = _far_teach_roll_bars(rows, max_bars=_FAR_TEACH_MAX_BARS)
     assert len(got) == 152
@@ -1907,6 +1913,60 @@ def test_far_teach_rolls_left_when_over_max():
     assert got[-1]["date"] == rows[-1]["date"]
     short = _far_teach_roll_bars(rows[:50], max_bars=_FAR_TEACH_MAX_BARS)
     assert len(short) == 50
+
+
+def test_purge_stale_drops_orphan_naked_levels():
+    """當令文沒寫到的裸點位／舊飆預測＝被新點取代，不准留。"""
+    from biaoke_level_learn import _purge_stale_tw_pred_levels
+
+    pred = {
+        "tw": [
+            {"level": 43135.0, "role": "點位", "label": "43135"},
+            {"level": 41500.0, "role": "至少回測", "label": "飆預測・41500"},
+            {"level": 37837.0, "role": "最佳買點", "label": "最佳買點"},
+            {"level": 43135.0, "role": "回測平均", "label": "回測平均"},
+        ]
+    }
+    snip = "回測平均43135；最佳買點37837；撐完再談"
+    out = _purge_stale_tw_pred_levels(pred, snip=snip)
+    levels = {round(float(r["level"]), 1) for r in out["tw"]}
+    assert 43135.0 in levels
+    assert 37837.0 in levels
+    assert 41500.0 not in levels  # 當令沒寫→丟
+    # 同價只留一列
+    assert sum(1 for r in out["tw"] if abs(float(r["level"]) - 43135) < 0.6) == 1
+
+
+def test_teach_ylim_expand_capped_no_panel_jump():
+    """示意虛線擴 ylim 有上限，不准整塊圖突然大幅異動。"""
+    from biaoke_level_learn import _teach_ylim_expand_capped, _teach_ylim_stable
+
+    lo, hi = _teach_ylim_stable(40010.3, 45123.7)
+    assert lo % 50 == 0 and hi % 50 == 0
+    nlo, nhi = _teach_ylim_expand_capped(40000.0, 45000.0, 30000.0, 60000.0)
+    span = 5000.0
+    assert nlo >= 40000.0 - span * 0.08 - 1
+    assert nhi <= 45000.0 + span * 0.08 + 1
+
+
+def test_trio_defect_taxonomy_locked():
+    import json
+    from pathlib import Path
+
+    p = (
+        Path(__file__).resolve().parents[1]
+        / "docs"
+        / "expert_notes"
+        / "飆客"
+        / "decade_lab"
+        / "trio_chart_defect_taxonomy_latest.json"
+    )
+    d = json.loads(p.read_text(encoding="utf-8"))
+    ids = {x["id"] for x in d["defect_classes"]}
+    assert "D4_window_grow_thin" in ids
+    assert "D5_panel_jump" in ids
+    assert "D6_stale_levels" in ids
+    assert d.get("buy_signal") is False
 
 
 def test_far_teach_extends_left_for_vol_sr_date():
