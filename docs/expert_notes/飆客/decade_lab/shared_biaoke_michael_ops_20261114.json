@@ -61,7 +61,9 @@
       "biaoke": "夜盤電子盤大方向→日盤驗證；個股仍自看技術面",
       "michael": "夜盤15K120／60／10機率表（主震盪／弱收10下／強翻120）；隔日早盤對弱或一路高歌",
       "from_post": "188400106:c188400106-440",
-      "user_lock_zh": "2026-11-13 使用者：有參考價值"
+      "checklist_zh": "固定覆盤欄 michael_night_path_checklist_{day}.json（A／B／C 夜盒＋隔日盒）；phone_sync=blocked",
+      "script": "scripts/decade_lab_michael_night_path_checklist.py",
+      "user_lock_zh": "2026-11-13 有參考價值；2026-11-14 使用者：做固定覆盤欄"
     },
     {
       "id": "S10_low_freq_gift_discipline",

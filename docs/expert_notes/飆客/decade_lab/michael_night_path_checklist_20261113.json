@@ -1,0 +1,78 @@
+{
+  "schema": "michael_night_path_day_check_v1",
+  "as_of_taipei": "2026-11-14T10:42:18+0800",
+  "tz": "Asia/Taipei",
+  "track": "michael_tx15_teach",
+  "ops_id": "S9_night_path_then_day_check",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "mix_into_biaoke_screen": false,
+  "not_buy_signal": true,
+  "night_asof": "20261113",
+  "day_asof": "20261113",
+  "source_post_id": "188400106:c188400106-440",
+  "paths": [
+    {
+      "id": "A_range_120_60",
+      "p_said": 0.65,
+      "night_box": {
+        "label_zh": "夜盤多半落在15K120～60帶（時間換空間）",
+        "status": "hit",
+        "evidence_zh": "口頭自對：夜盤主機率震盪成立（c188594037-246）"
+      },
+      "day_box": {
+        "label_zh": "隔日僅消化夜盤震盪（非早弱／非一路高歌）",
+        "status": "miss",
+        "evidence_zh": "隔日路徑4延伸＝一路高歌，非純消化震盪"
+      }
+    },
+    {
+      "id": "B_weak_below_ma10",
+      "p_said": 0.2,
+      "night_box": {
+        "label_zh": "夜盤收在15K10下且反彈無力",
+        "status": "miss",
+        "evidence_zh": "主路徑非弱收10下"
+      },
+      "day_box": {
+        "label_zh": "隔日早盤偏弱；若撿≥10:00",
+        "status": "miss",
+        "evidence_zh": "隔日偏強／高歌，非早弱"
+      }
+    },
+    {
+      "id": "C_reclaim_ma120",
+      "p_said": 0.15,
+      "night_box": {
+        "label_zh": "夜盤收前15K120翻上（末兩根在上）",
+        "status": "partial",
+        "evidence_zh": "路徑4＝強翻120延伸；夜盤主仍A，收前／早盤銜接待細對"
+      },
+      "day_box": {
+        "label_zh": "隔日偏一路高歌／早盤站上延續",
+        "status": "hit",
+        "evidence_zh": "口頭自對：早盤第一根站上15K120→開噴；達標下车（c188594037-379）"
+      }
+    }
+  ],
+  "edge_rules": [
+    {
+      "id": "near_120_no_long",
+      "label_zh": "近15K120不做多",
+      "status": "observe_only"
+    },
+    {
+      "id": "near_60_no_short",
+      "label_zh": "近15K60不做空",
+      "status": "observe_only"
+    }
+  ],
+  "official": {
+    "tx_night": null,
+    "tx_regular": null
+  },
+  "verdict_zh": "勾選命中：A_range_120_60, C_reclaim_ma120；preferred=A_range_120_60；非買訊",
+  "preferred_path": "A_range_120_60",
+  "note_zh": "固定覆盤欄；非買訊；不上話筒；不准寫進海選／黃金買點",
+  "user_lock_zh": "2026-11-13 使用者：有參考價值；2026-11-14 固定覆盤欄"
+}
