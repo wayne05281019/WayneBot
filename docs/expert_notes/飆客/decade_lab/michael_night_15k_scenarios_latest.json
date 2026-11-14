@@ -99,9 +99,10 @@
     }
   ],
   "official_verify": {
-    "status": "pending_tx15_night_sync",
-    "note_zh": "待夜盤／15分官方柱齊後對：是否落在120～60帶、是否收15K10下、或末兩根站上120；隔日早盤再對B／C",
-    "verify_at": "after_tx15_night_20261113_in_db"
+    "status": "checklist_seeded",
+    "note_zh": "已落固定覆盤欄 michael_night_path_checklist_20261113.json：夜A口頭hit、日C口頭hit、B miss；15K細對仍可補 minute",
+    "checklist": "michael_night_path_checklist_20261113.json",
+    "script": "scripts/decade_lab_michael_night_path_checklist.py"
   },
   "one_liner_zh": "麥可夜盤參考：盯15K120；主機率震盪在120～60；弱則收10下→隔日早弱、10點後再撿；強則120翻上→隔日偏強；近120不做多、近60不做空。非買訊、不混飆大選股。"
 }
