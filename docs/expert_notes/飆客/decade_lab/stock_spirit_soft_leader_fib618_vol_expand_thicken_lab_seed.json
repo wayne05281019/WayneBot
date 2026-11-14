@@ -1,0 +1,105 @@
+{
+  "version": "stock_spirit_soft_leader_fib618_vol_expand_thicken_lab_v1",
+  "tz": "Asia/Taipei",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "status": "thicken_fail_keep_v106",
+  "gate_passed": false,
+  "keep": "v106",
+  "as_of": "2026-11-11T01:09:15+08:00",
+  "best_candidate": {
+    "leg": "spirit_soft_leader_fib618_vol_expand_thicken",
+    "entry": "SPIRIT_pull_fib618",
+    "variant": "soft_leader_and_vol_expand",
+    "kind": "vs_plain",
+    "oos_wr": 0.788235294117647,
+    "oos_d": 78,
+    "plain_oos_wr": 0.7111247695144438,
+    "plain_oos_d": 476,
+    "delta_oos_wr": 0.07711052460320322,
+    "expectancy": 0.04744651453404801,
+    "avg_hold": 14.611764705882353,
+    "exit_reason_counts": {
+      "first_hi20": 83,
+      "max_hold_60": 2
+    },
+    "beats_v106_early_keep_oos": false,
+    "beats_v106_fast_keep_oos": false
+  },
+  "shared_vs_keep": [],
+  "promote_lookup": false,
+  "fold_table": [
+    {
+      "fold": "wf_expand_1_of_3",
+      "oos_d": 10,
+      "oos_wr": 0.5,
+      "expectancy": -0.01089886711283885,
+      "avg_hold": 11.5,
+      "exit_reason_counts": {
+        "first_hi20": 10
+      },
+      "beats_v106_early": false,
+      "beats_v106_fast": false,
+      "beats_both": false,
+      "gate_n20": false
+    },
+    {
+      "fold": "wf_expand_2_of_3",
+      "oos_d": 10,
+      "oos_wr": 0.7,
+      "expectancy": 0.059346144619430094,
+      "avg_hold": 15.2,
+      "exit_reason_counts": {
+        "first_hi20": 10
+      },
+      "beats_v106_early": false,
+      "beats_v106_fast": false,
+      "beats_both": false,
+      "gate_n20": false
+    },
+    {
+      "fold": "wf_expand_3_of_3",
+      "oos_d": 68,
+      "oos_wr": 0.8,
+      "expectancy": 0.045859897189330395,
+      "avg_hold": 14.533333333333333,
+      "exit_reason_counts": {
+        "first_hi20": 73,
+        "max_hold_60": 2
+      },
+      "beats_v106_early": false,
+      "beats_v106_fast": false,
+      "beats_both": false,
+      "gate_n20": true
+    },
+    {
+      "fold": "half_split",
+      "oos_d": 78,
+      "oos_wr": 0.788235294117647,
+      "expectancy": 0.04744651453404801,
+      "avg_hold": 14.611764705882353,
+      "exit_reason_counts": {
+        "first_hi20": 83,
+        "max_hold_60": 2
+      },
+      "beats_v106_early": false,
+      "beats_v106_fast": false,
+      "beats_both": false,
+      "gate_n20": true
+    }
+  ],
+  "thin_sample_risk": true,
+  "next": "soft_leader×pull_fib×ma5_10_hold×bias_lt5（次高 WR oos≈0.87 d=40；更厚獨立日）",
+  "entry": "SPIRIT_pull_fib618",
+  "sell": "hi20_or_desync",
+  "focus_variant": "soft_leader_and_vol_expand",
+  "confirm_variants": [
+    "plain",
+    "vol_expand_1p5",
+    "soft_leader_and_vol_expand"
+  ],
+  "parents": [
+    "stock_spirit_soft_leader_fib618_vol_expand_lab_decision.json"
+  ],
+  "hypothesis_zh": "加厚 soft_leader_and_vol_expand：多摺 walk-forward／半切；目標獨立 OOS 日 ≫20；理論贏且證據誠實則 gate 真結果→keep=v107"
+}
