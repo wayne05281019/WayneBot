@@ -7013,6 +7013,7 @@ class WayneTelegramBot:
         try:
             from biaoke_level_learn import (
                 compute_teach_tip_snapshot,
+                ensure_teach_tip_preflight,
                 latest_teach_kit,
                 paint_open_day_hypothesis,
                 prepare_wave_live_pack,
@@ -7078,6 +7079,26 @@ class WayneTelegramBot:
             except Exception:
                 logger.exception("大盤現況 tip 略過")
                 want_tip = {}
+            # 出圖前硬閘：加權／費半／電子盤 tip 對不上官方＝先不畫，不准靠眼睛抓錯圖
+            try:
+                pre = ensure_teach_tip_preflight(self.db_path, pack) or {}
+                if want_tip and pre.get("tip"):
+                    want_tip = dict(pre["tip"])
+                if not pre.get("ok"):
+                    fails = pre.get("fails") or []
+                    bit = "、".join(
+                        str((f or {}).get("detail") or (f or {}).get("code") or "")
+                        for f in fails[:3]
+                        if f
+                    )
+                    await message.reply_text(
+                        "大盤教具白底戳對不上官方收（"
+                        + (bit or "加權／費半／電子盤")
+                        + "），這次先不送圖，請稍後再按一次。"
+                    )
+                    return
+            except Exception:
+                logger.exception("大盤 stamp preflight 略過")
 
             def _stored_asof_ok() -> bool:
                 """存檔 as_of 不得落後 pack 顯示日；落後＝舊圖，不准回退。"""
@@ -7156,6 +7177,12 @@ class WayneTelegramBot:
                     logger.exception("大盤遠窗活畫略過")
                     far_painted = {}
                 far_path = str((far_painted or {}).get("far_path") or "")
+                if str((far_painted or {}).get("error") or "") == "stamp_preflight":
+                    await message.reply_text(
+                        "大盤教具出圖前檢查未過（白底戳日／價），先不送。"
+                        "請稍後再按一次台股大盤。"
+                    )
+                    return
                 if far_painted:
                     thesis = str(far_painted.get("thesis") or thesis)[:180]
                     as_of = str(far_painted.get("as_of") or as_of)

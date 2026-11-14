@@ -948,6 +948,300 @@ def teach_tip_snapshots_match(
     return True
 
 
+def verify_teach_stamp_preflight(
+    db_path: str,
+    pack: Optional[Dict[str, Any]] = None,
+    *,
+    tip: Optional[Dict[str, Any]] = None,
+    px_tol: float = 1.5,
+    tx_px_tol: float = 0.51,
+) -> Dict[str, Any]:
+    """出圖前硬閘：白底戳日／價／盤中旗必須對得上官方末日。
+
+    不准「點了就畫」；過期 tip、假盤中、費半／電子盤落後＝fails，呼叫端必重算或停送。
+    回傳 {ok, fails:[{code, detail}], tip, checked_at}。
+    """
+    pack = pack if isinstance(pack, dict) else {}
+    fails: List[Dict[str, str]] = []
+    wall = _query_now_from_pack(pack)
+    tip0: Dict[str, Any] = {}
+    if isinstance(tip, dict) and tip:
+        tip0 = dict(tip)
+    elif isinstance(pack.get("teach_tip"), dict):
+        tip0 = dict(pack.get("teach_tip") or {})
+    else:
+        try:
+            tip0 = compute_teach_tip_snapshot(db_path, pack, reuse_frozen=False) or {}
+        except Exception:
+            tip0 = {}
+    if not tip0 or not float(tip0.get("tw_close") or 0):
+        fails.append({"code": "tip_missing", "detail": "缺加權 tip"})
+        return {
+            "ok": False,
+            "fails": fails,
+            "tip": tip0,
+            "checked_at": wall.isoformat() if hasattr(wall, "isoformat") else "",
+        }
+
+    # —— 加權：tip 日／價＝圖軸末根 ——
+    try:
+        bars = _twii_bars_for_teach(db_path, 4, pack)
+    except Exception:
+        bars = []
+    if bars:
+        bar_asof = _ymd((bars[-1] or {}).get("date"))
+        tip_tw = _ymd(tip0.get("tw_asof"))
+        try:
+            bar_c = float((bars[-1] or {}).get("close") or 0)
+            tip_c = float(tip0.get("tw_close") or 0)
+        except (TypeError, ValueError):
+            bar_c, tip_c = 0.0, 0.0
+        if tip_tw and bar_asof and tip_tw < bar_asof:
+            fails.append(
+                {
+                    "code": "tw_asof_stale",
+                    "detail": f"加權 tip {tip_tw} < 末根 {bar_asof}",
+                }
+            )
+        elif tip_tw and bar_asof and tip_tw != bar_asof:
+            fails.append(
+                {
+                    "code": "tw_asof_mismatch",
+                    "detail": f"加權 tip {tip_tw} ≠ 末根 {bar_asof}",
+                }
+            )
+        if tip_c > 0 and bar_c > 0 and abs(tip_c - bar_c) > float(px_tol):
+            fails.append(
+                {
+                    "code": "tw_close_mismatch",
+                    "detail": f"加權 tip {tip_c:.2f} ≠ 末根 {bar_c:.2f}",
+                }
+            )
+    else:
+        fails.append({"code": "tw_bars_missing", "detail": "無加權末根可對"})
+
+    # —— 費半：tip＝真實美股末日 ——
+    try:
+        sox_rows = _load_us_daily(db_path, "SOX", "20260101") if db_path else []
+        pair = _us_real_close_pair(sox_rows, None)
+        sox_asof = _ymd(pair.get("asof"))
+        tip_sox = _ymd(tip0.get("sox_asof"))
+        try:
+            sox_c = float(pair.get("close") or 0)
+            tip_sox_c = float(tip0.get("sox_close") or 0)
+        except (TypeError, ValueError):
+            sox_c, tip_sox_c = 0.0, 0.0
+        if tip_sox and sox_asof and tip_sox < sox_asof:
+            fails.append(
+                {
+                    "code": "sox_asof_stale",
+                    "detail": f"費半 tip {tip_sox} < 官方 {sox_asof}",
+                }
+            )
+        elif tip_sox and sox_asof and tip_sox != sox_asof:
+            fails.append(
+                {
+                    "code": "sox_asof_mismatch",
+                    "detail": f"費半 tip {tip_sox} ≠ 官方 {sox_asof}",
+                }
+            )
+        if tip_sox_c > 0 and sox_c > 0 and abs(tip_sox_c - sox_c) > float(px_tol):
+            fails.append(
+                {
+                    "code": "sox_close_mismatch",
+                    "detail": f"費半 tip {tip_sox_c:.2f} ≠ 官方 {sox_c:.2f}",
+                }
+            )
+        if not tip_sox or tip_sox_c <= 0:
+            fails.append({"code": "sox_tip_missing", "detail": "缺費半 tip"})
+    except Exception as exc:
+        fails.append({"code": "sox_check_error", "detail": str(exc)[:120]})
+
+    # —— 電子盤：tip 起日／價＝最新夜盤 ——
+    try:
+        from taiwan_market import load_futures_night
+        from trading_calendar import futures_night_date_cap
+
+        night = load_futures_night(
+            db_path, futures_night_date_cap(wall), now=wall
+        )
+        tip_tx = _ymd(tip0.get("tx_asof"))
+        try:
+            tip_tx_c = float(tip0.get("tx_close") or 0)
+        except (TypeError, ValueError):
+            tip_tx_c = 0.0
+        if isinstance(night, dict) and float(night.get("close") or 0) > 0:
+            night_label = _ymd(night.get("date"))
+            night_eve = _tx_night_evening_ymd(night_label) or night_label
+            night_c = float(night.get("close") or 0)
+            if tip_tx and night_eve and tip_tx < night_eve:
+                fails.append(
+                    {
+                        "code": "tx_asof_stale",
+                        "detail": f"電子盤 tip {tip_tx} < 夜盤起日 {night_eve}",
+                    }
+                )
+            elif tip_tx and night_eve and tip_tx != night_eve:
+                # tip 殘周一標且等於最新夜標 → 仍可對價；否則 mismatch
+                if tip_tx != night_label:
+                    fails.append(
+                        {
+                            "code": "tx_asof_mismatch",
+                            "detail": f"電子盤 tip {tip_tx} ≠ 起日 {night_eve}",
+                        }
+                    )
+            if tip_tx_c > 0 and night_c > 0 and abs(tip_tx_c - night_c) > float(
+                tx_px_tol
+            ):
+                fails.append(
+                    {
+                        "code": "tx_close_mismatch",
+                        "detail": f"電子盤 tip {tip_tx_c:.2f} ≠ 夜盤 {night_c:.2f}",
+                    }
+                )
+        if not tip_tx or tip_tx_c <= 0:
+            fails.append({"code": "tx_tip_missing", "detail": "缺電子盤 tip"})
+    except Exception as exc:
+        fails.append({"code": "tx_check_error", "detail": str(exc)[:120]})
+
+    # —— 盤中旗：只准真現金／夜盤窗；週末／休市殘旗＝錯 ——
+    if int(tip0.get("tw_live") or 0) == 1 and not _twii_cash_session_live(wall):
+        fails.append({"code": "tw_fake_live", "detail": "加權假盤中旗"})
+    if int(tip0.get("sox_live") or 0) == 1 and not _sox_cash_session_live(wall):
+        fails.append({"code": "sox_fake_live", "detail": "費半假盤中旗"})
+    if int(tip0.get("tx_live") or 0) == 1 and not _tx_night_session_live(wall):
+        fails.append({"code": "tx_fake_live", "detail": "電子盤假盤中旗"})
+
+    return {
+        "ok": not fails,
+        "fails": fails,
+        "tip": tip0,
+        "checked_at": wall.isoformat() if hasattr(wall, "isoformat") else "",
+    }
+
+
+def ensure_teach_tip_preflight(
+    db_path: str,
+    pack: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """出圖前：先硬閘；不過→強制重算 tip 再閘一次。仍不過＝ok False。"""
+    pack = pack if isinstance(pack, dict) else {}
+    gate = verify_teach_stamp_preflight(db_path, pack)
+    if gate.get("ok"):
+        return gate
+    try:
+        pack["teach_tip"] = compute_teach_tip_snapshot(
+            db_path, pack, reuse_frozen=False
+        )
+    except Exception:
+        logger.exception("preflight 重算 tip 失敗")
+    gate2 = verify_teach_stamp_preflight(db_path, pack)
+    gate2["retried"] = True
+    gate2["first_fails"] = list(gate.get("fails") or [])
+    return gate2
+
+
+# 飆大結構改口→圖面怎麼換（只認他說過；不准發明價／個股浪）
+_WAVE_STRUCTURE_PLAYBOOK: Tuple[Dict[str, Any], ...] = (
+    {
+        "id": "c_complete_new_cycle",
+        "triggers": (
+            r"確定.{0,6}C\s*波.{0,6}(?:已經)?走完",
+            r"C\s*波.{0,6}(?:已經)?走完.{0,12}(?:確定|確認)",
+            r"完整.{0,4}八浪循環.{0,4}開始",
+            r"開始走.{0,6}上升五波",
+            r"新八浪循環開始",
+            r"大C.{0,4}走完.{0,8}(?:新|開始).{0,6}(?:八浪|五波)",
+        ),
+        "paint": {
+            "seal_big_c": True,
+            "new_motive_sketch": True,
+            "oral_mode": "c_sealed_new_cycle",
+            "ladder_now": "大C已封・新八浪示意",
+            "forbid_invent_stock_waves": True,
+        },
+        "note_zh": "他確認大C走完／新八浪或上升五波開始→鎖C終錨、三窗改新八浪①起示意；個股仍不准發明5/9。",
+    },
+    {
+        "id": "c_wave_five_micro",
+        "triggers": (
+            r"C\s*波.{0,8}五小段",
+            r"(?:走|開始).{0,4}abc.{0,6}c.{0,4}五",
+            r"小c.{0,4}五段",
+            r"c\s*波五小段",
+            r"細分.{0,4}c1.{0,6}c5",
+        ),
+        "paint": {
+            "c_flash_five": True,
+            "nest_label": "大C｜細c1–c5",
+            "oral_mode": "c_five_micro",
+            "ladder_now": "大C內・c五小段",
+            "forbid_invent_stock_waves": True,
+        },
+        "note_zh": "他說C內走五小段→超近／八浪縮圖開c1–c5閃折；大結構仍大C，不准叠成大C第幾。",
+    },
+    {
+        "id": "abc_in_progress",
+        "triggers": (
+            r"開始走abc",
+            r"走\s*a\s*b\s*c",
+            r"修正波\s*abc",
+        ),
+        "paint": {
+            "oral_mode": "abc_default",
+            "ladder_now": "大C進行中・細abc",
+            "forbid_invent_stock_waves": True,
+        },
+        "note_zh": "ABC進行中預設：維持大A→大B→大C＋細5-3-5；未確認走完不准切新八浪主線。",
+    },
+)
+
+
+def resolve_wave_structure_paint_policy(
+    pack: Optional[Dict[str, Any]] = None,
+    *,
+    blob: str = "",
+) -> Dict[str, Any]:
+    """從題旨／snippet 對 playbook：回傳當令圖面政策（不是買訊）。
+
+    無命中→現行大C＋5-3-5 預設。命中只改標籤／示意線策略，不准發明他沒說過的價。
+    """
+    pack = pack if isinstance(pack, dict) else {}
+    text = " ".join(
+        str(x or "")
+        for x in (
+            blob,
+            pack.get("thesis"),
+            pack.get("snippet"),
+            pack.get("wait_struct"),
+            pack.get("turn_note"),
+        )
+    )
+    for row in _WAVE_STRUCTURE_PLAYBOOK:
+        for pat in row.get("triggers") or ():
+            try:
+                if re.search(str(pat), text, flags=re.IGNORECASE):
+                    paint = dict(row.get("paint") or {})
+                    return {
+                        "id": str(row.get("id") or ""),
+                        "note_zh": str(row.get("note_zh") or ""),
+                        "matched": str(pat),
+                        **paint,
+                    }
+            except re.error:
+                continue
+    return {
+        "id": "default_big_c_535",
+        "note_zh": "預設：大C進行中＋細5-3-5；撑完大C→新八浪僅示意≠自動。",
+        "oral_mode": "abc_default",
+        "ladder_now": "",
+        "forbid_invent_stock_waves": True,
+        "new_motive_sketch": False,
+        "seal_big_c": False,
+        "c_flash_five": False,
+    }
+
+
 def _sox_axis_index_for_ymd(
     bars: Sequence[Dict[str, Any]],
     *,
@@ -12555,71 +12849,89 @@ def _wave_now_ladder(pack: Optional[Dict[str, Any]] = None, *, blob: str = "") -
     his = _his_micro_degree(text)
     deg = str(his.get("degree") or "").strip()
     thesis = str(pack.get("thesis") or text)
+    pol = resolve_wave_structure_paint_policy(pack, blob=blob or text)
     # 大結構跟他鎖的：A底→B反彈→C；不准寫成「五波升完再ABC」讓人把7/29→四萬九當上升⑤
-    steps: List[str] = ["大A底7/29", "大B反彈", "大C進行中"]
+    # 他確認大C走完→封C＋新八浪示意（playbook）；未確認仍「大C進行中」
+    if pol.get("seal_big_c"):
+        steps = ["大A底7/29", "大B反彈", "大C已封", "新八浪示意・≠自動"]
+    else:
+        steps = ["大A底7/29", "大B反彈", "大C進行中"]
     # 後文下降壓改口壓止跌再測假跌破／雙軌／第二隻腳／C9；雙軌壓第二隻腳／C9
-    has_pressure_ladder = (
+    # 大C已封玩新八浪時不准再叠舊 C9／止跌梯
+    has_pressure_ladder = (not pol.get("seal_big_c")) and (
         _text_has_c3_pressure_break(text)
         or "不再假跌破" in thesis
         or "過C3下降壓" in thesis
         or "回測下降壓力線" in text
     )
-    has_stop_ladder = (not has_pressure_ladder) and (
-        deg == "止跌確認"
-        or _text_has_stop_low_confirm(text)
-        or "確認上週五低" in thesis
-        or "1 4重疊" in thesis
-        or "止跌確認" in thesis
+    has_stop_ladder = (
+        (not pol.get("seal_big_c"))
+        and (not has_pressure_ladder)
+        and (
+            deg == "止跌確認"
+            or _text_has_stop_low_confirm(text)
+            or "確認上週五低" in thesis
+            or "1 4重疊" in thesis
+            or "止跌確認" in thesis
+        )
     )
-    has_bb_ladder = (not has_pressure_ladder) and (not has_stop_ladder) and (
-        _text_has_bb_dual_path(text)
-        or "B-b" in thesis
-        or "五波跌完" in thesis
-        or "備線九波" in thesis
+    has_bb_ladder = (
+        (not pol.get("seal_big_c"))
+        and (not has_pressure_ladder)
+        and (not has_stop_ladder)
+        and (
+            _text_has_bb_dual_path(text)
+            or "B-b" in thesis
+            or "五波跌完" in thesis
+            or "備線九波" in thesis
+        )
     )
-    if has_pressure_ladder:
-        steps.append("止跌確認・已過C3下降壓")
-    elif has_stop_ladder:
-        steps.append("止跌確認・再測週五低")
-    elif has_bb_ladder:
-        steps.append("主B-b／備九波")
-    elif (
-        deg == "第二隻腳"
-        or "第二隻腳" in thesis
-        or "等第二隻腳" in thesis
-        or _text_has_foot2_revision(text)
-    ):
-        steps.append("等第二隻腳")
-    elif (
-        deg in ("C-7", "C-8", "C-9")
-        or "9波擴延" in thesis
-        or "C-7轉C-8" in thesis
-        or "C-7走完" in thesis
-        or "準備往八" in thesis
-    ):
-        steps.append("9波擴延")
-        if deg == "C-9":
-            steps.extend([_c9_now_step_label(), "C-9"])
-        elif deg == "C-7":
-            steps.append("C-7")
-        else:
-            steps.append(_c9_now_step_label())
-    elif deg in ("C3-3-1", "C3-3-2", "C3-3-3", "C3-3-4"):
-        steps.extend(["C3-3主跌", deg])
-    elif "3→4" in thesis:
-        steps.extend(["C3-3主跌", "C3-3-4"])
-    elif deg.startswith("C3-3") or ("C3-3" in thesis and "橫台" not in thesis):
-        steps.append("C3-3主跌")
-    elif deg == "C3-5" or "C3-5" in thesis or re.search(
-        r"(?:今天)?走\s*3-5|(?<![0-9])3-5(?![0-9])", thesis
-    ):
-        steps.append("C3-5")
-    elif "橫台" in thesis or "中繼" in thesis:
-        steps.append("C內橫台中繼")
-    elif "主跌" in thesis:
-        steps.append("C內主跌")
-    elif deg == "C3":
-        steps.append("C3")
+    if not pol.get("seal_big_c"):
+        if has_pressure_ladder:
+            steps.append("止跌確認・已過C3下降壓")
+        elif has_stop_ladder:
+            steps.append("止跌確認・再測週五低")
+        elif has_bb_ladder:
+            steps.append("主B-b／備九波")
+        elif (
+            deg == "第二隻腳"
+            or "第二隻腳" in thesis
+            or "等第二隻腳" in thesis
+            or _text_has_foot2_revision(text)
+        ):
+            steps.append("等第二隻腳")
+        elif (
+            deg in ("C-7", "C-8", "C-9")
+            or "9波擴延" in thesis
+            or "C-7轉C-8" in thesis
+            or "C-7走完" in thesis
+            or "準備往八" in thesis
+        ):
+            steps.append("9波擴延")
+            if deg == "C-9":
+                steps.extend([_c9_now_step_label(), "C-9"])
+            elif deg == "C-7":
+                steps.append("C-7")
+            else:
+                steps.append(_c9_now_step_label())
+        elif deg in ("C3-3-1", "C3-3-2", "C3-3-3", "C3-3-4"):
+            steps.extend(["C3-3主跌", deg])
+        elif "3→4" in thesis:
+            steps.extend(["C3-3主跌", "C3-3-4"])
+        elif deg.startswith("C3-3") or ("C3-3" in thesis and "橫台" not in thesis):
+            steps.append("C3-3主跌")
+        elif deg == "C3-5" or "C3-5" in thesis or re.search(
+            r"(?:今天)?走\s*3-5|(?<![0-9])3-5(?![0-9])", thesis
+        ):
+            steps.append("C3-5")
+        elif pol.get("c_flash_five") or pol.get("oral_mode") == "c_five_micro":
+            steps.append("C內・c五小段")
+        elif "橫台" in thesis or "中繼" in thesis:
+            steps.append("C內橫台中繼")
+        elif "主跌" in thesis:
+            steps.append("C內主跌")
+        elif deg == "C3":
+            steps.append("C3")
     now = steps[-1]
     chain = " → ".join(steps)
     # 層級文字對齊他文日（thesis_as_of）；柱日是圖軸，不准蓋題旨日。
@@ -13325,8 +13637,29 @@ def _paint_micro_retest_then_rise_schematic(
     return out
 
 
-def _oral_535_now_tip(*, short: bool = False) -> str:
-    """三窗八浪黃框／題旨共用：當令5-3-5；不准叠大C第幾。"""
+def _oral_535_now_tip(
+    *, short: bool = False, pack: Optional[Dict[str, Any]] = None
+) -> str:
+    """三窗八浪黃框／題旨共用：當令5-3-5；不准叠大C第幾。
+
+    飆大改口命中 playbook → 換黃框句（C已封／c五小段）；未命中維持現行。
+    """
+    pol = resolve_wave_structure_paint_policy(pack)
+    mode = str(pol.get("oral_mode") or "abc_default")
+    if mode == "c_sealed_new_cycle":
+        if short:
+            return "大C已封｜新八浪①起示意｜≠自動"
+        return (
+            "他確認大C走完｜三窗改新八浪①起示意｜"
+            "個股不准發明5/9｜≠自動・非買訊"
+        )
+    if mode == "c_five_micro":
+        if short:
+            return "大C｜細c1–c5｜今走小段｜≠自動"
+        return (
+            "此刻＝大C｜細＝c波五小段｜嵌c1–c5閃折｜"
+            "不准叠大C第幾｜撑完大C→新八浪示意・≠自動"
+        )
     if short:
         return "此刻＝大C｜細＝5-3-5｜今≈小b近完｜下＝小c五↓"
     return (
@@ -13335,7 +13668,13 @@ def _oral_535_now_tip(*, short: bool = False) -> str:
     )
 
 
-def _oral_535_header_bit() -> str:
+def _oral_535_header_bit(pack: Optional[Dict[str, Any]] = None) -> str:
+    pol = resolve_wave_structure_paint_policy(pack)
+    mode = str(pol.get("oral_mode") or "abc_default")
+    if mode == "c_sealed_new_cycle":
+        return "大C已封｜新八浪①起示意・≠自動｜個股不准發明5/9"
+    if mode == "c_five_micro":
+        return "細＝c1–c5｜大C未叠第幾｜撑完→新八浪示意・≠自動"
     return "細＝5-3-5｜今≈小b近完｜下＝小c五↓｜撑完大C→新八浪示意・≠自動"
 
 
@@ -16380,7 +16719,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         0.05,
         0.961,
         f"{_macro_wave_calendar_line()}｜藍⑤｜粉A｜金虛B｜紫C｜"
-        f"{_oral_535_header_bit()}｜費半＋台指電子盤同時段｜"
+        f"{_oral_535_header_bit(pack)}｜費半＋台指電子盤同時段｜"
         f"C走完≠自動新八浪{sox_bit}{_pb_bit}",
         fontproperties=_fp(9, "bold"),
         color="#ce93d8",
@@ -16582,7 +16921,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         title="九波擴延" if _c9_far else "八浪",
         c9_ext=_c9_far,
         flash_pivots=_c9_pivots_far if _c9_far else None,
-        now_tip=_oral_535_now_tip(short=True),
+        now_tip=_oral_535_now_tip(short=True, pack=pack),
     )
     # 黃標／AI標：同一 x，貼縮圖右外側；再右挪離開大A底尖點（區帶後畫會蓋）
     _zx = _zone_label_x_clear_of_inset(
@@ -17167,7 +17506,7 @@ def _render_twii_c_wave_60_dark(
         detail=True,
         rect=_micro_ins,
         title="八浪・對位",
-        now_tip=_oral_535_now_tip(),
+        now_tip=_oral_535_now_tip(pack=pack),
     )
     try:
         fig.savefig(save_path, facecolor=_LIVE_BG, bbox_inches="tight", pad_inches=0.22)
@@ -17850,7 +18189,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         0.03,
         0.945,
         f"{str(ladder.get('one_line') or '他說現在：C進行中')[:40]}｜"
-        f"{_macro_wave_calendar_line()}｜{_oral_535_header_bit()}",
+        f"{_macro_wave_calendar_line()}｜{_oral_535_header_bit(pack)}",
         fontproperties=_fp(9, "bold"),
         color="#ce93d8",
         ha="left",
@@ -18002,9 +18341,9 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         title="九波擴延" if _c9_near else "八浪",
         c9_ext=_c9_near,
         flash_pivots=_c9_pivots_near if _c9_near else None,
-        now_tip=_oral_535_now_tip(short=True),
+        now_tip=_oral_535_now_tip(short=True, pack=pack),
     )
-    # 近窗：兩標齊頭；清過九波縮圖，且右挪離開大A末／7/29（區帶後畫會蓋尖點）
+    # 近窗：兩標齊頭；清過九波縮圖，且右挪離開大A底／7/29（區帶後畫會蓋尖點）
     _zx_n = _zone_label_x_clear_of_inset(
         ax, fig, _near_inset, fallback=float(_TEACH_ZONE_LABEL_X_NEAR)
     )
@@ -19358,6 +19697,23 @@ def prepare_wave_live_pack(
         )
     except Exception:
         logger.debug("prepare_wave teach_tip 略過", exc_info=True)
+    # 出圖前硬閘：加權／費半／電子盤 tip 必須對官方；不過→重算；仍不過寫入 pack 標記
+    try:
+        gate = ensure_teach_tip_preflight(db_path, pack)
+        pack["_stamp_preflight"] = {
+            "ok": bool(gate.get("ok")),
+            "fails": list(gate.get("fails") or [])[:12],
+            "retried": bool(gate.get("retried")),
+        }
+        if gate.get("tip"):
+            pack["teach_tip"] = dict(gate["tip"])
+    except Exception:
+        logger.debug("prepare_wave stamp preflight 略過", exc_info=True)
+    # 結構改口 playbook：題旨命中→圖面政策（C已封／c五小段…）寫入 pack
+    try:
+        pack["wave_paint_policy"] = resolve_wave_structure_paint_policy(pack)
+    except Exception:
+        logger.debug("prepare_wave wave playbook 略過", exc_info=True)
     # 即時價若已破 4/28 9865 → 掛 2/25 8498 再回測（撐壓對最新價）
     try:
         pred = pack.get("pred_levels") if isinstance(pack.get("pred_levels"), dict) else {}
@@ -19673,6 +20029,35 @@ def paint_open_day_hypothesis(
     intent_note = pack.get("intent_note") or ""
     us_note = pack.get("us_note") or ""
     key_levels = pack.get("key_levels") or {}
+
+    # 出圖前硬閘：戳日／價／盤中旗不對＝先重算 tip；仍不過不准出圖（話筒靠眼睛抓＝失敗）
+    try:
+        gate = ensure_teach_tip_preflight(db_path, pack)
+        pack["_stamp_preflight"] = {
+            "ok": bool(gate.get("ok")),
+            "fails": list(gate.get("fails") or [])[:12],
+            "retried": bool(gate.get("retried")),
+        }
+        if not gate.get("ok"):
+            logger.error(
+                "teach stamp preflight 不過 panels=%s fails=%s",
+                mode,
+                gate.get("fails"),
+            )
+            return {
+                **out,
+                "ok": False,
+                "error": "stamp_preflight",
+                "fails": list(gate.get("fails") or []),
+                "slot_id": slot_id,
+            }
+    except Exception:
+        logger.exception("teach stamp preflight 異常")
+        return {**out, "ok": False, "error": "stamp_preflight_exc", "slot_id": slot_id}
+    try:
+        pack["wave_paint_policy"] = resolve_wave_structure_paint_policy(pack)
+    except Exception:
+        logger.debug("paint wave playbook 略過", exc_info=True)
 
     # 排程 full 才跑內部試畫；美股日K已在 _ensure_teach_index_bars
     if mode == "full":
