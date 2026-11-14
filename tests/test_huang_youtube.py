@@ -53,8 +53,9 @@ def test_discover_stores_and_hint(tmp_path, monkeypatch):
 
     db = str(tmp_path / "t.db")
     monkeypatch.setattr(hy, "fetch_rss", lambda **kw: hy.parse_rss_xml(SAMPLE_RSS))
-    # 本測只驗 RSS 入庫；不准被已知 Drive id 搶成 drive_mp4（CI 無 ffmpeg）
+    # 測 RSS 路徑：不准被本機／Drive 已知 id 拐去 ingest（CI 無 ffmpeg）
     monkeypatch.setattr(hy, "resolve_drive_file_id", lambda *_a, **_k: "")
+    monkeypatch.delenv("HUANG_LOCAL_VIDEO", raising=False)
     monkeypatch.setattr(hy, "_should_ingest_media", lambda *_a, **_k: False)
     got = hy.discover_day_video(db, "20261112", fetch=True, want_transcript=False)
     assert got["video_id"] == "UT2NBDSu6PI"
@@ -103,6 +104,7 @@ def test_parse_drive_name_and_known_ids():
     assert parse_drive_name_ymd("20261112黃培碩.mp4") == "20261112"
     assert parse_drive_name_ymd("雜檔.txt") == ""
     assert resolve_drive_file_id("20261111") == "1efllG90yQBmFPC-3yFuba2TxW0FLA2jh"
+    assert resolve_drive_file_id("20261112") == "12_RN9rsLBKjzbKNihFa5NceSGCJeWlm_"
     assert HUANG_DRIVE_FOLDER_ID_DEFAULT.startswith("1")
     assert "37837" in extract_levels_from_text("低點 37837 與 42471")
 
