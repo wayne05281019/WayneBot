@@ -739,13 +739,82 @@ def _ensure_paint_live_sox(
 def _teach_tip_stale_vs_bars(
     frozen: Optional[Dict[str, Any]],
     bars: Optional[Sequence[Dict[str, Any]]],
+    *,
+    db_path: str = "",
+    pack: Optional[Dict[str, Any]] = None,
 ) -> bool:
-    """凍結 tip 的加權 asof 是否已落後於圖軸末根（遠／近白底卡舊日根因）。"""
-    if not isinstance(frozen, dict) or not bars:
+    """凍結 tip 加權／費半／電子盤 asof 是否已落後官方末日。
+
+    只對加權會漏：TW 已對上圖軸、費半／夜盤仍卡舊日 → 遠窗白底費半／電子盤錯。
+    """
+    if not isinstance(frozen, dict):
         return False
     tip_asof = _ymd(frozen.get("tw_asof"))
-    bar_asof = _ymd((bars[-1] or {}).get("date"))
-    return bool(tip_asof and bar_asof and tip_asof < bar_asof)
+    bar_asof = _ymd((bars[-1] or {}).get("date")) if bars else ""
+    if tip_asof and bar_asof and tip_asof < bar_asof:
+        return True
+    if not db_path:
+        return False
+    # 費半：tip.sox_asof 落後庫內真實美股末日（或同日價差）
+    try:
+        sox_rows = _load_us_daily(db_path, "SOX", "20260101")
+        pair = _us_real_close_pair(sox_rows, None)
+        sox_asof = _ymd(pair.get("asof"))
+        tip_sox = _ymd(frozen.get("sox_asof"))
+        if tip_sox and sox_asof and tip_sox < sox_asof:
+            return True
+        try:
+            tip_sox_c = float(frozen.get("sox_close") or 0)
+            real_sox_c = float(pair.get("close") or 0)
+        except (TypeError, ValueError):
+            tip_sox_c, real_sox_c = 0.0, 0.0
+        if (
+            tip_sox
+            and sox_asof
+            and tip_sox == sox_asof
+            and tip_sox_c > 0
+            and real_sox_c > 0
+            and abs(tip_sox_c - real_sox_c) > 1.5
+        ):
+            return True
+    except Exception:
+        pass
+    # 電子盤：tip 起日／價落後庫內最新夜盤（asof＝夜盤起日，對齊 evening）
+    try:
+        from taiwan_market import load_futures_night
+        from trading_calendar import futures_night_date_cap
+
+        wall = _query_now_from_pack(pack)
+        night = load_futures_night(
+            db_path, futures_night_date_cap(wall), now=wall
+        )
+        if isinstance(night, dict) and float(night.get("close") or 0) > 0:
+            night_label = _ymd(night.get("date"))
+            night_eve = _tx_night_evening_ymd(night_label) or night_label
+            tip_tx = _ymd(frozen.get("tx_asof"))
+            try:
+                tip_tx_c = float(frozen.get("tx_close") or 0)
+                night_c = float(night.get("close") or 0)
+            except (TypeError, ValueError):
+                tip_tx_c, night_c = 0.0, 0.0
+            if tip_tx and night_eve and tip_tx < night_eve:
+                return True
+            if tip_tx and night_label and tip_tx < night_label and tip_tx != night_eve:
+                # tip 殘周一標或更舊夜標
+                if tip_tx < night_eve or tip_tx < night_label:
+                    return True
+            if (
+                tip_tx
+                and night_eve
+                and tip_tx == night_eve
+                and tip_tx_c > 0
+                and night_c > 0
+                and abs(tip_tx_c - night_c) > 0.51
+            ):
+                return True
+    except Exception:
+        pass
+    return False
 
 
 def compute_teach_tip_snapshot(
@@ -774,9 +843,11 @@ def compute_teach_tip_snapshot(
         and frozen
         and frozen.get("tw_close")
         and frozen.get("tx_close")
-        and not _teach_tip_stale_vs_bars(frozen, bars_probe)
+        and not _teach_tip_stale_vs_bars(
+            frozen, bars_probe, db_path=db_path or "", pack=pack
+        )
     ):
-        # 已凍結且未落後圖軸：三窗 paint 重入不准重抓漂價
+        # 已凍結且加權／費半／電子盤皆未落後：三窗 paint 重入不准重抓漂價
         return {
             "tw_asof": _ymd(frozen.get("tw_asof")) or "",
             "tw_close": frozen.get("tw_close"),
@@ -2232,17 +2303,23 @@ def _paint_teach_query_stamp(
         live = False
     # prep 凍結 tip：三窗加權戳同口；tip 落後圖軸末根 → 改吃圖軸（不准日期／價拆兩日）
     tip0 = (pack or {}).get("teach_tip") if isinstance(pack, dict) else None
+    _tip_stale_tw = bool(
+        isinstance(tip0, dict)
+        and _teach_tip_stale_vs_bars(
+            tip0, bars, db_path=str(db_path or ""), pack=pack
+        )
+    )
     if (
         isinstance(tip0, dict)
         and str(label_prefix or "").strip() in {"", "加權"}
         and float(tip0.get("tw_close") or 0) > 0
-        and not _teach_tip_stale_vs_bars(tip0, bars)
+        and not _tip_stale_tw
     ):
         as_of = _ymd(tip0.get("tw_asof")) or as_of
         live = bool(int(tip0.get("tw_live") or 0))
         if close is None:
             close = float(tip0["tw_close"])
-    elif isinstance(tip0, dict) and _teach_tip_stale_vs_bars(tip0, bars):
+    elif isinstance(tip0, dict) and _tip_stale_tw:
         # 過期 tip：白底強制跟末根縮圖K 同日同價
         close = None
         live = int((bars[-1] or {}).get("live_session") or 0) == 1 if bars else False
@@ -2393,16 +2470,31 @@ def _paint_index_last_chg_tip(
         return
     from matplotlib.offsetbox import TextArea
 
-    # prep 凍結 tip：三窗費半戳同口
+    # prep 凍結 tip：三窗費半戳同口；tip 落後真實美股日／價 → 不准覆寫（只修加權會漏費半）
     tip0 = (pack or {}).get("teach_tip") if isinstance(pack, dict) else None
     if (
         isinstance(tip0, dict)
         and str(label_prefix or "費半").strip() in {"", "費半"}
         and float(tip0.get("sox_close") or 0) > 0
     ):
-        close = float(tip0["sox_close"])
-        asof_ymd = _ymd(tip0.get("sox_asof")) or asof_ymd
-        session_live = bool(int(tip0.get("sox_live") or 0))
+        tip_sox = _ymd(tip0.get("sox_asof"))
+        real_sox = _ymd(asof_ymd)
+        tip_sox_c = float(tip0["sox_close"])
+        use_tip_sox = True
+        if tip_sox and real_sox and tip_sox < real_sox:
+            use_tip_sox = False
+        elif (
+            tip_sox
+            and real_sox
+            and tip_sox == real_sox
+            and float(close or 0) > 0
+            and abs(tip_sox_c - float(close)) > 1.5
+        ):
+            use_tip_sox = False
+        if use_tip_sox:
+            close = tip_sox_c
+            asof_ymd = tip_sox or asof_ymd
+            session_live = bool(int(tip0.get("sox_live") or 0))
     chg = _day_change_vs_prev(close, prev_close)
     pct_s = str(chg.get("pct_text") or "").strip()
     pts_s = str(chg.get("pts_text") or "").strip()
@@ -2625,6 +2717,8 @@ def _resolve_tx_after_hours_tip(
     tip_locked = False
     tip_asof0 = _ymd((tip0 or {}).get("tx_asof")) if isinstance(tip0, dict) else ""
     latest_night_asof = ""
+    latest_night_eve = ""
+    latest_night_close = 0.0
     if db_path and not night_live:
         try:
             from taiwan_market import load_futures_night
@@ -2636,13 +2730,38 @@ def _resolve_tx_after_hours_tip(
             )
             if isinstance(_ntip, dict):
                 latest_night_asof = _ymd(_ntip.get("date"))
+                latest_night_eve = (
+                    _tx_night_evening_ymd(latest_night_asof) or latest_night_asof
+                )
+                try:
+                    latest_night_close = float(_ntip.get("close") or 0)
+                except (TypeError, ValueError):
+                    latest_night_close = 0.0
         except Exception:
             latest_night_asof = ""
-    tip_tx_stale = bool(
-        tip_asof0
-        and latest_night_asof
-        and tip_asof0 < latest_night_asof
-    )
+            latest_night_eve = ""
+            latest_night_close = 0.0
+    # tip.tx_asof＝夜盤起日；跟最新夜盤 evening 比，不准用周一標日期誤判
+    tip_tx_stale = False
+    if tip_asof0 and latest_night_eve and tip_asof0 < latest_night_eve:
+        tip_tx_stale = True
+    elif tip_asof0 and latest_night_asof and tip_asof0 < latest_night_asof:
+        if tip_asof0 != latest_night_eve:
+            tip_tx_stale = True
+    if (
+        not tip_tx_stale
+        and tip_asof0
+        and latest_night_eve
+        and tip_asof0 == latest_night_eve
+        and isinstance(tip0, dict)
+        and latest_night_close > 0
+    ):
+        try:
+            tip_c0 = float(tip0.get("tx_close") or 0)
+        except (TypeError, ValueError):
+            tip_c0 = 0.0
+        if tip_c0 > 0 and abs(tip_c0 - latest_night_close) > 0.51:
+            tip_tx_stale = True
     if (
         not night_live
         and not tip_tx_stale
