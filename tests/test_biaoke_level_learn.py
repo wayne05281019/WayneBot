@@ -2565,6 +2565,111 @@ def test_paint_sox_stamp_refuses_stale_tip():
     assert "tip_sox < real_sox" in src
 
 
+def test_teach_stamp_tw_mouth_same_source_no_split():
+    """加權白底：tip 日與柱價不准拆兩日；tip 新於窗→整口跟 tip。"""
+    from biaoke_level_learn import _teach_stamp_tw_mouth
+
+    bars = [
+        {"date": "20261111", "close": 44257.15, "live_session": 0},
+    ]
+    pack = {
+        "teach_tip": {
+            "tw_asof": "20261113",
+            "tw_close": 43675.12,
+            "tw_live": 0,
+            "sox_asof": "20261113",
+            "sox_close": 10146.32,
+            "tx_asof": "20261113",
+            "tx_close": 43706.0,
+        }
+    }
+    mouth = _teach_stamp_tw_mouth(bars, pack=pack, close=44257.15)
+    assert mouth["asof"] == "20261113"
+    assert abs(float(mouth["close"]) - 43675.12) < 0.01
+    assert mouth["src"] == "tip_newer"
+    # tip 舊於窗 → 整口跟柱
+    pack_old = {
+        "teach_tip": {
+            "tw_asof": "20261111",
+            "tw_close": 44257.15,
+            "tw_live": 0,
+            "sox_close": 1,
+            "tx_close": 1,
+        }
+    }
+    bars_new = [
+        {"date": "20261111", "close": 44257.15, "live_session": 0},
+        {"date": "20261113", "close": 43675.12, "live_session": 0},
+    ]
+    mouth2 = _teach_stamp_tw_mouth(bars_new, pack=pack_old, close=43675.12)
+    assert mouth2["asof"] == "20261113"
+    assert abs(float(mouth2["close"]) - 43675.12) < 0.01
+    assert mouth2["src"] == "bars_newer"
+
+
+def test_stamp_preflight_blocks_tw_behind_last_open(monkeypatch):
+    """週末／夜盤：加權 tip 停在更早開市日 → 硬擋（遠／近白底卡舊根因）。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_level_learn import verify_teach_stamp_preflight
+
+    wall = datetime(2026, 11, 14, 23, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    pack = {
+        "query_now": wall.isoformat(),
+        "teach_tip": {
+            "tw_asof": "20261111",
+            "tw_close": 44257.15,
+            "tw_live": 0,
+            "sox_asof": "20261113",
+            "sox_close": 10146.32,
+            "sox_live": 0,
+            "tx_asof": "20261113",
+            "tx_close": 43706.0,
+            "tx_live": 0,
+        },
+    }
+    monkeypatch.setattr(
+        "biaoke_level_learn._query_now_from_pack", lambda *_a, **_k: wall
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._twii_bars_for_teach",
+        lambda *_a, **_k: [
+            {"date": "20261111", "close": 44257.15, "live_session": 0}
+        ],
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._load_us_daily",
+        lambda *_a, **_k: [{"date": "20261113", "close": 10146.32}],
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._tx_night_evening_ymd",
+        lambda ymd: "20261113" if str(ymd).startswith("20261116") else ymd,
+    )
+    import taiwan_market
+    import trading_calendar
+
+    monkeypatch.setattr(
+        taiwan_market,
+        "load_futures_night",
+        lambda *_a, **_k: {"date": "20261116", "close": 43706.0},
+    )
+    monkeypatch.setattr(
+        trading_calendar,
+        "futures_night_date_cap",
+        lambda *_a, **_k: "20261116",
+    )
+    monkeypatch.setattr(
+        trading_calendar,
+        "last_open_calendar_day_on_or_before",
+        lambda ymd, *_a, **_k: "20261113",
+    )
+    gate = verify_teach_stamp_preflight("/tmp/fake.db", pack)
+    assert not gate["ok"], gate.get("fails")
+    codes = {f["code"] for f in (gate.get("fails") or [])}
+    assert "tw_asof_behind_session" in codes
+
+
 def test_verify_teach_stamp_preflight_catches_stale_legs(monkeypatch):
     """出圖前硬閘：加權對上仍擋費半／電子盤舊 tip。"""
     from datetime import datetime
