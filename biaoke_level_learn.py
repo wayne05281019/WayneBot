@@ -8545,10 +8545,49 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
     return _refresh_sox_pred_cascade(out, db_path)
 
 
+def _snip_digit_blob(snip: str) -> str:
+    """去逗號／空白，方便對「43135／43,135」是否仍出現在當令文。"""
+    return re.sub(r"[,\s]", "", str(snip or ""))
+
+
+def _level_digit_in_snip(level: float, snip: str) -> bool:
+    """價位整數是否仍出現在當令文（新點取代舊點的主判據）。"""
+    try:
+        core = str(int(round(float(level))))
+    except (TypeError, ValueError):
+        return False
+    if not core:
+        return False
+    return core in _snip_digit_blob(snip)
+
+
+# 結構帶／劇本錨：即使當令短句沒重寫數字也准留（有專用帶／對質軌）
+_PRED_KEEP_ABSENT_ROLES = frozenset(
+    {
+        "C9低上沿",
+        "C9低下沿",
+        "改口低上沿",
+        "改口低下沿",
+        "劇本一上沿",
+        "AI結束上緣",
+        "深殺",
+        "最佳買點",
+        "下週底下沿",
+        "下週底上沿",
+        "4/23低",
+    }
+)
+# 裸點／舊預測：當令文沒寫到＝被新點取代，不准佔右欄
+_PRED_ORPHAN_ROLES = frozenset({"點位", "至少回測", "台指壓力", ""})
+
+
 def _purge_stale_tw_pred_levels(
     pred: Dict[str, Any], *, snip: str = ""
 ) -> Dict[str, Any]:
-    """過濾過期加權標／備注：有當令回測帶就丟舊單點41500、路徑裸點、過期≠41500備注。"""
+    """過濾過期加權標：回測帶壓舊單點＋當令文沒寫到的裸點丟掉＋同價只留一列。
+
+    目標：新飆大文／自回上圖後，舊即時標價不准繼續佔席（使用者 2026-11-14）。
+    """
     out = dict(pred or {})
     rows_in = list(out.get("tw") or [])
     if not rows_in:
@@ -8588,8 +8627,46 @@ def _purge_stale_tw_pred_levels(
                 r"43000\s*(?:之)?下", blob
             ):
                 continue
+        # 當令文沒寫到的裸點／舊飆預測＝被新點取代
+        if blob.strip() and role in _PRED_ORPHAN_ROLES:
+            if not _level_digit_in_snip(lv, blob):
+                continue
+        if blob.strip() and "飆預測" in lab and role not in _PRED_KEEP_ABSENT_ROLES:
+            if not _level_digit_in_snip(lv, blob):
+                continue
         keep.append(r)
-    out["tw"] = keep
+    # 同價只留一列（後寫蓋前；角色較具體優先）
+    by_lv: Dict[int, Dict[str, Any]] = {}
+    role_weight = {
+        "回測平均": 50,
+        "回測最低": 49,
+        "最佳買點": 48,
+        "改口低上沿": 47,
+        "改口低下沿": 46,
+        "C9低上沿": 45,
+        "C9低下沿": 44,
+        "劇本一上沿": 43,
+        "AI結束上緣": 42,
+        "深殺": 41,
+        "至少回測": 20,
+        "點位": 10,
+        "": 5,
+    }
+    for r in keep:
+        try:
+            key = int(round(float(r.get("level") or 0)))
+        except (TypeError, ValueError):
+            continue
+        role = str(r.get("role") or "")
+        w = int(role_weight.get(role, 15))
+        prev = by_lv.get(key)
+        if prev is None:
+            by_lv[key] = r
+            continue
+        pw = int(role_weight.get(str(prev.get("role") or ""), 15))
+        if w >= pw:
+            by_lv[key] = r
+    out["tw"] = list(by_lv.values())
     return out
 
 
@@ -9573,20 +9650,67 @@ _FAR_SOX_MIN_BODY_FRAC = 0.024
 # 3) 尖點浪名（C1…C9、⑤起、A/B）：釘該日 K 的 x；滾動後跟著那根移；
 #    該日被滾出窗外 → 不釘幽靈標（價位改由右欄／帶狀承接）。
 # 4) 座位：右欄=_place_live_right_labels（軟上限＋分 tier）；尖點=_pin_pivot_name。
+#    不准標壓標／壓末幾根K／壓箭（口頭標離尖、C進行中不與今≈小b疊）。
 # 5) 新飆大文／自回抽出的大盤・費半點位 → pred_levels → 右欄席位自動接；
 #    擠不過就丟低優先（Fib／下一層），雙軌／今／已破必留。
 # 6) 末根日期刻度必顯；盤中螢光黃綠、收盤／盤前白字。戳框同：盤中螢光邊、收盤黑邊。
+# 7) 新點位上圖＝先清被取代的舊點（_purge_stale_tw_pred_levels）；
+#    當令文沒寫到的裸「點位／至少回測／飆預測」不准留在右欄當即時標。
+# 8) ylim 取整＋擴張上限：不准為一條示意虛線把整塊圖上下大幅異動。
+# 9) soft 延長只為留大量撐壓／C3；仍硬封 soft_max，禁止為浪階日無限拉長。
 # 遠窗預設根數；撐壓日可略超 soft，再長硬滾（不准為浪階日無限拉長變瘦）
 _FAR_TEACH_MAX_BARS = 152
 _FAR_TEACH_EXTEND_SOFT = 168  # 僅大量撐壓／下一層可略超；硬上限
 _FAR_TEACH_VOL_LOOKBACK = 200
 _NEAR_TEACH_MAX_BARS = 130  # 近窗：⑤起地板；滿長後滾（A／B／C 仍優先留窗）
-_MICRO_TEACH_MAX_BARS = 55  # 超近：B／C 特寫定長
 # 黃培碩 60 分 C 波：定長滾（K 寬穩定）；soft 僅為 C3 底還在窗內可略超
 _HUANG_C60_MAX_BARS = 150
 _HUANG_C60_SOFT_MAX = 168
+# 超近＝C60 定長別名；不准另開更短窗（曾草稿 55）造成圖塊突然縮跳
+_MICRO_TEACH_MAX_BARS = _HUANG_C60_MAX_BARS
 _TEACH_RIGHT_GUTTER = 2.55  # 右欄現況相對末K的固定槽（bar 單位）
 _TEACH_RIGHT_XLIM_PAD = 10.2  # xlim 右側固定留白（bar 單位）
+_TEACH_YLIM_STEP = 50.0  # ylim 取整步距，減少日更微抖
+_TEACH_YLIM_EXPAND_CAP = 0.08  # 示意虛線最多再抬／壓 span 的 8%
+
+
+def _teach_ylim_stable(
+    ymin: float,
+    ymax: float,
+    *,
+    step: float = _TEACH_YLIM_STEP,
+) -> Tuple[float, float]:
+    """ylim 取整：減少日更微抖；不准為小數跳動整塊翻面。"""
+    import math
+
+    try:
+        lo = float(ymin)
+        hi = float(ymax)
+    except (TypeError, ValueError):
+        return float(ymin), float(ymax)
+    if not (lo < hi):
+        return lo, hi
+    st = max(float(step or 50.0), 1.0)
+    return math.floor(lo / st) * st, math.ceil(hi / st) * st
+
+
+def _teach_ylim_expand_capped(
+    ymin: float,
+    ymax: float,
+    need_lo: float,
+    need_hi: float,
+    *,
+    cap: float = _TEACH_YLIM_EXPAND_CAP,
+) -> Tuple[float, float]:
+    """示意虛線要進框時最多擴 span×cap，避免圖塊突然大幅異動。"""
+    lo, hi = float(ymin), float(ymax)
+    span = max(hi - lo, 1.0)
+    max_pad = span * max(float(cap or 0.0), 0.0)
+    if need_lo < lo:
+        lo = max(float(need_lo), lo - max_pad)
+    if need_hi > hi:
+        hi = min(float(need_hi), hi + max_pad)
+    return _teach_ylim_stable(lo, hi)
 
 
 def _teach_right_col_x(
@@ -13950,6 +14074,18 @@ def _tw_pred_right_notes(
             continue
         tag = str(row.get("tag") or "")
         role = str(row.get("role") or "")
+        lab = str(row.get("label") or "")
+        # 當令文沒寫到的裸點／舊飆預測：不准再佔右欄即時席
+        if blob_tw.strip() and role in _PRED_ORPHAN_ROLES:
+            if not _level_digit_in_snip(lv, blob_tw):
+                continue
+        if (
+            blob_tw.strip()
+            and "飆預測" in lab
+            and role not in _PRED_KEEP_ABSENT_ROLES
+            and not _level_digit_in_snip(lv, blob_tw)
+        ):
+            continue
         # 當令回測帶已上：過期 41500／路徑 43000 裸標不准進右欄
         if _band_right and (
             abs(lv - 41500.0) < 0.6
@@ -15216,6 +15352,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     # 上下多留：高點浪名在尖上、低點浪名在尖下；頂上再加一截給白底戳
     ymin = min([min(lows), y5s, y_alow] + list(tw_supports)) - 720
     ymax = max([max(highs), y5e, y_b_end]) + 1550
+    ymin, ymax = _teach_ylim_stable(ymin, ymax)
     # 預估端先算：同價只留端點「飆預測」，左青帶／右欄不准再貼一次
     tip_pre = _c_forecast_tip(
         i_now=i_now, y_now=y_now, y_ref=y_bhi, lows=c_seg_lows, anchors=tip_anchors
@@ -16566,6 +16703,7 @@ def _render_twii_c_wave_60_dark(
             pass
     ymin = min(_y_floor) - 520
     ymax = max(highs) + 900
+    ymin, ymax = _teach_ylim_stable(ymin, ymax)
     ax.set_ylim(float(ymin), float(ymax))
     zone = _paint_window_dual_zones(
         ax,
@@ -16733,13 +16871,15 @@ def _render_twii_c_wave_60_dark(
         n=int(n),
         x_label_col=float(x_col),
     )
-    # 虛線端若低於現 ylim，抬一截；上折示意也要進框
+    # 虛線端若出框：最多擴 span×8%，不准整塊圖突然大幅異動
     try:
         _ymin0, _ymax0 = ax.get_ylim()
         _need_lo = min(float(_retest_y), float(y_now)) - 420.0
         _need_hi = max(float(_path.get("fut_y") or y_now), float(y_now)) + 520.0
-        ax.set_ylim(min(float(_ymin0), _need_lo), max(float(_ymax0), _need_hi))
-        ymin, ymax = ax.get_ylim()
+        ymin, ymax = _teach_ylim_expand_capped(
+            float(_ymin0), float(_ymax0), float(_need_lo), float(_need_hi)
+        )
+        ax.set_ylim(float(ymin), float(ymax))
     except Exception:
         pass
     x_right = _teach_xlim_right(
@@ -16952,6 +17092,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     # 上下多留：⑤起／大A 低點浪名要離 x 軸；頂上再加一截給白底戳（主圖框內左上）
     ymin = min([min(lows), y5s, y_alow] + list(tw_supports)) - 780
     ymax = max(highs) + 1180
+    ymin, ymax = _teach_ylim_stable(ymin, ymax)
     # 預估端先算：同價只留端點飆預測
     tip_pre = _c_forecast_tip(
         i_now=i_now,
