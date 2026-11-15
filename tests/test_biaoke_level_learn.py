@@ -4473,7 +4473,12 @@ def test_force_refill_prefers_fmtqik_when_yahoo_blocked(monkeypatch):
     out = _force_refill_twii_daily_to_target("/tmp/x.db", target_ymd="20261113")
     assert out["ok"]
     assert out["asof_after"] == "20261113"
-    assert any(str(p).startswith("fmtqik=") for p in out.get("paths") or [])
+    assert any(
+        str(p).startswith("official=") or str(p).startswith("fmtqik=")
+        for p in out.get("paths") or []
+    )
+    # 官方已齊不准再踩 Yahoo（paths 不該出現 sync_1mo_enrich）
+    assert "sync_1mo_enrich" not in (out.get("paths") or [])
 
 
 def test_force_refill_twii_daily_uses_day_fill_when_sync_empty(monkeypatch):

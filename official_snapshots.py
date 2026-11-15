@@ -1034,10 +1034,76 @@ def merge_fmtqik_prefer_openapi(
     return [by_date[k] for k in sorted(by_date)]
 
 
-def ensure_index_fmtqik_through(db_path: str, cap: str = "") -> Dict[str, Any]:
-    """保證 index_daily 有 fuse_end（或指定 cap）的收盤＋量。
+def _index_daily_close_vol(
+    db_path: str, symbol: str, ymd: str
+) -> Tuple[Optional[float], Optional[float]]:
+    conn = sqlite3.connect(db_path)
+    try:
+        row = conn.execute(
+            """
+            SELECT close, volume FROM index_daily
+            WHERE symbol=? AND date=?
+            """,
+            (symbol, ymd),
+        ).fetchone()
+    finally:
+        conn.close()
+    if not row:
+        return None, None
+    try:
+        return float(row[0] or 0) or None, float(row[1] or 0) or None
+    except (TypeError, ValueError):
+        return None, None
 
-    Yahoo／OpenAPI 常晚於證交所 rwd；缺日就抓該月 rwd FMTQIK 寫入。沒真數不上。
+
+def _flat_twii_ohlc_for_date(db_path: str, symbol: str, ymd: str) -> int:
+    """缺 open／high／low 時用官方收補平底（FMTQIK 只有收＋量）。不准發明別價。"""
+    conn = sqlite3.connect(db_path)
+    try:
+        row = conn.execute(
+            """
+            SELECT open, high, low, close FROM index_daily
+            WHERE symbol=? AND date=?
+            """,
+            (symbol, ymd),
+        ).fetchone()
+        if not row:
+            return 0
+        try:
+            o = float(row[0] or 0)
+            h = float(row[1] or 0)
+            lo = float(row[2] or 0)
+            c = float(row[3] or 0)
+        except (TypeError, ValueError):
+            return 0
+        if c <= 0:
+            return 0
+        if o > 0 and h > 0 and lo > 0:
+            return 0
+        o2 = o if o > 0 else c
+        h2 = h if h > 0 else max(o2, c)
+        lo2 = lo if lo > 0 else min(o2, c)
+        conn.execute(
+            """
+            UPDATE index_daily SET open=?, high=?, low=?
+            WHERE symbol=? AND date=?
+            """,
+            (o2, h2, lo2, symbol, ymd),
+        )
+        conn.commit()
+        return 1
+    finally:
+        conn.close()
+
+
+def ensure_index_fmtqik_through(db_path: str, cap: str = "") -> Dict[str, Any]:
+    """保證 index_daily 有 fuse_end（或指定 cap）的收盤＋量（盡量含 OHLC）。
+
+    順序（Render 週末 Yahoo／www 常掛）：
+    1) OpenAPI MI_5MINS_HIST 開高低收
+    2) OpenAPI FMTQIK 收＋量
+    3) rwd 月表 FMTQIK
+    缺 OHLC 用官方收補平底。沒真數不上。
     """
     from taiwan_market import _INDEX_SYMBOL, ensure_index_daily_table
 
@@ -1050,46 +1116,122 @@ def ensure_index_fmtqik_through(db_path: str, cap: str = "") -> Dict[str, Any]:
     if len(target) != 8:
         return {"ok": False, "cap": target, "wrote": 0, "reason": "no_cap"}
     ensure_index_daily_table(db_path)
-    conn = sqlite3.connect(db_path)
-    try:
-        row = conn.execute(
-            """
-            SELECT close, volume FROM index_daily
-            WHERE symbol=? AND date=?
-            """,
-            (_INDEX_SYMBOL, target),
-        ).fetchone()
-    finally:
-        conn.close()
-    if row and float(row[0] or 0) > 0 and float(row[1] or 0) > 0:
+    close0, vol0 = _index_daily_close_vol(db_path, _INDEX_SYMBOL, target)
+    if close0 and close0 > 0 and vol0 and vol0 > 0:
+        _flat_twii_ohlc_for_date(db_path, _INDEX_SYMBOL, target)
         return {"ok": True, "cap": target, "wrote": 0, "reason": "already"}
+
+    wrote = 0
+    bits: List[str] = []
+
+    # 1) MI_5MINS：近窗完整 OHLC（openapi；不靠 www）
     try:
-        rwd_rows = fetch_fmtqik_rwd(target)
+        mi_rows = parse_mi5mins_hist(fetch_json(TWSE_MI5MINS, timeout=20))
+        n_mi = int(overlay_index_ohlc(db_path, mi_rows) or 0)
+        wrote += n_mi
+        bits.append(f"mi5={n_mi}")
+    except Exception as exc:
+        bits.append("mi5=exc")
+        log.warning("MI_5MINS 補 %s 失敗：%s", target, exc)
+
+    close1, vol1 = _index_daily_close_vol(db_path, _INDEX_SYMBOL, target)
+    if close1 and close1 > 0:
+        # MI5 常無量：再併 FMTQIK 量；有收即可先認日
+        if not vol1 or vol1 <= 0:
+            try:
+                oa_rows = parse_fmtqik(fetch_json(TWSE_FMTQIK, timeout=20))
+                n_oa = int(overlay_fmtqik(db_path, oa_rows) or 0)
+                wrote += n_oa
+                bits.append(f"openapi_vol={n_oa}")
+            except Exception as exc:
+                bits.append("openapi_vol=exc")
+                log.warning("OpenAPI FMTQIK 補量 %s 失敗：%s", target, exc)
+            if not (_index_daily_close_vol(db_path, _INDEX_SYMBOL, target)[1] or 0):
+                try:
+                    rwd_rows = fetch_fmtqik_rwd(target, timeout=20)
+                    n_r = int(overlay_fmtqik(db_path, rwd_rows) or 0) if rwd_rows else 0
+                    wrote += n_r
+                    bits.append(f"rwd_vol={n_r}")
+                except Exception as exc:
+                    bits.append("rwd_vol=exc")
+                    log.warning("rwd FMTQIK 補量 %s 失敗：%s", target, exc)
+        n_flat = _flat_twii_ohlc_for_date(db_path, _INDEX_SYMBOL, target)
+        if n_flat:
+            bits.append(f"flat={n_flat}")
+        close_f, vol_f = _index_daily_close_vol(db_path, _INDEX_SYMBOL, target)
+        # 有官方收＝日K可畫；量缺仍 ok（平底／後續再補量）
+        if close_f and close_f > 0:
+            return {
+                "ok": True,
+                "cap": target,
+                "wrote": wrote,
+                "close": close_f,
+                "volume": vol_f,
+                "reason": "+".join(bits) or "mi5",
+            }
+
+    # 2) OpenAPI FMTQIK 收＋量
+    try:
+        oa_rows = parse_fmtqik(fetch_json(TWSE_FMTQIK, timeout=20))
+        if oa_rows:
+            n_oa = int(overlay_fmtqik(db_path, oa_rows) or 0)
+            wrote += n_oa
+            bits.append(f"openapi={n_oa}")
+        else:
+            bits.append("openapi=empty")
+    except Exception as exc:
+        bits.append("openapi=exc")
+        log.warning("OpenAPI FMTQIK %s 失敗：%s", target, exc)
+
+    close2, vol2 = _index_daily_close_vol(db_path, _INDEX_SYMBOL, target)
+    if close2 and close2 > 0 and vol2 and vol2 > 0:
+        n_flat = _flat_twii_ohlc_for_date(db_path, _INDEX_SYMBOL, target)
+        if n_flat:
+            bits.append(f"flat={n_flat}")
+        return {
+            "ok": True,
+            "cap": target,
+            "wrote": wrote,
+            "close": close2,
+            "volume": vol2,
+            "reason": "+".join(bits) or "openapi",
+        }
+
+    # 3) rwd 月表（www；Render 可能被擋，仍試）
+    try:
+        rwd_rows = fetch_fmtqik_rwd(target, timeout=20)
     except Exception as exc:
         log.warning("rwd FMTQIK %s 失敗：%s", target, exc)
-        return {"ok": False, "cap": target, "wrote": 0, "reason": str(exc)}
+        bits.append("rwd=exc")
+        return {
+            "ok": False,
+            "cap": target,
+            "wrote": wrote,
+            "reason": "+".join(bits) + f";{exc}" if bits else str(exc),
+        }
     if not rwd_rows:
-        return {"ok": False, "cap": target, "wrote": 0, "reason": "empty_rwd"}
-    wrote = int(overlay_fmtqik(db_path, rwd_rows) or 0)
-    conn = sqlite3.connect(db_path)
-    try:
-        row = conn.execute(
-            """
-            SELECT close, volume FROM index_daily
-            WHERE symbol=? AND date=?
-            """,
-            (_INDEX_SYMBOL, target),
-        ).fetchone()
-    finally:
-        conn.close()
-    ok = bool(row and float(row[0] or 0) > 0 and float(row[1] or 0) > 0)
+        bits.append("rwd=empty")
+        return {
+            "ok": False,
+            "cap": target,
+            "wrote": wrote,
+            "reason": "+".join(bits) or "empty_rwd",
+        }
+    n_rwd = int(overlay_fmtqik(db_path, rwd_rows) or 0)
+    wrote += n_rwd
+    bits.append(f"rwd={n_rwd}")
+    n_flat = _flat_twii_ohlc_for_date(db_path, _INDEX_SYMBOL, target)
+    if n_flat:
+        bits.append(f"flat={n_flat}")
+    close3, vol3 = _index_daily_close_vol(db_path, _INDEX_SYMBOL, target)
+    ok = bool(close3 and close3 > 0 and vol3 and vol3 > 0)
     return {
         "ok": ok,
         "cap": target,
         "wrote": wrote,
-        "close": float(row[0]) if row else None,
-        "volume": float(row[1]) if row else None,
-        "reason": "rwd" if ok else "still_missing",
+        "close": close3,
+        "volume": vol3,
+        "reason": "+".join(bits) if ok else ("+".join(bits) or "still_missing"),
     }
 
 
