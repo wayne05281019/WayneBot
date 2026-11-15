@@ -17,6 +17,9 @@ services:
     # 健檢路徑必須 <1s，否則部署會被 Render 判 update_failed（#148 踩過）。
     healthCheckPath: /live
     envVars:
+      # 與 .python-version／runtime.txt／CI 對齊；Dashboard 曾鎖 3.11.0 蓋過這三處。
+      - key: PYTHON_VERSION
+        value: "3.12.10"
       - key: WAYNE_RENDER_PLAN
         value: 1c-2g
       - key: WAYNE_RENDER_LITE

@@ -1749,6 +1749,82 @@ def _force_refill_twii_daily_to_target(
     return out
 
 
+def _teach_last_fail_path(db_path: str = "") -> str:
+    """與行情庫同目錄；Render 永久碟可對 /health。"""
+    base = ""
+    try:
+        base = os.path.dirname(os.path.abspath(str(db_path or "")))
+    except Exception:
+        base = ""
+    if not base or not os.path.isdir(base):
+        try:
+            from wayne_db import get_db_path
+
+            base = os.path.dirname(os.path.abspath(get_db_path()))
+        except Exception:
+            base = os.path.join("data")
+    return os.path.join(base, "teach_last_fail.json")
+
+
+def _record_teach_last_fail(
+    db_path: str,
+    *,
+    ok: bool,
+    fail_bits: Optional[Sequence[str]] = None,
+    fails: Optional[Sequence[Dict[str, Any]]] = None,
+    steps: Optional[Sequence[Dict[str, Any]]] = None,
+    tip: Optional[Dict[str, Any]] = None,
+) -> None:
+    """波浪／教具流水線最後一次結果；失敗才寫重點，成功也刷新 ok。"""
+    tip = tip if isinstance(tip, dict) else {}
+    payload = {
+        "ok": bool(ok),
+        "at": datetime.now(TAIPEI).isoformat(timespec="seconds"),
+        "fail_bits": [str(b) for b in (fail_bits or [])[:5] if b],
+        "fails": [
+            {
+                "code": str((f or {}).get("code") or ""),
+                "detail": str((f or {}).get("detail") or "")[:160],
+            }
+            for f in (fails or [])[:8]
+            if f
+        ],
+        "steps_bad": [
+            {
+                "id": str((s or {}).get("id") or ""),
+                "detail": str((s or {}).get("detail") or "")[:120],
+            }
+            for s in (steps or [])
+            if s and not (s or {}).get("ok")
+        ][:8],
+        "tip": {
+            "tw_asof": str(tip.get("tw_asof") or ""),
+            "tw_close": tip.get("tw_close"),
+            "sox_asof": str(tip.get("sox_asof") or ""),
+            "sox_close": tip.get("sox_close"),
+            "tx_asof": str(tip.get("tx_asof") or ""),
+            "tx_close": tip.get("tx_close"),
+        },
+    }
+    path = _teach_last_fail_path(db_path)
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(payload, fh, ensure_ascii=False, separators=(",", ":"))
+    os.replace(tmp, path)
+
+
+def read_teach_last_fail(db_path: str = "") -> Dict[str, Any]:
+    """給 /health 讀；檔不在或壞掉 → 空 dict。"""
+    path = _teach_last_fail_path(db_path)
+    try:
+        with open(path, encoding="utf-8") as fh:
+            raw = json.load(fh)
+        return raw if isinstance(raw, dict) else {}
+    except Exception:
+        return {}
+
+
 def ensure_teach_tip_preflight(
     db_path: str,
     pack: Optional[Dict[str, Any]] = None,
@@ -20689,12 +20765,48 @@ def run_teach_trio_preflight_pipeline(
         gate = ensure_teach_tip_preflight(db_path, pack)
     except Exception as exc:
         logger.exception("pipeline 08 終檢失敗")
-        gate = {
-            "ok": False,
-            "fails": [{"code": "pipeline_gate_error", "detail": type(exc).__name__}],
-            "tip": pack.get("teach_tip") or {},
-            "sox_degraded": False,
-        }
+        # 模組炸但 tip 三口已有價 → 直接硬閘；對齊「模組異常不准白擋」
+        tip_fb = pack.get("teach_tip") if isinstance(pack.get("teach_tip"), dict) else {}
+        try:
+            tw_ok = float((tip_fb or {}).get("tw_close") or 0) > 0
+            sox_ok = float((tip_fb or {}).get("sox_close") or 0) > 0
+            tx_ok = float((tip_fb or {}).get("tx_close") or 0) > 0
+        except (TypeError, ValueError):
+            tw_ok = sox_ok = tx_ok = False
+        if tw_ok and (sox_ok or tx_ok):
+            try:
+                gate = verify_teach_stamp_preflight(db_path, pack)
+                gate["module_exc"] = type(exc).__name__
+                logger.error(
+                    "pipeline 08 終檢例外 %s 但 tip 有價 → 硬閘 ok=%s",
+                    type(exc).__name__,
+                    gate.get("ok"),
+                )
+            except Exception as exc2:
+                logger.exception("pipeline 08 硬閘備援也失敗")
+                gate = {
+                    "ok": False,
+                    "fails": [
+                        {
+                            "code": "pipeline_gate_error",
+                            "detail": type(exc2).__name__,
+                        }
+                    ],
+                    "tip": tip_fb or {},
+                    "sox_degraded": False,
+                }
+        else:
+            gate = {
+                "ok": False,
+                "fails": [
+                    {
+                        "code": "pipeline_gate_error",
+                        "detail": type(exc).__name__,
+                    }
+                ],
+                "tip": tip_fb or {},
+                "sox_degraded": False,
+            }
     if gate.get("tip"):
         pack["teach_tip"] = dict(gate["tip"])
     pack["_stamp_preflight"] = {
@@ -20724,12 +20836,30 @@ def run_teach_trio_preflight_pipeline(
             or ".py, line" in detail
             or "Traceback" in detail
         ):
-            fail_bits.append("行情模組異常")
+            # 仍擋圖，但話筒要留 code／短因，不准只剩「行情模組異常」無法對症
+            bit = "行情模組異常"
+            if code:
+                bit += f"｜{code}"
+            if detail and detail not in bit:
+                bit += f"｜{detail[:48]}"
+            fail_bits.append(bit[:140])
         elif detail:
             # 140：要留得下 paths=official=mi5=…；舊 64 字會截成「；補後」
             fail_bits.append(detail[:140])
         elif code:
             fail_bits.append(code)
+    # 落檔給 /health：Render 碟上可對，不准把 traceback 甩上話筒
+    try:
+        _record_teach_last_fail(
+            db_path,
+            ok=bool(gate.get("ok")),
+            fail_bits=fail_bits,
+            fails=list(gate.get("fails") or [])[:8],
+            steps=steps,
+            tip=pack.get("teach_tip") if isinstance(pack.get("teach_tip"), dict) else {},
+        )
+    except Exception:
+        logger.debug("teach_last_fail 落檔略過", exc_info=True)
     return {
         "ok": bool(gate.get("ok")),
         "pack": pack,

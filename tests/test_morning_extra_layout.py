@@ -116,6 +116,9 @@ def test_taiwan_market_brief_uses_dashed_phone_lines(monkeypatch):
     assert sum(1 for ln in html.split("\n") if ">盤勢</a>" in ln) == 1
     joined = html.replace("\n", "")
     assert "（勝60%）" in joined
+    plain_all = _plain(html)
+    assert "黃金買點　隔日+0.8%（勝60%）" in plain_all
+    assert "當沖　隔日+1.0%（勝55%）" in plain_all
     for ln in html.split("\n"):
         if DASH_LINE in ln or ln.startswith("＝＝"):
             continue
