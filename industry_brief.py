@@ -1326,7 +1326,7 @@ def format_bijia_cells(row: Dict[str, Any]) -> Dict[str, str]:
     """圖卡／HTML 共用欄位字串。名稱與上市／上櫃分開，預留對齊格。
 
     EPS 只留數字；口數改由外層 eps_label（近1季EPS／近2季EPS），不准黏「×2」疊字。
-    mult＝收盤÷真實單季EPS合計，標籤用「價／EPS」並與證交所本益分開。
+    mult＝收盤÷真實單季EPS合計，標籤用「價／近季EPS」並與證交所本益分開。
     """
     mark = "這檔" if row.get("is_mine") else ""
     name = str(row.get("stock_name") or "")

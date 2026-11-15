@@ -119,6 +119,7 @@ def estimate_year_revenue(
         last_month_rev, g, r_m, yoy_pct=yoy_pct
     )
     est = ytd + float(proj["sum"])
+    # 推估必標；12 月已齊＝已公告，不准再掛「推估」
     return {
         "ok": True,
         "est_year_rev": est,
@@ -127,5 +128,5 @@ def estimate_year_revenue(
         "g": g,
         "g_meta": g_meta,
         "proj": proj,
-        "label": "推估",
+        "label": "推估" if r_m > 0 else "已公告",
     }

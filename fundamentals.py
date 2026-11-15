@@ -1420,7 +1420,8 @@ def expand_ytd_income_eps_to_single(
                     prev_cum = cum
                     prev_season = s
                 continue
-            if s > prev_season and prev_cum is not None:
+            # 只准相鄰季差分（Q2−Q1／Q3−Q2／Q4−Q3）；中間缺季不准跨季瞎減成假單季
+            if s == prev_season + 1 and prev_cum is not None:
                 out[(y, s)] = cum - prev_cum
             prev_cum = cum
             prev_season = s

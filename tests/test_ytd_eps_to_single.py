@@ -41,3 +41,53 @@ def test_missing_q1_ytd_q2_no_fake_single():
     assert (2026, 2) not in m
     filled = attach_quarter_box_eps([{"year": 2026, "season": 2}], rows)
     assert filled[0]["eps"] is None and filled[0]["eps_lab"] == ""
+
+
+def test_gap_q1_q3_no_cross_season_fake_single():
+    """有 Q1＋前三季、缺上半年 → Q3 不准用前三季−Q1 當假單季；Q4 仍可對 Q3 差分。"""
+    rows = [
+        {"year": 2026, "season": 1, "eps": 1.27, "revenue": 131082.0},
+        {"year": 2026, "season": 3, "eps": 5.99, "revenue": 500000.0},
+        {"year": 2026, "season": 4, "eps": 8.00, "revenue": 700000.0},
+    ]
+    m = expand_ytd_income_eps_to_single(rows)
+    assert abs(m[(2026, 1)] - 1.27) < 1e-9
+    assert (2026, 3) not in m  # 缺 Q2，不准 5.99−1.27
+    assert abs(m[(2026, 4)] - (8.00 - 5.99)) < 1e-9
+
+
+def test_recent_eps_sum_uses_ytd_expand(tmp_path):
+    """比價 _recent_eps_sum 必須吃還原後單季，不准把 H1 累計當單季加總。"""
+    import sqlite3
+
+    from industry_brief import _recent_eps_sum
+    from wayne_db import ensure_core_schema
+
+    db = str(tmp_path / "eps_sum.db")
+    ensure_core_schema(db)
+    try:
+        from fundamentals import ensure_fundamentals_tables
+
+        ensure_fundamentals_tables(db)
+    except Exception:
+        pass
+    conn = sqlite3.connect(db)
+    for season, eps, rev in (
+        (1, 1.27, 131082.0),
+        (2, 3.02, 332692.0),
+        (3, 5.99, 500000.0),
+    ):
+        conn.execute(
+            "INSERT OR REPLACE INTO quarterly_income"
+            "(stock_id,year,season,stock_name,market,revenue,gross_profit,"
+            "gross_margin_pct,operating_income,net_income,eps) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            ("3595", 2026, season, "山太士", "TW", rev, 0, 0, 0, 0, eps),
+        )
+    conn.commit()
+    rec = _recent_eps_sum(conn, "3595", max_n=2)
+    conn.close()
+    # 近兩季真實單季＝2.97＋1.75＝4.72，不是 5.99＋3.02
+    assert rec["eps_n"] == 2
+    assert abs(float(rec["eps_sum"]) - 4.72) < 1e-9
+    assert rec["eps_seasons"] == ["2026Q3", "2026Q2"]

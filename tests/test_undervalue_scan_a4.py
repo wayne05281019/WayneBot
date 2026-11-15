@@ -48,3 +48,16 @@ def test_estimate_year_revenue_uses_clamp_not_yoy():
     # 900 + 105 + 110.25 + 115.7625
     assert abs(est["est_year_rev"] - (900.0 + 105.0 + 110.25 + 115.7625)) < 1e-6
     assert est["proj"]["extreme_yoy"] is True
+
+
+def test_full_year_announced_not_labeled_estimate():
+    est = estimate_year_revenue(
+        ytd_rev=1200.0,
+        last_month_rev=100.0,
+        moms=[0.02],
+        m_last=12,
+    )
+    assert est["ok"] is True
+    assert est["r_m"] == 0
+    assert est["label"] == "已公告"
+    assert abs(est["est_year_rev"] - 1200.0) < 1e-9
