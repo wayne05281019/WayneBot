@@ -1749,6 +1749,82 @@ def _force_refill_twii_daily_to_target(
     return out
 
 
+def _teach_last_fail_path(db_path: str = "") -> str:
+    """與行情庫同目錄；Render 永久碟可對 /health。"""
+    base = ""
+    try:
+        base = os.path.dirname(os.path.abspath(str(db_path or "")))
+    except Exception:
+        base = ""
+    if not base or not os.path.isdir(base):
+        try:
+            from wayne_db import get_db_path
+
+            base = os.path.dirname(os.path.abspath(get_db_path()))
+        except Exception:
+            base = os.path.join("data")
+    return os.path.join(base, "teach_last_fail.json")
+
+
+def _record_teach_last_fail(
+    db_path: str,
+    *,
+    ok: bool,
+    fail_bits: Optional[Sequence[str]] = None,
+    fails: Optional[Sequence[Dict[str, Any]]] = None,
+    steps: Optional[Sequence[Dict[str, Any]]] = None,
+    tip: Optional[Dict[str, Any]] = None,
+) -> None:
+    """波浪／教具流水線最後一次結果；失敗才寫重點，成功也刷新 ok。"""
+    tip = tip if isinstance(tip, dict) else {}
+    payload = {
+        "ok": bool(ok),
+        "at": datetime.now(TAIPEI).isoformat(timespec="seconds"),
+        "fail_bits": [str(b) for b in (fail_bits or [])[:5] if b],
+        "fails": [
+            {
+                "code": str((f or {}).get("code") or ""),
+                "detail": str((f or {}).get("detail") or "")[:160],
+            }
+            for f in (fails or [])[:8]
+            if f
+        ],
+        "steps_bad": [
+            {
+                "id": str((s or {}).get("id") or ""),
+                "detail": str((s or {}).get("detail") or "")[:120],
+            }
+            for s in (steps or [])
+            if s and not (s or {}).get("ok")
+        ][:8],
+        "tip": {
+            "tw_asof": str(tip.get("tw_asof") or ""),
+            "tw_close": tip.get("tw_close"),
+            "sox_asof": str(tip.get("sox_asof") or ""),
+            "sox_close": tip.get("sox_close"),
+            "tx_asof": str(tip.get("tx_asof") or ""),
+            "tx_close": tip.get("tx_close"),
+        },
+    }
+    path = _teach_last_fail_path(db_path)
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(payload, fh, ensure_ascii=False, separators=(",", ":"))
+    os.replace(tmp, path)
+
+
+def read_teach_last_fail(db_path: str = "") -> Dict[str, Any]:
+    """給 /health 讀；檔不在或壞掉 → 空 dict。"""
+    path = _teach_last_fail_path(db_path)
+    try:
+        with open(path, encoding="utf-8") as fh:
+            raw = json.load(fh)
+        return raw if isinstance(raw, dict) else {}
+    except Exception:
+        return {}
+
+
 def ensure_teach_tip_preflight(
     db_path: str,
     pack: Optional[Dict[str, Any]] = None,
@@ -3779,9 +3855,14 @@ def _ensure_latest_tx_night_row(db_path: str) -> None:
         logger.debug("夜盤歷史備援略過 cap=%s", cap, exc_info=True)
 
 
-def _ensure_teach_tx_day_row(db_path: str, *, now: Optional[datetime] = None) -> None:
-    """教具準備：開市日補齊大台日盤 regular（失敗不擋）。
+def _ensure_teach_tx_day_row(
+    db_path: str, *, now: Optional[datetime] = None, day: str = ""
+) -> None:
+    """教具準備：補齊大台日盤 regular（失敗不擋）。
 
+    day 有傳＝補那一天（夜盤 tip 起日／CRefPrice 結算日）；週末也要補，
+    不准只認牆鐘「今天」——否則週日缺週五日盤結算，電子盤漲跌會誤用更舊日盤收
+    （例：43706 對 43178 → 假 +528／+1.22%，籌碼K 是 −133／−0.30%）。
     缺今日日盤時，遠窗電子盤戳只能退昨夜、加權已是今日收 → 三欄日期看起來「錯」。
     """
     if not db_path:
@@ -3791,22 +3872,25 @@ def _ensure_teach_tx_day_row(db_path: str, *, now: Optional[datetime] = None) ->
         dt = dt.replace(tzinfo=TAIPEI)
     else:
         dt = dt.astimezone(TAIPEI)
-    today = dt.strftime("%Y%m%d")
-    try:
-        from trading_calendar import is_tw_open_calendar_day
+    target = _ymd(day)
+    if not target:
+        today = dt.strftime("%Y%m%d")
+        try:
+            from trading_calendar import is_tw_open_calendar_day
 
-        if not is_tw_open_calendar_day(today):
+            if not is_tw_open_calendar_day(today):
+                return
+        except Exception:
             return
-    except Exception:
-        return
-    # 日盤未收完前不强抓；13:30 後才補今日 regular
-    if _twii_cash_session_live(dt):
-        return
+        # 日盤未收完前不强抓；13:30 後才補今日 regular
+        if _twii_cash_session_live(dt):
+            return
+        target = today
     have = False
     try:
-        rows = _load_tx_futures_daily(db_path, session="regular", since=today)
+        rows = _load_tx_futures_daily(db_path, session="regular", since=target)
         for r in rows or []:
-            if _ymd((r or {}).get("date")) == today and float((r or {}).get("close") or 0) > 0:
+            if _ymd((r or {}).get("date")) == target and float((r or {}).get("close") or 0) > 0:
                 have = True
                 break
     except Exception:
@@ -3816,9 +3900,9 @@ def _ensure_teach_tx_day_row(db_path: str, *, now: Optional[datetime] = None) ->
     try:
         from taiwan_market import sync_futures_daily
 
-        sync_futures_daily(db_path, dates=[today])
+        sync_futures_daily(db_path, dates=[target])
     except Exception:
-        logger.debug("教具補台指日盤略過 day=%s", today, exc_info=True)
+        logger.debug("教具補台指日盤略過 day=%s", target, exc_info=True)
 
 
 def _resolve_tx_after_hours_tip(
@@ -3954,7 +4038,8 @@ def _resolve_tx_after_hours_tip(
                 asof = (datetime.now(TAIPEI) - timedelta(days=1)).strftime("%Y%m%d")
     # 2) 庫內：現價＝最新已齊夜盤收；前收＝該夜起日日盤結算（對齊 CRefPrice）
     # tip 已鎖 close／asof 時仍走這段補 prev，不准另漂價
-    if (close is None or tip_locked) and db_path:
+    night: Optional[Dict[str, Any]] = None
+    if (close is None or tip_locked or prev is None) and db_path:
         if close is None:
             try:
                 _ensure_latest_tx_night_row(db_path)
@@ -3978,6 +4063,11 @@ def _resolve_tx_after_hours_tip(
         if prev is None:
             eve = _ymd(asof)
             if len(eve) == 8:
+                # 週末／缺列：先補「起日」日盤結算，不准跳過直接吃最新日盤收
+                try:
+                    _ensure_teach_tx_day_row(db_path, day=eve, now=_query_now_from_pack(pack))
+                except Exception:
+                    pass
                 try:
                     reg = load_futures_daily(db_path, eve, symbol="TX") or {}
                     settle = float(reg.get("settlement") or 0)
@@ -4007,9 +4097,14 @@ def _resolve_tx_after_hours_tip(
                 label = m.group(1)
                 asof = _tx_night_evening_ymd(label) or label
     if prev is None:
-        # 備援：勿直接用日盤收；優先結算。levels 只剩收才退。
+        # 備援順序：起日日盤結算（再補一次）→ 同列夜盤 pct_change 反推。
+        # 不准再用 levels.tx_day_c（常是別日收，會算成假 +528）。
         eve = _ymd(asof)
         if db_path and len(eve) == 8:
+            try:
+                _ensure_teach_tx_day_row(db_path, day=eve, now=_query_now_from_pack(pack))
+            except Exception:
+                pass
             try:
                 from taiwan_market import load_futures_daily
 
@@ -4021,13 +4116,15 @@ def _resolve_tx_after_hours_tip(
                     prev = settle
             except Exception:
                 pass
-        if prev is None:
+        if prev is None and isinstance(night, dict) and close and close > 0:
             try:
-                dc = float(levels.get("tx_day_c") or 0)
+                pct = night.get("pct_change")
+                if pct is not None and abs(float(pct) + 100.0) > 1e-9:
+                    derived = float(close) / (1.0 + float(pct) / 100.0)
+                    if derived > 0:
+                        prev = derived
             except (TypeError, ValueError):
-                dc = 0.0
-            if dc > 0:
-                prev = dc
+                pass
     if close is None or close <= 0:
         return None
     return {
@@ -6288,12 +6385,14 @@ def _us_lead_read(db_path: str) -> Dict[str, Any]:
         from us_overnight import load_us_overnight
     except Exception:
         return out
-    # 找最近有資料的 as_of
+    # 找最近有資料的 as_of；煙霧／空庫缺表不准炸 pack／preflight
     conn = sqlite3.connect(db_path, timeout=15.0)
     try:
         row = conn.execute(
             "SELECT as_of FROM us_overnight ORDER BY as_of DESC LIMIT 1"
         ).fetchone()
+    except sqlite3.OperationalError:
+        return out
     finally:
         conn.close()
     if not row:
@@ -18024,15 +18123,19 @@ def _render_twii_c_wave_60_dark(
         return ""
     if not save_path:
         return ""
-    try:
-        from kline_hop import fetch_yahoo_minutes
-
-        fetch_yahoo_minutes("TWII", "60", db_path)
-        # 加權指數無成交量；同路抓 0050 60 分真量當代理（見 _attach_twii60_volume_proxy）
-        fetch_yahoo_minutes("0050", "60", db_path)
-    except Exception:
-        pass
+    # 庫內已夠 60 分柱就先畫，不准每張超近都卡 Yahoo（遠／近已畫完才輪到超近，
+    # 外網慢＝整窗空白 → 話筒「缺：超近窗」）。不夠才補抓一次再讀。
     rows_full = _load_twii60_day_rows(db_path, since_ymd=_C_WAVE_60_SINCE_YMD)
+    if len(rows_full) < 16:
+        try:
+            from kline_hop import fetch_yahoo_minutes
+
+            fetch_yahoo_minutes("TWII", "60", db_path)
+            # 加權指數無成交量；同路抓 0050 60 分真量當代理（見 _attach_twii60_volume_proxy）
+            fetch_yahoo_minutes("0050", "60", db_path)
+        except Exception:
+            pass
+        rows_full = _load_twii60_day_rows(db_path, since_ymd=_C_WAVE_60_SINCE_YMD)
     if len(rows_full) < 16:
         return ""
     # 定長滾動：新60分K進來不把 x 軸無限拉長；永遠留最新根
@@ -20576,6 +20679,22 @@ def run_teach_trio_preflight_pipeline(
     try:
         _ensure_latest_tx_night_row(db_path)
         _ensure_teach_tx_day_row(db_path, now=dt)
+        # 週末也要補「夜盤起日」日盤結算（CRefPrice），否則 tip 會誤用更舊日盤收
+        try:
+            from taiwan_market import load_futures_night
+            from trading_calendar import futures_night_date_cap
+
+            _n02 = load_futures_night(
+                db_path, futures_night_date_cap(dt), now=dt
+            )
+            if isinstance(_n02, dict) and float(_n02.get("close") or 0) > 0:
+                _eve02 = _tx_night_evening_ymd(_ymd(_n02.get("date"))) or _ymd(
+                    _n02.get("date")
+                )
+                if _eve02:
+                    _ensure_teach_tx_day_row(db_path, day=_eve02, now=dt)
+        except Exception:
+            logger.debug("pipeline 02 補夜盤起日日盤略過", exc_info=True)
         _step("02_tx_night", True, "night+day ensured (openapi→hist)")
     except Exception as exc:
         logger.exception("pipeline 02 電子盤 失敗")
@@ -20648,12 +20767,48 @@ def run_teach_trio_preflight_pipeline(
         gate = ensure_teach_tip_preflight(db_path, pack)
     except Exception as exc:
         logger.exception("pipeline 08 終檢失敗")
-        gate = {
-            "ok": False,
-            "fails": [{"code": "pipeline_gate_error", "detail": type(exc).__name__}],
-            "tip": pack.get("teach_tip") or {},
-            "sox_degraded": False,
-        }
+        # 模組炸但 tip 三口已有價 → 直接硬閘；對齊「模組異常不准白擋」
+        tip_fb = pack.get("teach_tip") if isinstance(pack.get("teach_tip"), dict) else {}
+        try:
+            tw_ok = float((tip_fb or {}).get("tw_close") or 0) > 0
+            sox_ok = float((tip_fb or {}).get("sox_close") or 0) > 0
+            tx_ok = float((tip_fb or {}).get("tx_close") or 0) > 0
+        except (TypeError, ValueError):
+            tw_ok = sox_ok = tx_ok = False
+        if tw_ok and (sox_ok or tx_ok):
+            try:
+                gate = verify_teach_stamp_preflight(db_path, pack)
+                gate["module_exc"] = type(exc).__name__
+                logger.error(
+                    "pipeline 08 終檢例外 %s 但 tip 有價 → 硬閘 ok=%s",
+                    type(exc).__name__,
+                    gate.get("ok"),
+                )
+            except Exception as exc2:
+                logger.exception("pipeline 08 硬閘備援也失敗")
+                gate = {
+                    "ok": False,
+                    "fails": [
+                        {
+                            "code": "pipeline_gate_error",
+                            "detail": type(exc2).__name__,
+                        }
+                    ],
+                    "tip": tip_fb or {},
+                    "sox_degraded": False,
+                }
+        else:
+            gate = {
+                "ok": False,
+                "fails": [
+                    {
+                        "code": "pipeline_gate_error",
+                        "detail": type(exc).__name__,
+                    }
+                ],
+                "tip": tip_fb or {},
+                "sox_degraded": False,
+            }
     if gate.get("tip"):
         pack["teach_tip"] = dict(gate["tip"])
     pack["_stamp_preflight"] = {
@@ -20683,12 +20838,30 @@ def run_teach_trio_preflight_pipeline(
             or ".py, line" in detail
             or "Traceback" in detail
         ):
-            fail_bits.append("行情模組異常")
+            # 仍擋圖，但話筒要留 code／短因，不准只剩「行情模組異常」無法對症
+            bit = "行情模組異常"
+            if code:
+                bit += f"｜{code}"
+            if detail and detail not in bit:
+                bit += f"｜{detail[:48]}"
+            fail_bits.append(bit[:140])
         elif detail:
             # 140：要留得下 paths=official=mi5=…；舊 64 字會截成「；補後」
             fail_bits.append(detail[:140])
         elif code:
             fail_bits.append(code)
+    # 落檔給 /health：Render 碟上可對，不准把 traceback 甩上話筒
+    try:
+        _record_teach_last_fail(
+            db_path,
+            ok=bool(gate.get("ok")),
+            fail_bits=fail_bits,
+            fails=list(gate.get("fails") or [])[:8],
+            steps=steps,
+            tip=pack.get("teach_tip") if isinstance(pack.get("teach_tip"), dict) else {},
+        )
+    except Exception:
+        logger.debug("teach_last_fail 落檔略過", exc_info=True)
     return {
         "ok": bool(gate.get("ok")),
         "pack": pack,
@@ -21022,6 +21195,93 @@ def render_oral_dual_path_schematic(
     if os.path.isfile(save_path) and os.path.getsize(save_path) > 2000:
         return save_path
     return ""
+
+
+def ops_verify_teach_trio(
+    db_path: str,
+    *,
+    panels: str = "trio",
+    now: Optional[datetime] = None,
+) -> Dict[str, Any]:
+    """Ops／本機驗收三窗：preflight＋force 活畫，**不准**碰 Telegram／getUpdates。
+
+    回傳 ok／fail_bits／各窗 path＋bytes＋tip 摘要，給代理 curl 對完再請人看話筒。
+    """
+    out: Dict[str, Any] = {
+        "ok": False,
+        "kind": "teach_trio_verify",
+        "stage": "",
+        "fail_bits": [],
+        "paths": {},
+        "bytes": {},
+        "tip": {},
+        "note": "不搶 getUpdates；只渲圖對質。",
+    }
+    if not db_path:
+        out["stage"] = "db"
+        out["fail_bits"] = ["缺 db_path"]
+        return out
+    mode = str(panels or "trio").strip().lower()
+    if mode not in {"trio", "far", "near", "micro"}:
+        mode = "trio"
+    dt = now or datetime.now(TAIPEI)
+    try:
+        pipe = run_teach_trio_preflight_pipeline(db_path, now=dt) or {}
+    except Exception as exc:
+        logger.exception("ops teach-trio preflight 炸")
+        out["stage"] = "preflight"
+        out["fail_bits"] = [type(exc).__name__]
+        return out
+    if not pipe.get("ok"):
+        out["stage"] = "preflight"
+        out["fail_bits"] = list(pipe.get("fail_bits") or [])[:5] or ["preflight"]
+        out["steps"] = list(pipe.get("steps") or [])[:12]
+        return out
+    pack = dict(pipe.get("pack") or {})
+    try:
+        tip = compute_teach_tip_snapshot(db_path, pack) or {}
+    except Exception:
+        tip = {}
+    out["tip"] = {
+        "tw_asof": tip.get("tw_asof"),
+        "tw_close": tip.get("tw_close"),
+        "tx_asof": tip.get("tx_asof"),
+        "tx_close": tip.get("tx_close"),
+        "sox_asof": tip.get("sox_asof"),
+        "sox_close": tip.get("sox_close"),
+    }
+    try:
+        painted = paint_open_day_hypothesis(
+            db_path, now=dt, force=True, panels=mode, pack=pack
+        ) or {}
+    except Exception as exc:
+        logger.exception("ops teach-trio paint 炸")
+        out["stage"] = "paint"
+        out["fail_bits"] = [type(exc).__name__]
+        return out
+    keys = ("far_path", "near_path", "micro_path")
+    if mode in {"far", "near", "micro"}:
+        keys = (f"{mode}_path",)
+    missing = []
+    for k in keys:
+        p = str(painted.get(k) or "")
+        out["paths"][k] = p
+        try:
+            n = os.path.getsize(p) if p and os.path.isfile(p) else 0
+        except OSError:
+            n = 0
+        out["bytes"][k] = int(n)
+        if n < 4000:
+            missing.append(k.replace("_path", "窗"))
+    if missing:
+        out["stage"] = "paint"
+        out["fail_bits"] = [f"缺：{'、'.join(missing)}"]
+        out["painted"] = {kk: painted.get(kk) for kk in ("ok", "slot_id", "error", "skipped")}
+        return out
+    out["ok"] = True
+    out["stage"] = "done"
+    out["slot_id"] = painted.get("slot_id")
+    return out
 
 
 def paint_open_day_hypothesis(
