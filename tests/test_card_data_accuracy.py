@@ -10,6 +10,24 @@ from decision_card_signals import resolve_daily_change_pct
 
 
 class CardDataAccuracyTests(unittest.TestCase):
+    def test_dist_from_n_high_divides_by_high_not_close(self):
+        """2383 範本：收 4215、60高 6350 → 自高 −33.6%，舊式÷收會錯成 −50.7%。"""
+        from pathlib import Path
+
+        close, h60 = 4215.0, 6350.0
+        wrong = (close - h60) / close * 100.0
+        right = (close - h60) / h60 * 100.0
+        self.assertAlmostEqual(wrong, -50.7, places=1)
+        self.assertAlmostEqual(right, -33.6, places=1)
+        src = Path(__file__).resolve().parents[1].joinpath("wayne_navigator.py").read_text(
+            encoding="utf-8"
+        )
+        # 決策卡 _dist_h 必須÷高
+        start = src.index("def _dist_h(h):")
+        chunk = src[start : start + 280]
+        self.assertIn("/ hv * 100.0", chunk)
+        self.assertNotIn("/ c * 100.0", chunk)
+
     def test_resolve_daily_change_prefers_yesterday_close(self):
         self.assertAlmostEqual(
             resolve_daily_change_pct(4320.0, yesterday_close=4314.82),

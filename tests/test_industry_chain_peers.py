@@ -59,6 +59,7 @@ def _seed(db: str, rows: list) -> None:
             "VALUES (?,?,?,'TW',100,101,99,?,1000,100000,1.0,?,0,0,0)",
             ("20260918", sid, name, close, close),
         )
+        # 正式庫現況：只有季別 02（上半年累計）、沒有 Q1 列；上半年累計本身就是近2季 EPS
         conn.execute(
             "INSERT OR REPLACE INTO quarterly_income"
             "(stock_id,year,season,stock_name,market,revenue,gross_profit,"

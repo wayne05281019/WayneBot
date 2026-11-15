@@ -80,7 +80,7 @@ def test_valuation_plain_rows_marks_lagging_data_day(tmp_path):
     conn.commit()
     conn.close()
     text = " ".join(f"{a} {b}" for a, b in valuation_plain_rows("2330", db, quote_as_of="20260924"))
-    assert "本益 28.98" in text
+    assert "證交所本益 28.98" in text
     assert "資料日 9/23" in text
     assert "融資 28,833張" in text
     same = " ".join(f"{a} {b}" for a, b in valuation_plain_rows("2330", db, quote_as_of="20260923"))

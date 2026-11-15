@@ -283,7 +283,7 @@ def test_etf_glance_hides_company_pe_and_revenue(tmp_path):
     assert "淨值" not in blob_a
 
     tsmc = " ".join(f"{a} {b}" for a, b in valuation_plain_rows("2330", db))
-    assert "本益 27.94" in tsmc
+    assert "證交所本益 27.94" in tsmc
     assert "淨值 9.72" in tsmc
 
 
