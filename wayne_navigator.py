@@ -1154,8 +1154,10 @@ class NavigatorEngine:
             l60 = float(adj_lo_s.rolling(60, min_periods=1).min().iloc[-1])
 
         def _dist_h(h):
+            # 自 N 日高回檔％＝(收−高)÷高×100；不准÷收（2383 會把 −33.6% 算成 −50.7%）
             c = float(latest["close"])
-            return round((c - float(h)) / c * 100.0, 1) if c else 0.0
+            hv = float(h)
+            return round((c - hv) / hv * 100.0, 1) if hv else 0.0
 
         def _dist_l(lo):
             lo = float(lo)
