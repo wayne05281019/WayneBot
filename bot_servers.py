@@ -5720,7 +5720,7 @@ class WayneTelegramBot:
         )
 
     async def wave_status_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """波浪位階：層級敘述＋遠／近／超近三張（非買訊）。"""
+        """波浪位階：出圖前流水線 → 現況簡述＋遠／近／超近（同口；非買訊）。"""
         msg = update.effective_message
         uid = self._uid_from_message(msg)
         actor = self._actor_key(msg, uid=uid)
@@ -5733,22 +5733,41 @@ class WayneTelegramBot:
             )
             return
         await wave_lock.acquire()
-        pack_task = None
         try:
-            # 敘述與 ensure／pack 重疊；出圖路徑接走同一包，不准再重抓
+            # 先跑 01–08 流水線；不過＝不送文、不送圖（不准文新圖舊或只擋圖）
             try:
-                from biaoke_level_learn import prepare_wave_live_pack
+                from biaoke_level_learn import run_teach_trio_preflight_pipeline
 
-                pack_task = asyncio.create_task(
-                    asyncio.to_thread(prepare_wave_live_pack, self.db_path)
+                pipe = await asyncio.to_thread(
+                    run_teach_trio_preflight_pipeline, self.db_path
                 )
             except Exception:
-                pack_task = None
+                logger.exception("波浪位階流水線失敗")
+                pipe = {"ok": False, "fail_bits": ["出圖前準備失敗"], "pack": {}}
+            if not (pipe or {}).get("ok"):
+                bits = "、".join(
+                    str(b) for b in ((pipe or {}).get("fail_bits") or [])[:3] if b
+                )
+                await msg.reply_text(
+                    "大盤教具出圖前檢查未過（"
+                    + (bits or "加權／費半／電子盤")
+                    + "），這次先不送文與圖，請稍後再按一次。",
+                    reply_markup=self._keyboard(),
+                )
+                return
+            pack = (pipe or {}).get("pack") if isinstance(pipe, dict) else {}
+            if not isinstance(pack, dict):
+                pack = {}
             brief = ""
             try:
                 from biaoke_digest import format_teach_brief
 
-                brief = await asyncio.to_thread(format_teach_brief, self.db_path) or ""
+                brief = (
+                    await asyncio.to_thread(
+                        format_teach_brief, self.db_path, pack
+                    )
+                    or ""
+                )
             except Exception:
                 logger.exception("波浪位階敘述略過")
                 brief = ""
@@ -5769,10 +5788,8 @@ class WayneTelegramBot:
                     "波浪位階（預估・非買訊）\n先送遠／近／超近三張；敘述這次沒湊齊。",
                     reply_markup=self._keyboard(),
                 )
-            await self._send_market_wave_charts(msg, uid=uid, pack_task=pack_task)
+            await self._send_market_wave_charts(msg, uid=uid, pack=pack)
         finally:
-            if pack_task is not None and not pack_task.done():
-                pack_task.cancel()
             try:
                 wave_lock.release()
             except RuntimeError:
@@ -6988,12 +7005,13 @@ class WayneTelegramBot:
             return ""
 
     async def _send_market_wave_charts(
-        self, message, *, uid: str = "", pack_task=None
+        self, message, *, uid: str = "", pack_task=None, pack: dict | None = None
     ) -> None:
         """大盤專頁附圖：暗底遠／近／超近（第1→2→3）。
 
         一律 force 重渲；prep-once 共用 pack；遠→近→超近單 Agg，送第 N 張時 paint 第 N+1。
         遠窗必到；缺就單張重渲，仍缺則白話停。外圍不准 trio 順手畫。
+        pack：波浪鍵流水線已過關的同口包；有傳就用，不准再另抓漂價。
         """
         from config import skip_chart_warmup
 
@@ -7017,6 +7035,7 @@ class WayneTelegramBot:
                 latest_teach_kit,
                 paint_open_day_hypothesis,
                 prepare_wave_live_pack,
+                run_teach_trio_preflight_pipeline,
                 teach_tip_snapshots_match,
                 _wave_now_ladder,
             )
@@ -7029,20 +7048,38 @@ class WayneTelegramBot:
                 logger.exception("大盤讀教具路徑略過")
                 stored = {}
 
-            # prep-once：與讀存檔／泡泡重疊；失敗再補一次
-            pack: dict = {}
-            try:
-                if pack_task is not None:
-                    pack = await pack_task or {}
-                    pack_task = None
-                else:
-                    pack = await asyncio.to_thread(prepare_wave_live_pack, self.db_path) or {}
-            except Exception:
-                logger.exception("波浪 prep pack 略過")
+            # prep-once：波浪鍵已傳 pack → 同口；否則跑流水線／舊 pack_task
+            if isinstance(pack, dict) and pack:
+                pack = dict(pack)
+            else:
                 pack = {}
-                if pack_task is not None and not pack_task.done():
-                    pack_task.cancel()
-                    pack_task = None
+                try:
+                    if pack_task is not None:
+                        pack = await pack_task or {}
+                        pack_task = None
+                    else:
+                        pipe = await asyncio.to_thread(
+                            run_teach_trio_preflight_pipeline, self.db_path
+                        )
+                        if not (pipe or {}).get("ok"):
+                            bits = "、".join(
+                                str(b)
+                                for b in ((pipe or {}).get("fail_bits") or [])[:3]
+                                if b
+                            )
+                            await message.reply_text(
+                                "大盤教具出圖前檢查未過（"
+                                + (bits or "加權／費半／電子盤")
+                                + "），這次先不送圖，請稍後再按一次。"
+                            )
+                            return
+                        pack = (pipe or {}).get("pack") or {}
+                except Exception:
+                    logger.exception("波浪 prep pack 略過")
+                    pack = {}
+                    if pack_task is not None and not pack_task.done():
+                        pack_task.cancel()
+                        pack_task = None
             if not isinstance(pack, dict):
                 pack = {}
 

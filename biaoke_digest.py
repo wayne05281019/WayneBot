@@ -700,19 +700,23 @@ def _plain_wave_now_phrase(now: str) -> str:
     return n
 
 
-def format_teach_brief(db_path: str = "") -> str:
+def format_teach_brief(db_path: str = "", pack: Optional[Dict[str, Any]] = None) -> str:
     """波浪位階開場敘述：現在走到哪／怎麼看／盯著的價。給人讀，不准術語叠句。
 
     只服務「波浪位階」鍵。飆大空白鍵走 format_focus_oral。
     重點＝他最新講的走勢與點位（後文壓前文）；非買訊。
     失敗回空，不准擋主摘要。不准寫英文 as_of。
+    pack：與三窗同輪 prepare／流水線結果；有傳就用，不准另抓舊題旨。
     """
-    if not db_path:
+    if not db_path and not isinstance(pack, dict):
         return ""
     try:
         from biaoke_level_learn import _build_live_pack, _wave_now_ladder
 
-        pack = _build_live_pack(db_path) or {}
+        if isinstance(pack, dict) and pack:
+            pack = pack
+        else:
+            pack = _build_live_pack(db_path) or {}
     except Exception:
         return ""
     thesis = str(pack.get("thesis") or "").strip()

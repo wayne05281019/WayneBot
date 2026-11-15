@@ -19,7 +19,7 @@ import logging
 import os
 import re
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 from zoneinfo import ZoneInfo
 
@@ -1046,7 +1046,10 @@ def verify_teach_stamp_preflight(
             fails.append(
                 {
                     "code": "tw_asof_behind_session",
-                    "detail": f"加權 tip {tip_tw2} < 最近開市 {target}",
+                    "detail": (
+                        f"庫缺加權日K（tip {tip_tw2} < 最近開市 {target}；"
+                        "已試補官方／60分聚合仍未齊）"
+                    ),
                 }
             )
     except Exception:
@@ -1197,6 +1200,180 @@ def verify_teach_stamp_preflight(
     }
 
 
+def _aggregate_twii60_daily_bars(
+    rows60: Sequence[Dict[str, Any]],
+) -> Dict[str, Dict[str, float]]:
+    """官方 60 分 → 日 OHLCV（同日多根：開＝首開、高／低極值、收＝末日盤收、量加總）。"""
+    by: Dict[str, Dict[str, float]] = {}
+    order: List[str] = []
+    for r in rows60 or []:
+        d = _ymd((r or {}).get("date"))
+        if len(d) != 8:
+            continue
+        try:
+            o = float((r or {}).get("open") or 0)
+            h = float((r or {}).get("high") or 0)
+            l = float((r or {}).get("low") or 0)
+            c = float((r or {}).get("close") or 0)
+            v = float((r or {}).get("volume") or 0)
+        except (TypeError, ValueError):
+            continue
+        if c <= 0:
+            continue
+        if d not in by:
+            by[d] = {
+                "open": o if o > 0 else c,
+                "high": h if h > 0 else c,
+                "low": l if l > 0 else c,
+                "close": c,
+                "volume": max(0.0, v),
+            }
+            order.append(d)
+        else:
+            cur = by[d]
+            if o > 0 and float(cur.get("open") or 0) <= 0:
+                cur["open"] = o
+            if h > 0:
+                cur["high"] = max(float(cur.get("high") or 0), h)
+            if l > 0:
+                lo0 = float(cur.get("low") or 0)
+                cur["low"] = l if lo0 <= 0 else min(lo0, l)
+            cur["close"] = c
+            cur["volume"] = float(cur.get("volume") or 0) + max(0.0, v)
+    return {d: by[d] for d in order}
+
+
+def _upsert_twii_index_daily_bars(
+    db_path: str, bars: Sequence[Dict[str, Any]]
+) -> int:
+    """把加權日柱寫入 index_daily（OHLC）；失敗回 0。"""
+    if not db_path or not bars:
+        return 0
+    try:
+        from taiwan_market import ensure_index_daily_table
+    except Exception:
+        return 0
+    try:
+        ensure_index_daily_table(db_path)
+    except Exception:
+        return 0
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    n = 0
+    try:
+        conn = sqlite3.connect(db_path, timeout=30.0)
+        try:
+            for raw in bars:
+                d = _ymd((raw or {}).get("date"))
+                if len(d) != 8:
+                    continue
+                try:
+                    o = float((raw or {}).get("open") or 0)
+                    h = float((raw or {}).get("high") or 0)
+                    l = float((raw or {}).get("low") or 0)
+                    c = float((raw or {}).get("close") or 0)
+                    v = float((raw or {}).get("volume") or 0)
+                except (TypeError, ValueError):
+                    continue
+                if c <= 0:
+                    continue
+                if o <= 0:
+                    o = c
+                if h <= 0:
+                    h = max(o, c)
+                if l <= 0:
+                    l = min(o, c)
+                conn.execute(
+                    """
+                    INSERT INTO index_daily(
+                        date, symbol, open, high, low, close, volume,
+                        pct_change, ma20, ma60, regime, updated_at
+                    )
+                    VALUES (?, 'TWII', ?, ?, ?, ?, ?, 0, NULL, NULL, NULL, ?)
+                    ON CONFLICT(date, symbol) DO UPDATE SET
+                        open=COALESCE(NULLIF(excluded.open, 0), index_daily.open),
+                        high=COALESCE(NULLIF(excluded.high, 0), index_daily.high),
+                        low=COALESCE(NULLIF(excluded.low, 0), index_daily.low),
+                        close=excluded.close,
+                        volume=CASE
+                            WHEN excluded.volume > 0 THEN excluded.volume
+                            ELSE index_daily.volume
+                        END,
+                        updated_at=excluded.updated_at
+                    """,
+                    (d, o, h, l, c, v, now),
+                )
+                n += 1
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception:
+        logger.exception("upsert 加權日K 失敗")
+        return 0
+    return n
+
+
+def _heal_twii_daily_from_60m(
+    db_path: str, *, target_ymd: str = ""
+) -> Dict[str, Any]:
+    """日K 落後最近開市／60 分末日：用官方 60 分聚合補 index_daily。
+
+    不准造假價；只寫 60 分庫裡已有的開市日。回傳 wrote／asof_before／asof_after。
+    """
+    out: Dict[str, Any] = {
+        "ok": False,
+        "wrote": 0,
+        "asof_before": "",
+        "asof_after": "",
+        "target": _ymd(target_ymd),
+    }
+    if not db_path:
+        return out
+    before = _twii_chart_as_of(db_path)
+    out["asof_before"] = before
+    target = _ymd(target_ymd)
+    if not target:
+        try:
+            from trading_calendar import last_open_calendar_day_on_or_before
+
+            target = last_open_calendar_day_on_or_before(
+                datetime.now(TAIPEI).strftime("%Y%m%d")
+            )
+        except Exception:
+            target = ""
+    out["target"] = target
+    try:
+        rows60 = _load_twii60_day_rows(db_path, since_ymd="20261001")
+    except Exception:
+        rows60 = []
+    daily_map = _aggregate_twii60_daily_bars(rows60)
+    need: List[Dict[str, Any]] = []
+    for d, oh in daily_map.items():
+        if before and d <= before:
+            continue
+        if target and d > target:
+            continue
+        need.append(
+            {
+                "date": d,
+                "open": oh.get("open"),
+                "high": oh.get("high"),
+                "low": oh.get("low"),
+                "close": oh.get("close"),
+                "volume": oh.get("volume"),
+            }
+        )
+    wrote = _upsert_twii_index_daily_bars(db_path, need) if need else 0
+    after = _twii_chart_as_of(db_path)
+    out["wrote"] = int(wrote)
+    out["asof_after"] = after
+    out["ok"] = bool(
+        (target and after and after >= target)
+        or (wrote > 0 and after and before and after > before)
+        or (not target and after)
+    )
+    return out
+
+
 def ensure_teach_tip_preflight(
     db_path: str,
     pack: Optional[Dict[str, Any]] = None,
@@ -1211,7 +1388,7 @@ def ensure_teach_tip_preflight(
     except Exception:
         logger.exception("preflight 重算 tip 失敗")
     tip0 = pack.get("teach_tip") if isinstance(pack.get("teach_tip"), dict) else {}
-    # 加權日K 落後最近開市／60 分末日 → 先補官方再凍 tip（遠／近白底卡舊、超近已對）
+    # 加權日K 落後最近開市／60 分末日 → sync＋60分聚合再凍 tip
     try:
         from trading_calendar import last_open_calendar_day_on_or_before
 
@@ -1248,6 +1425,11 @@ def ensure_teach_tip_preflight(
                 _ensure_teach_index_bars(db_path)
             except Exception:
                 logger.exception("preflight 補加權日K失敗")
+            try:
+                heal = _heal_twii_daily_from_60m(db_path, target_ymd=target or m60)
+                pack["_twii_60m_heal"] = heal
+            except Exception:
+                logger.exception("preflight 60分聚合補加權失敗")
             try:
                 _ensure_latest_tx_night_row(db_path)
             except Exception:
@@ -1287,7 +1469,18 @@ def ensure_teach_tip_preflight(
     gate = verify_teach_stamp_preflight(db_path, pack)
     if gate.get("ok"):
         return gate
-    # 再試一次：重算＋閘（官方剛寫入）
+    # 再試一次：60分聚合＋重算＋閘
+    try:
+        from trading_calendar import last_open_calendar_day_on_or_before
+
+        wall = _query_now_from_pack(pack)
+        wall_ymd = wall.strftime("%Y%m%d") if hasattr(wall, "strftime") else ""
+        target = (
+            last_open_calendar_day_on_or_before(wall_ymd) if len(wall_ymd) == 8 else ""
+        )
+        _heal_twii_daily_from_60m(db_path, target_ymd=target)
+    except Exception:
+        logger.exception("preflight 二次 60分補加權略過")
     try:
         pack["teach_tip"] = compute_teach_tip_snapshot(
             db_path, pack, reuse_frozen=False
@@ -19824,21 +20017,204 @@ def verify_live_hyps_with_speech(db_path: str, snippet: str) -> int:
 
 
 # 三窗成品鎖死步驟（改圖前先對這表；漏一步＝殘破）
-# 順序＝prepare → paint；倒推＝從出圖往回查哪步漂了
+# 順序＝prepare → 終檢 → 現況簡述 → paint；倒推＝從出圖往回查哪步漂了
+# 01–08＝出圖前流水線（run_teach_trio_preflight_pipeline）；09–12＝送圖
 TEACH_TRIO_PIPELINE: Tuple[Tuple[str, str], ...] = (
-    ("01_index_bars", "補加權／費半官方日K"),
-    ("02_posts_fresh", "補飆大公開文（節流）；口頭題旨／右標跟貼文庫"),
-    ("03_build_pack", "_build_live_pack：題旨≤查詢日＋pred／量價位"),
-    ("04_live_twii", "MIS 疊加權；今日量=0 視為未齊仍疊"),
-    ("05_live_sox", "費半即時（現金盤中才標盤中）"),
-    ("06_tx_night_day", "補夜盤 cap 列＋收後補日盤 regular"),
-    ("07_teach_tip", "凍白底戳三價／漲幅％（遠近超近同口）"),
-    ("08_sox_pred", "費半撐壓階梯對最新價"),
-    ("09_paint_far", "遠窗：費半｜電子盤｜加權｜量＋白底戳；跨度標後再蓋回縮圖K"),
-    ("10_paint_near", "近窗：日K浪線＋黃帶＋右欄口頭；跨度標後再蓋回縮圖K"),
-    ("11_paint_micro", "超近60m：今日底色／粗藍折／細白碎浪／右欄"),
-    ("12_persist", "落 biaoke_open_day_paints＋teach_tip"),
+    ("01_twii_daily", "補加權官方日K（落後開市／60分→sync＋60分聚合）"),
+    ("02_tx_night", "補電子盤夜盤 cap＋收後日盤 regular"),
+    ("03_sox_daily", "補費半官方日K（可降級）"),
+    ("04_posts_fresh", "補飆大公開文；題旨／右標跟貼文庫"),
+    ("05_build_pack", "_build_live_pack：題旨≤查詢日＋pred／量價位"),
+    ("06_live_legs", "MIS／費半／夜盤即時（台北時段對才盤中螢光）"),
+    ("07_teach_tip", "凍白底戳三口（asof＋收同嘴；遠近超近同口）"),
+    ("08_stamp_gate", "終檢：最近開市／假盤中／三腿；不過不准送文與圖"),
+    ("09_brief", "現況簡述與 pack 同口（先文後圖）"),
+    ("10_paint_far", "遠窗：費半｜電子盤｜加權｜量＋白底；各欄自有日標"),
+    ("11_paint_near", "近窗：日K＋當層／下一層大量色帶＋右欄"),
+    ("12_paint_micro", "超近60m：今日底／粗折／細碎浪＋兩層大量色帶"),
+    ("13_persist", "落 biaoke_open_day_paints＋teach_tip"),
 )
+
+
+def run_teach_trio_preflight_pipeline(
+    db_path: str,
+    *,
+    now: Optional[datetime] = None,
+    pack: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """波浪鍵出圖前流水線：01–08 依序做完；ok 才准送現況簡述＋三窗。
+
+    回傳 {ok, pack, gate, steps, sox_degraded, fail_bits}。
+    pack 已傳入則重用並再跑 tip／終檢；否則 prepare_wave_live_pack 一輪。
+    """
+    steps: List[Dict[str, Any]] = []
+    dt = now or datetime.now(TAIPEI)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=TAIPEI)
+    else:
+        dt = dt.astimezone(TAIPEI)
+
+    def _step(sid: str, ok: bool, detail: str = "") -> None:
+        steps.append(
+            {
+                "id": sid,
+                "ok": bool(ok),
+                "detail": str(detail or "")[:160],
+            }
+        )
+
+    # —— 01 加權日K（含落後愈合）——
+    tw_asof = ""
+    try:
+        from trading_calendar import last_open_calendar_day_on_or_before
+
+        target = last_open_calendar_day_on_or_before(dt.strftime("%Y%m%d"))
+    except Exception:
+        target = ""
+    try:
+        _ensure_teach_index_bars(db_path)
+        tw_asof = _twii_chart_as_of(db_path)
+        if target and tw_asof and tw_asof < target and not _twii_cash_session_live(dt):
+            heal = _heal_twii_daily_from_60m(db_path, target_ymd=target)
+            tw_asof = _ymd(heal.get("asof_after")) or _twii_chart_as_of(db_path)
+            _step(
+                "01_twii_daily",
+                bool(tw_asof and (not target or tw_asof >= target)),
+                f"asof={tw_asof} target={target} heal_wrote={heal.get('wrote')}",
+            )
+        else:
+            _step(
+                "01_twii_daily",
+                bool(tw_asof),
+                f"asof={tw_asof} target={target}",
+            )
+    except Exception as exc:
+        logger.exception("pipeline 01 加權日K 失敗")
+        _step("01_twii_daily", False, type(exc).__name__)
+
+    # —— 02 電子盤 ——
+    try:
+        _ensure_latest_tx_night_row(db_path)
+        _ensure_teach_tx_day_row(db_path, now=dt)
+        _step("02_tx_night", True, "night+day ensured")
+    except Exception as exc:
+        logger.exception("pipeline 02 電子盤 失敗")
+        _step("02_tx_night", False, type(exc).__name__)
+
+    # —— 03 費半（可降級，這裡只補）——
+    try:
+        _ensure_us_index_daily(db_path)
+        try:
+            _sox_daily_from_minutes(db_path)
+        except Exception:
+            pass
+        _step("03_sox_daily", True, "sox sync attempted")
+    except Exception as exc:
+        logger.exception("pipeline 03 費半 失敗")
+        _step("03_sox_daily", False, type(exc).__name__)
+
+    # —— 04–07：prepare（文／pack／即時／tip）——
+    if isinstance(pack, dict) and pack:
+        pack = dict(pack)
+        pack.pop("_prep_now", None)
+        _step("04_posts_fresh", True, "reuse pack")
+        _step("05_build_pack", True, "reuse pack")
+        _step("06_live_legs", True, "reuse pack")
+        try:
+            pack["teach_tip"] = compute_teach_tip_snapshot(
+                db_path, pack, reuse_frozen=False
+            )
+            _step("07_teach_tip", bool(pack.get("teach_tip")), "recomputed")
+        except Exception as exc:
+            logger.exception("pipeline 07 tip 失敗")
+            _step("07_teach_tip", False, type(exc).__name__)
+    else:
+        try:
+            pack = prepare_wave_live_pack(db_path, now=dt) or {}
+            pack.pop("_prep_now", None)
+            fresh = pack.get("_biaoke_posts_fresh") if isinstance(pack, dict) else {}
+            _step(
+                "04_posts_fresh",
+                True,
+                str((fresh or {}).get("reason") or "prepared")[:80],
+            )
+            _step("05_build_pack", bool(pack), f"thesis={bool(pack.get('thesis'))}")
+            _step(
+                "06_live_legs",
+                True,
+                f"tw={bool(pack.get('live_twii'))} sox={bool(pack.get('live_sox'))}",
+            )
+            _step(
+                "07_teach_tip",
+                bool((pack.get("teach_tip") or {}).get("tw_close")),
+                str((pack.get("teach_tip") or {}).get("tw_asof") or ""),
+            )
+        except Exception as exc:
+            logger.exception("pipeline prepare 失敗")
+            pack = pack if isinstance(pack, dict) else {}
+            _step("04_posts_fresh", False, type(exc).__name__)
+            _step("05_build_pack", False, type(exc).__name__)
+            _step("06_live_legs", False, type(exc).__name__)
+            _step("07_teach_tip", False, type(exc).__name__)
+
+    if not isinstance(pack, dict):
+        pack = {}
+    pack["_pipeline_steps"] = list(steps)
+
+    # —— 08 終檢 ——
+    try:
+        gate = ensure_teach_tip_preflight(db_path, pack)
+    except Exception as exc:
+        logger.exception("pipeline 08 終檢失敗")
+        gate = {
+            "ok": False,
+            "fails": [{"code": "pipeline_gate_error", "detail": type(exc).__name__}],
+            "tip": pack.get("teach_tip") or {},
+            "sox_degraded": False,
+        }
+    if gate.get("tip"):
+        pack["teach_tip"] = dict(gate["tip"])
+    pack["_stamp_preflight"] = {
+        "ok": bool(gate.get("ok")),
+        "fails": list(gate.get("fails") or [])[:12],
+        "retried": bool(gate.get("retried")),
+        "sox_degraded": bool(gate.get("sox_degraded")),
+    }
+    _step(
+        "08_stamp_gate",
+        bool(gate.get("ok")),
+        ",".join(
+            str((f or {}).get("code") or "") for f in (gate.get("fails") or [])[:4]
+        ),
+    )
+    pack["_pipeline_steps"] = list(steps)
+
+    fail_bits: List[str] = []
+    for f in gate.get("fails") or []:
+        if not f:
+            continue
+        detail = str((f or {}).get("detail") or "").strip()
+        code = str((f or {}).get("code") or "").strip()
+        if (
+            "f-string" in detail
+            or "SyntaxError" in detail
+            or ".py, line" in detail
+            or "Traceback" in detail
+        ):
+            fail_bits.append("行情模組異常")
+        elif detail:
+            fail_bits.append(detail[:64])
+        elif code:
+            fail_bits.append(code)
+    return {
+        "ok": bool(gate.get("ok")),
+        "pack": pack,
+        "gate": gate,
+        "steps": steps,
+        "sox_degraded": bool(gate.get("sox_degraded")),
+        "fail_bits": fail_bits[:5],
+        "checked_at": str(gate.get("checked_at") or dt.isoformat()),
+    }
 
 
 def prepare_wave_live_pack(
