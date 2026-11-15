@@ -6,6 +6,7 @@ A4：近 3 月 MoM 動能 g 夾在 [-5%, +10%]；不准拿單月極端 YoY 線�
 """
 from __future__ import annotations
 
+import math
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 # 近 3 月平均月增動能安全區間（小數，非百分點）
@@ -13,26 +14,33 @@ G_MOM_FLOOR = -0.05
 G_MOM_CEIL = 0.10
 # 單月 YoY 超過此絕對值視為極端 → 外推仍只走夾限後的 g，不准用 YoY 當斜率
 EXTREME_YOY_ABS_PCT = 80.0
+MOM_UNITS = ("pct", "frac")
 
 
-def clamp_mom_g(moms: Sequence[Optional[float]]) -> Tuple[float, Dict[str, Any]]:
-    """近 3 月 MoM 平均 → g，夾在 [G_MOM_FLOOR, G_MOM_CEIL]。
+def _finite(raw: Any) -> Optional[float]:
+    if raw is None:
+        return None
+    try:
+        v = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return v if math.isfinite(v) else None
 
-    moms 可為小數（0.03）或百分點（3.0）；絕對值 > 1.5 視為百分點並／100。
-    缺樣 → g=0 並註記。回傳 (g, meta)。
+
+def clamp_mom_g(
+    moms: Sequence[Optional[float]], *, unit: str
+) -> Tuple[float, Dict[str, Any]]:
+    """近 3 月 MoM 平均 → g（小數），夾在 [G_MOM_FLOOR, G_MOM_CEIL]。
+
+    unit 必須講清楚："pct"＝百分點（庫內 monthly_revenue.mom_pct，1.2＝+1.2%）；
+    "frac"＝小數（0.012）。不准逐筆猜單位：+1.2% 會被當成 +120% 直接頂到上限。
+    NaN／inf／None 不收；缺樣 → g=0 並註記。回傳 (g, meta)。
     """
-    vals: List[float] = []
-    for raw in moms or ():
-        if raw is None:
-            continue
-        try:
-            v = float(raw)
-        except (TypeError, ValueError):
-            continue
-        if abs(v) > 1.5:
-            v = v / 100.0
-        vals.append(v)
-    meta: Dict[str, Any] = {"n": len(vals), "raw_avg": None, "clamped": False}
+    if unit not in MOM_UNITS:
+        raise ValueError(f"unit 必須是 {MOM_UNITS}，收到 {unit!r}")
+    scale = 0.01 if unit == "pct" else 1.0
+    vals = [v * scale for v in (_finite(x) for x in (moms or ())) if v is not None]
+    meta: Dict[str, Any] = {"n": len(vals), "raw_avg": None, "clamped": False, "unit": unit}
     if not vals:
         meta["note"] = "缺近月MoM"
         return 0.0, meta
@@ -45,12 +53,8 @@ def clamp_mom_g(moms: Sequence[Optional[float]]) -> Tuple[float, Dict[str, Any]]
 
 def is_extreme_yoy_pct(yoy_pct: Optional[float]) -> bool:
     """單月營收 YoY％是否極端（不准當全年線性斜率）。"""
-    if yoy_pct is None:
-        return False
-    try:
-        return abs(float(yoy_pct)) >= EXTREME_YOY_ABS_PCT
-    except (TypeError, ValueError):
-        return False
+    v = _finite(yoy_pct)
+    return v is not None and abs(v) >= EXTREME_YOY_ABS_PCT
 
 
 def project_remaining_month_revenues(
@@ -64,14 +68,8 @@ def project_remaining_month_revenues(
 
     即使 yoy 極端，也只用夾限後的 g；不准 YoY 線性外推全年。
     """
-    try:
-        rev0 = float(last_rev)
-    except (TypeError, ValueError):
-        rev0 = 0.0
-    try:
-        g_use = float(g)
-    except (TypeError, ValueError):
-        g_use = 0.0
+    rev0 = _finite(last_rev) or 0.0
+    g_use = _finite(g) or 0.0
     g_use = max(G_MOM_FLOOR, min(G_MOM_CEIL, g_use))
     n = max(0, int(r_m or 0))
     extreme = is_extreme_yoy_pct(yoy_pct)
@@ -96,28 +94,27 @@ def estimate_year_revenue(
     moms: Sequence[Optional[float]],
     *,
     m_last: int,
+    mom_unit: str,
     yoy_pct: Optional[float] = None,
 ) -> Dict[str, Any]:
     """今年預估全年營收＝已公告累計＋剩餘月遞推合計。
 
     m_last＝今年最新已公告月（1～12）；R_m＝12−m_last。
+    沒有官方已公告累計／最新月營收（≤0 或缺）就不推估、不進母體。
     """
+    ytd = _finite(ytd_rev)
+    last = _finite(last_month_rev)
     try:
-        ytd = float(ytd_rev or 0)
+        ml = int(m_last or 0)
     except (TypeError, ValueError):
-        ytd = 0.0
-    ml = int(m_last or 0)
+        ml = 0
     if ml < 1 or ml > 12:
-        return {
-            "ok": False,
-            "est_year_rev": None,
-            "note": "m_last無效",
-        }
+        return {"ok": False, "est_year_rev": None, "note": "m_last無效"}
+    if ytd is None or ytd <= 0 or last is None or last <= 0:
+        return {"ok": False, "est_year_rev": None, "note": "缺官方月營收"}
     r_m = 12 - ml
-    g, g_meta = clamp_mom_g(moms)
-    proj = project_remaining_month_revenues(
-        last_month_rev, g, r_m, yoy_pct=yoy_pct
-    )
+    g, g_meta = clamp_mom_g(moms, unit=mom_unit)
+    proj = project_remaining_month_revenues(last, g, r_m, yoy_pct=yoy_pct)
     est = ytd + float(proj["sum"])
     # 推估必標；12 月已齊＝已公告，不准再掛「推估」
     return {
