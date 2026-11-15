@@ -1034,10 +1034,20 @@ def merge_fmtqik_prefer_openapi(
     return [by_date[k] for k in sorted(by_date)]
 
 
+def _connect_index_db(db_path: str, timeout: float = 30.0) -> sqlite3.Connection:
+    """加權日K 寫庫：busy_timeout，避免 Render 併發直接 database is locked。"""
+    conn = sqlite3.connect(db_path, timeout=float(timeout))
+    try:
+        conn.execute("PRAGMA busy_timeout=30000;")
+    except sqlite3.Error:
+        pass
+    return conn
+
+
 def _index_daily_close_vol(
     db_path: str, symbol: str, ymd: str
 ) -> Tuple[Optional[float], Optional[float]]:
-    conn = sqlite3.connect(db_path)
+    conn = _connect_index_db(db_path)
     try:
         row = conn.execute(
             """
@@ -1058,7 +1068,7 @@ def _index_daily_close_vol(
 
 def _flat_twii_ohlc_for_date(db_path: str, symbol: str, ymd: str) -> int:
     """缺 open／high／low 時用官方收補平底（FMTQIK 只有收＋量）。不准發明別價。"""
-    conn = sqlite3.connect(db_path)
+    conn = _connect_index_db(db_path)
     try:
         row = conn.execute(
             """
@@ -1096,6 +1106,98 @@ def _flat_twii_ohlc_for_date(db_path: str, symbol: str, ymd: str) -> int:
         conn.close()
 
 
+def fetch_twii_official_daily_bars(
+    *, timeout: int = 20
+) -> Dict[str, Dict[str, Any]]:
+    """記憶體抓加權官方日K：MI_5MINS OHLC ∪ OpenAPI FMTQIK ∪ rwd（不寫庫）。
+
+    回傳 date → {date,open,high,low,close,volume,source}。沒真數不上。
+    波浪 force refill 先抓再 upsert，DB lock 不准吞掉已抓到的官方列。
+    """
+    by: Dict[str, Dict[str, Any]] = {}
+
+    def _merge(row: dict, *, prefer_ohlc: bool = False) -> None:
+        d = str((row or {}).get("date") or "").replace("-", "")[:8]
+        if len(d) != 8:
+            return
+        try:
+            c = float((row or {}).get("close") or 0)
+        except (TypeError, ValueError):
+            c = 0.0
+        if c <= 0:
+            return
+        try:
+            o = float((row or {}).get("open") or 0)
+            h = float((row or {}).get("high") or 0)
+            lo = float((row or {}).get("low") or 0)
+            v = float((row or {}).get("volume") or 0)
+        except (TypeError, ValueError):
+            o = h = lo = v = 0.0
+        cur = by.get(d)
+        if not cur:
+            by[d] = {
+                "date": d,
+                "open": o if o > 0 else c,
+                "high": h if h > 0 else c,
+                "low": lo if lo > 0 else c,
+                "close": c,
+                "volume": v if v > 0 else 0.0,
+                "source": str((row or {}).get("source") or ""),
+            }
+            return
+        if prefer_ohlc and o > 0 and h > 0 and lo > 0:
+            cur["open"], cur["high"], cur["low"] = o, h, lo
+        elif float(cur.get("open") or 0) <= 0 and o > 0:
+            cur["open"] = o
+            if h > 0:
+                cur["high"] = h
+            if lo > 0:
+                cur["low"] = lo
+        if c > 0:
+            cur["close"] = c
+        if v > 0:
+            cur["volume"] = v
+        src = str((row or {}).get("source") or "")
+        if src:
+            cur["source"] = src
+
+    # 1) MI_5MINS OHLC
+    try:
+        for r in parse_mi5mins_hist(fetch_json(TWSE_MI5MINS, timeout=timeout)):
+            _merge(r, prefer_ohlc=True)
+    except Exception as exc:
+        log.warning("fetch_twii MI5 略過：%s", exc)
+
+    # 2) OpenAPI FMTQIK 收＋量
+    try:
+        for r in parse_fmtqik(fetch_json(TWSE_FMTQIK, timeout=timeout)):
+            _merge(r)
+    except Exception as exc:
+        log.warning("fetch_twii OpenAPI FMTQIK 略過：%s", exc)
+
+    # 3) rwd 月表：補 OpenAPI 尚未換日的缺日（用 by 內最新日當月）
+    try:
+        tip = max(by.keys()) if by else ""
+        if len(tip) == 8:
+            for r in fetch_fmtqik_rwd(tip, timeout=timeout) or []:
+                _merge(r)
+    except Exception as exc:
+        log.warning("fetch_twii rwd FMTQIK 略過：%s", exc)
+
+    # 平底 OHLC
+    for d, row in list(by.items()):
+        c = float(row.get("close") or 0)
+        if c <= 0:
+            continue
+        if float(row.get("open") or 0) <= 0:
+            row["open"] = c
+        if float(row.get("high") or 0) <= 0:
+            row["high"] = max(float(row.get("open") or c), c)
+        if float(row.get("low") or 0) <= 0:
+            row["low"] = min(float(row.get("open") or c), c)
+    return by
+
+
 def ensure_index_fmtqik_through(db_path: str, cap: str = "") -> Dict[str, Any]:
     """保證 index_daily 有 fuse_end（或指定 cap）的收盤＋量（盡量含 OHLC）。
 
@@ -1115,10 +1217,25 @@ def ensure_index_fmtqik_through(db_path: str, cap: str = "") -> Dict[str, Any]:
         target = str(cap or "").replace("-", "")[:8]
     if len(target) != 8:
         return {"ok": False, "cap": target, "wrote": 0, "reason": "no_cap"}
-    ensure_index_daily_table(db_path)
-    close0, vol0 = _index_daily_close_vol(db_path, _INDEX_SYMBOL, target)
+    try:
+        ensure_index_daily_table(db_path)
+    except Exception as exc:
+        return {
+            "ok": False,
+            "cap": target,
+            "wrote": 0,
+            "reason": f"schema={type(exc).__name__}",
+        }
+    try:
+        close0, vol0 = _index_daily_close_vol(db_path, _INDEX_SYMBOL, target)
+    except Exception as exc:
+        close0, vol0 = None, None
+        log.warning("讀加權 %s 略過：%s", target, exc)
     if close0 and close0 > 0 and vol0 and vol0 > 0:
-        _flat_twii_ohlc_for_date(db_path, _INDEX_SYMBOL, target)
+        try:
+            _flat_twii_ohlc_for_date(db_path, _INDEX_SYMBOL, target)
+        except Exception:
+            log.debug("already flat OHLC 略過", exc_info=True)
         return {"ok": True, "cap": target, "wrote": 0, "reason": "already"}
 
     wrote = 0
@@ -1131,10 +1248,14 @@ def ensure_index_fmtqik_through(db_path: str, cap: str = "") -> Dict[str, Any]:
         wrote += n_mi
         bits.append(f"mi5={n_mi}")
     except Exception as exc:
-        bits.append("mi5=exc")
+        bits.append(f"mi5={type(exc).__name__}")
         log.warning("MI_5MINS 補 %s 失敗：%s", target, exc)
 
-    close1, vol1 = _index_daily_close_vol(db_path, _INDEX_SYMBOL, target)
+    try:
+        close1, vol1 = _index_daily_close_vol(db_path, _INDEX_SYMBOL, target)
+    except Exception as exc:
+        close1, vol1 = None, None
+        bits.append(f"read1={type(exc).__name__}")
     if close1 and close1 > 0:
         # MI5 常無量：再併 FMTQIK 量；有收即可先認日
         if not vol1 or vol1 <= 0:
@@ -1144,21 +1265,33 @@ def ensure_index_fmtqik_through(db_path: str, cap: str = "") -> Dict[str, Any]:
                 wrote += n_oa
                 bits.append(f"openapi_vol={n_oa}")
             except Exception as exc:
-                bits.append("openapi_vol=exc")
+                bits.append(f"openapi_vol={type(exc).__name__}")
                 log.warning("OpenAPI FMTQIK 補量 %s 失敗：%s", target, exc)
-            if not (_index_daily_close_vol(db_path, _INDEX_SYMBOL, target)[1] or 0):
+            try:
+                vol_chk = _index_daily_close_vol(db_path, _INDEX_SYMBOL, target)[1] or 0
+            except Exception:
+                vol_chk = 0
+            if not vol_chk:
                 try:
                     rwd_rows = fetch_fmtqik_rwd(target, timeout=20)
                     n_r = int(overlay_fmtqik(db_path, rwd_rows) or 0) if rwd_rows else 0
                     wrote += n_r
                     bits.append(f"rwd_vol={n_r}")
                 except Exception as exc:
-                    bits.append("rwd_vol=exc")
+                    bits.append(f"rwd_vol={type(exc).__name__}")
                     log.warning("rwd FMTQIK 補量 %s 失敗：%s", target, exc)
-        n_flat = _flat_twii_ohlc_for_date(db_path, _INDEX_SYMBOL, target)
+        try:
+            n_flat = _flat_twii_ohlc_for_date(db_path, _INDEX_SYMBOL, target)
+        except Exception as exc:
+            n_flat = 0
+            bits.append(f"flat={type(exc).__name__}")
         if n_flat:
             bits.append(f"flat={n_flat}")
-        close_f, vol_f = _index_daily_close_vol(db_path, _INDEX_SYMBOL, target)
+        try:
+            close_f, vol_f = _index_daily_close_vol(db_path, _INDEX_SYMBOL, target)
+        except Exception as exc:
+            close_f, vol_f = None, None
+            bits.append(f"readf={type(exc).__name__}")
         # 有官方收＝日K可畫；量缺仍 ok（平底／後續再補量）
         if close_f and close_f > 0:
             return {
@@ -1180,12 +1313,20 @@ def ensure_index_fmtqik_through(db_path: str, cap: str = "") -> Dict[str, Any]:
         else:
             bits.append("openapi=empty")
     except Exception as exc:
-        bits.append("openapi=exc")
+        bits.append(f"openapi={type(exc).__name__}")
         log.warning("OpenAPI FMTQIK %s 失敗：%s", target, exc)
 
-    close2, vol2 = _index_daily_close_vol(db_path, _INDEX_SYMBOL, target)
+    try:
+        close2, vol2 = _index_daily_close_vol(db_path, _INDEX_SYMBOL, target)
+    except Exception as exc:
+        close2, vol2 = None, None
+        bits.append(f"read2={type(exc).__name__}")
     if close2 and close2 > 0 and vol2 and vol2 > 0:
-        n_flat = _flat_twii_ohlc_for_date(db_path, _INDEX_SYMBOL, target)
+        try:
+            n_flat = _flat_twii_ohlc_for_date(db_path, _INDEX_SYMBOL, target)
+        except Exception as exc:
+            n_flat = 0
+            bits.append(f"flat={type(exc).__name__}")
         if n_flat:
             bits.append(f"flat={n_flat}")
         return {
@@ -1422,7 +1563,7 @@ def overlay_fmtqik(db_path: str, rows: Sequence[dict]) -> int:
 
     ensure_index_daily_table(db_path)
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    conn = sqlite3.connect(db_path)
+    conn = _connect_index_db(db_path)
     n = 0
     try:
         for r in rows:
@@ -1457,7 +1598,7 @@ def overlay_index_ohlc(db_path: str, rows: Sequence[dict]) -> int:
 
     ensure_index_daily_table(db_path)
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    conn = sqlite3.connect(db_path)
+    conn = _connect_index_db(db_path)
     n = 0
     try:
         for r in rows:

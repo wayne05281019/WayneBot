@@ -317,6 +317,47 @@ def test_parse_fmtqik_rwd_and_ensure_through(tmp_path, monkeypatch):
     assert again["wrote"] == 0
 
 
+def test_fetch_twii_official_daily_bars_merges_mi5_fmtqik(monkeypatch):
+    from official_snapshots import fetch_twii_official_daily_bars
+
+    mi_rows = [
+        {
+            "Date": "1151113",
+            "OpeningIndex": "43719.75",
+            "HighestIndex": "44489.48",
+            "LowestIndex": "43534.12",
+            "ClosingIndex": "43675.12",
+        }
+    ]
+    fmt_rows = [
+        {
+            "Date": "1151113",
+            "TradeVolume": "12361787000",
+            "TAIEX": "43675.12",
+            "Change": "583.25",
+        }
+    ]
+
+    def _fj(url, timeout=45):
+        u = str(url or "")
+        if "MI_5MINS" in u:
+            return mi_rows
+        if "FMTQIK" in u:
+            return fmt_rows
+        return []
+
+    monkeypatch.setattr("official_snapshots.fetch_json", _fj)
+    monkeypatch.setattr(
+        "official_snapshots.fetch_fmtqik_rwd",
+        lambda *_a, **_k: [],
+    )
+    by = fetch_twii_official_daily_bars(timeout=5)
+    assert "20261113" in by
+    assert float(by["20261113"]["close"]) == 43675.12
+    assert float(by["20261113"]["open"]) > 0
+    assert float(by["20261113"]["volume"]) > 0
+
+
 def test_ensure_index_fmtqik_through_mi5_openapi_when_rwd_blocked(
     tmp_path, monkeypatch
 ):

@@ -1274,57 +1274,74 @@ def _upsert_twii_index_daily_bars(
         return 0
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     n = 0
-    try:
-        conn = sqlite3.connect(db_path, timeout=30.0)
+    import time as _time
+
+    last_exc: Optional[BaseException] = None
+    for attempt in range(4):
         try:
-            for raw in bars:
-                d = _ymd((raw or {}).get("date"))
-                if len(d) != 8:
-                    continue
+            conn = sqlite3.connect(db_path, timeout=30.0)
+            try:
                 try:
-                    o = float((raw or {}).get("open") or 0)
-                    h = float((raw or {}).get("high") or 0)
-                    l = float((raw or {}).get("low") or 0)
-                    c = float((raw or {}).get("close") or 0)
-                    v = float((raw or {}).get("volume") or 0)
-                except (TypeError, ValueError):
-                    continue
-                if c <= 0:
-                    continue
-                if o <= 0:
-                    o = c
-                if h <= 0:
-                    h = max(o, c)
-                if l <= 0:
-                    l = min(o, c)
-                conn.execute(
-                    """
-                    INSERT INTO index_daily(
-                        date, symbol, open, high, low, close, volume,
-                        pct_change, ma20, ma60, regime, updated_at
+                    conn.execute("PRAGMA busy_timeout=30000;")
+                except sqlite3.Error:
+                    pass
+                n = 0
+                for raw in bars:
+                    d = _ymd((raw or {}).get("date"))
+                    if len(d) != 8:
+                        continue
+                    try:
+                        o = float((raw or {}).get("open") or 0)
+                        h = float((raw or {}).get("high") or 0)
+                        l = float((raw or {}).get("low") or 0)
+                        c = float((raw or {}).get("close") or 0)
+                        v = float((raw or {}).get("volume") or 0)
+                    except (TypeError, ValueError):
+                        continue
+                    if c <= 0:
+                        continue
+                    if o <= 0:
+                        o = c
+                    if h <= 0:
+                        h = max(o, c)
+                    if l <= 0:
+                        l = min(o, c)
+                    conn.execute(
+                        """
+                        INSERT INTO index_daily(
+                            date, symbol, open, high, low, close, volume,
+                            pct_change, ma20, ma60, regime, updated_at
+                        )
+                        VALUES (?, 'TWII', ?, ?, ?, ?, ?, 0, NULL, NULL, NULL, ?)
+                        ON CONFLICT(date, symbol) DO UPDATE SET
+                            open=COALESCE(NULLIF(excluded.open, 0), index_daily.open),
+                            high=COALESCE(NULLIF(excluded.high, 0), index_daily.high),
+                            low=COALESCE(NULLIF(excluded.low, 0), index_daily.low),
+                            close=excluded.close,
+                            volume=CASE
+                                WHEN excluded.volume > 0 THEN excluded.volume
+                                ELSE index_daily.volume
+                            END,
+                            updated_at=excluded.updated_at
+                        """,
+                        (d, o, h, l, c, v, now),
                     )
-                    VALUES (?, 'TWII', ?, ?, ?, ?, ?, 0, NULL, NULL, NULL, ?)
-                    ON CONFLICT(date, symbol) DO UPDATE SET
-                        open=COALESCE(NULLIF(excluded.open, 0), index_daily.open),
-                        high=COALESCE(NULLIF(excluded.high, 0), index_daily.high),
-                        low=COALESCE(NULLIF(excluded.low, 0), index_daily.low),
-                        close=excluded.close,
-                        volume=CASE
-                            WHEN excluded.volume > 0 THEN excluded.volume
-                            ELSE index_daily.volume
-                        END,
-                        updated_at=excluded.updated_at
-                    """,
-                    (d, o, h, l, c, v, now),
-                )
-                n += 1
-            conn.commit()
-        finally:
-            conn.close()
-    except Exception:
-        logger.exception("upsert 加權日K 失敗")
-        return 0
-    return n
+                    n += 1
+                conn.commit()
+            finally:
+                conn.close()
+            return n
+        except Exception as exc:
+            last_exc = exc
+            msg = str(exc or "").lower()
+            if "locked" in msg or "busy" in msg:
+                _time.sleep(0.35 * (attempt + 1))
+                continue
+            logger.exception("upsert 加權日K 失敗")
+            return 0
+    if last_exc:
+        logger.exception("upsert 加權日K 鎖庫重試仍失敗：%s", last_exc)
+    return 0
 
 
 def _heal_twii_daily_from_60m(
@@ -1446,13 +1463,35 @@ def _backfill_null_twii_ohlc_from_close(
     return int(_upsert_twii_index_daily_bars(db_path, need) or 0)
 
 
+def _upsert_twii_bars_with_retry(
+    db_path: str, bars: Sequence[Dict[str, Any]], *, tries: int = 4
+) -> int:
+    """寫加權日K；database is locked 短退避重試。"""
+    import time as _time
+
+    last_exc: Optional[BaseException] = None
+    for i in range(max(1, int(tries))):
+        try:
+            return int(_upsert_twii_index_daily_bars(db_path, bars) or 0)
+        except Exception as exc:
+            last_exc = exc
+            msg = str(exc or "").lower()
+            if "locked" not in msg and "busy" not in msg:
+                raise
+            _time.sleep(0.35 * (i + 1))
+    if last_exc:
+        raise last_exc
+    return 0
+
+
 def _force_refill_twii_daily_to_target(
     db_path: str, *, target_ymd: str = ""
 ) -> Dict[str, Any]:
-    """加權日K 拉到最近開市：MI5／OpenAPI／rwd → Yahoo sync → 60 分 → 逐日。
+    """加權日K 拉到最近開市：先記憶體抓官方 → upsert → Yahoo／60分／逐日。
 
-    Render 週末 tip 停舊日：Yahoo／www 常掛；openapi MI_5MINS＋FMTQIK 約 1 秒可補。
-    不准造假收；庫空 asof 不准當「已齊」。官方齊了就立刻回，不再空等 Yahoo。
+    Render 週末：Yahoo／www 常掛；OpenAPI MI5＋FMTQIK 可抓。
+    寫庫與抓網分開：DB lock 不准變成 official=exc 吞掉已抓到的列。
+    不准造假收；庫空 asof 不准當「已齊」。
     """
     out: Dict[str, Any] = {
         "ok": False,
@@ -1480,15 +1519,41 @@ def _force_refill_twii_daily_to_target(
     if not target:
         return out
 
-    # 0) 證交所官方：MI_5MINS OHLC → OpenAPI FMTQIK → rwd（見 ensure_index_fmtqik_through）
-    try:
-        from official_snapshots import ensure_index_fmtqik_through
+    official_by: Dict[str, Dict[str, Any]] = {}
 
-        fmt = ensure_index_fmtqik_through(db_path, target)
-        out["paths"].append(
-            f"official={fmt.get('reason')}:w{int(fmt.get('wrote') or 0)}"
-        )
-        out["wrote"] += int(fmt.get("wrote") or 0)
+    # 0a) 記憶體抓官方（不寫庫）
+    try:
+        from official_snapshots import fetch_twii_official_daily_bars
+
+        official_by = dict(fetch_twii_official_daily_bars(timeout=20) or {})
+        out["paths"].append(f"fetch_n={len(official_by)}")
+    except Exception as exc:
+        logger.exception("force refill 抓官方加權失敗")
+        out["paths"].append(f"fetch={type(exc).__name__}")
+
+    # 0b) upsert 缺日（含 target）；鎖庫重試
+    if official_by:
+        need: List[Dict[str, Any]] = []
+        for d, row in sorted(official_by.items()):
+            if before and d <= before:
+                # 仍允許補 target 窗內已有末日之後的日；before 當日可跳
+                continue
+            if d > target:
+                continue
+            need.append(dict(row))
+        # 若 before 空或 target 在 map：確保 target 列一定嘗試
+        if target in official_by and not any(
+            _ymd(r.get("date")) == target for r in need
+        ):
+            need.append(dict(official_by[target]))
+        if need:
+            try:
+                n = _upsert_twii_bars_with_retry(db_path, need)
+                out["wrote"] += int(n)
+                out["paths"].append(f"upsert={n}")
+            except Exception as exc:
+                logger.exception("force refill upsert 官方加權失敗")
+                out["paths"].append(f"upsert={type(exc).__name__}")
         try:
             n_ohlc = _backfill_null_twii_ohlc_from_close(
                 db_path, since_ymd=before or ""
@@ -1496,17 +1561,28 @@ def _force_refill_twii_daily_to_target(
             if n_ohlc:
                 out["paths"].append(f"ohlc_flat={n_ohlc}")
                 out["wrote"] += int(n_ohlc)
-        except Exception:
-            logger.exception("force refill OHLC 平底補失敗")
-    except Exception:
-        logger.exception("force refill 官方加權 失敗")
-        out["paths"].append("official=exc")
+        except Exception as exc:
+            out["paths"].append(f"ohlc_flat={type(exc).__name__}")
+
+    # 0c) 舊 ensure 路徑備援（overlay 寫庫）
+    after = _twii_chart_as_of(db_path)
+    if not (after and after >= target):
+        try:
+            from official_snapshots import ensure_index_fmtqik_through
+
+            fmt = ensure_index_fmtqik_through(db_path, target)
+            out["paths"].append(
+                f"ensure={fmt.get('reason')}:w{int(fmt.get('wrote') or 0)}"
+            )
+            out["wrote"] += int(fmt.get("wrote") or 0)
+        except Exception as exc:
+            logger.exception("force refill ensure 官方加權失敗")
+            out["paths"].append(f"ensure={type(exc).__name__}")
 
     after = _twii_chart_as_of(db_path)
     if after and after >= target:
         out["asof_after"] = after
         out["ok"] = True
-        # 官方已齊：不准再空等 Yahoo（Render 常見 40s timeout）
         return out
 
     # 1) Yahoo＋MI 融合日K（官方未齊才走）
@@ -1515,9 +1591,9 @@ def _force_refill_twii_daily_to_target(
 
         sync_index_daily(db_path, range_="1mo")
         out["paths"].append("sync_1mo")
-    except Exception:
+    except Exception as exc:
         logger.exception("force refill sync_index_daily 失敗")
-        out["paths"].append("sync_1mo=exc")
+        out["paths"].append(f"sync_1mo={type(exc).__name__}")
 
     after = _twii_chart_as_of(db_path)
     if after and after >= target:
@@ -1530,26 +1606,37 @@ def _force_refill_twii_daily_to_target(
         heal = _heal_twii_daily_from_60m(db_path, target_ymd=target)
         out["paths"].append(f"60m_wrote={heal.get('wrote')}")
         out["wrote"] += int(heal.get("wrote") or 0)
-    except Exception:
+    except Exception as exc:
         logger.exception("force refill 60m heal 失敗")
-        out["paths"].append("60m=exc")
+        out["paths"].append(f"60m={type(exc).__name__}")
     after = _twii_chart_as_of(db_path)
     if after and after >= target:
         out["asof_after"] = after
         out["ok"] = True
         return out
 
-    # 3) 缺日逐日：MI_INDEX 收＋Yahoo 日列 OHLC
+    # 3) 缺日逐日：官方 map → Yahoo → MI_INDEX
     try:
         from trading_calendar import (
             is_tw_open_calendar_day,
             next_open_calendar_day_after,
         )
         from taiwan_market import _fetch_index_daily, _fetch_twse_index_close
-    except Exception:
+    except Exception as exc:
         logger.exception("force refill 缺模組")
+        out["paths"].append(f"mod={type(exc).__name__}")
         out["asof_after"] = _twii_chart_as_of(db_path)
         return out
+
+    if not official_by:
+        try:
+            from official_snapshots import fetch_twii_official_daily_bars
+
+            official_by = dict(fetch_twii_official_daily_bars(timeout=20) or {})
+            if official_by:
+                out["paths"].append(f"fetch2_n={len(official_by)}")
+        except Exception as exc:
+            out["paths"].append(f"fetch2={type(exc).__name__}")
 
     yahoo_by: Dict[str, Dict[str, Any]] = {}
     try:
@@ -1571,8 +1658,8 @@ def _force_refill_twii_daily_to_target(
                 except (TypeError, ValueError):
                     continue
             out["paths"].append(f"yahoo_days={len(yahoo_by)}")
-    except Exception:
-        logger.exception("force refill Yahoo 日K 失敗")
+    except Exception as exc:
+        out["paths"].append(f"yahoo_days={type(exc).__name__}")
 
     start = before or ""
     probe = start
@@ -1583,7 +1670,6 @@ def _force_refill_twii_daily_to_target(
         except Exception:
             probe = start
     elif not start:
-        # 無末日：只補 target 近 5 個開市日
         probe = target
         for _ in range(5):
             missing.append(probe)
@@ -1619,6 +1705,10 @@ def _force_refill_twii_daily_to_target(
             continue
         if d > target:
             continue
+        off = official_by.get(d) if isinstance(official_by.get(d), dict) else None
+        if off and float(off.get("close") or 0) > 0:
+            bars.append(dict(off))
+            continue
         y = yahoo_by.get(d) if isinstance(yahoo_by.get(d), dict) else None
         mi = None
         try:
@@ -1646,9 +1736,12 @@ def _force_refill_twii_daily_to_target(
                 }
             )
     if bars:
-        n = _upsert_twii_index_daily_bars(db_path, bars)
-        out["wrote"] += int(n)
-        out["paths"].append(f"day_fill={n}")
+        try:
+            n = _upsert_twii_bars_with_retry(db_path, bars)
+            out["wrote"] += int(n)
+            out["paths"].append(f"day_fill={n}")
+        except Exception as exc:
+            out["paths"].append(f"day_fill={type(exc).__name__}")
 
     after = _twii_chart_as_of(db_path)
     out["asof_after"] = after
