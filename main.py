@@ -545,6 +545,7 @@ class HealthHandler(BaseHTTPRequestHandler):
         - POST /ops/purge-corrupt-keep：只刪未列在 keep 的 .corrupt-*（正式庫永不刪）
         - POST /ops/biaoke-search：只讀正式庫 biaoke_posts（不准外抓 CMoney）
         - POST /ops/ai-desk-status：只讀白名單各人 AI 假錢倉（持倉／現金／近成交）
+        - POST /ops/teach-trio-verify：preflight＋force 渲遠／近／超近（不搶 getUpdates）
         """
         import json
 
@@ -557,6 +558,7 @@ class HealthHandler(BaseHTTPRequestHandler):
             "/ops/purge-corrupt-keep",
             "/ops/biaoke-search",
             "/ops/ai-desk-status",
+            "/ops/teach-trio-verify",
         ):
             self.send_response(404)
             self.end_headers()
@@ -863,6 +865,16 @@ class HealthHandler(BaseHTTPRequestHandler):
                 }
                 body = json.dumps(result, ensure_ascii=False).encode("utf-8")
                 self.send_response(200 if not err else 400)
+            elif route == "/ops/teach-trio-verify":
+                # 代理／本機驗收三窗：不碰 Telegram 輪詢；可 panels=trio|far|near|micro
+                from config import get_db_path
+                from biaoke_level_learn import ops_verify_teach_trio
+
+                panels = str(req_json.get("panels") or "trio").strip().lower()
+                logger.info("ops /ops/teach-trio-verify panels=%s", panels)
+                result = ops_verify_teach_trio(get_db_path(), panels=panels)
+                body = json.dumps(result, ensure_ascii=False).encode("utf-8")
+                self.send_response(200 if result.get("ok") else 503)
             elif route == "/ops/repair-market-db":
                 # 預設 force_release：過舊完整日／缺表都要換公開 Release
                 force_release = True

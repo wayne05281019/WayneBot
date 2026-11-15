@@ -6385,12 +6385,14 @@ def _us_lead_read(db_path: str) -> Dict[str, Any]:
         from us_overnight import load_us_overnight
     except Exception:
         return out
-    # 找最近有資料的 as_of
+    # 找最近有資料的 as_of；煙霧／空庫缺表不准炸 pack／preflight
     conn = sqlite3.connect(db_path, timeout=15.0)
     try:
         row = conn.execute(
             "SELECT as_of FROM us_overnight ORDER BY as_of DESC LIMIT 1"
         ).fetchone()
+    except sqlite3.OperationalError:
+        return out
     finally:
         conn.close()
     if not row:
@@ -21193,6 +21195,93 @@ def render_oral_dual_path_schematic(
     if os.path.isfile(save_path) and os.path.getsize(save_path) > 2000:
         return save_path
     return ""
+
+
+def ops_verify_teach_trio(
+    db_path: str,
+    *,
+    panels: str = "trio",
+    now: Optional[datetime] = None,
+) -> Dict[str, Any]:
+    """Ops／本機驗收三窗：preflight＋force 活畫，**不准**碰 Telegram／getUpdates。
+
+    回傳 ok／fail_bits／各窗 path＋bytes＋tip 摘要，給代理 curl 對完再請人看話筒。
+    """
+    out: Dict[str, Any] = {
+        "ok": False,
+        "kind": "teach_trio_verify",
+        "stage": "",
+        "fail_bits": [],
+        "paths": {},
+        "bytes": {},
+        "tip": {},
+        "note": "不搶 getUpdates；只渲圖對質。",
+    }
+    if not db_path:
+        out["stage"] = "db"
+        out["fail_bits"] = ["缺 db_path"]
+        return out
+    mode = str(panels or "trio").strip().lower()
+    if mode not in {"trio", "far", "near", "micro"}:
+        mode = "trio"
+    dt = now or datetime.now(TAIPEI)
+    try:
+        pipe = run_teach_trio_preflight_pipeline(db_path, now=dt) or {}
+    except Exception as exc:
+        logger.exception("ops teach-trio preflight 炸")
+        out["stage"] = "preflight"
+        out["fail_bits"] = [type(exc).__name__]
+        return out
+    if not pipe.get("ok"):
+        out["stage"] = "preflight"
+        out["fail_bits"] = list(pipe.get("fail_bits") or [])[:5] or ["preflight"]
+        out["steps"] = list(pipe.get("steps") or [])[:12]
+        return out
+    pack = dict(pipe.get("pack") or {})
+    try:
+        tip = compute_teach_tip_snapshot(db_path, pack) or {}
+    except Exception:
+        tip = {}
+    out["tip"] = {
+        "tw_asof": tip.get("tw_asof"),
+        "tw_close": tip.get("tw_close"),
+        "tx_asof": tip.get("tx_asof"),
+        "tx_close": tip.get("tx_close"),
+        "sox_asof": tip.get("sox_asof"),
+        "sox_close": tip.get("sox_close"),
+    }
+    try:
+        painted = paint_open_day_hypothesis(
+            db_path, now=dt, force=True, panels=mode, pack=pack
+        ) or {}
+    except Exception as exc:
+        logger.exception("ops teach-trio paint 炸")
+        out["stage"] = "paint"
+        out["fail_bits"] = [type(exc).__name__]
+        return out
+    keys = ("far_path", "near_path", "micro_path")
+    if mode in {"far", "near", "micro"}:
+        keys = (f"{mode}_path",)
+    missing = []
+    for k in keys:
+        p = str(painted.get(k) or "")
+        out["paths"][k] = p
+        try:
+            n = os.path.getsize(p) if p and os.path.isfile(p) else 0
+        except OSError:
+            n = 0
+        out["bytes"][k] = int(n)
+        if n < 4000:
+            missing.append(k.replace("_path", "窗"))
+    if missing:
+        out["stage"] = "paint"
+        out["fail_bits"] = [f"缺：{'、'.join(missing)}"]
+        out["painted"] = {kk: painted.get(kk) for kk in ("ok", "slot_id", "error", "skipped")}
+        return out
+    out["ok"] = True
+    out["stage"] = "done"
+    out["slot_id"] = painted.get("slot_id")
+    return out
 
 
 def paint_open_day_hypothesis(
