@@ -84,25 +84,37 @@ COPY_NO_CHAIN = "還沒產業鏈，不拿證交所粗分類硬比。"
 
 
 def membership_label(snap: Dict[str, Any]) -> str:
-    """這檔拿來比對的最細標。圖卡／HTML 同業括號同一句，跟 membership_keys 對齊。"""
-    from industry_fine import _KEEP_FINEST
+    """這檔拿來比對的最細標。圖卡／HTML 同業括號與 membership_face 同一句。
+
+    必須走 industry_fine.membership_face（含 _SPLIT_FINEST／_KEEP_FINEST）；
+    不准另寫一套，否則介紹圖括號會跟查股／資金標題拆開。
+    """
+    from industry_fine import membership_face
+
+    sid = str(snap.get("stock_id") or snap.get("sid") or "").strip()
+    finest = str(snap.get("fine_finest") or "").strip()
+    chain = str(snap.get("fine_chain") or "").strip()
+    if sid:
+        return membership_face(sid, finest=finest, chain=chain)
+    # 無代號：仍對齊 split／keep（極少路徑）
+    from industry_fine import _KEEP_FINEST, _SPLIT_FINEST, is_catchall_finest
 
     bits: List[str] = []
     extras = [str(t).strip() for t in list(snap.get("extra_tags") or []) if str(t).strip()]
-    finest = str(snap.get("fine_finest") or "").strip()
     if extras:
-        if finest in _KEEP_FINEST:
-            if finest and finest not in bits:
-                bits.append(finest)
+        split_away = {_SPLIT_FINEST[t] for t in extras if t in _SPLIT_FINEST}
+        keep_fine = finest in _KEEP_FINEST and finest not in split_away
+        if keep_fine and finest and finest not in bits:
+            bits.append(finest)
         for t in extras:
             if t not in bits:
                 bits.append(t)
         return "／".join(bits)
-    from industry_fine import is_catchall_finest
-
+    if chain and not is_catchall_finest(finest):
+        return chain
     if finest and not is_catchall_finest(finest):
-        bits.append(finest)
-    return "／".join(bits)
+        return finest
+    return ""
 
 
 def peer_scope_label(snap: Dict[str, Any]) -> str:

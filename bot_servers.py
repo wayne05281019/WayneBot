@@ -68,6 +68,9 @@ async def _await_lookup_paint(
         raise
 
 
+# 海選建檔認領：補 asyncio.Lock 時必須 thread-safe，否則雙按各拿一把＝雙建（CI full-suite 紅）。
+_SCREENING_CLAIM_INIT = threading.Lock()
+
 # 名單／頁面：盤中慢路徑＋冷啟，短逾時會逼使用者重按。
 _FLOW_HTML_TIMEOUT = float(os.getenv("WAYNE_FLOW_HTML_TIMEOUT", "30"))
 # 大盤文字：外網（美股／CNN）必須有子逾時；總預算含冷啟 DB。
@@ -3978,6 +3981,26 @@ class WayneTelegramBot:
         except Exception:
             pass
 
+    async def _release_screening_build_task(self, build_task) -> None:
+        """建檔結束才清 latch；必須持認領鎖，且 task 已 done。進行中清掉＝第二次按會雙建。"""
+        if build_task is None:
+            return
+        try:
+            if not build_task.done():
+                return
+        except Exception:
+            return
+        claim = getattr(self, "_screening_build_claim", None)
+        if not isinstance(claim, asyncio.Lock):
+            with _SCREENING_CLAIM_INIT:
+                claim = getattr(self, "_screening_build_claim", None)
+                if not isinstance(claim, asyncio.Lock):
+                    self._screening_build_claim = asyncio.Lock()
+                    claim = self._screening_build_claim
+        async with claim:
+            if getattr(self, "_screening_build_task", None) is build_task:
+                self._screening_build_task = None
+
     async def _run_manual_screening(self, message, uid: str = ""):
         """手動海選：進度提示 + 逾時保護 + 完成後提示當沖可用。
 
@@ -4251,11 +4274,15 @@ class WayneTelegramBot:
                 return build_and_cache_full_screening(self.db_path)
 
             # 讀快取 await 後兩邊可能同時到這裡；認領必須原子，否則 CI 會建兩輪。
-            # 已有鎖不准換新一把（雙按各拿一把＝雙建）；測試 __new__ 沒跑 __init__ 才補。
+            # 補 Lock 用 thread 鎖；已有鎖不准換新一把（雙按各拿一把＝雙建）。
             claim = getattr(self, "_screening_build_claim", None)
             if not isinstance(claim, asyncio.Lock):
-                self._screening_build_claim = asyncio.Lock()
-            async with self._screening_build_claim:
+                with _SCREENING_CLAIM_INIT:
+                    claim = getattr(self, "_screening_build_claim", None)
+                    if not isinstance(claim, asyncio.Lock):
+                        self._screening_build_claim = asyncio.Lock()
+                        claim = self._screening_build_claim
+            async with claim:
                 inflight = getattr(self, "_screening_build_task", None)
                 if isinstance(inflight, asyncio.Task) and not inflight.done():
                     build_task = inflight
@@ -4276,9 +4303,7 @@ class WayneTelegramBot:
                         pass
                     return
                 finally:
-                    if getattr(self, "_screening_build_task", None) is build_task:
-                        if build_task.done():
-                            self._screening_build_task = None
+                    await self._release_screening_build_task(build_task)
                 payload = late
                 try:
                     cached_late = await asyncio.wait_for(
@@ -4301,8 +4326,7 @@ class WayneTelegramBot:
                         message, cached_now, hub=hub, status=status
                     )
                     delivered = True
-                    if getattr(self, "_screening_build_task", None) is build_task:
-                        self._screening_build_task = None
+                    # 建檔 thread 可能還在跑：不准清 latch，否則第二次按會再開一輪
                     return
                 if build_task is not None and build_task.done() and not build_task.cancelled():
                     try:
@@ -4315,16 +4339,14 @@ class WayneTelegramBot:
                                 delivered = True
                             except Exception:
                                 logger.exception("海選失敗提示送出失敗")
-                        if getattr(self, "_screening_build_task", None) is build_task:
-                            self._screening_build_task = None
+                        await self._release_screening_build_task(build_task)
                         return
                     if self._actor_op_alive(actor, op_kind, gen):
                         await self._deliver_manual_screening_result(
                             message, result, hub=hub, status=status
                         )
                         delivered = True
-                    if getattr(self, "_screening_build_task", None) is build_task:
-                        self._screening_build_task = None
+                    await self._release_screening_build_task(build_task)
                     return
                 logger.warning("手動海選前端逾時，背景續建並自動推名單 actor=%s", actor)
                 timeout_spoken = True
@@ -4383,8 +4405,7 @@ class WayneTelegramBot:
                             delivered = True
                         except Exception:
                             logger.exception("海選失敗提示送出失敗")
-                    if getattr(self, "_screening_build_task", None) is build_task:
-                        self._screening_build_task = None
+                    await self._release_screening_build_task(build_task)
                     return
             else:
                 elapsed = time.monotonic() - t0
@@ -4413,8 +4434,7 @@ class WayneTelegramBot:
                 message, result, hub=hub, status=status
             )
             delivered = True
-            if getattr(self, "_screening_build_task", None) is build_task and build_task.done():
-                self._screening_build_task = None
+            await self._release_screening_build_task(build_task)
         except asyncio.TimeoutError:
             elapsed = time.monotonic() - t0
             logger.exception("手動海選等待逾時 elapsed=%.2f", elapsed)
