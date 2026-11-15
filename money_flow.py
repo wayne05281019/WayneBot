@@ -445,7 +445,11 @@ def annotate_screen_results(db_path: str, ymd: str, results: Dict[str, Any]) -> 
                 if not sid:
                     continue
                 rec = fine.get(sid) or {}
-                mem = membership_face(sid, str(rec.get("finest") or ""), str(rec.get("chain") or ""))
+                mem = membership_face(
+                    sid,
+                    finest=str(rec.get("finest") or ""),
+                    chain=str(rec.get("chain") or ""),
+                )
                 if mem:
                     item["industry"] = mem
                 else:

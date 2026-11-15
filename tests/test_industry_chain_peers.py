@@ -155,6 +155,29 @@ def test_extra_tags_win_spans_optical_and_satellite():
     assert ("fine", "封測") not in membership_keys("6239", "封測")
     assert ("x", "記憶體封測") in membership_keys("6239", "封測")
     assert not (membership_keys("6223", "封測") & membership_keys("6239", "封測"))
+    # 介紹圖括號＝membership_face（SPLIT：高階測試不准再掛封測）
+    from industry_brief import membership_label
+
+    assert membership_face("6223", finest="封測", chain="電子上游-IC-封測") == "高階測試"
+    assert (
+        membership_label(
+            {
+                "stock_id": "6223",
+                "fine_finest": "封測",
+                "fine_chain": "電子上游-IC-封測",
+                "extra_tags": ["高階測試"],
+            }
+        )
+        == "高階測試"
+    )
+    assert membership_label(
+        {
+            "stock_id": "2412",
+            "fine_finest": "電信",
+            "fine_chain": "電子下游-電信",
+            "extra_tags": [],
+        }
+    ) == membership_face("2412", chain="電子下游-電信")
     assert not (membership_keys("2408", "記憶體製造") & membership_keys("8299", "IC設計"))
     assert ("x", "光通訊") in membership_keys("3081", "半導體元件")
     assert ("fine", "半導體元件") not in membership_keys("3081", "半導體元件")
