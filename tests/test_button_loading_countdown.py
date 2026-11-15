@@ -1269,6 +1269,8 @@ def test_screen_session_read_busy_is_short_and_save_replaces():
 
 
 def _bare_screen_bot():
+    import tempfile
+
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     bot._pending = {}
     bot._screening_running = set()
@@ -1291,8 +1293,8 @@ def _bare_screen_bot():
     bot._menu_uid_from_message = MagicMock(return_value="u1")
     bot.screener = MagicMock()
     bot.screener.run_full_screening = MagicMock(side_effect=AssertionError("no bare full"))
-    # 不准誤踩本機正式庫的 screen_sessions，否則 has_cache 會跳過全掃路徑。
-    bot.db_path = "/tmp/wayne-bare-screen-empty.db"
+    # 每測獨立空庫：共用 /tmp 路徑會被別測寫入 sessions，誤走快取／雙建。
+    bot.db_path = tempfile.mktemp(prefix="wayne-bare-screen-", suffix=".db")
     return bot
 
 
@@ -1656,12 +1658,19 @@ def test_second_screen_press_joins_inflight_loading(monkeypatch):
 
     async def run():
         t1 = asyncio.create_task(bot._run_manual_screening(msg1, "u1"))
-        # 等第一輪真的認領建檔後再按第二次（CI 負載下 sleep(0.02) 不夠，會誤雙建）
+        # 等第一輪真的認領建檔＋latch 掛上後再按第二次（CI 負載下只等 first_build 不夠）
         for _ in range(500):
-            if first_build.is_set():
+            task = getattr(bot, "_screening_build_task", None)
+            if (
+                first_build.is_set()
+                and isinstance(task, asyncio.Task)
+                and not task.done()
+            ):
                 break
             await asyncio.sleep(0.01)
         assert first_build.is_set(), "第一輪未開始建檔"
+        latch = getattr(bot, "_screening_build_task", None)
+        assert isinstance(latch, asyncio.Task) and not latch.done(), "latch 未掛上"
         assert n["build"] == 1
         t2 = asyncio.create_task(bot._run_manual_screening(msg2, "u1"))
         for _ in range(200):
