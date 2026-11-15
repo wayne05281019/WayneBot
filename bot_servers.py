@@ -7004,6 +7004,39 @@ class WayneTelegramBot:
             logger.exception("大盤遠窗單張重渲失敗")
             return ""
 
+    async def _retry_market_micro_paint(self, *, pack: dict | None = None) -> str:
+        """超近窗缺檔時單獨重渲一次（庫內 60 分優先，不准整包重畫）。"""
+        try:
+            from biaoke_level_learn import (
+                _paint_dir,
+                _render_twii_super_near_dark,
+                _sparse_slot_id,
+                prepare_wave_live_pack,
+            )
+            from wayne_navigator import submit_mpl_paint
+
+            def _one():
+                from datetime import datetime
+                from zoneinfo import ZoneInfo
+
+                dt = datetime.now(ZoneInfo("Asia/Taipei"))
+                live = dict(pack or {}) if isinstance(pack, dict) and pack else {}
+                if not live:
+                    live = dict(prepare_wave_live_pack(self.db_path, now=dt) or {})
+                live.pop("_prep_now", None)
+                slot = _sparse_slot_id(dt, force=True) or f"force-{dt.strftime('%Y%m%d')}"
+                out = os.path.join(_paint_dir(self.db_path), f"{slot}-micro.png")
+                return _render_twii_super_near_dark(self.db_path, out, live) or ""
+
+            got = await asyncio.wait_for(
+                asyncio.wrap_future(submit_mpl_paint(_one)),
+                timeout=min(90.0, _CHART_RENDER_TIMEOUT),
+            )
+            return str(got or "")
+        except Exception:
+            logger.exception("大盤超近單張重渲失敗")
+            return ""
+
     async def _send_market_wave_charts(
         self, message, *, uid: str = "", pack_task=None, pack: dict | None = None
     ) -> None:
@@ -7019,11 +7052,14 @@ class WayneTelegramBot:
             if pack_task is not None and not pack_task.done():
                 pack_task.cancel()
             return
+        # 三窗連畫常超過 120s；過預估仍續跳秒，不准倒數框先消失、圖卻還在畫
         wait_h = await self._start_plain_wait(
             message,
             text_fn=lambda s: self._wait_bubble(
                 "大盤圖進行中", s, now="第1張遠窗", rest="近／超近窗", fill_sec=25.0
             ),
+            max_elapsed=360.0,
+            overtime_keep=True,
         )
         fail_msg = "大盤教具圖這次畫不出來，請稍後再試。"
         uid = uid or self._uid_from_message(message)
@@ -7372,6 +7408,23 @@ class WayneTelegramBot:
                 micro_path = str((micro_painted or {}).get("micro_path") or "")
                 if not self._market_teach_path_ok(micro_path) and _stored_reuse_ok():
                     micro_path = str(stored.get("micro_path") or "")
+                if not self._market_teach_path_ok(micro_path):
+                    # 超近單張重試一次（遠窗已有；超近常因 Yahoo 卡死回空）
+                    if wait_h and wait_h[0] is not None:
+                        await self._safe_edit_text(
+                            wait_h[0],
+                            self._wait_bubble(
+                                "大盤圖進行中",
+                                0,
+                                now="超近窗重畫",
+                                rest="",
+                                fill_sec=20.0,
+                            ),
+                            parse_mode="HTML",
+                        )
+                    retry_micro = await self._retry_market_micro_paint(pack=pack)
+                    if self._market_teach_path_ok(retry_micro):
+                        micro_path = retry_micro
 
                 if self._market_teach_path_ok(micro_path):
                     micro_bits = [f"第3張・超近窗・細浪"]
