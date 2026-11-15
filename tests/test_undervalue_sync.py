@@ -77,10 +77,11 @@ def test_post_fuse_hook_calls_undervalue(monkeypatch):
     assert "run_undervalue_sync" in src
 
 
-def test_menu_undervalue_replaces_ai_slot():
+def test_menu_undervalue_keeps_ai_slot():
     from bot_servers import MENU_BTN_AI, MENU_BTN_UNDERVALUE, MENU_ROW2, MENU_LAYOUT_VERSION
 
-    assert MENU_LAYOUT_VERSION == "36"
+    assert MENU_LAYOUT_VERSION == "37"
     assert MENU_BTN_UNDERVALUE == "低估名單"
-    assert MENU_ROW2[3] == MENU_BTN_UNDERVALUE
-    assert MENU_BTN_AI not in MENU_ROW2
+    assert MENU_ROW2[3] == MENU_BTN_AI
+    assert MENU_ROW2[4] == MENU_BTN_UNDERVALUE
+    assert MENU_BTN_AI in MENU_ROW2

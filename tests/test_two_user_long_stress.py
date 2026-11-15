@@ -346,6 +346,7 @@ def test_two_users_all_buttons_and_help_topics_interleaved(tmp_path):
         MENU_BTN_WAVE_STATUS,
         MENU_BTN_CHONG,
         MENU_BTN_PRESSURE,
+        MENU_BTN_AI,
         MENU_BTN_UNDERVALUE,
         MENU_BTN_STREAK,
         MENU_BTN_LEAVE_ZERO,
@@ -375,7 +376,7 @@ def test_two_users_all_buttons_and_help_topics_interleaved(tmp_path):
     asyncio.run(run())
     for uid in (WAYNE, BRO):
         names = set(bot._stress_hits[uid])
-        for need in ("勝率買點", "海選", "持股", "加入觀察", "飆客", "大盤", "資金", "波浪位階", "沖區", "壓撐觀察", "AI倉", "連買區", "剛脫離零", MENU_BTN_DONGZHU):
+        for need in ("勝率買點", "海選", "持股", "加入觀察", "飆客", "大盤", "資金", "波浪位階", "沖區", "壓撐觀察", "AI倉", "低估名單", "連買區", "剛脫離零", MENU_BTN_DONGZHU):
             assert need in names, (uid, need, names)
     assert bot._last_card[WAYNE] == "2330"
     assert bot._last_card[BRO] == "2317"

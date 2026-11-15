@@ -743,6 +743,7 @@ MENU_ROW2 = (
     MENU_BTN_WAVE_STATUS,
     MENU_BTN_CHONG,
     MENU_BTN_PRESSURE,
+    MENU_BTN_AI,
     MENU_BTN_UNDERVALUE,
     MENU_BTN_STREAK,
     MENU_BTN_LEAVE_ZERO,
@@ -781,8 +782,9 @@ MENU_FULL_ALIASES = ("完整選單", "完整鍵盤")
 # v34：下排「當沖」→「波浪現況」（三張位階圖＋敘述）；「隔日沖」→「沖區」（子選當沖／隔日沖）。
 #      台股大盤不再附送三張教具；打字「當沖」「隔日沖」仍可叫出。背後名單落檔照留。
 # v35：下排「波浪現況」→「波浪位階」（同三張＋敘述）；沖區子選不變。
-# v36：下排「AI倉」→「低估名單」（假錢 AI倉仍可打字叫出；融合後掃描；非買訊）。
-MENU_LAYOUT_VERSION = "36"
+# v36：（作廢）曾誤把 AI倉換成低估名單；違功能全同／AI倉鈕留著。
+# v37：下排保留 AI倉，其右加「低估名單」（估值≠買訊；融合後掃；打字別名仍認）。上七下八。
+MENU_LAYOUT_VERSION = "37"
 MAX_PICK_INLINE_ROWS = 8
 
 # 輸入列左邊三條槓（Telegram BotCommand）。跟下方兩排重複的不放，避免兩套入口。
