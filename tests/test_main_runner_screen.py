@@ -2464,15 +2464,15 @@ def test_force_rescue_yields_to_fuse_window(monkeypatch):
     assert out.get("ok") is True
     assert out.get("yielded_to_fuse") is True
     assert called["n"] == 0
-    # 過窗後（17:05）不讓路 16:30 融合；但仍可能落在 17:40 彙整緩衝
+    # 過窗後（17:05）不讓路；盤後鐘點彙整窗已拿掉
     later = datetime(2026, 11, 5, 17, 5, tzinfo=tw)
     monkeypatch.setattr("config.taipei_now", lambda: later)
     assert runner.should_yield_to_market_fuse(now=later) is False
     assert runner.should_yield_to_db_heavy_window(now=later) is False
 
 
-def test_force_rescue_yields_to_absorb_windows(monkeypatch):
-    """17:40／18:50／22:30 彙整緩衝：force-morning 也讓路。"""
+def test_force_rescue_no_longer_yields_to_old_absorb_clocks(monkeypatch):
+    """2026-11-15：17:40／18:50／22:30 不再讓路（彙整掛融合後）。"""
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
@@ -2486,18 +2486,8 @@ def test_force_rescue_yields_to_absorb_windows(monkeypatch):
     )
     for hh, mm in ((17, 40), (18, 50), (22, 30)):
         now = datetime(2026, 11, 5, hh, mm, tzinfo=tw)
-        assert runner.should_yield_to_db_heavy_window(now=now) is True
+        assert runner.should_yield_to_db_heavy_window(now=now) is False
         assert runner.should_yield_to_market_fuse(now=now) is False
-        monkeypatch.setattr("config.taipei_now", lambda n=now: n)
-        called = {"n": 0}
-        runner.reconcile_push_deliveries = (
-            lambda **k: called.__setitem__("n", called["n"] + 1) or 0
-        )
-        runner.morning_claim_is_fresh_running = lambda: False
-        out = runner.force_rescue_morning()
-        assert out.get("ok") is True
-        assert out.get("yielded_to_fuse") is True
-        assert called["n"] == 0
 
 
 def test_run_ai_desk_visits_every_family_uid(tmp_path, monkeypatch):

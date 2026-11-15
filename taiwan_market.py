@@ -4803,8 +4803,10 @@ def format_taiwan_market_brief_html(
     if hits:
         bt_lines = [_brief_lab("同一盤勢隔日")]
         for b in hits[:3]:
+            # 不准巢狀 f'{b['x']}'：舊 Render 3.11／誤設版本會擋整個模組 import
+            next_pct = f"{b['avg_next_pct']:+.1f}%"
             bt_lines.append(
-                f"{_market_bucket_face(b['bucket'])}　隔日{_page_b(f'{b['avg_next_pct']:+.1f}%')}（勝{b['hit_rate']:.0%}）"
+                f"{_market_bucket_face(b['bucket'])}　隔日{_page_b(next_pct)}（勝{b['hit_rate']:.0%}）"
             )
         blocks.append("\n".join(bt_lines))
     bt_rp = snap.get("backtest_regime_plus") or []
@@ -4813,8 +4815,9 @@ def format_taiwan_market_brief_html(
     if hits_rp:
         rp_lines = [_brief_lab("同一細分盤勢隔日")]
         for b in hits_rp[:3]:
+            next_pct = f"{b['avg_next_pct']:+.1f}%"
             rp_lines.append(
-                f"{_market_bucket_face(b['bucket'])}　隔日{_page_b(f'{b['avg_next_pct']:+.1f}%')}（勝{b['hit_rate']:.0%}）"
+                f"{_market_bucket_face(b['bucket'])}　隔日{_page_b(next_pct)}（勝{b['hit_rate']:.0%}）"
             )
         blocks.append("\n".join(rp_lines))
     return join_dashed(*blocks)

@@ -652,6 +652,26 @@ class TestMarketMenuE2E:
             ) as stop, patch(
                 "biaoke_level_learn.latest_teach_kit", return_value={}
             ), patch(
+                "biaoke_level_learn.run_teach_trio_preflight_pipeline",
+                return_value={
+                    "ok": True,
+                    "pack": {"chart_as_of": "20261113", "thesis": "t"},
+                    "fail_bits": [],
+                },
+            ), patch(
+                "biaoke_level_learn.ensure_teach_tip_preflight",
+                return_value={"ok": True, "fail_bits": []},
+            ), patch(
+                "biaoke_level_learn.compute_teach_tip_snapshot",
+                return_value={
+                    "tw_asof": "20261113",
+                    "tw_close": 43675.0,
+                    "tx_asof": "20261113",
+                    "tx_close": 43706.0,
+                    "sox_asof": "20261113",
+                    "sox_close": 10146.0,
+                },
+            ), patch(
                 "wayne_navigator.submit_mpl_paint", return_value=fut
             ):
                 st.return_value = (MagicMock(), None, None)
@@ -659,7 +679,12 @@ class TestMarketMenuE2E:
                 stop.assert_awaited()
                 msg.reply_text.assert_awaited()
                 got = msg.reply_text.await_args.args[0]
-                assert ("畫不出來" in got) or ("遠窗這次沒好" in got)
+                assert (
+                    ("畫不出來" in got)
+                    or ("遠窗這次沒好" in got)
+                    or ("出圖前檢查未過" in got)
+                    or ("缺：" in got)
+                )
                 msg.reply_photo.assert_not_awaited()
 
         asyncio.run(run())

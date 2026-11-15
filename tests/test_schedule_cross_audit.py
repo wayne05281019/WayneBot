@@ -86,8 +86,10 @@ def test_main_scheduler_slots_match_clocks():
     assert '(5, 10, "typhoon")' in src
     assert '(22, 15, "typhoon")' in src
     absorb = _read("biaoke_absorb.py")
-    assert "_AFTER_CLOSE_HMS = ((17, 40), (18, 50), (22, 30))" in absorb
-    assert "(16, 30)" not in absorb.split("_AFTER_CLOSE_HMS", 1)[1][:120]
+    assert "_AFTER_CLOSE_HMS" not in absorb
+    assert "POSTFUSE_SUFFIX" in absorb
+    assert "run_absorb_after_fuse" in absorb
+    assert "_NIGHT_HM = (1, 0)" in absorb
     header = _read("main_runner.py")[:2800]
     assert "WAYNE_SCREEN_NOTIFY=0 不寄" in header
     assert "Render 常駐 06:30" not in header

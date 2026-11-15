@@ -312,6 +312,25 @@ class HealthHandler(BaseHTTPRequestHandler):
             except Exception:
                 payload["update"] = "更新完成"
                 payload["update_note"] = str(payload.get("update_note") or "")
+            # 波浪位階最後一次流水線結果（只讀小 JSON，不准拖死健檢）
+            try:
+                from biaoke_level_learn import read_teach_last_fail
+                from config import get_db_path
+
+                tlf = read_teach_last_fail(str(get_db_path() or ""))
+                payload["teach_last_ok"] = tlf.get("ok")
+                payload["teach_last_at"] = str(tlf.get("at") or "")
+                payload["teach_last_bits"] = list(tlf.get("fail_bits") or [])[:3]
+                payload["teach_last_codes"] = [
+                    str((f or {}).get("code") or "")
+                    for f in (tlf.get("fails") or [])[:4]
+                    if f
+                ]
+            except Exception:
+                payload["teach_last_ok"] = None
+                payload["teach_last_at"] = ""
+                payload["teach_last_bits"] = []
+                payload["teach_last_codes"] = []
             # 庫還沒可讀才略過資料欄。可讀時用便宜查詢填 latest_complete，
             # 絕不在健檢路徑跑 run_automation_audit（會超過 Render 5s）。
             if live.get("booting") and not live.get("db_ok"):
@@ -526,6 +545,7 @@ class HealthHandler(BaseHTTPRequestHandler):
         - POST /ops/purge-corrupt-keep：只刪未列在 keep 的 .corrupt-*（正式庫永不刪）
         - POST /ops/biaoke-search：只讀正式庫 biaoke_posts（不准外抓 CMoney）
         - POST /ops/ai-desk-status：只讀白名單各人 AI 假錢倉（持倉／現金／近成交）
+        - POST /ops/teach-trio-verify：preflight＋force 渲遠／近／超近（不搶 getUpdates）
         """
         import json
 
@@ -538,6 +558,7 @@ class HealthHandler(BaseHTTPRequestHandler):
             "/ops/purge-corrupt-keep",
             "/ops/biaoke-search",
             "/ops/ai-desk-status",
+            "/ops/teach-trio-verify",
         ):
             self.send_response(404)
             self.end_headers()
@@ -844,6 +865,16 @@ class HealthHandler(BaseHTTPRequestHandler):
                 }
                 body = json.dumps(result, ensure_ascii=False).encode("utf-8")
                 self.send_response(200 if not err else 400)
+            elif route == "/ops/teach-trio-verify":
+                # 代理／本機驗收三窗：不碰 Telegram 輪詢；可 panels=trio|far|near|micro
+                from config import get_db_path
+                from biaoke_level_learn import ops_verify_teach_trio
+
+                panels = str(req_json.get("panels") or "trio").strip().lower()
+                logger.info("ops /ops/teach-trio-verify panels=%s", panels)
+                result = ops_verify_teach_trio(get_db_path(), panels=panels)
+                body = json.dumps(result, ensure_ascii=False).encode("utf-8")
+                self.send_response(200 if result.get("ok") else 503)
             elif route == "/ops/repair-market-db":
                 # 預設 force_release：過舊完整日／缺表都要換公開 Release
                 force_release = True
@@ -1379,7 +1410,7 @@ def start_daily_scheduler():
 
         now = _taipei_now()
         # open_check＝02:45（輕）；dc_sf_silent＝03:00（03:00–04:00 窗；與飆大 01:00 錯開）
-        # 盤後彙整已錯開官方融合：17:40／18:50／22:30（見 biaoke_absorb）
+        # 盤後飆大彙整＝融合成功後 postfuse＋隔日 01:00（見 biaoke_absorb；已拿掉 17:40／18:50／22:30）
         # 雙時段比價（原 12:45 midday）已永久刪除，不准再排。
         slots = (
             (2, 45, "open_check"),

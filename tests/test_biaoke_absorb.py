@@ -54,7 +54,8 @@ def test_poll_slots_taipei_only():
     assert absorb_slot_id(wed_morn) == "20260916-1000"
     assert absorb_slot_id(wed_open) == "20260916-1300"
     assert absorb_slot_id(wed_close) == "20260916-1330"
-    assert absorb_slot_id(wed_after) == "20260916-1740"
+    # 盤後鐘點窗已拿掉；17:40 不再是 slot（改掛融合後 postfuse）
+    assert absorb_slot_id(wed_after) == ""
     assert absorb_slot_id(datetime(2026, 9, 16, 16, 30, tzinfo=TAIPEI)) == ""
     assert absorb_slot_id(thu_night) == "20260917-0100"
     assert absorb_slot_id(dawn) == ""
@@ -65,7 +66,7 @@ def test_poll_slots_taipei_only():
     assert nxt.tzinfo is not None
     assert nxt.strftime("%H:%M") == "12:10"
     after = next_absorb_at(datetime(2026, 9, 16, 13, 38, tzinfo=TAIPEI))
-    assert after.strftime("%Y-%m-%d %H:%M") == "2026-09-16 17:40"
+    assert after.strftime("%Y-%m-%d %H:%M") == "2026-09-17 01:00"
     night = next_absorb_at(datetime(2026, 9, 16, 22, 40, tzinfo=TAIPEI))
     assert night.strftime("%Y-%m-%d %H:%M") == "2026-09-17 01:00"
     weekend = next_absorb_at(datetime(2026, 9, 19, 1, 10, tzinfo=TAIPEI))
@@ -113,18 +114,17 @@ def test_catch_up_due_after_close_slots(tmp_path, monkeypatch):
     monkeypatch.setattr(biaoke_absorb, "run_absorb", _fake_run)
     now = datetime(2026, 9, 16, 19, 40, tzinfo=TAIPEI)
     ran = catch_up_due_after_close_slots(db, now=now)
-    # 開市日：已過盤後兩檔＋本日 01:00（前一日開市）；22:30 尚未到
-    assert ran == ["20260916-1740", "20260916-1850", "20260916-0100"]
+    # 開市日過 17:00：補 postfuse＋本日 01:00（前一日開市）
+    assert ran == ["20260916-postfuse", "20260916-0100"]
     assert seen == ran
-    assert _slot_ran(db, "20260916-1740")
-    assert _slot_ran(db, "20260916-1850")
+    assert _slot_ran(db, "20260916-postfuse")
     assert _slot_ran(db, "20260916-0100")
-    assert not _slot_ran(db, "20260916-2230")
+    assert not _slot_ran(db, "20260916-1740")
     assert catch_up_due_after_close_slots(db, now=now) == []
 
 
 def test_catch_up_on_closed_day_runs_prev_open_after_close(tmp_path, monkeypatch):
-    """國慶補假等休市：補最近開市日盤後三檔＋本日 01:00。"""
+    """國慶補假等休市：補最近開市日 postfuse＋本日 01:00。"""
     import biaoke_absorb
     from biaoke_absorb import catch_up_due_after_close_slots
 
@@ -145,9 +145,7 @@ def test_catch_up_on_closed_day_runs_prev_open_after_close(tmp_path, monkeypatch
     now = datetime(2026, 10, 9, 13, 50, tzinfo=TAIPEI)
     ran = catch_up_due_after_close_slots(db, now=now)
     assert ran == [
-        "20261008-1740",
-        "20261008-1850",
-        "20261008-2230",
+        "20261008-postfuse",
         "20261009-0100",
     ]
     assert seen == ran
