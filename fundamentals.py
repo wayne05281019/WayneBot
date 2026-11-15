@@ -1351,28 +1351,14 @@ def list_quarterly_income(
     return [dict(r) for r in rows]
 
 
-def _income_year_looks_ytd(by_season: Dict[int, Dict[str, Any]]) -> bool:
-    """同年各季營收明顯遞增＝觀測站累計列（上半年／前三季／全年），不是單季。"""
-    seasons = sorted(int(s) for s in by_season.keys() if int(s) in (1, 2, 3, 4))
-    for i in range(1, len(seasons)):
-        a, b = seasons[i - 1], seasons[i]
-        try:
-            ra = float((by_season[a] or {}).get("revenue") or 0)
-            rb = float((by_season[b] or {}).get("revenue") or 0)
-        except (TypeError, ValueError):
-            continue
-        if ra > 0 and rb > ra * 1.02:
-            return True
-    return False
-
-
 def expand_ytd_income_eps_to_single(
     income_rows: Optional[Sequence[Dict[str, Any]]] = None,
 ) -> Dict[Tuple[int, int], float]:
     """把綜合損益「年初至該期累計 EPS」還原成真實單季 EPS。
 
     規則（山太士範本）：Q1＝累計；Q2＝H1−Q1；Q3＝前三季−H1；Q4＝全年−前三季。
-    同年營收未呈累計遞增（興櫃單季種子等）→ 原值當單季，不准再減一次。
+    寫庫來源（OpenAPI t187ap06／觀測站 t163sb04）一律是累計列，不靠營收猜：
+    零營收公司（6976 Q1 −0.32／上半年 −0.71）照樣還原成單季 −0.39。
     缺前期累計時該季不上單季（不准瞎減）。
     """
     by_year: Dict[int, Dict[int, Dict[str, Any]]] = {}
@@ -1387,18 +1373,6 @@ def expand_ytd_income_eps_to_single(
 
     out: Dict[Tuple[int, int], float] = {}
     for y, by_s in by_year.items():
-        has_q1 = 1 in by_s
-        if not _income_year_looks_ytd(by_s):
-            # 興櫃等已是單季：必須有 Q1 錨才敢整年當單季。
-            # 只有上半年／前三季孤列、缺 Q1 → 可能是累計卻無法還原，不上假單季。
-            if not has_q1:
-                continue
-            for s, row in by_s.items():
-                try:
-                    out[(y, s)] = float(row.get("eps") or 0)
-                except (TypeError, ValueError):
-                    continue
-            continue
         prev_cum: Optional[float] = None
         prev_season = 0
         for s in (1, 2, 3, 4):

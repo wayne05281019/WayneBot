@@ -23,15 +23,15 @@ def test_shan_taishi_ytd_eps_diff_to_single():
     assert filled[2]["eps_better"] is True  # 2.97 > 1.75
 
 
-def test_equal_revenue_treated_as_already_single():
-    """興櫃種子：同營收＝已是單季，不准再相減。"""
+def test_zero_revenue_rows_still_cumulative():
+    """6976 興櫃零營收：Q1 −0.32、上半年累計 −0.71 → 單季 −0.39，不准把累計當單季。"""
     rows = [
-        {"year": 2026, "season": 1, "eps": 0.37, "revenue": 100000.0},
-        {"year": 2026, "season": 2, "eps": 0.95, "revenue": 100000.0},
+        {"year": 2026, "season": 1, "eps": -0.32, "revenue": 0.0},
+        {"year": 2026, "season": 2, "eps": -0.71, "revenue": 0.0},
     ]
     m = expand_ytd_income_eps_to_single(rows)
-    assert abs(m[(2026, 1)] - 0.37) < 1e-9
-    assert abs(m[(2026, 2)] - 0.95) < 1e-9
+    assert abs(m[(2026, 1)] - (-0.32)) < 1e-9
+    assert abs(m[(2026, 2)] - (-0.39)) < 1e-9
 
 
 def test_missing_q1_ytd_q2_no_fake_single():

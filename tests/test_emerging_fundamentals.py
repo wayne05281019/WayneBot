@@ -101,13 +101,13 @@ def _seed_emerging_7853(db: str) -> None:
         "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
         ("7853", 2025, 2, "政美應用", "EM", 185166, 104999, 80167, 43.29, -42198, -54199, -1.37),
     )
-    # 2026 單季：讓季框右半能對上官方 EPS（Q3 月未滿季故不進框）
-    for season, eps in ((1, 0.37), (2, 0.95)):
+    # 2026 觀測站累計列（季別 01＝Q1、02＝上半年）：季框右半要還原成單季 Q1 0.37／Q2 0.58（Q3 月未滿季故不進框）
+    for season, k, eps in ((1, 1, 0.37), (2, 2, 0.95)):
         conn.execute(
             "INSERT INTO quarterly_income(stock_id,year,season,stock_name,market,revenue,cogs,"
             "gross_profit,gross_margin_pct,operating_income,net_income,eps) "
             "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-            ("7853", 2026, season, "政美應用", "EM", 100000, 50000, 50000, 50.0, 20000, 15000, eps),
+            ("7853", 2026, season, "政美應用", "EM", 100000 * k, 50000 * k, 50000 * k, 50.0, 20000 * k, 15000 * k, eps),
         )
     conn.commit()
     conn.close()
@@ -265,10 +265,11 @@ def test_month_quarter_split_rows_boxes():
         boxes,
         [{"year": 2026, "season": 2, "eps": 1.25}, {"year": 2026, "season": 1, "eps": -0.5}],
     )
-    assert next(b for b in filled if b["season"] == 2)["eps_lab"] == "1.25"
+    # 觀測站季別 02＝上半年累計：單季 Q2＝1.25−(−0.50)＝1.75
+    assert next(b for b in filled if b["season"] == 2)["eps_lab"] == "1.75"
     assert next(b for b in filled if b["season"] == 1)["eps_lab"] == "-0.50"
-    assert next(b for b in filled if b["season"] == 2)["eps"] == 1.25
-    # Q2 EPS 1.25 > Q1 -0.50 → 紅字旗
+    assert abs(next(b for b in filled if b["season"] == 2)["eps"] - 1.75) < 1e-9
+    # Q2 單季 1.75 > Q1 -0.50 → 紅字旗
     assert next(b for b in filled if b["season"] == 2)["eps_better"] is True
     assert next(b for b in filled if b["season"] == 1)["eps_better"] is False
     # 本 fixture Q2 營收＜Q1（較上季大減）→ 不准紅字
@@ -301,7 +302,7 @@ def test_glance_split_layout_emerging_only(tmp_path, monkeypatch):
     q1 = next(b for b in lay["quarter_boxes"] if b["season"] == 1)
     q2 = next(b for b in lay["quarter_boxes"] if b["season"] == 2)
     assert q1.get("eps_lab") == "0.37"
-    assert q2.get("eps_lab") == "0.95"
+    assert q2.get("eps_lab") == "0.58"
     # 左列 1→12
     assert lay["month_rows"][0]["yyyymm"] == "202601"
     assert lay["month_rows"][-1]["yyyymm"] == "202612"
