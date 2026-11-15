@@ -787,6 +787,13 @@ def _snapshot_pressure_support(market_db: str, day: str) -> Dict[str, int]:
         _tracked_night("stabilize", lambda: stabilize_night_tick(market_db, day))
 
     try:
+        from undervalue_verify import night_tick as undervalue_night_tick
+    except Exception as exc:
+        mark_track(market_db, "undervalue", day, "error", f"{type(exc).__name__}: {exc}")
+    else:
+        _tracked_night("undervalue", lambda: undervalue_night_tick(market_db, day))
+
+    try:
         from biaoke_diverge import night_tick as biaoke_diverge_night_tick
     except Exception as exc:
         mark_track(market_db, "biaoke-diverge", day, "error", f"{type(exc).__name__}: {exc}")

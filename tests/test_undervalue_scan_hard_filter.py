@@ -70,6 +70,16 @@ def _seed(db: str, as_of: str = "20261113") -> None:
                     "VALUES (?, ?, ?, 'TW', 100, 101, 99, 100, 5000, 0, 0, 100)",
                     (day, sid, pes and sid),
                 )
+            # 硬濾 YoY≥15%
+            conn.execute(
+                "INSERT OR REPLACE INTO monthly_revenue "
+                "(stock_id, yyyymm, stock_name, market, industry, revenue, "
+                "revenue_prev_month, revenue_prev_year, mom_pct, yoy_pct, "
+                "ytd_revenue, ytd_prev_year, ytd_yoy_pct, published_roc, updated_at) "
+                "VALUES (?, '202610', ?, 'TW', '', 1000, 900, 800, 5.0, 25.0, "
+                "9000, 7000, 20.0, '', ?)",
+                (sid, name, as_of),
+            )
         # 補齊 6442 名字
         conn.execute(
             "UPDATE daily_quotes SET stock_name='光聖' WHERE stock_id='6442'"
@@ -126,3 +136,20 @@ def test_confront_status_shape(tmp_path):
     assert st["n_gate"] == 20
     assert st["promote_ready"] is False
     assert "phone_rule" in st and "next_rule" in st
+
+
+def test_night_tick_hook_and_gate():
+    import inspect
+
+    from judge_tape import _snapshot_pressure_support
+    from undervalue_verify import gate_status, night_tick
+
+    src = inspect.getsource(_snapshot_pressure_support)
+    assert "undervalue_verify" in src
+    assert "undervalue_night_tick" in src
+    g = gate_status("")
+    assert g["buy_signal"] is False
+    assert g["promote_golden_buy"] is False
+    assert "min_n" in g
+    tick = night_tick("", as_of="")
+    assert tick["buy_signal"] is False

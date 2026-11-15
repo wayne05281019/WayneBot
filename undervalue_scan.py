@@ -40,6 +40,11 @@ FLOW_DAYS = 20
 FLOW_MIN_STAR = 1500.0
 FLOW_MIN_WATCH = 1500.0
 PEER_MIN_N = 3
+# 硬濾（可量化；對齊鎖死規格能落地的部分）
+YOY_MIN_PCT = 15.0
+QTY60_A_MIN = 400.0  # A 穩當核心：近 60 日均量（張）
+# 距下緣％＝(PE／同鏈中位−1)×100；≤−8%≈中位×0.92（比價 lag 帶）
+STAR_DIST_MAX = -8.0
 
 
 def _finite(raw: Any) -> Optional[float]:
@@ -218,7 +223,7 @@ def _own_pe_series(
 def _quote_meta(
     conn: sqlite3.Connection, as_of: str, sids: Iterable[str]
 ) -> Dict[str, Dict[str, Any]]:
-    """收盤＋名＋近窗均量（張）。缺官方收就不進。"""
+    """收盤＋名＋近窗均量（張）＋QTY60＋最新月 YoY。缺官方收就不進。"""
     day = _ymd(as_of)
     want = [str(s).strip() for s in sids if str(s or "").strip()]
     out: Dict[str, Dict[str, Any]] = {}
@@ -238,7 +243,7 @@ def _quote_meta(
         close = _finite(q[1] if not isinstance(q, sqlite3.Row) else q["close"])
         if close is None or close <= 0:
             continue
-        vols = conn.execute(
+        vols20 = conn.execute(
             """
             SELECT volume FROM daily_quotes
             WHERE stock_id=? AND REPLACE(CAST(date AS TEXT),'-','')<=?
@@ -247,10 +252,34 @@ def _quote_meta(
             """,
             (sid, day, FLOW_DAYS),
         ).fetchall()
-        flow_vals = [_finite(v[0]) for v in vols]
-        flow_vals = [float(v) for v in flow_vals if v is not None]
+        flow_vals = [float(v) for v in (_finite(x[0]) for x in vols20) if v is not None]
         if len(flow_vals) < 5:
             continue
+        vols60 = conn.execute(
+            """
+            SELECT volume FROM daily_quotes
+            WHERE stock_id=? AND REPLACE(CAST(date AS TEXT),'-','')<=?
+              AND volume IS NOT NULL AND volume > 0
+            ORDER BY date DESC LIMIT 60
+            """,
+            (sid, day),
+        ).fetchall()
+        q60_vals = [float(v) for v in (_finite(x[0]) for x in vols60) if v is not None]
+        qty60 = float(sum(q60_vals) / len(q60_vals)) if q60_vals else 0.0
+        yoy = None
+        try:
+            mr = conn.execute(
+                """
+                SELECT yoy_pct FROM monthly_revenue
+                WHERE stock_id=? AND yoy_pct IS NOT NULL
+                ORDER BY yyyymm DESC LIMIT 1
+                """,
+                (sid,),
+            ).fetchone()
+            if mr is not None:
+                yoy = _finite(mr[0] if not isinstance(mr, sqlite3.Row) else mr["yoy_pct"])
+        except sqlite3.Error:
+            yoy = None
         name = str(
             (q[0] if not isinstance(q, sqlite3.Row) else q["stock_name"]) or sid
         )
@@ -258,6 +287,8 @@ def _quote_meta(
             "name": name,
             "close": float(close),
             "flow_shares": float(sum(flow_vals) / len(flow_vals)),
+            "qty60": qty60,
+            "yoy_pct": yoy,
         }
     return out
 
@@ -353,6 +384,13 @@ def _peer_index(db_path: str) -> Dict[str, List[str]]:
     return out
 
 
+def _dist_to_peer_floor_pct(pe: float, med: float) -> float:
+    """距下緣％＝相對同鏈中位（卡欄語意）；負＝便宜。"""
+    if med <= 0:
+        return 999.0
+    return (float(pe) / float(med) - 1.0) * 100.0
+
+
 def _classify_v1(
     *,
     pe: float,
@@ -362,32 +400,40 @@ def _classify_v1(
     own_min: float,
     own_med: float,
     is_leader: bool,
+    qty60: float = 0.0,
+    yoy_pct: Optional[float] = None,
 ) -> Tuple[str, str, float]:
-    """回傳 (mark|'' , reason, dist_to_floor_pct)。"""
-    dist = ((pe - floor) / floor * 100.0) if floor > 0 else 999.0
-    # 同鏈便宜要 PE≥8，避開本益極低雜訊擠掉真同鏈低估（光通訊龍頭等）
+    """回傳 (mark|'' , reason, dist_to_floor_pct)。
+
+    硬濾前置由呼叫端做；此處只分 ★／☆。
+    ★：距中位≤−8%（≈中位×0.92）或自身近窗低緣；☆：距中位≤0 但未到 ★。
+    """
+    _ = floor
+    dist = _dist_to_peer_floor_pct(pe, med)
+    pool = "A穩當" if qty60 >= QTY60_A_MIN else "B量能薄"
     chain_cheap = (
-        pe <= med * 0.90
-        and dist <= 20.0
+        dist <= STAR_DIST_MAX
         and flow >= FLOW_MIN_STAR
         and pe >= 8.0
     )
-    # 自身近窗低緣：對齊飆大「本益被低估」；龍頭放寬、或仍低於同鏈中位
     own_cheap = (
         pe <= own_min * 1.02
         and pe <= own_med * 0.85
         and flow >= FLOW_MIN_STAR
         and (is_leader or pe < med)
     )
+    yoy_bit = ""
+    if yoy_pct is not None:
+        yoy_bit = f"；月YoY{yoy_pct:+.0f}%"
     if chain_cheap or own_cheap:
-        bits: List[str] = []
+        bits: List[str] = [pool]
         if chain_cheap:
-            bits.append(f"同鏈PE {pe:.1f}＜中位{med:.1f}×0.9")
+            bits.append(f"同鏈PE {pe:.1f} 距中位{dist:.1f}%")
         if own_cheap:
             bits.append(f"近窗本益近自身低緣{own_min:.1f}")
-        return "star", "；".join(bits), dist
-    if pe <= med and flow >= FLOW_MIN_WATCH:
-        return "watch", f"PE≤同鏈中位{med:.1f}，先觀察不當真低估", dist
+        return "star", "；".join(bits) + yoy_bit, dist
+    if dist <= 0.0 and flow >= FLOW_MIN_WATCH:
+        return "watch", f"{pool}；PE≤同鏈中位{med:.1f}，先觀察不當真低估{yoy_bit}", dist
     return "", "", dist
 
 
@@ -400,25 +446,30 @@ def _classify_v2(
     own_min: float,
     own_med: float,
     is_leader: bool,
+    qty60: float = 0.0,
+    yoy_pct: Optional[float] = None,
 ) -> Tuple[str, str, float]:
-    """下一版：更貼自身低緣＋仍不貴過同鏈中位×1.05。"""
-    dist = ((pe - floor) / floor * 100.0) if floor > 0 else 999.0
+    """下一版：更貼自身低緣＋距中位更緊（≤−12%）。"""
+    _ = floor
+    dist = _dist_to_peer_floor_pct(pe, med)
+    pool = "A穩當" if qty60 >= QTY60_A_MIN else "B量能薄"
+    yoy_bit = f"；月YoY{yoy_pct:+.0f}%" if yoy_pct is not None else ""
     tight = (
         pe <= own_min * 1.01
         and pe <= own_med * 0.82
-        and pe <= med * 1.05
+        and dist <= -12.0
         and flow >= 2000.0
         and (is_leader or pe <= med * 0.95)
     )
     if tight:
         return (
             "star",
-            f"自身低緣緊貼{own_min:.1f}且不貴過中位{med:.1f}",
+            f"{pool}；自身低緣緊貼{own_min:.1f}且距中位{dist:.1f}%{yoy_bit}",
             dist,
         )
-    near = pe <= own_min * 1.05 and pe <= med and flow >= FLOW_MIN_WATCH
+    near = pe <= own_min * 1.05 and dist <= 0.0 and flow >= FLOW_MIN_WATCH
     if near:
-        return "watch", f"近自身低緣、≤中位{med:.1f}", dist
+        return "watch", f"{pool}；近自身低緣、≤中位{med:.1f}{yoy_bit}", dist
     return "", "", dist
 
 
@@ -472,6 +523,10 @@ def run_undervalue_scan(
         for sid, pe in pe_map.items():
             if sid not in meta:
                 continue
+            # 硬濾：最新月營收 YoY ≥ +15%（無 YoY 不上；不准假成長）
+            yoy = meta[sid].get("yoy_pct")
+            if yoy is None or float(yoy) < YOY_MIN_PCT:
+                continue
             peers = [p for p in peer_ix.get(sid, []) if p in pe_map]
             if sid not in peers:
                 peers = [sid] + peers
@@ -488,6 +543,7 @@ def run_undervalue_scan(
             own_min = min(hist)
             own_med = float(statistics.median(hist))
             flow = float(meta[sid]["flow_shares"])
+            qty60 = float(meta[sid].get("qty60") or 0.0)
             mark, reason, dist = classify(
                 pe=float(pe),
                 med=float(med),
@@ -496,6 +552,8 @@ def run_undervalue_scan(
                 own_min=float(own_min),
                 own_med=float(own_med),
                 is_leader=sid in leaders,
+                qty60=qty60,
+                yoy_pct=float(yoy),
             )
             if not mark:
                 continue
@@ -511,6 +569,8 @@ def run_undervalue_scan(
                 "flow_shares": flow,
                 "reason": reason,
                 "rule_key": rule,
+                "qty60": qty60,
+                "yoy_pct": float(yoy),
             }
             if mark == "star":
                 stars.append(row)
