@@ -1379,7 +1379,7 @@ def start_daily_scheduler():
 
         now = _taipei_now()
         # open_check＝02:45（輕）；dc_sf_silent＝03:00（03:00–04:00 窗；與飆大 01:00 錯開）
-        # 盤後彙整已錯開官方融合：17:40／18:50／22:30（見 biaoke_absorb）
+        # 盤後飆大彙整＝融合成功後 postfuse＋隔日 01:00（見 biaoke_absorb；已拿掉 17:40／18:50／22:30）
         # 雙時段比價（原 12:45 midday）已永久刪除，不准再排。
         slots = (
             (2, 45, "open_check"),

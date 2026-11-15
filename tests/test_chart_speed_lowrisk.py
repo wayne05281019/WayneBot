@@ -234,14 +234,15 @@ def test_ensure_vol_ttl_at_least_five_minutes():
     assert "IN (" in src or "IN(" in src
 
 
-def test_schedule_fuse_absorb_still_staggered():
-    """16:30 融合 vs 盤後彙整已錯開；不准為加速把 absorb 拉回 16:30。"""
+def test_schedule_fuse_then_postfuse_absorb():
+    """盤後彙整掛融合成功後；官方 fuse 準點仍 16:30。"""
     import biaoke_absorb as ba
     import main as main_mod
 
     absorb_src = inspect.getsource(ba)
-    assert "17:40" in absorb_src
-    assert "16:30" in absorb_src  # 註解避撞
+    assert "run_absorb_after_fuse" in absorb_src
+    assert "POSTFUSE_SUFFIX" in absorb_src
+    assert "_AFTER_CLOSE_HMS" not in absorb_src
     slots = inspect.getsource(main_mod.start_daily_scheduler)
     assert '(16, 30, "fuse")' in slots
     assert '(6, 30, "morning")' in slots  # 06:30 必寄不動
