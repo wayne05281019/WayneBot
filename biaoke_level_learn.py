@@ -1318,6 +1318,7 @@ def _heal_twii_daily_from_60m(
     """日K 落後最近開市／60 分末日：用官方 60 分聚合補 index_daily。
 
     不准造假價；只寫 60 分庫裡已有的開市日。回傳 wrote／asof_before／asof_after。
+    先打 Yahoo 60 分補 minute_bars，再聚合（Render 常駐庫常缺近窗 60 分）。
     """
     out: Dict[str, Any] = {
         "ok": False,
@@ -1325,6 +1326,7 @@ def _heal_twii_daily_from_60m(
         "asof_before": "",
         "asof_after": "",
         "target": _ymd(target_ymd),
+        "yahoo60": False,
     }
     if not db_path:
         return out
@@ -1341,6 +1343,14 @@ def _heal_twii_daily_from_60m(
         except Exception:
             target = ""
     out["target"] = target
+    # Render 週末常缺近窗 60 分 → 先抓再聚合
+    try:
+        from kline_hop import fetch_yahoo_minutes
+
+        fetch_yahoo_minutes("TWII", "60", db_path)
+        out["yahoo60"] = True
+    except Exception:
+        logger.exception("heal 加權抓 Yahoo60 略過")
     try:
         rows60 = _load_twii60_day_rows(db_path, since_ymd="20261001")
     except Exception:
@@ -1371,6 +1381,184 @@ def _heal_twii_daily_from_60m(
         or (wrote > 0 and after and before and after > before)
         or (not target and after)
     )
+    return out
+
+
+def _force_refill_twii_daily_to_target(
+    db_path: str, *, target_ymd: str = ""
+) -> Dict[str, Any]:
+    """加權日K 拉到最近開市：Yahoo 日K sync → 60 分聚合 → 缺日逐日 MI_INDEX／Yahoo。
+
+    Render 週末 tip 停 11/11、官方／60 分庫空時的硬補；不准造假收。
+    """
+    out: Dict[str, Any] = {
+        "ok": False,
+        "asof_before": "",
+        "asof_after": "",
+        "target": "",
+        "paths": [],
+        "wrote": 0,
+    }
+    if not db_path:
+        return out
+    before = _twii_chart_as_of(db_path)
+    out["asof_before"] = before
+    target = _ymd(target_ymd)
+    if not target:
+        try:
+            from trading_calendar import last_open_calendar_day_on_or_before
+
+            target = last_open_calendar_day_on_or_before(
+                datetime.now(TAIPEI).strftime("%Y%m%d")
+            )
+        except Exception:
+            target = ""
+    out["target"] = target
+    if not target:
+        return out
+
+    # 1) Yahoo＋MI 融合日K
+    try:
+        from taiwan_market import sync_index_daily
+
+        sync_index_daily(db_path, range_="1mo")
+        out["paths"].append("sync_1mo")
+    except Exception:
+        logger.exception("force refill sync_index_daily 失敗")
+
+    after = _twii_chart_as_of(db_path)
+    if after and after >= target:
+        out["asof_after"] = after
+        out["ok"] = True
+        return out
+
+    # 2) Yahoo 60 分聚合
+    try:
+        heal = _heal_twii_daily_from_60m(db_path, target_ymd=target)
+        out["paths"].append(f"60m_wrote={heal.get('wrote')}")
+        out["wrote"] += int(heal.get("wrote") or 0)
+    except Exception:
+        logger.exception("force refill 60m heal 失敗")
+    after = _twii_chart_as_of(db_path)
+    if after and after >= target:
+        out["asof_after"] = after
+        out["ok"] = True
+        return out
+
+    # 3) 缺日逐日：MI_INDEX 收＋Yahoo 日列 OHLC
+    try:
+        from trading_calendar import (
+            is_tw_open_calendar_day,
+            next_open_calendar_day_after,
+        )
+        from taiwan_market import _fetch_index_daily, _fetch_twse_index_close
+    except Exception:
+        logger.exception("force refill 缺模組")
+        out["asof_after"] = _twii_chart_as_of(db_path)
+        return out
+
+    yahoo_by: Dict[str, Dict[str, Any]] = {}
+    try:
+        ydf = _fetch_index_daily("1mo")
+        if ydf is not None and not getattr(ydf, "empty", True):
+            for _, row in ydf.iterrows():
+                d = _ymd(row.get("date"))
+                if len(d) != 8:
+                    continue
+                try:
+                    yahoo_by[d] = {
+                        "date": d,
+                        "open": float(row.get("open") or 0),
+                        "high": float(row.get("high") or 0),
+                        "low": float(row.get("low") or 0),
+                        "close": float(row.get("close") or 0),
+                        "volume": float(row.get("volume") or 0),
+                    }
+                except (TypeError, ValueError):
+                    continue
+            out["paths"].append(f"yahoo_days={len(yahoo_by)}")
+    except Exception:
+        logger.exception("force refill Yahoo 日K 失敗")
+
+    start = before or ""
+    probe = start
+    missing: List[str] = []
+    if start and start < target:
+        try:
+            probe = next_open_calendar_day_after(start)
+        except Exception:
+            probe = start
+    elif not start:
+        # 無末日：只補 target 近 5 個開市日
+        probe = target
+        for _ in range(5):
+            missing.append(probe)
+            try:
+                from trading_calendar import last_open_calendar_day_on_or_before
+                from datetime import timedelta as _td
+
+                prev = (
+                    datetime.strptime(probe, "%Y%m%d") - _td(days=1)
+                ).strftime("%Y%m%d")
+                probe = last_open_calendar_day_on_or_before(prev)
+            except Exception:
+                break
+        missing = sorted(set(missing))
+        probe = ""
+
+    while probe and target and probe <= target:
+        if is_tw_open_calendar_day(probe):
+            missing.append(probe)
+        if probe >= target:
+            break
+        try:
+            nxt = next_open_calendar_day_after(probe)
+        except Exception:
+            break
+        if not nxt or nxt <= probe:
+            break
+        probe = nxt
+
+    bars: List[Dict[str, Any]] = []
+    for d in missing:
+        if before and d <= before:
+            continue
+        if d > target:
+            continue
+        y = yahoo_by.get(d) if isinstance(yahoo_by.get(d), dict) else None
+        mi = None
+        try:
+            mi = _fetch_twse_index_close(d)
+        except Exception:
+            mi = None
+        close = 0.0
+        if y and float(y.get("close") or 0) > 0:
+            close = float(y["close"])
+        elif isinstance(mi, dict) and float(mi.get("close") or 0) > 0:
+            close = float(mi["close"])
+        if close <= 0:
+            continue
+        if y and float(y.get("close") or 0) > 0:
+            bars.append(dict(y))
+        else:
+            bars.append(
+                {
+                    "date": d,
+                    "open": close,
+                    "high": close,
+                    "low": close,
+                    "close": close,
+                    "volume": 0.0,
+                }
+            )
+    if bars:
+        n = _upsert_twii_index_daily_bars(db_path, bars)
+        out["wrote"] += int(n)
+        out["paths"].append(f"day_fill={n}")
+
+    after = _twii_chart_as_of(db_path)
+    out["asof_after"] = after
+    out["ok"] = bool(after and after >= target)
     return out
 
 
@@ -1416,7 +1604,7 @@ def ensure_teach_tip_preflight(
         )
         if lag:
             logger.warning(
-                "preflight 加權 tip 落後 tip=%s target=%s m60=%s → 再補日K",
+                "preflight 加權 tip 落後 tip=%s target=%s m60=%s → 強制補日K",
                 tip_tw,
                 target,
                 m60,
@@ -1426,10 +1614,19 @@ def ensure_teach_tip_preflight(
             except Exception:
                 logger.exception("preflight 補加權日K失敗")
             try:
-                heal = _heal_twii_daily_from_60m(db_path, target_ymd=target or m60)
-                pack["_twii_60m_heal"] = heal
+                force = _force_refill_twii_daily_to_target(
+                    db_path, target_ymd=target or m60
+                )
+                pack["_twii_force_refill"] = force
+                logger.warning(
+                    "preflight force refill ok=%s before=%s after=%s paths=%s",
+                    force.get("ok"),
+                    force.get("asof_before"),
+                    force.get("asof_after"),
+                    force.get("paths"),
+                )
             except Exception:
-                logger.exception("preflight 60分聚合補加權失敗")
+                logger.exception("preflight 強制補加權失敗")
             try:
                 _ensure_latest_tx_night_row(db_path)
             except Exception:
@@ -1469,7 +1666,7 @@ def ensure_teach_tip_preflight(
     gate = verify_teach_stamp_preflight(db_path, pack)
     if gate.get("ok"):
         return gate
-    # 再試一次：60分聚合＋重算＋閘
+    # 再試一次：強制補＋重算＋閘
     try:
         from trading_calendar import last_open_calendar_day_on_or_before
 
@@ -1478,9 +1675,9 @@ def ensure_teach_tip_preflight(
         target = (
             last_open_calendar_day_on_or_before(wall_ymd) if len(wall_ymd) == 8 else ""
         )
-        _heal_twii_daily_from_60m(db_path, target_ymd=target)
+        _force_refill_twii_daily_to_target(db_path, target_ymd=target)
     except Exception:
-        logger.exception("preflight 二次 60分補加權略過")
+        logger.exception("preflight 二次強制補加權略過")
     try:
         pack["teach_tip"] = compute_teach_tip_snapshot(
             db_path, pack, reuse_frozen=False
@@ -20074,13 +20271,15 @@ def run_teach_trio_preflight_pipeline(
     try:
         _ensure_teach_index_bars(db_path)
         tw_asof = _twii_chart_as_of(db_path)
-        if target and tw_asof and tw_asof < target and not _twii_cash_session_live(dt):
-            heal = _heal_twii_daily_from_60m(db_path, target_ymd=target)
-            tw_asof = _ymd(heal.get("asof_after")) or _twii_chart_as_of(db_path)
+        if target and (not tw_asof or tw_asof < target) and not _twii_cash_session_live(
+            dt
+        ):
+            force = _force_refill_twii_daily_to_target(db_path, target_ymd=target)
+            tw_asof = _ymd(force.get("asof_after")) or _twii_chart_as_of(db_path)
             _step(
                 "01_twii_daily",
                 bool(tw_asof and (not target or tw_asof >= target)),
-                f"asof={tw_asof} target={target} heal_wrote={heal.get('wrote')}",
+                f"asof={tw_asof} target={target} force={force.get('paths')}",
             )
         else:
             _step(

@@ -4398,7 +4398,83 @@ def test_teach_trio_pipeline_table_locked():
     assert "compute_teach_tip_snapshot" in src
     pipe_src = inspect.getsource(run_teach_trio_preflight_pipeline)
     assert "ensure_teach_tip_preflight" in pipe_src
-    assert "_heal_twii_daily_from_60m" in pipe_src
+    assert "_force_refill_twii_daily_to_target" in pipe_src
+
+
+def test_force_refill_twii_daily_uses_day_fill_when_sync_empty(monkeypatch):
+    """sync／60分都空時，逐日 Yahoo／MI 仍能補到 target。"""
+    from biaoke_level_learn import _force_refill_twii_daily_to_target
+
+    monkeypatch.setattr(
+        "biaoke_level_learn._twii_chart_as_of",
+        lambda *_a, **_k: "20261111",
+    )
+    monkeypatch.setattr(
+        "taiwan_market.sync_index_daily",
+        lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("no sync")),
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._heal_twii_daily_from_60m",
+        lambda *_a, **_k: {"ok": False, "wrote": 0, "asof_after": "20261111"},
+    )
+
+    class _DF:
+        empty = False
+
+        def iterrows(self):
+            return iter(
+                [
+                    (
+                        0,
+                        {
+                            "date": "20261112",
+                            "open": 1,
+                            "high": 2,
+                            "low": 1,
+                            "close": 43091.87,
+                            "volume": 1,
+                        },
+                    ),
+                    (
+                        1,
+                        {
+                            "date": "20261113",
+                            "open": 1,
+                            "high": 2,
+                            "low": 1,
+                            "close": 43675.12,
+                            "volume": 1,
+                        },
+                    ),
+                ]
+            )
+
+    monkeypatch.setattr("taiwan_market._fetch_index_daily", lambda *_a, **_k: _DF())
+    monkeypatch.setattr(
+        "taiwan_market._fetch_twse_index_close", lambda *_a, **_k: None
+    )
+    written = []
+
+    def _up(db, bars):
+        written.extend(list(bars))
+        return len(bars)
+
+    monkeypatch.setattr("biaoke_level_learn._upsert_twii_index_daily_bars", _up)
+    # after upsert pretend asof moved
+    state = {"n": 0}
+
+    def _asof(*_a, **_k):
+        state["n"] += 1
+        return "20261111" if state["n"] < 4 else "20261113"
+
+    monkeypatch.setattr("biaoke_level_learn._twii_chart_as_of", _asof)
+    out = _force_refill_twii_daily_to_target("/tmp/x.db", target_ymd="20261113")
+    assert out["ok"]
+    assert any(_ymd_ok(b.get("date")) == "20261113" for b in written)
+
+
+def _ymd_ok(v):
+    return str(v or "").replace("-", "")[:8]
 
 
 def test_far_near_repaint_candles_after_c_spans():
