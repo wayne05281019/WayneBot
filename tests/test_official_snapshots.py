@@ -292,6 +292,11 @@ def test_parse_fmtqik_rwd_and_ensure_through(tmp_path, monkeypatch):
 
     db = str(tmp_path / "ix2.db")
     ensure_index_daily_table(db)
+    # 關掉 MI5／OpenAPI，只測 rwd 月表路徑
+    monkeypatch.setattr(
+        "official_snapshots.fetch_json",
+        lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("skip openapi")),
+    )
     monkeypatch.setattr(
         "official_snapshots.fetch_fmtqik_rwd",
         lambda ymd, timeout=45: rwd,
@@ -299,6 +304,7 @@ def test_parse_fmtqik_rwd_and_ensure_through(tmp_path, monkeypatch):
     out = ensure_index_fmtqik_through(db, "20261005")
     assert out["ok"] is True
     assert out["wrote"] >= 1
+    assert "rwd=" in str(out.get("reason") or "")
     conn = sqlite3.connect(db)
     close, vol = conn.execute(
         "SELECT close, volume FROM index_daily WHERE date='20261005'"
@@ -309,6 +315,63 @@ def test_parse_fmtqik_rwd_and_ensure_through(tmp_path, monkeypatch):
     again = ensure_index_fmtqik_through(db, "20261005")
     assert again["reason"] == "already"
     assert again["wrote"] == 0
+
+
+def test_ensure_index_fmtqik_through_mi5_openapi_when_rwd_blocked(
+    tmp_path, monkeypatch
+):
+    """Render 擋 www rwd 時：OpenAPI MI5＋FMTQIK 仍能補到 cap。"""
+    from official_snapshots import ensure_index_fmtqik_through
+    from taiwan_market import ensure_index_daily_table
+
+    db = str(tmp_path / "ix_mi5.db")
+    ensure_index_daily_table(db)
+    mi_rows = [
+        {
+            "Date": "1151113",
+            "OpeningIndex": "43719.75",
+            "HighestIndex": "44489.48",
+            "LowestIndex": "43534.12",
+            "ClosingIndex": "43675.12",
+        }
+    ]
+    fmt_rows = [
+        {
+            "Date": "1151113",
+            "TradeVolume": "12361787000",
+            "TAIEX": "43675.12",
+            "Change": "583.25",
+        }
+    ]
+
+    def _fj(url, timeout=45):
+        u = str(url or "")
+        if "MI_5MINS" in u:
+            return mi_rows
+        if "FMTQIK" in u and "openapi" in u:
+            return fmt_rows
+        if "FMTQIK" in u:
+            return fmt_rows
+        raise RuntimeError(u)
+
+    monkeypatch.setattr("official_snapshots.fetch_json", _fj)
+    monkeypatch.setattr(
+        "official_snapshots.fetch_fmtqik_rwd",
+        lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("www blocked")),
+    )
+    # parse_mi5mins expects list of dicts from fetch_json — already shaped
+    out = ensure_index_fmtqik_through(db, "20261113")
+    assert out["ok"] is True
+    assert out["close"] == 43675.12
+    assert "mi5=" in str(out.get("reason") or "")
+    conn = sqlite3.connect(db)
+    o, h, lo, c, v = conn.execute(
+        "SELECT open, high, low, close, volume FROM index_daily WHERE date='20261113'"
+    ).fetchone()
+    conn.close()
+    assert float(c) == 43675.12
+    assert float(o) > 0 and float(h) > 0 and float(lo) > 0
+    assert float(v) > 0
 
 
 def test_increment_and_glance_wire_official():

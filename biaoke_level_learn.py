@@ -1049,19 +1049,21 @@ def verify_teach_stamp_preflight(
                 if isinstance(pack, dict)
                 else None
             )
+            # paths／asof 放最前：話筒 fail_bits 有字數上限，避免又被截成「；補後」
             heal_bit = ""
             if isinstance(force, dict) and force:
-                paths = ",".join(str(p) for p in (force.get("paths") or [])[:4])
+                paths = ",".join(str(p) for p in (force.get("paths") or [])[:6])
                 heal_bit = (
-                    f"；補後asof={force.get('asof_after') or '?'} "
-                    f"paths={paths or '-'}"
+                    f"paths={paths or '-'}；"
+                    f"補後asof={force.get('asof_after') or '?'}"
                 )
             fails.append(
                 {
                     "code": "tw_asof_behind_session",
                     "detail": (
-                        f"庫缺加權日K（tip {tip_tw2} < 最近開市 {target}；"
-                        f"已試 FMTQIK／Yahoo／60分／逐日仍未齊{heal_bit}）"
+                        f"{heal_bit + '；' if heal_bit else ''}"
+                        f"庫缺加權日K tip {tip_tw2}<開市{target}"
+                        f"（已試 MI5／OpenAPI／rwd／Yahoo／60分／逐日）"
                     ),
                 }
             )
@@ -1447,10 +1449,10 @@ def _backfill_null_twii_ohlc_from_close(
 def _force_refill_twii_daily_to_target(
     db_path: str, *, target_ymd: str = ""
 ) -> Dict[str, Any]:
-    """加權日K 拉到最近開市：FMTQIK → Yahoo sync → 60 分聚合 → 缺日逐日 MI／Yahoo。
+    """加權日K 拉到最近開市：MI5／OpenAPI／rwd → Yahoo sync → 60 分 → 逐日。
 
-    Render 週末 tip 停舊日時：Yahoo／www MI_INDEX 常被擋，但證交所 rwd FMTQIK 仍通。
-    不准造假收；庫空 asof 不准當「已齊」。
+    Render 週末 tip 停舊日：Yahoo／www 常掛；openapi MI_5MINS＋FMTQIK 約 1 秒可補。
+    不准造假收；庫空 asof 不准當「已齊」。官方齊了就立刻回，不再空等 Yahoo。
     """
     out: Dict[str, Any] = {
         "ok": False,
@@ -1478,13 +1480,13 @@ def _force_refill_twii_daily_to_target(
     if not target:
         return out
 
-    # 0) 證交所 rwd FMTQIK（Yahoo／MI 被擋時的主路徑）
+    # 0) 證交所官方：MI_5MINS OHLC → OpenAPI FMTQIK → rwd（見 ensure_index_fmtqik_through）
     try:
         from official_snapshots import ensure_index_fmtqik_through
 
         fmt = ensure_index_fmtqik_through(db_path, target)
         out["paths"].append(
-            f"fmtqik={fmt.get('reason')}:w{int(fmt.get('wrote') or 0)}"
+            f"official={fmt.get('reason')}:w{int(fmt.get('wrote') or 0)}"
         )
         out["wrote"] += int(fmt.get("wrote") or 0)
         try:
@@ -1497,27 +1499,17 @@ def _force_refill_twii_daily_to_target(
         except Exception:
             logger.exception("force refill OHLC 平底補失敗")
     except Exception:
-        logger.exception("force refill FMTQIK 失敗")
-        out["paths"].append("fmtqik=exc")
+        logger.exception("force refill 官方加權 失敗")
+        out["paths"].append("official=exc")
 
     after = _twii_chart_as_of(db_path)
     if after and after >= target:
         out["asof_after"] = after
         out["ok"] = True
-        # 仍試 sync 補真 OHLC；失敗不撤銷 FMTQIK 成果
-        try:
-            from taiwan_market import sync_index_daily
-
-            sync_index_daily(db_path, range_="1mo")
-            out["paths"].append("sync_1mo_enrich")
-            after2 = _twii_chart_as_of(db_path)
-            if after2 and after2 >= after:
-                out["asof_after"] = after2
-        except Exception:
-            logger.debug("force refill sync enrich 略過", exc_info=True)
+        # 官方已齊：不准再空等 Yahoo（Render 常見 40s timeout）
         return out
 
-    # 1) Yahoo＋MI 融合日K
+    # 1) Yahoo＋MI 融合日K（官方未齊才走）
     try:
         from taiwan_market import sync_index_daily
 
@@ -2227,55 +2219,53 @@ def _ensure_teach_biaoke_posts_fresh(
 
 
 def _ensure_teach_index_bars(db_path: str) -> None:
-    """活畫前補齊加權／費半最新官方日K（失敗不擋出圖）。"""
+    """活畫前補齊加權／費半最新官方日K（失敗不擋出圖）。
+
+    加權落後時先走證交所 OpenAPI（MI5／FMTQIK），Yahoo sync 放後面——
+    Render 週末 Yahoo 常掛 40s，不准擋官方快路徑。
+    """
     if not db_path:
         return
+    today = datetime.now(TAIPEI).strftime("%Y%m%d")
+    target = ""
+    try:
+        from trading_calendar import (
+            is_tw_open_calendar_day,
+            last_open_calendar_day_on_or_before,
+        )
+
+        target = (
+            today
+            if is_tw_open_calendar_day(today)
+            else last_open_calendar_day_on_or_before(today)
+        )
+    except Exception:
+        target = ""
+    asof = _twii_chart_as_of(db_path)
+    lag = bool(target and (not asof or asof < target))
+    if lag:
+        try:
+            from official_snapshots import ensure_index_fmtqik_through
+
+            ensure_index_fmtqik_through(db_path, target)
+            _backfill_null_twii_ohlc_from_close(db_path, since_ymd=asof or "")
+        except Exception:
+            logger.debug("教具官方補加權略過", exc_info=True)
+        asof = _twii_chart_as_of(db_path)
+        lag = bool(target and (not asof or asof < target))
+    # 官方已齊或無需補：短窗 Yahoo 可enrich；仍落後才硬 sync
     try:
         from taiwan_market import sync_index_daily
 
-        sync_index_daily(db_path, range_="3mo")
+        sync_index_daily(db_path, range_="1mo" if lag else "3mo")
     except Exception:
         logger.exception("教具補加權日K略過")
-    # Yahoo 常留量=0：節流打 FMTQIK 補官方全日量（沒真數不寫）
     try:
         from taiwan_market import _maybe_fill_zero_index_volumes
 
         _maybe_fill_zero_index_volumes(db_path)
     except Exception:
         logger.debug("教具補加權量略過", exc_info=True)
-    # 加權軸要比到「最近一個台股開市日」：週末／假日也要補齊上一個開市收
-    # （舊邏輯只在開市日且 asof<today 才短窗 sync → 週日仍停週四時，
-    #  費半周五會變成延長格，四欄共用軸被標成「11/6費半」、下三欄右緣像缺K）
-    try:
-        from trading_calendar import (
-            is_tw_open_calendar_day,
-            last_open_calendar_day_on_or_before,
-        )
-        from taiwan_market import sync_index_daily
-
-        today = datetime.now(TAIPEI).strftime("%Y%m%d")
-        target = (
-            today
-            if is_tw_open_calendar_day(today)
-            else last_open_calendar_day_on_or_before(today)
-        )
-        asof = _twii_chart_as_of(db_path)
-        if target and (not asof or asof < target):
-            sync_index_daily(db_path, range_="1mo")
-            asof2 = _twii_chart_as_of(db_path)
-            if not asof2 or asof2 < target:
-                # Yahoo／MI 不通時仍用證交所 rwd FMTQIK 補到最近開市
-                try:
-                    from official_snapshots import ensure_index_fmtqik_through
-
-                    ensure_index_fmtqik_through(db_path, target)
-                    _backfill_null_twii_ohlc_from_close(
-                        db_path, since_ymd=asof or ""
-                    )
-                except Exception:
-                    logger.debug("教具 FMTQIK 補加權略過", exc_info=True)
-    except Exception:
-        logger.debug("教具補最近開市加權再同步略過", exc_info=True)
     try:
         _ensure_us_index_daily(db_path)
     except Exception:
@@ -20399,7 +20389,7 @@ def verify_live_hyps_with_speech(db_path: str, snippet: str) -> int:
 # 順序＝prepare → 終檢 → 現況簡述 → paint；倒推＝從出圖往回查哪步漂了
 # 01–08＝出圖前流水線（run_teach_trio_preflight_pipeline）；09–12＝送圖
 TEACH_TRIO_PIPELINE: Tuple[Tuple[str, str], ...] = (
-    ("01_twii_daily", "補加權日K（FMTQIK／Yahoo／60分）＋60分 minute（query1→2）"),
+    ("01_twii_daily", "補加權日K（MI5／OpenAPI／rwd→Yahoo／60分）＋60分 minute（query1→2）"),
     ("02_tx_night", "補電子盤夜盤：OpenAPI→歷史CSV；收後日盤 regular"),
     ("03_sox_daily", "補費半日K：Yahoo query1→2；失敗再60分日切（可降級）"),
     ("04_posts_fresh", "補飆大公開文；題旨／右標跟貼文庫"),
@@ -20443,7 +20433,10 @@ def run_teach_trio_preflight_pipeline(
         )
 
     # —— 01 加權日K（含落後愈合）——
+    # 順序：先看 tip → 落後立刻官方 force（MI5／OpenAPI）→ 再 Yahoo／60 分
+    # 不准先空等 Yahoo 60 分把官方快路徑拖死。
     tw_asof = ""
+    force: Dict[str, Any] = {}
     try:
         from trading_calendar import last_open_calendar_day_on_or_before
 
@@ -20451,37 +20444,40 @@ def run_teach_trio_preflight_pipeline(
     except Exception:
         target = ""
     try:
-        _ensure_teach_index_bars(db_path)
         tw_asof = _twii_chart_as_of(db_path)
-        # 庫空 asof＝"" 也必須硬補；不准把「今天」誤判成已齊
         need_force = bool(
             target
             and (not tw_asof or tw_asof < target)
             and not _twii_cash_session_live(dt)
         )
+        if need_force:
+            force = _force_refill_twii_daily_to_target(db_path, target_ymd=target)
+            tw_asof = _ymd(force.get("asof_after")) or _twii_chart_as_of(db_path)
+        try:
+            _ensure_teach_index_bars(db_path)
+            tw_asof = _twii_chart_as_of(db_path) or tw_asof
+        except Exception:
+            logger.exception("pipeline 01 ensure_teach_index_bars 略過")
         # 不論日K是否已齊：波浪鍵都抓 60 分（超近＋聚合備援；query1→2）
         try:
             mins = _ensure_teach_minute_legs(db_path)
         except Exception:
             mins = {"ok": False, "sids": ["exc"]}
-        if need_force:
-            force = _force_refill_twii_daily_to_target(db_path, target_ymd=target)
+        if need_force and (not tw_asof or (target and tw_asof < target)):
+            # ensure／60 分後仍落後：再 force 一次（60 分可能剛寫入）
+            force2 = _force_refill_twii_daily_to_target(db_path, target_ymd=target)
+            force = force2 or force
             tw_asof = _ymd(force.get("asof_after")) or _twii_chart_as_of(db_path)
-            _step(
-                "01_twii_daily",
-                bool(tw_asof and (not target or tw_asof >= target)),
-                f"asof={tw_asof} target={target} force={force.get('paths')} "
-                f"m60={mins.get('sids')}",
-            )
-        else:
-            _step(
-                "01_twii_daily",
-                bool(tw_asof),
-                f"asof={tw_asof} target={target} m60={mins.get('sids')}",
-            )
+        _step(
+            "01_twii_daily",
+            bool(tw_asof and (not target or tw_asof >= target)),
+            f"asof={tw_asof} target={target} force={force.get('paths') if force else '-'} "
+            f"m60={mins.get('sids')}",
+        )
     except Exception as exc:
         logger.exception("pipeline 01 加權日K 失敗")
         _step("01_twii_daily", False, type(exc).__name__)
+        force = force if isinstance(force, dict) else {}
 
     # —— 02 電子盤 ——
     try:
@@ -20550,6 +20546,8 @@ def run_teach_trio_preflight_pipeline(
 
     if not isinstance(pack, dict):
         pack = {}
+    if force:
+        pack["_twii_force_refill"] = force
     pack["_pipeline_steps"] = list(steps)
 
     # —— 08 終檢 ——
@@ -20594,7 +20592,8 @@ def run_teach_trio_preflight_pipeline(
         ):
             fail_bits.append("行情模組異常")
         elif detail:
-            fail_bits.append(detail[:64])
+            # 140：要留得下 paths=official=mi5=…；舊 64 字會截成「；補後」
+            fail_bits.append(detail[:140])
         elif code:
             fail_bits.append(code)
     return {
