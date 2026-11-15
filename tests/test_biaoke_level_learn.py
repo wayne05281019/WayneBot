@@ -4375,22 +4375,30 @@ def test_merge_live_twii_overlays_when_today_volume_zero(monkeypatch):
 
 def test_teach_trio_pipeline_table_locked():
     """三窗步驟表鎖死：改順序／漏步要先改測試。"""
-    from biaoke_level_learn import TEACH_TRIO_PIPELINE, prepare_wave_live_pack
+    from biaoke_level_learn import (
+        TEACH_TRIO_PIPELINE,
+        prepare_wave_live_pack,
+        run_teach_trio_preflight_pipeline,
+    )
     import inspect
 
     ids = [a for a, _ in TEACH_TRIO_PIPELINE]
     assert ids[:4] == [
-        "01_index_bars",
-        "02_posts_fresh",
-        "03_build_pack",
-        "04_live_twii",
+        "01_twii_daily",
+        "02_tx_night",
+        "03_sox_daily",
+        "04_posts_fresh",
     ]
-    assert "09_paint_far" in ids and "10_paint_near" in ids
+    assert "08_stamp_gate" in ids and "09_brief" in ids
+    assert "10_paint_far" in ids and "11_paint_near" in ids and "12_paint_micro" in ids
     src = inspect.getsource(prepare_wave_live_pack)
     assert "_ensure_teach_index_bars" in src
     assert "_ensure_teach_biaoke_posts_fresh" in src
     assert "_ensure_teach_tx_day_row" in src
     assert "compute_teach_tip_snapshot" in src
+    pipe_src = inspect.getsource(run_teach_trio_preflight_pipeline)
+    assert "ensure_teach_tip_preflight" in pipe_src
+    assert "_heal_twii_daily_from_60m" in pipe_src
 
 
 def test_far_near_repaint_candles_after_c_spans():
