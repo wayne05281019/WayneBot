@@ -2607,6 +2607,127 @@ def test_teach_stamp_tw_mouth_same_source_no_split():
     assert mouth2["src"] == "bars_newer"
 
 
+def test_aggregate_twii60_daily_bars_ohlc():
+    """60 分聚合日K：開＝首、收＝末、高低極值。"""
+    from biaoke_level_learn import _aggregate_twii60_daily_bars
+
+    rows = [
+        {
+            "date": "20261113",
+            "open": 100,
+            "high": 110,
+            "low": 99,
+            "close": 105,
+            "volume": 10,
+        },
+        {
+            "date": "20261113",
+            "open": 105,
+            "high": 120,
+            "low": 98,
+            "close": 115,
+            "volume": 20,
+        },
+    ]
+    got = _aggregate_twii60_daily_bars(rows)
+    assert "20261113" in got
+    assert got["20261113"]["open"] == 100
+    assert got["20261113"]["high"] == 120
+    assert got["20261113"]["low"] == 98
+    assert got["20261113"]["close"] == 115
+    assert got["20261113"]["volume"] == 30
+
+
+def test_teach_trio_pipeline_table_has_brief_and_gate():
+    """出圖前流水線表含終檢＋現況簡述步驟。"""
+    from biaoke_level_learn import TEACH_TRIO_PIPELINE
+
+    ids = [x[0] for x in TEACH_TRIO_PIPELINE]
+    assert "01_twii_daily" in ids
+    assert "08_stamp_gate" in ids
+    assert "09_brief" in ids
+    assert ids.index("08_stamp_gate") < ids.index("09_brief")
+    assert ids.index("09_brief") < ids.index("10_paint_far")
+
+
+def test_run_teach_trio_preflight_pipeline_records_steps(monkeypatch):
+    """流水線回傳 steps；終檢不過 → ok False。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_level_learn import run_teach_trio_preflight_pipeline
+
+    wall = datetime(2026, 11, 14, 23, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    monkeypatch.setattr(
+        "biaoke_level_learn._ensure_teach_index_bars", lambda *_a, **_k: None
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._twii_chart_as_of", lambda *_a, **_k: "20261113"
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._heal_twii_daily_from_60m",
+        lambda *_a, **_k: {"ok": True, "wrote": 0, "asof_after": "20261113"},
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._ensure_latest_tx_night_row", lambda *_a, **_k: None
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._ensure_teach_tx_day_row", lambda *_a, **_k: None
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._ensure_us_index_daily", lambda *_a, **_k: None
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._sox_daily_from_minutes", lambda *_a, **_k: None
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn.prepare_wave_live_pack",
+        lambda *_a, **_k: {
+            "thesis": "測",
+            "teach_tip": {
+                "tw_asof": "20261113",
+                "tw_close": 43675.12,
+                "tw_live": 0,
+                "sox_asof": "20261113",
+                "sox_close": 10146.32,
+                "sox_live": 0,
+                "tx_asof": "20261113",
+                "tx_close": 43706.0,
+                "tx_live": 0,
+            },
+            "query_now": wall.isoformat(),
+        },
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn.ensure_teach_tip_preflight",
+        lambda *_a, **_k: {
+            "ok": True,
+            "fails": [],
+            "tip": {
+                "tw_asof": "20261113",
+                "tw_close": 43675.12,
+                "sox_close": 10146.32,
+                "tx_close": 43706.0,
+            },
+            "sox_degraded": False,
+            "checked_at": wall.isoformat(),
+        },
+    )
+    out = run_teach_trio_preflight_pipeline("/tmp/fake.db", now=wall)
+    assert out["ok"]
+    ids = [s["id"] for s in out["steps"]]
+    assert ids[:8] == [
+        "01_twii_daily",
+        "02_tx_night",
+        "03_sox_daily",
+        "04_posts_fresh",
+        "05_build_pack",
+        "06_live_legs",
+        "07_teach_tip",
+        "08_stamp_gate",
+    ]
+
+
 def test_stamp_preflight_blocks_tw_behind_last_open(monkeypatch):
     """週末／夜盤：加權 tip 停在更早開市日 → 硬擋（遠／近白底卡舊根因）。"""
     from datetime import datetime
