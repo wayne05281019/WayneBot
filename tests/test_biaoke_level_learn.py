@@ -4401,13 +4401,69 @@ def test_teach_trio_pipeline_table_locked():
     assert "_force_refill_twii_daily_to_target" in pipe_src
 
 
+def test_twii_chart_as_of_empty_not_today(tmp_path):
+    """庫無加權柱＝asof 空字串，不准冒充今天讓 force 誤判已齊。"""
+    import sqlite3
+
+    from biaoke_level_learn import _twii_chart_as_of
+    from taiwan_market import ensure_index_daily_table
+
+    db = str(tmp_path / "empty_twii.db")
+    ensure_index_daily_table(db)
+    conn = sqlite3.connect(db)
+    conn.execute("DELETE FROM index_daily")
+    conn.commit()
+    conn.close()
+    assert _twii_chart_as_of(db) == ""
+
+
+def test_force_refill_prefers_fmtqik_when_yahoo_blocked(monkeypatch):
+    """Render 常見：Yahoo／MI 不通，rwd FMTQIK 仍能補到最近開市。"""
+    from biaoke_level_learn import _force_refill_twii_daily_to_target
+
+    state = {"n": 0}
+
+    def _asof(*_a, **_k):
+        state["n"] += 1
+        # FMTQIK 寫完後才到 target
+        return "20261111" if state["n"] < 2 else "20261113"
+
+    monkeypatch.setattr("biaoke_level_learn._twii_chart_as_of", _asof)
+    monkeypatch.setattr(
+        "official_snapshots.ensure_index_fmtqik_through",
+        lambda *_a, **_k: {
+            "ok": True,
+            "cap": "20261113",
+            "wrote": 2,
+            "reason": "rwd",
+            "close": 43675.12,
+        },
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._backfill_null_twii_ohlc_from_close",
+        lambda *_a, **_k: 2,
+    )
+    monkeypatch.setattr(
+        "taiwan_market.sync_index_daily",
+        lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("yahoo blocked")),
+    )
+    out = _force_refill_twii_daily_to_target("/tmp/x.db", target_ymd="20261113")
+    assert out["ok"]
+    assert out["asof_after"] == "20261113"
+    assert any(str(p).startswith("fmtqik=") for p in out.get("paths") or [])
+
+
 def test_force_refill_twii_daily_uses_day_fill_when_sync_empty(monkeypatch):
-    """sync／60分都空時，逐日 Yahoo／MI 仍能補到 target。"""
+    """FMTQIK／sync／60分都空時，逐日 Yahoo／MI 仍能補到 target。"""
     from biaoke_level_learn import _force_refill_twii_daily_to_target
 
     monkeypatch.setattr(
-        "biaoke_level_learn._twii_chart_as_of",
-        lambda *_a, **_k: "20261111",
+        "official_snapshots.ensure_index_fmtqik_through",
+        lambda *_a, **_k: {"ok": False, "wrote": 0, "reason": "empty_rwd"},
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._backfill_null_twii_ohlc_from_close",
+        lambda *_a, **_k: 0,
     )
     monkeypatch.setattr(
         "taiwan_market.sync_index_daily",
@@ -4460,12 +4516,12 @@ def test_force_refill_twii_daily_uses_day_fill_when_sync_empty(monkeypatch):
         return len(bars)
 
     monkeypatch.setattr("biaoke_level_learn._upsert_twii_index_daily_bars", _up)
-    # after upsert pretend asof moved
+    # after upsert pretend asof moved（FMTQIK 失敗後仍卡 11/11，day_fill 後才 11/13）
     state = {"n": 0}
 
     def _asof(*_a, **_k):
         state["n"] += 1
-        return "20261111" if state["n"] < 4 else "20261113"
+        return "20261111" if state["n"] < 5 else "20261113"
 
     monkeypatch.setattr("biaoke_level_learn._twii_chart_as_of", _asof)
     out = _force_refill_twii_daily_to_target("/tmp/x.db", target_ymd="20261113")
