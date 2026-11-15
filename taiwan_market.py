@@ -4803,7 +4803,7 @@ def format_taiwan_market_brief_html(
     if hits:
         bt_lines = [_brief_lab("同一盤勢隔日")]
         for b in hits[:3]:
-            # 不准巢狀 f'{b['x']}'：Render PYTHON_VERSION=3.11.0 整個模組 import 會 SyntaxError
+            # 不准巢狀 f'{b['x']}'：舊 Render 3.11／誤設版本會擋整個模組 import
             next_pct = f"{b['avg_next_pct']:+.1f}%"
             bt_lines.append(
                 f"{_market_bucket_face(b['bucket'])}　隔日{_page_b(next_pct)}（勝{b['hit_rate']:.0%}）"

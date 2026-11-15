@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Render 正式服務環境變數 PYTHON_VERSION=3.11.0，壓過 .python-version／runtime.txt。
+"""擋 3.12 專屬 f-string（巢狀同引號等）；Render 曾鎖 PYTHON_VERSION=3.11.0。
 
-CI 與本機跑 3.12：PEP 701 才有的 f-string 寫法（巢狀同引號、運算式內反斜線／註解／
-單引號跨行）在這裡 parse 得過，到 Render 整個模組 import 就 SyntaxError。
+正式機已改 3.12.10（與 .python-version／runtime.txt／CI 對齊），這支守門仍留：
+避免再寫出 3.11 會炸、舊快取／誤設版本又擋 import 的寫法。
 taiwan_market 炸＝加權日K寫不進庫，波浪位階回「行情模組異常」。
 3.12 的 compile() 抓不到，所以用 3.12 tokenizer 模擬 3.11 的字串切法逐檔掃。
 """
