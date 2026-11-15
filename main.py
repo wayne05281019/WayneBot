@@ -312,6 +312,25 @@ class HealthHandler(BaseHTTPRequestHandler):
             except Exception:
                 payload["update"] = "更新完成"
                 payload["update_note"] = str(payload.get("update_note") or "")
+            # 波浪位階最後一次流水線結果（只讀小 JSON，不准拖死健檢）
+            try:
+                from biaoke_level_learn import read_teach_last_fail
+                from config import get_db_path
+
+                tlf = read_teach_last_fail(str(get_db_path() or ""))
+                payload["teach_last_ok"] = tlf.get("ok")
+                payload["teach_last_at"] = str(tlf.get("at") or "")
+                payload["teach_last_bits"] = list(tlf.get("fail_bits") or [])[:3]
+                payload["teach_last_codes"] = [
+                    str((f or {}).get("code") or "")
+                    for f in (tlf.get("fails") or [])[:4]
+                    if f
+                ]
+            except Exception:
+                payload["teach_last_ok"] = None
+                payload["teach_last_at"] = ""
+                payload["teach_last_bits"] = []
+                payload["teach_last_codes"] = []
             # 庫還沒可讀才略過資料欄。可讀時用便宜查詢填 latest_complete，
             # 絕不在健檢路徑跑 run_automation_audit（會超過 Render 5s）。
             if live.get("booting") and not live.get("db_ok"):

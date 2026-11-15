@@ -2933,6 +2933,66 @@ def test_taiwan_market_chg5_no_nested_fstring_quotes():
     compile(text, "taiwan_market.py", "exec")
 
 
+def test_pipeline_08_module_exc_soft_pass_when_tip_priced(monkeypatch, tmp_path):
+    """08 終檢例外但 tip 已有價 → 改走硬閘；模組異常不准白擋三窗。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_level_learn import (
+        read_teach_last_fail,
+        run_teach_trio_preflight_pipeline,
+    )
+
+    wall = datetime(2026, 11, 15, 20, 40, tzinfo=ZoneInfo("Asia/Taipei"))
+    tip = {
+        "tw_asof": "20261113",
+        "tw_close": 43675.0,
+        "sox_asof": "20261113",
+        "sox_close": 10146.0,
+        "tx_asof": "20261113",
+        "tx_close": 43706.0,
+        "tw_live": 0,
+        "sox_live": 0,
+        "tx_live": 0,
+    }
+    pack = {"teach_tip": tip, "chart_as_of": "20261113"}
+    db = str(tmp_path / "t.db")
+
+    def _boom(*_a, **_k):
+        raise RuntimeError("simulated module boom")
+
+    monkeypatch.setattr(
+        "biaoke_level_learn.ensure_teach_tip_preflight", _boom
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn.verify_teach_stamp_preflight",
+        lambda *_a, **_k: {
+            "ok": True,
+            "fails": [],
+            "tip": tip,
+            "sox_degraded": False,
+        },
+    )
+    monkeypatch.setattr("biaoke_level_learn._twii_chart_as_of", lambda *_a, **_k: "20261113")
+    monkeypatch.setattr(
+        "biaoke_level_learn._force_refill_twii_daily_to_target", lambda *_a, **_k: {}
+    )
+    monkeypatch.setattr("biaoke_level_learn._ensure_teach_index_bars", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        "biaoke_level_learn._ensure_teach_minute_legs",
+        lambda *_a, **_k: {"ok": True, "sids": []},
+    )
+    monkeypatch.setattr("biaoke_level_learn._ensure_latest_tx_night_row", lambda *_a, **_k: None)
+    monkeypatch.setattr("biaoke_level_learn._ensure_teach_tx_day_row", lambda *_a, **_k: None)
+    monkeypatch.setattr("biaoke_level_learn._ensure_us_index_daily", lambda *_a, **_k: None)
+
+    out = run_teach_trio_preflight_pipeline(db, now=wall, pack=pack)
+    assert out.get("ok") is True
+    assert (out.get("gate") or {}).get("module_exc") == "RuntimeError"
+    last = read_teach_last_fail(db)
+    assert last.get("ok") is True
+
+
 def test_stamp_preflight_heals_missing_sox_tip(monkeypatch):
     """pack tip 缺費半但庫有官方 → 當場補上放行，不准擋圖。"""
     from datetime import datetime
