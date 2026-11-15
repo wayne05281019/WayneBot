@@ -59,12 +59,13 @@ def _seed(db: str, rows: list) -> None:
             "VALUES (?,?,?,'TW',100,101,99,?,1000,100000,1.0,?,0,0,0)",
             ("20260918", sid, name, close, close),
         )
+        # Q1 真實單季錨（缺 Q1 的孤 Q2 累計列不准當假單季）
         conn.execute(
             "INSERT OR REPLACE INTO quarterly_income"
             "(stock_id,year,season,stock_name,market,revenue,gross_profit,"
             "gross_margin_pct,operating_income,net_income,eps) "
             "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-            (sid, 2026, 2, name, "TW", 1e6, 3e5, 30.0, 2e5, 1e5, eps),
+            (sid, 2026, 1, name, "TW", 1e6, 3e5, 30.0, 2e5, 1e5, eps),
         )
         tags = chain.split("-")
         conn.execute(

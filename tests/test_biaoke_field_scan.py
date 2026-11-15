@@ -78,9 +78,10 @@ def _seed(db: str) -> None:
         ("6223", 3.00),
         ("3443", 2.00),
     ):
+        # Q1 真實單季錨（缺 Q1 的孤 Q2 累計列不准當假單季）
         conn.execute(
             "INSERT INTO quarterly_income(stock_id,year,season,eps) VALUES (?,?,?,?)",
-            (sid, 2026, 2, eps),
+            (sid, 2026, 1, eps),
         )
     conn.commit()
     conn.close()
