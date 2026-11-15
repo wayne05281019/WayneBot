@@ -1,15 +1,16 @@
 # -*- coding: utf-8 -*-
 """飆大神經元彙整：抓文節奏不變；輔助先存。
 
-開市日台北 08:00–13:30 每 10 分、盤後 17:40／18:50／22:30，
-隔日 01:00（僅前一日曆日開市）才吸收。路人樓不進神經元。不是買訊。
+開市日台北 08:00–13:30 每 10 分吸收。
+盤後：官方 16:30 融合成功後立刻一檔（postfuse），隔日 01:00 再補一檔
+（僅前一日曆日開市；含默默覆盤）。不准再排 17:40／18:50／22:30 四次麻煩。
+路人樓不進神經元。不是買訊。
 
 硬規則：與情境預估 D.C 日對質（dc_sf_silent／03:00–04:00）互不影響——
 各自排程、各自鎖／逾時、失敗互不擋、不准搶同一長同步或清對方 actor；
 資源強碰以鐘點錯開（本檔 01:00 優先，D.C 只在 03:00–04:00）。不准為 D.C 停抓文／彙整。
 
-2026-10-20 排程微調：盤後首檔不准與官方融合 16:30 同刻（融合同機重壓易 OOM）；
-晚檔提前到 18:50，避開 20:00 晚間快照。官方融合準點仍 16:30 不准拖。
+官方融合準點仍 16:30 不准拖；盤後彙整掛在融合成功後，不再另開三個鐘點窗。
 """
 from __future__ import annotations
 
@@ -28,9 +29,11 @@ SLOT_GRACE_MIN = 8
 _OPEN_START_MIN = 8 * 60
 _OPEN_END_MIN = 13 * 60 + 30
 _OPEN_STEP_MIN = 10
-# 避撞 16:30 官方融合＋靜默軌；18:50 避開 20:00 evening
-_AFTER_CLOSE_HMS = ((17, 40), (18, 50), (22, 30))
+# 2026-11-15：拿掉盤後三鐘點；只留隔日 01:00 補檔＋默默覆盤
 _NIGHT_HM = (1, 0)
+POSTFUSE_SUFFIX = "postfuse"
+# 開機補跑：過這個鐘點才認為當日融合該做完、可補 postfuse
+_POSTFUSE_CATCHUP_AFTER_MIN = 17 * 60
 
 
 def _open_session_hms() -> tuple:
@@ -115,8 +118,13 @@ def _yesterday_open(dt: datetime) -> bool:
     return is_tw_open_calendar_day(yest)
 
 
+def postfuse_slot_id(as_of: str) -> str:
+    ymd = str(as_of or "").replace("-", "")[:8]
+    return f"{ymd}-{POSTFUSE_SUFFIX}" if len(ymd) == 8 else ""
+
+
 def _slot_datetimes_on(day: datetime) -> List[datetime]:
-    """該台北日曆日會醒的彙整點（尚未跟 now 比）。"""
+    """該台北日曆日會醒的鐘點彙整（不含 postfuse；那檔掛官方融合成功）。"""
     day = taipei_now(day).replace(second=0, microsecond=0)
     ymd = day.strftime("%Y%m%d")
     out: List[datetime] = []
@@ -125,13 +133,11 @@ def _slot_datetimes_on(day: datetime) -> List[datetime]:
     if is_tw_open_calendar_day(ymd):
         for hour, minute in OPEN_SESSION_HMS:
             out.append(day.replace(hour=hour, minute=minute))
-        for hour, minute in _AFTER_CLOSE_HMS:
-            out.append(day.replace(hour=hour, minute=minute))
     return out
 
 
 def absorb_slot_id(now: Optional[datetime] = None) -> str:
-    """正在彙整窗才回 slot。抓文輪詢不走這條。"""
+    """正在彙整窗才回 slot。抓文輪詢不走這條。postfuse 不走鐘點。"""
     dt = taipei_now(now)
     ymd = dt.strftime("%Y%m%d")
     hm = dt.hour * 60 + dt.minute
@@ -144,9 +150,6 @@ def absorb_slot_id(now: Optional[datetime] = None) -> str:
             and hm < slot_start + SLOT_GRACE_MIN
         ):
             return _slot_label(ymd, slot_start // 60, slot_start % 60)
-        for hour, minute in _AFTER_CLOSE_HMS:
-            if _in_grace(hm, hour, minute):
-                return _slot_label(ymd, hour, minute)
     return ""
 
 
@@ -156,14 +159,13 @@ def planned_slot_id(when: datetime) -> str:
     pair = (dt.hour, dt.minute)
     if pair == _NIGHT_HM and _yesterday_open(dt):
         return _slot_label(ymd, *_NIGHT_HM)
-    if is_tw_open_calendar_day(ymd):
-        if pair in OPEN_SESSION_HMS or pair in _AFTER_CLOSE_HMS:
-            return _slot_label(ymd, dt.hour, dt.minute)
+    if is_tw_open_calendar_day(ymd) and pair in OPEN_SESSION_HMS:
+        return _slot_label(ymd, dt.hour, dt.minute)
     return absorb_slot_id(dt)
 
 
 def next_absorb_at(now: Optional[datetime] = None) -> datetime:
-    """下一檔台北彙整：開市日 08:00–13:30／10 分、盤後三小時、隔日 01:00。"""
+    """下一檔台北鐘點彙整：開市日 08:00–13:30／10 分、隔日 01:00（不含 postfuse）。"""
     dt = taipei_now(now)
     best: Optional[datetime] = None
     for day_off in range(0, 16):
@@ -176,12 +178,40 @@ def next_absorb_at(now: Optional[datetime] = None) -> datetime:
     return best or (dt + timedelta(minutes=_OPEN_STEP_MIN))
 
 
+def run_absorb_after_fuse(
+    db_path: str,
+    as_of: str,
+    *,
+    skip_if_done: bool = True,
+    now: Optional[datetime] = None,
+) -> Dict[str, Any]:
+    """官方盤後融合成功後立刻一檔。失敗不擋融合 success。"""
+    slot = postfuse_slot_id(as_of)
+    out: Dict[str, Any] = {"ok": False, "slot": slot, "skipped": False}
+    if not db_path or not slot:
+        out["reason"] = "no_db_or_as_of"
+        return out
+    if skip_if_done and _slot_ran(db_path, slot):
+        out["ok"] = True
+        out["skipped"] = True
+        return out
+    try:
+        stats = run_absorb(db_path, now=now, slot=slot, force=True)
+        out.update(stats or {})
+        out["ok"] = bool((stats or {}).get("ok"))
+        return out
+    except Exception as exc:
+        logger.exception("盤後融合後飆大彙整失敗")
+        out["reason"] = type(exc).__name__
+        return out
+
+
 def catch_up_due_after_close_slots(
     db_path: str, *, now: Optional[datetime] = None
 ) -> List[str]:
-    """開機補已過的盤後彙整窗（17:40／18:50／22:30）與隔日 01:00。
+    """開機補：融合後 postfuse（若該跑卻沒跑）＋隔日 01:00。
 
-    休市日也要補「前一個開市日」的盤後三檔，以及本日 01:00（若前一日開市）。
+    休市日補最近開市日的 postfuse，以及本日 01:00（若前一日開市）。
     失敗不擋下一檔。
     """
     dt = taipei_now(now)
@@ -189,11 +219,11 @@ def catch_up_due_after_close_slots(
     if not db_path:
         return ran
 
-    def _run_due(day: datetime, hour: int, minute: int) -> None:
-        due = day.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    def _run_night(day: datetime) -> None:
+        due = day.replace(hour=_NIGHT_HM[0], minute=_NIGHT_HM[1], second=0, microsecond=0)
         if dt < due:
             return
-        slot_id = _slot_label(due.strftime("%Y%m%d"), hour, minute)
+        slot_id = _slot_label(due.strftime("%Y%m%d"), *_NIGHT_HM)
         if _slot_ran(db_path, slot_id):
             return
         try:
@@ -202,20 +232,34 @@ def catch_up_due_after_close_slots(
         except Exception:
             logger.exception("盤後彙整補跑失敗 slot=%s", slot_id)
 
+    def _run_postfuse(ymd: str) -> None:
+        slot_id = postfuse_slot_id(ymd)
+        if not slot_id or _slot_ran(db_path, slot_id):
+            return
+        try:
+            stats = run_absorb_after_fuse(db_path, ymd, skip_if_done=False, now=dt)
+            if stats.get("ok") and not stats.get("skipped"):
+                ran.append(slot_id)
+            elif stats.get("ok") and stats.get("skipped"):
+                pass
+            elif stats.get("ok"):
+                ran.append(slot_id)
+        except Exception:
+            logger.exception("盤後 postfuse 補跑失敗 slot=%s", slot_id)
+
     ymd = dt.strftime("%Y%m%d")
-    if is_tw_open_calendar_day(ymd):
-        for hour, minute in _AFTER_CLOSE_HMS:
-            _run_due(dt, hour, minute)
-    else:
-        # 國慶補假等休市：補最近一個開市日盤後三檔，避免匣卡住到下周一。
+    hm = dt.hour * 60 + dt.minute
+    if is_tw_open_calendar_day(ymd) and hm >= _POSTFUSE_CATCHUP_AFTER_MIN:
+        _run_postfuse(ymd)
+    elif not is_tw_open_calendar_day(ymd):
         for day_off in range(1, 8):
             prev = dt - timedelta(days=day_off)
-            if is_tw_open_calendar_day(prev.strftime("%Y%m%d")):
-                for hour, minute in _AFTER_CLOSE_HMS:
-                    _run_due(prev, hour, minute)
+            prev_ymd = prev.strftime("%Y%m%d")
+            if is_tw_open_calendar_day(prev_ymd):
+                _run_postfuse(prev_ymd)
                 break
     if _yesterday_open(dt):
-        _run_due(dt, *_NIGHT_HM)
+        _run_night(dt)
     return ran
 
 
@@ -699,7 +743,7 @@ def run_absorb(
     slot: str = "",
     force: bool = False,
 ) -> Dict[str, Any]:
-    """只在台北開市日 08:00–13:30／10 分、盤後三小時、隔日 01:00 把匣丟進神經元。"""
+    """開市日 08:00–13:30／10 分、融合後 postfuse、隔日 01:00 把匣丟進神經元。"""
     dt = taipei_now(now)
     slot_id = str(slot or planned_slot_id(dt) or absorb_slot_id(dt))
     stats: Dict[str, Any] = {"ok": False, "slot": slot_id, "posts": 0, "neurons": 0, "tz": "Asia/Taipei"}
@@ -777,7 +821,7 @@ def run_absorb(
 
 
 def start_biaoke_absorb_scheduler() -> Optional[Any]:
-    """與抓文輪詢分開：開市日 08:00–13:30／10 分、盤後到 01:00。GHA --once 不開。"""
+    """與抓文輪詢分開：開市日 08:00–13:30／10 分、隔日 01:00；postfuse 掛融合。GHA --once 不開。"""
     import threading
     import time as _time
 

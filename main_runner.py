@@ -452,11 +452,13 @@ class MainRunner:
     def should_yield_to_db_heavy_window(
         self, now=None, *, fuse_only: bool = False
     ) -> bool:
-        """force-morning 讓路窗：16:30 融合＋盤後飆大彙整（17:40／18:50／22:30）。
+        """force-morning 讓路窗：16:30 融合（含融合後立刻飆大彙整）。
 
-        開市日才讓 16:25–17:00。彙整窗前後各留約 15 分緩衝，避免再搶鎖。
-        fuse_only=True 時只認 16:30 融合（相容舊測／舊呼叫）。
+        開市日才讓 16:25–17:00。盤後不再另開 17:40／18:50／22:30 讓路窗
+        （2026-11-15：彙整改掛融合成功後＋隔日 01:00）。
+        fuse_only=True 時行為相同（相容舊測／舊呼叫）。
         """
+        _ = fuse_only
         try:
             from config import taipei_now
 
@@ -478,20 +480,9 @@ class MainRunner:
                 # 判斷失敗時寧可讓路，不准搶融合鎖
                 return True
 
-        # 16:25–17:00 官方盤後融合
+        # 16:25–17:00 官方盤後融合（融合後立刻跑飆大 postfuse）
         if 16 * 60 + 25 <= mins < 17 * 60:
             return _open_day()
-        if fuse_only:
-            return False
-        # 盤後彙整錯開窗（biaoke_absorb _AFTER_CLOSE_HMS）
-        absorb_windows = (
-            (17 * 60 + 35, 18 * 60 + 5),   # 17:40
-            (18 * 60 + 45, 19 * 60 + 15),  # 18:50
-            (22 * 60 + 25, 22 * 60 + 55),  # 22:30
-        )
-        for lo, hi in absorb_windows:
-            if lo <= mins < hi:
-                return _open_day()
         return False
 
     def reconcile_push_deliveries(self, *, prefix: str = "") -> int:
@@ -1108,7 +1099,7 @@ class MainRunner:
         若 screen-{as_of} 仍未 success，即使 fuse cap 已往後走，仍針對該 as_of 補寄
         （不准被當日盤後融合把基準日洗成「今天」而略過今早漏寄）。
 
-        16:25–17:00 盤後融合、以及 17:40／18:50／22:30 彙整緩衝窗預設讓路
+        16:25–17:00 盤後融合（含融合後飆大 postfuse）預設讓路
         （ignore_fuse_window=True 才硬搶）。
         """
         out: Dict[str, Any] = {
@@ -2211,6 +2202,14 @@ class MainRunner:
             return int(score_live_judges(self.db_path, day) or 0)
 
         _maybe("score-live", _score_live)
+
+        # 飆大盤後彙整：融合成功後立刻一檔（2026-11-15；不准再排 17:40／18:50／22:30）
+        def _biaoke_postfuse() -> Dict[str, Any]:
+            from biaoke_absorb import run_absorb_after_fuse
+
+            return run_absorb_after_fuse(self.db_path, day, skip_if_done=True)
+
+        _maybe("biaoke-postfuse", _biaoke_postfuse)
         return report
 
     @staticmethod
