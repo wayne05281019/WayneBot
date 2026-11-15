@@ -3169,8 +3169,6 @@ def test_soxx_volume_proxy_always_refreshes_near_window():
 
 def test_twii60_day_rows_keep_hour_slots_only(tmp_path):
     """interval=60 若混進 0901 這類 1 分髒柱，日盤窗要丟掉。"""
-    import sqlite3
-
     from biaoke_level_learn import _load_twii60_day_rows
     from kline_hop import ensure_minute_bars_table, save_minute_bars
 
@@ -3188,13 +3186,104 @@ def test_twii60_day_rows_keep_hour_slots_only(tmp_path):
         db,
         source="test",
     )
-    # 無 0050 也不准炸
+    # 無 0050 也不准炸；無 13:00 時 13:30 完整柱原樣留
     rows = _load_twii60_day_rows(db, since_ymd="20261110")
     assert [r["ts"] for r in rows] == [
         "202611100900",
         "202611101000",
         "202611101330",
     ]
+
+
+def test_twii60_merge_yahoo_1330_point_bar_matches_chouma(tmp_path):
+    """Yahoo 13:30 點價併進 13:00 → 末K 收＜開＝綠（對齊籌碼K 2026-11-13）。"""
+    from biaoke_level_learn import _load_twii60_day_rows, _merge_twii60_session_close
+    from decision_card_signals import candle_body_up_taiwan
+    from kline_hop import ensure_minute_bars_table, save_minute_bars
+
+    # 純函式：點價併柱
+    merged = _merge_twii60_session_close(
+        [
+            {
+                "date": "20261113",
+                "ts": "202611131300",
+                "open": 43727.0,
+                "high": 43887.14,
+                "low": 43670.91,
+                "close": 43760.83,
+                "volume": 0.0,
+            },
+            {
+                "date": "20261113",
+                "ts": "202611131330",
+                "open": 43675.12,
+                "high": 43675.12,
+                "low": 43675.12,
+                "close": 43675.12,
+                "volume": 0.0,
+            },
+        ]
+    )
+    assert len(merged) == 1
+    last = merged[0]
+    assert last["ts"] == "202611131330"
+    assert last["open"] == 43727.0
+    assert last["close"] == 43675.12
+    assert last["high"] == 43887.14
+    assert last["low"] == 43670.91
+    assert candle_body_up_taiwan(last["close"], None, last["open"]) is False
+
+    # 兩根都是完整柱 → 不併
+    keep = _merge_twii60_session_close(
+        [
+            {
+                "date": "20261113",
+                "ts": "202611131300",
+                "open": 100.0,
+                "high": 110.0,
+                "low": 90.0,
+                "close": 105.0,
+                "volume": 1.0,
+            },
+            {
+                "date": "20261113",
+                "ts": "202611131330",
+                "open": 105.0,
+                "high": 108.0,
+                "low": 100.0,
+                "close": 102.0,
+                "volume": 2.0,
+            },
+        ]
+    )
+    assert [r["ts"] for r in keep] == ["202611131300", "202611131330"]
+
+    db = str(tmp_path / "twii60_merge.db")
+    ensure_minute_bars_table(db)
+    save_minute_bars(
+        "TWII",
+        "60",
+        [
+            {"t": "202611130900", "o": 43719.75, "h": 44489.48, "l": 43719.75, "c": 44347.76, "v": 0},
+            {"t": "202611131300", "o": 43727.0, "h": 43887.14, "l": 43670.91, "c": 43760.83, "v": 0},
+            {
+                "t": "202611131330",
+                "o": 43675.12,
+                "h": 43675.12,
+                "l": 43675.12,
+                "c": 43675.12,
+                "v": 0,
+            },
+        ],
+        db,
+        source="test",
+    )
+    rows = _load_twii60_day_rows(db, since_ymd="20261113")
+    assert [r["ts"] for r in rows] == ["202611130900", "202611131330"]
+    end = rows[-1]
+    assert end["open"] == 43727.0
+    assert end["close"] == 43675.12
+    assert candle_body_up_taiwan(end["close"], rows[0]["close"], end["open"]) is False
 
 
 def test_twii60_volume_proxy_from_0050_same_ts(monkeypatch):

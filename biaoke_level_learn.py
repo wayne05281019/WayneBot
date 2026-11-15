@@ -5094,6 +5094,85 @@ def _attach_twii60_volume_proxy(
     return out
 
 
+def _is_point_ohlc(o: float, h: float, l: float, c: float) -> bool:
+    """開高低收幾乎同一價＝Yahoo 收盤點價，不是真 60 分柱。"""
+    vals = (o, h, l, c)
+    if any(not (v == v and v > 0) for v in vals):
+        return False
+    return max(vals) - min(vals) <= 1e-6
+
+
+def _merge_twii60_session_close(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """把 Yahoo 13:30 收盤點價併進 13:00 柱，對齊籌碼K 最後一根 60 分。
+
+    常見髒法：13:00 柱收在盤中、另塞一根 o=h=l=c＝日收的 13:30。
+    超近若把點價當末K，平盤被畫成紅，和籌碼K（收＜開＝綠）對不上。
+    併法：開＝13:00 開；高低吃兩根；收＝13:30 收（日收）；ts 標 13:30。
+    只有 13:30、沒 13:00 則原樣留。
+    """
+    if not rows:
+        return rows
+    by_day: Dict[str, List[Dict[str, Any]]] = {}
+    for r in rows:
+        by_day.setdefault(str(r.get("date") or ""), []).append(dict(r))
+    out: List[Dict[str, Any]] = []
+    for ymd in sorted(by_day.keys()):
+        day_rows = sorted(by_day[ymd], key=lambda x: str(x.get("ts") or ""))
+        b1300 = None
+        b1330 = None
+        rest: List[Dict[str, Any]] = []
+        for r in day_rows:
+            ts = str(r.get("ts") or "")
+            hm = ts[8:12] if len(ts) >= 12 else ""
+            if hm == "1300":
+                b1300 = r
+            elif hm == "1330":
+                b1330 = r
+            else:
+                rest.append(r)
+        if b1300 and b1330:
+            try:
+                o0 = float(b1300.get("open") or 0)
+                h0 = float(b1300.get("high") or 0)
+                l0 = float(b1300.get("low") or 0)
+                c0 = float(b1300.get("close") or 0)
+                o1 = float(b1330.get("open") or 0)
+                h1 = float(b1330.get("high") or 0)
+                l1 = float(b1330.get("low") or 0)
+                c1 = float(b1330.get("close") or 0)
+            except (TypeError, ValueError):
+                rest.extend([x for x in (b1300, b1330) if x])
+                out.extend(rest)
+                continue
+            # 只併 Yahoo 收盤點價；兩根都是完整柱則兩根都留（少見）
+            if _is_point_ohlc(o1, h1, l1, c1):
+                hi = max(h0, h1, o0, c0, o1, c1)
+                lo = min(l0, l1, o0, c0, o1, c1)
+                vol = float(b1300.get("volume") or 0) + float(b1330.get("volume") or 0)
+                merged = dict(b1300)
+                merged.update(
+                    {
+                        "ts": str(b1330.get("ts") or f"{ymd}1330"),
+                        "date": ymd,
+                        "open": o0,
+                        "high": hi,
+                        "low": lo,
+                        "close": c1 if c1 > 0 else c0,
+                        "volume": vol,
+                    }
+                )
+                rest.append(merged)
+            else:
+                rest.extend([b1300, b1330])
+        else:
+            if b1300:
+                rest.append(b1300)
+            if b1330:
+                rest.append(b1330)
+        out.extend(sorted(rest, key=lambda x: str(x.get("ts") or "")))
+    return out
+
+
 def _load_twii60_day_rows(
     db_path: str,
     *,
@@ -5104,6 +5183,7 @@ def _load_twii60_day_rows(
 
     只收 09:00–13:30 日盤柱；夜盤／盤後不進超近 9 波窗。價＝官方 minute_bars。
     量：^TWII 無成交量 → 同 ts 貼 0050 真量（vol_src=0050）；抓不到不假填。
+    Yahoo 13:30 收盤點價併進 13:00（見 _merge_twii60_session_close）。
     """
     try:
         from kline_hop import load_minute_bars
@@ -5144,6 +5224,7 @@ def _load_twii60_day_rows(
             )
         except (TypeError, ValueError):
             continue
+    out = _merge_twii60_session_close(out)
     return _attach_twii60_volume_proxy(out, db_path)
 
 
