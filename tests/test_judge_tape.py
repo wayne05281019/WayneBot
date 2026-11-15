@@ -535,7 +535,8 @@ def test_agents_silent_record_is_rank_three():
     assert "佐證同時留（數字，不是每檔截圖）" in text
     assert "每檔每天 K 圖 PNG" in text
     assert "對話不准報" in text
-    assert "還沒做／做到一半" in text
+    # §3 不准把默默對質當「做到一半」；回掃四欄仍用 已做完／做到一半／還沒做
+    assert "當做到一半" in text or "已做完／做到一半／還沒做" in text
     assert "明確優化狀態" in text
     assert "近窗" in text
     assert "不准等使用者提醒才記" in text
