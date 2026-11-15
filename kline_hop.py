@@ -456,7 +456,7 @@ def yahoo_chart_symbol(stock_id: str, db_path: Optional[str] = None) -> str:
 def _download_yahoo_minutes(
     stock_id: str, interval: str, db_path: Optional[str] = None
 ) -> List[Dict[str, Any]]:
-    """Yahoo 分 K：長 range 失敗再縮。不寫庫。"""
+    """Yahoo 分 K：長 range 失敗再縮；query1 不通改 query2。不寫庫。"""
     import requests
 
     sid = str(stock_id or "").strip()
@@ -471,21 +471,26 @@ def _download_yahoo_minutes(
             "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
         )
     }
+    hosts = (
+        "https://query1.finance.yahoo.com",
+        "https://query2.finance.yahoo.com",
+    )
     for rng in _yahoo_minute_ranges(yahoo_iv):
-        url = (
-            f"https://query1.finance.yahoo.com/v8/finance/chart/{yid}"
-            f"?interval={yahoo_iv}&range={rng}"
-        )
-        try:
-            resp = requests.get(url, timeout=8, headers=ua)
-            if resp.status_code != 200:
+        for host in hosts:
+            url = (
+                f"{host}/v8/finance/chart/{yid}"
+                f"?interval={yahoo_iv}&range={rng}"
+            )
+            try:
+                resp = requests.get(url, timeout=8, headers=ua)
+                if resp.status_code != 200:
+                    continue
+                bars = parse_yahoo_chart_bars(resp.json() or {})
+                if bars:
+                    return bars
+                last = bars
+            except Exception:
                 continue
-            bars = parse_yahoo_chart_bars(resp.json() or {})
-            if bars:
-                return bars
-            last = bars
-        except Exception:
-            continue
     return last
 
 
