@@ -733,6 +733,43 @@ def format_teach_brief(db_path: str = "", pack: Optional[Dict[str, Any]] = None)
     lines: List[str] = ["<b>波浪位階・預估・非買訊</b>", ""]
     now = str(ladder.get("now") or "").strip()
     day_zh = str(ladder.get("day_zh") or "").strip()
+    # 主述新鮮度：標他文日／加權已收；過舊警告。失敗略過，不准擋位階文。
+    _fresh: Dict[str, Any] = {}
+    _said_tag = "他最新"
+    try:
+        from phone_narrative_freshness import (
+            assess_narrative_freshness,
+            freshness_banner_html,
+        )
+
+        _fresh = assess_narrative_freshness(
+            str(db_path or ""),
+            thesis_as_of=str(
+                pack.get("thesis_as_of") or pack.get("chart_as_of") or ""
+            ),
+        )
+        if not _fresh.get("board_ymd") and not _fresh.get("twii_ymd"):
+            # 單測假 pack：用 chart_as_of 當加權日標示，仍不准冒充今日
+            _cas = str(pack.get("chart_as_of") or "").replace("-", "")[:8]
+            if len(_cas) == 8 and _cas.isdigit():
+                _fresh["twii_ymd"] = _cas
+        if _fresh.get("board_ymd") or _fresh.get("twii_ymd"):
+            lines.append(freshness_banner_html(_fresh))
+            lines.append("")
+        _by = str(_fresh.get("board_when") or _fresh.get("board_ymd") or "").strip()
+        if _by:
+            # 硬編碼題旨分支一律標文日，不准裸「他最新」誤導成今日現況
+            _mmdd = _by
+            if len(_by.replace("-", "").replace(" ", "")[:8]) >= 8:
+                _raw = _by.replace("-", "").replace(" ", "")[:8]
+                if _raw.isdigit():
+                    _mmdd = f"{int(_raw[4:6])}/{int(_raw[6:8])}"
+            _said_tag = f"他曾講（{_mmdd}）"
+        elif _fresh.get("stale"):
+            _said_tag = "他曾講"
+    except Exception:
+        _fresh = {}
+        _said_tag = "他最新"
     lines.append("<b>現在</b>")
     _pressure_break = (
         "不再假跌破" in thesis
@@ -773,7 +810,7 @@ def format_teach_brief(db_path: str = "", pack: Optional[Dict[str, Any]] = None)
         if _has_41500:
             lines.append(
                 html_escape(
-                    "他最新：拉回至少回測 41500；絕對不破上週五低 37837；"
+                    f"{_said_tag}：拉回至少回測 41500；絕對不破上週五低 37837；"
                     "夜盤已過第二組 C3 下降壓（口述斜線・無報價）。"
                     "水平台指壓 41760 另計（≠41500；非買訊）。"
                 )
@@ -781,7 +818,7 @@ def format_teach_brief(db_path: str = "", pack: Optional[Dict[str, Any]] = None)
         else:
             lines.append(
                 html_escape(
-                    "他最新：夜盤過第二組 C3 下降壓（他口述的斜線；圖上沒單獨標 C3、也無報價），"
+                    f"{_said_tag}：夜盤過第二組 C3 下降壓（他口述的斜線；圖上沒單獨標 C3、也無報價），"
                     "上週五低不再假跌破；拉回再測那條下降壓／清洗籌碼。"
                     "水平台指壓 41760 另計（≠那條口述下降壓；非買訊）。"
                 )
@@ -792,7 +829,7 @@ def format_teach_brief(db_path: str = "", pack: Optional[Dict[str, Any]] = None)
         )
         lines.append(
             html_escape(
-                "他最新：C3-5＋1 4重疊，確認上週五低＝最低；"
+                f"{_said_tag}：C3-5＋1 4重疊，確認上週五低＝最低；"
                 "一定再測週五低，破＝假跌破觀察（非買訊）。"
             )
         )
@@ -1347,6 +1384,19 @@ def format_focus_oral(
         "<b>飆大現在在講</b>",
         html_escape(f"最新　{when}" if when else "最新"),
     ]
+    # 主述新鮮度：加權已收＋過舊警告（他文時間已在「最新」行）
+    if db_path:
+        try:
+            from phone_narrative_freshness import (
+                assess_narrative_freshness,
+                freshness_banner_html,
+            )
+
+            _of = assess_narrative_freshness(str(db_path), now=clock)
+            if _of.get("board_ymd") or _of.get("twii_ymd") or _of.get("stale"):
+                blocks.append(freshness_banner_html(_of))
+        except Exception:
+            pass
     # 文內藍字僅非空白鍵路徑；空白鍵只出口語＋關卡表（2026-10-24）
     match_pack: Dict[str, Any] = {}
     if stock_links:
