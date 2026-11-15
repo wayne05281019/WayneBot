@@ -3,6 +3,7 @@
 
 觸發＝官方 16:30 融合成功後立刻掃（掛 main_runner._run_post_fuse_silent_tracks）。
 不准硬等 19:20。不寄話筒推播。不是買訊。
+掃完：話筒現況碼寫庫＋靜默落檔；同件跑下一版硬濾只靜默（§13 再生）。
 """
 from __future__ import annotations
 
@@ -188,7 +189,7 @@ def run_undervalue_sync(
     now: Optional[datetime] = None,
     notify: bool = False,
 ) -> Dict[str, Any]:
-    """開市日 19:20 掃描；notify 一律忽略（不准自動推播）。"""
+    """開市日融合後掃描；notify 一律忽略（不准自動推播）。"""
     _ = notify
     out: Dict[str, Any] = {"ok": False, "as_of": "", "n": 0, "note": ""}
     path = str(db_path or "").strip()
@@ -239,9 +240,9 @@ def run_undervalue_sync(
     finally:
         conn.close()
     try:
-        from undervalue_scan import run_undervalue_scan
+        from undervalue_scan import RULE_PHONE, run_undervalue_scan
 
-        scanned = run_undervalue_scan(path, as_of) or {}
+        scanned = run_undervalue_scan(path, as_of, rule_key=RULE_PHONE) or {}
     except Exception as exc:
         logger.exception("低估掃描失敗")
         _mark_pipeline(path, as_of, "failed", type(exc).__name__)
@@ -294,6 +295,15 @@ def run_undervalue_sync(
         conn.commit()
     finally:
         conn.close()
+    # 靜默落檔＋下一版（失敗不准打斷寫庫 success）
+    try:
+        from undervalue_confront import remember_scan_rows, run_next_variant_silent
+
+        remember_scan_rows(path, as_of, rows, rule_key=str(scanned.get("rule_key") or ""))
+        nxt = run_next_variant_silent(path, as_of)
+        out["next_n"] = int(nxt.get("n") or 0)
+    except Exception:
+        logger.exception("低估靜默／下一版失敗（名單已寫庫）")
     _mark_pipeline(
         path, as_of, "success", f"n={len(rows)} star={n_star} watch={n_watch} {note}"
     )

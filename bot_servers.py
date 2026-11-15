@@ -9685,6 +9685,30 @@ class WayneTelegramBot:
             return True
         return False
 
+    def _undervalue_pick_keyboard(self, picks: list):
+        """名單下可點代號查股（與海選／剛脫離零同一套查股路）。"""
+        from tg_layout import stock_btn_label
+
+        rows = []
+        line = []
+        for p in list(picks or [])[:16]:
+            if not isinstance(p, dict):
+                continue
+            sid = str(p.get("stock_id") or "").strip()
+            if not sid:
+                continue
+            mark = "★" if str(p.get("mark") or "") == "star" else "☆"
+            lab = f"{mark}{stock_btn_label(sid, str(p.get('name') or ''))}"
+            line.append(InlineKeyboardButton(lab[:28], callback_data=f"k:{sid}"))
+            if len(line) >= 2:
+                rows.append(line)
+                line = []
+        if line:
+            rows.append(line)
+        if not rows:
+            return self._keyboard()
+        return InlineKeyboardMarkup(rows)
+
     async def _send_undervalue_view(self, message, uid: str):
         """讀融合後低估名單快取出圖。不是買訊；不重算掃描。"""
         from import_health import latest_complete_quote_date
@@ -9719,16 +9743,19 @@ class WayneTelegramBot:
                 )
 
             png = await asyncio.to_thread(_paint)
+            n_star = sum(1 for p in picks if str(p.get("mark") or "") == "star")
+            n_watch = len(picks) - n_star
             cap = (
-                f"低估名單 {as_of}（估值≠買訊；進場只認黃金買點）"
+                f"低估名單 {as_of}　★{n_star}☆{n_watch}（估值≠買訊；進場只認黃金買點）"
                 if as_of
                 else "低估名單（估值≠買訊）"
             )
+            kb = self._undervalue_pick_keyboard(picks) if picks else self._keyboard()
             with open(png, "rb") as f:
                 await message.reply_photo(
                     photo=f,
                     caption=cap,
-                    reply_markup=self._keyboard(),
+                    reply_markup=kb,
                 )
         except Exception:
             logger.exception("低估名單出圖失敗")
