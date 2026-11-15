@@ -30,8 +30,6 @@ NEG = (120, 220, 168)
 POS = (255, 160, 140)
 DIV = (48, 68, 88)
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
-
 # 版面（邏輯 px）
 PAD_X = 44
 PAD_Y = 40
@@ -57,25 +55,10 @@ def _px(n: float) -> int:
 
 
 def _font(size_logic: float, *, bold: bool = False) -> ImageFont.FreeTypeFont:
-    size = _px(size_logic)
-    weight = "w860" if bold else "w560"
-    sys_name = "NotoSansCJK-Bold.ttc" if bold else "NotoSansCJK-Regular.ttc"
-    candidates = [
-        os.path.join(_HERE, "fonts", f"NotoSansTC-{weight}.ttf"),
-        os.path.join(_HERE, "NotoSansTC-Regular.otf"),
-        f"/usr/share/fonts/opentype/noto/{sys_name}",
-        f"/usr/share/fonts/truetype/noto/{sys_name}",
-    ]
-    for path in candidates:
-        if not os.path.exists(path):
-            continue
-        try:
-            if path.endswith(".ttc"):
-                return ImageFont.truetype(path, size, index=0)
-            return ImageFont.truetype(path, size)
-        except Exception:
-            continue
-    raise RuntimeError("缺少 NotoSansTC／NotoSansCJK 字型")
+    """與 industry_card 同一套字型路徑（含 wayne_navigator 權重檔＋系統 Noto），CI 才找得到。"""
+    from industry_card import _card_font
+
+    return _card_font(_px(size_logic), bold=bold)
 
 
 def _ink(font: ImageFont.ImageFont, text: str) -> Tuple[int, int, int, int]:

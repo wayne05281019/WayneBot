@@ -73,12 +73,15 @@ def test_reason_overflow_truncates_on_token_boundary():
             assert n in nums
 
 
-def test_no_invented_date_and_module_relative_font():
+def test_no_invented_date_and_font_shared_with_industry_card():
+    from industry_card import _card_font
+
     assert uc._as_of_label(None) == ""
     assert uc._as_of_label("20261114") == "2026-11-14（台北）"
-    bundled = os.path.join(os.path.dirname(os.path.abspath(uc.__file__)), "fonts")
-    if os.path.isdir(bundled):
-        assert os.path.dirname(uc._font(10).path) == bundled
+    for bold in (False, True):
+        mine = uc._font(10, bold=bold).path
+        assert os.path.realpath(mine) == os.path.realpath(_card_font(uc._px(10), bold=bold).path)
+        assert not mine.startswith("/workspace/") or uc.__file__.startswith("/workspace/")
 
 
 def test_star_rows_first_and_estimate_footnote(tmp_path):

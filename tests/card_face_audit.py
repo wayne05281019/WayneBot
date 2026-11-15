@@ -186,7 +186,9 @@ def card_issues(card: dict, texts: Iterable[str] | None = None) -> list[str]:
         ("h60", card.get("h60"), card.get("dist_h60")),
     ):
         if px and close and dist is not None:
-            want = round((close - float(px)) / float(px) * 100.0, 1)
+            # 與 wayne_navigator._dist_h 一致：自高回檔＝(收−高)÷高，不准÷收
+            hv = float(px)
+            want = round((close - hv) / hv * 100.0, 1) if hv else 0.0
             if not _approx(dist, want):
                 out.append(f"{lab} 距高 {dist} ≠ {want}")
     for lab, px, dist in (
