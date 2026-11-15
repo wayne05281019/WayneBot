@@ -1276,6 +1276,7 @@ def _bare_screen_bot():
     bot._screening_global_owner = ""
     bot._screening_build_task = None
     bot._screening_build_claim = asyncio.Lock()
+    bot._screening_build_waiters = 0
     bot._actor_op_gen = {}
     bot._actor_op_kind = {}
     bot._actor_waits = {}
@@ -1672,6 +1673,16 @@ def test_second_screen_press_joins_inflight_loading(monkeypatch):
         assert "LOADING" in first2
         assert "逾時" not in first2
         assert "已超過 3 分鐘" not in first2
+        # 等第二按也認領／跟車後再放行建檔；LOADING 出太早，若立刻 release
+        # 第一輪會做完並清指標，CI 負載下第二按才到認領＝誤開第二輪。
+        for _ in range(500):
+            if int(getattr(bot, "_screening_build_waiters", 0) or 0) >= 2:
+                break
+            await asyncio.sleep(0.01)
+        assert int(getattr(bot, "_screening_build_waiters", 0) or 0) >= 2, (
+            "第二按未跟上車"
+        )
+        assert n["build"] == 1
         release.set()
         await asyncio.wait_for(t1, timeout=8.0)
         await asyncio.wait_for(t2, timeout=8.0)

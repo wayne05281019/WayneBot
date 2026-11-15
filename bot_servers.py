@@ -866,6 +866,8 @@ class WayneTelegramBot:
         self._screening_build_task = None
         # 建檔認領鎖：兩次按在讀快取 await 後同時醒來時，不准各開一輪全掃
         self._screening_build_claim = asyncio.Lock()
+        # 跟車人數：最後一位離開且已完成才清指標；取消未交付要留手遞（准第二按跟同一輪）
+        self._screening_build_waiters = 0
         self._menu_fade_gen: Dict[str, int] = {}
         self._menu_pin_msgs: Dict[str, object] = {}
         self._menu_pin_at: Dict[str, float] = {}
@@ -3978,6 +3980,62 @@ class WayneTelegramBot:
         except Exception:
             pass
 
+    def _ensure_screening_build_gate(self) -> asyncio.Lock:
+        """測試 __new__ 沒跑 __init__ 時補認領鎖；已有鎖不准換新一把。"""
+        claim = getattr(self, "_screening_build_claim", None)
+        if not isinstance(claim, asyncio.Lock):
+            self._screening_build_claim = asyncio.Lock()
+        if not isinstance(getattr(self, "_screening_build_waiters", None), int):
+            self._screening_build_waiters = 0
+        return self._screening_build_claim
+
+    @staticmethod
+    def _screening_build_task_ok(task: asyncio.Task) -> bool:
+        """進行中＝可跟；已成功做完＝可跟同一輪結果；取消／例外才准新建。"""
+        if not isinstance(task, asyncio.Task):
+            return False
+        if not task.done():
+            return True
+        if task.cancelled():
+            return False
+        try:
+            return task.exception() is None
+        except (asyncio.CancelledError, asyncio.InvalidStateError):
+            return False
+
+    async def _claim_screening_build_task(self, starter) -> asyncio.Task:
+        """原子認領／跟車：進行中或剛成功完成的都跟同一輪，不准雙建。"""
+        async with self._ensure_screening_build_gate():
+            inflight = getattr(self, "_screening_build_task", None)
+            if self._screening_build_task_ok(inflight):
+                build_task = inflight
+            else:
+                build_task = asyncio.create_task(asyncio.to_thread(starter))
+                self._screening_build_task = build_task
+            self._screening_build_waiters = int(
+                getattr(self, "_screening_build_waiters", 0) or 0
+            ) + 1
+            return build_task
+
+    async def _release_screening_build_task(
+        self, build_task, *, allow_clear: bool = True
+    ) -> None:
+        """跟車結束。取消未交付不准清成功結果（留給第二按手遞）；已交付才准清。"""
+        if build_task is None:
+            return
+        async with self._ensure_screening_build_gate():
+            n = int(getattr(self, "_screening_build_waiters", 0) or 0)
+            self._screening_build_waiters = max(0, n - 1)
+            if not allow_clear:
+                return
+            if self._screening_build_waiters > 0:
+                return
+            if getattr(self, "_screening_build_task", None) is not build_task:
+                return
+            if not build_task.done():
+                return
+            self._screening_build_task = None
+
     async def _run_manual_screening(self, message, uid: str = ""):
         """手動海選：進度提示 + 逾時保護 + 完成後提示當沖可用。
 
@@ -4107,6 +4165,7 @@ class WayneTelegramBot:
         except (TypeError, ValueError):
             pass
         build_task = None
+        build_claimed = False
         timeout_spoken = False
         try:
             await self._dismiss_menu_transients(actor)
@@ -4251,17 +4310,9 @@ class WayneTelegramBot:
                 return build_and_cache_full_screening(self.db_path)
 
             # 讀快取 await 後兩邊可能同時到這裡；認領必須原子，否則 CI 會建兩輪。
-            # 已有鎖不准換新一把（雙按各拿一把＝雙建）；測試 __new__ 沒跑 __init__ 才補。
-            claim = getattr(self, "_screening_build_claim", None)
-            if not isinstance(claim, asyncio.Lock):
-                self._screening_build_claim = asyncio.Lock()
-            async with self._screening_build_claim:
-                inflight = getattr(self, "_screening_build_task", None)
-                if isinstance(inflight, asyncio.Task) and not inflight.done():
-                    build_task = inflight
-                else:
-                    build_task = asyncio.create_task(asyncio.to_thread(_build_and_cache))
-                    self._screening_build_task = build_task
+            # 進行中或剛成功完成都跟同一輪（同人連按／手遞），不准各開一輪全掃。
+            build_task = await self._claim_screening_build_task(_build_and_cache)
+            build_claimed = True
 
             async def _late_deliver():
                 try:
@@ -4276,9 +4327,9 @@ class WayneTelegramBot:
                         pass
                     return
                 finally:
-                    if getattr(self, "_screening_build_task", None) is build_task:
-                        if build_task.done():
-                            self._screening_build_task = None
+                    await self._release_screening_build_task(
+                        build_task, allow_clear=True
+                    )
                 payload = late
                 try:
                     cached_late = await asyncio.wait_for(
@@ -4293,6 +4344,7 @@ class WayneTelegramBot:
             async def _speak_timeout_and_late() -> None:
                 """前端上限到：先停 ticker 改口，再排晚推。不准卡在讀快取讓「掃描全市場」一直跑。"""
                 nonlocal timeout_spoken, status_consumed, delivered, hold_gate
+                nonlocal build_claimed
                 await _stop_ticker()
                 # 短試快取；有就出卡。無超時硬上限＝#515 live 卡 6 分鐘根因。
                 cached_now = await _try_cache(3.0)
@@ -4301,8 +4353,11 @@ class WayneTelegramBot:
                         message, cached_now, hub=hub, status=status
                     )
                     delivered = True
-                    if getattr(self, "_screening_build_task", None) is build_task:
-                        self._screening_build_task = None
+                    if build_claimed:
+                        await self._release_screening_build_task(
+                            build_task, allow_clear=True
+                        )
+                        build_claimed = False
                     return
                 if build_task is not None and build_task.done() and not build_task.cancelled():
                     try:
@@ -4315,21 +4370,30 @@ class WayneTelegramBot:
                                 delivered = True
                             except Exception:
                                 logger.exception("海選失敗提示送出失敗")
-                        if getattr(self, "_screening_build_task", None) is build_task:
-                            self._screening_build_task = None
+                        if build_claimed:
+                            await self._release_screening_build_task(
+                                build_task, allow_clear=True
+                            )
+                            build_claimed = False
                         return
                     if self._actor_op_alive(actor, op_kind, gen):
                         await self._deliver_manual_screening_result(
                             message, result, hub=hub, status=status
                         )
                         delivered = True
-                    if getattr(self, "_screening_build_task", None) is build_task:
-                        self._screening_build_task = None
+                    if build_claimed:
+                        await self._release_screening_build_task(
+                            build_task, allow_clear=True
+                        )
+                        build_claimed = False
                     return
                 logger.warning("手動海選前端逾時，背景續建並自動推名單 actor=%s", actor)
                 timeout_spoken = True
                 status_consumed = await self._speak_screen_timeout(status, message, hub)
                 delivered = True
+                # 晚推接手跟車名額；本輪不再 release，避免雙扣。
+                if build_claimed:
+                    build_claimed = False
                 late = getattr(self, "_screening_late_task", None)
                 if not isinstance(late, asyncio.Task) or late.done():
                     self._screening_late_task = asyncio.create_task(_late_deliver())
@@ -4343,6 +4407,8 @@ class WayneTelegramBot:
                 if self._screen_wait_was_long_enough(elapsed, screen_timeout_s):
                     await _speak_timeout_and_late()
                 else:
+                    if build_claimed:
+                        build_claimed = False
                     late = getattr(self, "_screening_late_task", None)
                     if not isinstance(late, asyncio.Task) or late.done():
                         self._screening_late_task = asyncio.create_task(_late_deliver())
@@ -4383,8 +4449,11 @@ class WayneTelegramBot:
                             delivered = True
                         except Exception:
                             logger.exception("海選失敗提示送出失敗")
-                    if getattr(self, "_screening_build_task", None) is build_task:
-                        self._screening_build_task = None
+                    if build_claimed:
+                        await self._release_screening_build_task(
+                            build_task, allow_clear=True
+                        )
+                        build_claimed = False
                     return
             else:
                 elapsed = time.monotonic() - t0
@@ -4395,6 +4464,8 @@ class WayneTelegramBot:
                         screen_timeout_s,
                         actor,
                     )
+                    if build_claimed:
+                        build_claimed = False
                     late = getattr(self, "_screening_late_task", None)
                     if not isinstance(late, asyncio.Task) or late.done():
                         self._screening_late_task = asyncio.create_task(_late_deliver())
@@ -4413,8 +4484,11 @@ class WayneTelegramBot:
                 message, result, hub=hub, status=status
             )
             delivered = True
-            if getattr(self, "_screening_build_task", None) is build_task and build_task.done():
-                self._screening_build_task = None
+            if build_claimed:
+                await self._release_screening_build_task(
+                    build_task, allow_clear=True
+                )
+                build_claimed = False
         except asyncio.TimeoutError:
             elapsed = time.monotonic() - t0
             logger.exception("手動海選等待逾時 elapsed=%.2f", elapsed)
@@ -4471,6 +4545,16 @@ class WayneTelegramBot:
                 async with self._screening_gate:
                     if self._screening_global_owner == actor:
                         self._screening_global_owner = ""
+            # 認領過且還沒交給晚推：取消未交付要留手遞給第二按；已交付／失敗才清。
+            if build_claimed and build_task is not None:
+                try:
+                    await self._release_screening_build_task(
+                        build_task,
+                        allow_clear=bool(delivered) and not bool(cancelled),
+                    )
+                except Exception:
+                    logger.exception("海選建檔跟車釋放失敗")
+                build_claimed = False
             # 逾時已改口的 LOADING 不准刪成空白；取消／成功才清殘框。
             if not status_consumed:
                 await self._dismiss_progress_now(status)
