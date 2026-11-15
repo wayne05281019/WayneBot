@@ -1,13 +1,23 @@
 # -*- coding: utf-8 -*-
 """低估名單掃描：推估防呆與硬濾／估值母體（與海選／黃金買點分開）。
 
-A4：近 3 月 MoM 動能 g 夾在 [-5%, +10%]；不准拿單月極端 YoY 線性外推全年。
-推估必標；無官方已公告月營收／季報／收盤就不進母體。不是進場買訊。
+原意交叉：
+- 卡欄＝官方本益、同鏈中位、距同鏈下緣％、流動張（話筒 PNG）。
+- 同鏈＝industry_fine.chain_peer_ids／比價同源，不是證交所粗產業。
+- 飆大 11/09 封印：龍頭「本益被低估」＝官方 PE 近自身近窗低緣（非買訊；切入仍黃金買點）。
+- A4：近 3 月 MoM 動能 g 夾在 [-5%, +10%]；無官方月營收不推估（估 PE 軌另開）。
+
+話筒現況碼 RULE_PHONE＝uv_chain_own_v1；下一版靜默 RULE_NEXT＝uv_own_floor_tight_v2。
+§13：n≥20 且下一版贏現況才換話筒規則並再生；勝率不准混進海選／黃金買點。
+不是進場買訊。
 """
 from __future__ import annotations
 
+import json
 import math
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+import sqlite3
+import statistics
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 # 近 3 月平均月增動能安全區間（小數，非百分點）
 G_MOM_FLOOR = -0.05
@@ -15,6 +25,26 @@ G_MOM_CEIL = 0.10
 # 單月 YoY 超過此絕對值視為極端 → 外推仍只走夾限後的 g，不准用 YoY 當斜率
 EXTREME_YOY_ABS_PCT = 80.0
 MOM_UNITS = ("pct", "frac")
+
+# --- 滾動規則鍵（§13：換現況時必須同時再生下一版）---
+RULE_PHONE = "uv_chain_own_v1"
+RULE_NEXT = "uv_own_floor_tight_v2"
+# 話筒名單上限（手機卡讀得完）
+PHONE_STAR_CAP = 10
+PHONE_WATCH_CAP = 10
+# 官方本益合理窗（排除極端／負值；無真數不上）
+PE_MIN = 3.0
+PE_MAX = 200.0
+OWN_PE_LOOKBACK = 32
+FLOW_DAYS = 20
+FLOW_MIN_STAR = 1500.0
+FLOW_MIN_WATCH = 1500.0
+PEER_MIN_N = 3
+# 硬濾（可量化；對齊鎖死規格能落地的部分）
+YOY_MIN_PCT = 15.0
+QTY60_A_MIN = 400.0  # A 穩當核心：近 60 日均量（張）
+# 距下緣％＝(PE／同鏈中位−1)×100；≤−8%≈中位×0.92（比價 lag 帶）
+STAR_DIST_MAX = -8.0
 
 
 def _finite(raw: Any) -> Optional[float]:
@@ -126,4 +156,451 @@ def estimate_year_revenue(
         "g_meta": g_meta,
         "proj": proj,
         "label": "推估" if r_m > 0 else "已公告",
+    }
+
+
+def _ymd(raw: Any) -> str:
+    t = str(raw or "").replace("-", "")[:8]
+    return t if len(t) == 8 and t.isdigit() else ""
+
+
+def _median(vals: Sequence[float]) -> Optional[float]:
+    xs = [float(v) for v in vals if _finite(v) is not None]
+    if not xs:
+        return None
+    return float(statistics.median(xs))
+
+
+def _load_latest_pe_map(conn: sqlite3.Connection, as_of: str) -> Dict[str, float]:
+    """官方 daily_valuation.pe：每檔 as_of 當日或之前最新一筆；無真數不上。"""
+    day = _ymd(as_of)
+    out: Dict[str, float] = {}
+    if not day:
+        return out
+    rows = conn.execute(
+        """
+        SELECT stock_id, pe FROM daily_valuation
+        WHERE REPLACE(CAST(date AS TEXT),'-','')<=?
+          AND pe IS NOT NULL AND pe > 0 AND pe < ?
+        ORDER BY date DESC
+        """,
+        (day, PE_MAX),
+    ).fetchall()
+    for sid, pe in rows:
+        code = str(sid or "").strip()
+        if not code or code in out:
+            continue
+        v = _finite(pe)
+        if v is None or v < PE_MIN:
+            continue
+        out[code] = float(v)
+    return out
+
+
+def _own_pe_series(
+    conn: sqlite3.Connection, sid: str, as_of: str, *, cap: int = OWN_PE_LOOKBACK
+) -> List[float]:
+    day = _ymd(as_of)
+    if not day or not sid:
+        return []
+    rows = conn.execute(
+        """
+        SELECT pe FROM daily_valuation
+        WHERE stock_id=? AND REPLACE(CAST(date AS TEXT),'-','')<=?
+          AND pe IS NOT NULL AND pe > 0 AND pe < ?
+        ORDER BY date DESC LIMIT ?
+        """,
+        (sid, day, PE_MAX, int(cap)),
+    ).fetchall()
+    out: List[float] = []
+    for (pe,) in rows:
+        v = _finite(pe)
+        if v is not None and v >= PE_MIN:
+            out.append(float(v))
+    return out
+
+
+def _quote_meta(
+    conn: sqlite3.Connection, as_of: str, sids: Iterable[str]
+) -> Dict[str, Dict[str, Any]]:
+    """收盤＋名＋近窗均量（張）＋QTY60＋最新月 YoY。缺官方收就不進。"""
+    day = _ymd(as_of)
+    want = [str(s).strip() for s in sids if str(s or "").strip()]
+    out: Dict[str, Dict[str, Any]] = {}
+    if not day or not want:
+        return out
+    for sid in want:
+        q = conn.execute(
+            """
+            SELECT stock_name, close FROM daily_quotes
+            WHERE stock_id=? AND REPLACE(CAST(date AS TEXT),'-','')<=?
+            ORDER BY date DESC LIMIT 1
+            """,
+            (sid, day),
+        ).fetchone()
+        if not q:
+            continue
+        close = _finite(q[1] if not isinstance(q, sqlite3.Row) else q["close"])
+        if close is None or close <= 0:
+            continue
+        vols20 = conn.execute(
+            """
+            SELECT volume FROM daily_quotes
+            WHERE stock_id=? AND REPLACE(CAST(date AS TEXT),'-','')<=?
+              AND volume IS NOT NULL AND volume > 0
+            ORDER BY date DESC LIMIT ?
+            """,
+            (sid, day, FLOW_DAYS),
+        ).fetchall()
+        flow_vals = [float(v) for v in (_finite(x[0]) for x in vols20) if v is not None]
+        if len(flow_vals) < 5:
+            continue
+        vols60 = conn.execute(
+            """
+            SELECT volume FROM daily_quotes
+            WHERE stock_id=? AND REPLACE(CAST(date AS TEXT),'-','')<=?
+              AND volume IS NOT NULL AND volume > 0
+            ORDER BY date DESC LIMIT 60
+            """,
+            (sid, day),
+        ).fetchall()
+        q60_vals = [float(v) for v in (_finite(x[0]) for x in vols60) if v is not None]
+        qty60 = float(sum(q60_vals) / len(q60_vals)) if q60_vals else 0.0
+        yoy = None
+        try:
+            mr = conn.execute(
+                """
+                SELECT yoy_pct FROM monthly_revenue
+                WHERE stock_id=? AND yoy_pct IS NOT NULL
+                ORDER BY yyyymm DESC LIMIT 1
+                """,
+                (sid,),
+            ).fetchone()
+            if mr is not None:
+                yoy = _finite(mr[0] if not isinstance(mr, sqlite3.Row) else mr["yoy_pct"])
+        except sqlite3.Error:
+            yoy = None
+        name = str(
+            (q[0] if not isinstance(q, sqlite3.Row) else q["stock_name"]) or sid
+        )
+        out[sid] = {
+            "name": name,
+            "close": float(close),
+            "flow_shares": float(sum(flow_vals) / len(flow_vals)),
+            "qty60": qty60,
+            "yoy_pct": yoy,
+        }
+    return out
+
+
+def _leader_ids(db_path: str, meta: Dict[str, Dict[str, Any]]) -> Set[str]:
+    """話筒龍頭表＋長線抱；失敗＝空集合（不准假龍頭）。"""
+    out: Set[str] = set()
+    try:
+        from biaoke_judge import _LONG_HOLD, leader_of
+
+        out |= set(str(k) for k in (_LONG_HOLD or {}))
+        for sid, m in meta.items():
+            try:
+                lid, _nm, _why = leader_of(db_path, sid, str(m.get("name") or ""))
+            except Exception:
+                continue
+            if str(lid or "") == sid:
+                out.add(sid)
+    except Exception:
+        return out
+    return out
+
+
+def _peer_index(db_path: str) -> Dict[str, List[str]]:
+    """sid → 同鏈同業（含自己）。一次建索，避免每檔重掃表。"""
+    try:
+        from industry_fine import (
+            CACHE_DAYS,
+            _TAUGHT_CROSS,
+            ensure_fine_industry_table,
+            load_cached_fine_industry,
+            membership_keys,
+            split_chain,
+        )
+    except Exception:
+        return {}
+    ensure_fine_industry_table(db_path)
+    conn = sqlite3.connect(db_path, timeout=30.0)
+    try:
+        rows = conn.execute(
+            """
+            SELECT f.stock_id, f.chain, f.tags_json
+            FROM stock_fine_industry f
+            JOIN stock_universe u ON u.stock_id = f.stock_id
+            WHERE u.is_active=1 AND length(f.stock_id)=4
+              AND COALESCE(u.asset_type,'') NOT LIKE 'ETF%'
+            """
+        ).fetchall()
+    except sqlite3.Error:
+        rows = []
+    finally:
+        conn.close()
+    # sid → keys；key → sids
+    sid_keys: Dict[str, set] = {}
+    key_sids: Dict[Tuple[str, str], Set[str]] = {}
+    all_sids: List[str] = []
+    for sid_raw, chain, tags_json in rows:
+        sid = str(sid_raw or "").strip()
+        if not sid:
+            continue
+        all_sids.append(sid)
+        try:
+            tags = json.loads(tags_json) if tags_json else split_chain(chain)
+        except Exception:
+            tags = split_chain(chain)
+        finest = str(tags[-1] if tags else "")
+        keys = membership_keys(sid, finest)
+        sid_keys[sid] = keys
+        for k in keys:
+            key_sids.setdefault(k, set()).add(sid)
+    # taught cross members always see each other
+    for _tag, members in _TAUGHT_CROSS:
+        bucket = {str(x) for x in members}
+        for sid in bucket:
+            sid_keys.setdefault(sid, set())
+            for other in bucket:
+                # synthetic key so they link
+                key_sids.setdefault(("x", _tag), set()).add(other)
+            sid_keys[sid].add(("x", _tag))
+    # warm cache for membership (used by membership_keys extras)
+    try:
+        load_cached_fine_industry(db_path, all_sids[:1], max_age_days=CACHE_DAYS)
+    except Exception:
+        pass
+    out: Dict[str, List[str]] = {}
+    for sid, keys in sid_keys.items():
+        peers: Set[str] = set()
+        for k in keys:
+            peers |= key_sids.get(k, set())
+        if sid not in peers:
+            peers.add(sid)
+        out[sid] = sorted(peers)
+    return out
+
+
+def _dist_to_peer_floor_pct(pe: float, med: float) -> float:
+    """距下緣％＝相對同鏈中位（卡欄語意）；負＝便宜。"""
+    if med <= 0:
+        return 999.0
+    return (float(pe) / float(med) - 1.0) * 100.0
+
+
+def _classify_v1(
+    *,
+    pe: float,
+    med: float,
+    floor: float,
+    flow: float,
+    own_min: float,
+    own_med: float,
+    is_leader: bool,
+    qty60: float = 0.0,
+    yoy_pct: Optional[float] = None,
+) -> Tuple[str, str, float]:
+    """回傳 (mark|'' , reason, dist_to_floor_pct)。
+
+    硬濾前置由呼叫端做；此處只分 ★／☆。
+    ★：距中位≤−8%（≈中位×0.92）或自身近窗低緣；☆：距中位≤0 但未到 ★。
+    """
+    _ = floor
+    dist = _dist_to_peer_floor_pct(pe, med)
+    pool = "A穩當" if qty60 >= QTY60_A_MIN else "B量能薄"
+    chain_cheap = (
+        dist <= STAR_DIST_MAX
+        and flow >= FLOW_MIN_STAR
+        and pe >= 8.0
+    )
+    own_cheap = (
+        pe <= own_min * 1.02
+        and pe <= own_med * 0.85
+        and flow >= FLOW_MIN_STAR
+        and (is_leader or pe < med)
+    )
+    yoy_bit = ""
+    if yoy_pct is not None:
+        yoy_bit = f"；月YoY{yoy_pct:+.0f}%"
+    if chain_cheap or own_cheap:
+        bits: List[str] = [pool]
+        if chain_cheap:
+            bits.append(f"同鏈PE {pe:.1f} 距中位{dist:.1f}%")
+        if own_cheap:
+            bits.append(f"近窗本益近自身低緣{own_min:.1f}")
+        return "star", "；".join(bits) + yoy_bit, dist
+    if dist <= 0.0 and flow >= FLOW_MIN_WATCH:
+        return "watch", f"{pool}；PE≤同鏈中位{med:.1f}，先觀察不當真低估{yoy_bit}", dist
+    return "", "", dist
+
+
+def _classify_v2(
+    *,
+    pe: float,
+    med: float,
+    floor: float,
+    flow: float,
+    own_min: float,
+    own_med: float,
+    is_leader: bool,
+    qty60: float = 0.0,
+    yoy_pct: Optional[float] = None,
+) -> Tuple[str, str, float]:
+    """下一版：更貼自身低緣＋距中位更緊（≤−12%）。"""
+    _ = floor
+    dist = _dist_to_peer_floor_pct(pe, med)
+    pool = "A穩當" if qty60 >= QTY60_A_MIN else "B量能薄"
+    yoy_bit = f"；月YoY{yoy_pct:+.0f}%" if yoy_pct is not None else ""
+    tight = (
+        pe <= own_min * 1.01
+        and pe <= own_med * 0.82
+        and dist <= -12.0
+        and flow >= 2000.0
+        and (is_leader or pe <= med * 0.95)
+    )
+    if tight:
+        return (
+            "star",
+            f"{pool}；自身低緣緊貼{own_min:.1f}且距中位{dist:.1f}%{yoy_bit}",
+            dist,
+        )
+    near = pe <= own_min * 1.05 and dist <= 0.0 and flow >= FLOW_MIN_WATCH
+    if near:
+        return "watch", f"{pool}；近自身低緣、≤中位{med:.1f}{yoy_bit}", dist
+    return "", "", dist
+
+
+_CLASSIFIERS = {
+    RULE_PHONE: _classify_v1,
+    RULE_NEXT: _classify_v2,
+}
+
+
+def run_undervalue_scan(
+    db_path: str,
+    as_of: str,
+    *,
+    rule_key: str = RULE_PHONE,
+    star_cap: int = PHONE_STAR_CAP,
+    watch_cap: int = PHONE_WATCH_CAP,
+) -> Dict[str, Any]:
+    """盤後低估掃描入口。只吃官方本益／收／量／同鏈；不准假成本。不是買訊。"""
+    path = str(db_path or "").strip()
+    ymd = _ymd(as_of)
+    rule = str(rule_key or RULE_PHONE).strip() or RULE_PHONE
+    classify = _CLASSIFIERS.get(rule) or _classify_v1
+    empty = {
+        "ok": True,
+        "as_of": ymd,
+        "rule_key": rule,
+        "rows": [],
+        "note": "",
+    }
+    if not path or not ymd:
+        empty["ok"] = False
+        empty["note"] = "缺 db 或 as_of"
+        return empty
+    try:
+        conn = sqlite3.connect(path, timeout=60.0)
+        conn.row_factory = sqlite3.Row
+    except sqlite3.Error as exc:
+        empty["ok"] = False
+        empty["note"] = type(exc).__name__
+        return empty
+    try:
+        pe_map = _load_latest_pe_map(conn, ymd)
+        if not pe_map:
+            empty["note"] = "無官方本益"
+            return empty
+        meta = _quote_meta(conn, ymd, pe_map.keys())
+        leaders = _leader_ids(path, meta)
+        peer_ix = _peer_index(path)
+        stars: List[Dict[str, Any]] = []
+        watches: List[Dict[str, Any]] = []
+        for sid, pe in pe_map.items():
+            if sid not in meta:
+                continue
+            # 硬濾：最新月營收 YoY ≥ +15%（無 YoY 不上；不准假成長）
+            yoy = meta[sid].get("yoy_pct")
+            if yoy is None or float(yoy) < YOY_MIN_PCT:
+                continue
+            peers = [p for p in peer_ix.get(sid, []) if p in pe_map]
+            if sid not in peers:
+                peers = [sid] + peers
+            peer_pes = [pe_map[p] for p in peers if p in pe_map]
+            if len(peer_pes) < PEER_MIN_N:
+                continue
+            med = _median(peer_pes)
+            floor = min(peer_pes) if peer_pes else None
+            if med is None or floor is None or floor <= 0:
+                continue
+            hist = _own_pe_series(conn, sid, ymd)
+            if len(hist) < 12:
+                continue
+            own_min = min(hist)
+            own_med = float(statistics.median(hist))
+            flow = float(meta[sid]["flow_shares"])
+            qty60 = float(meta[sid].get("qty60") or 0.0)
+            mark, reason, dist = classify(
+                pe=float(pe),
+                med=float(med),
+                floor=float(floor),
+                flow=flow,
+                own_min=float(own_min),
+                own_med=float(own_med),
+                is_leader=sid in leaders,
+                qty60=qty60,
+                yoy_pct=float(yoy),
+            )
+            if not mark:
+                continue
+            row = {
+                "stock_id": sid,
+                "name": meta[sid]["name"],
+                "mark": mark,
+                "close": meta[sid]["close"],
+                "pe": float(pe),
+                "pe_est": False,
+                "peer_pe_median": float(med),
+                "dist_to_floor_pct": float(dist),
+                "flow_shares": flow,
+                "reason": reason,
+                "rule_key": rule,
+                "qty60": qty60,
+                "yoy_pct": float(yoy),
+            }
+            if mark == "star":
+                stars.append(row)
+            else:
+                watches.append(row)
+    finally:
+        conn.close()
+
+    # 雙條件（同鏈＋自身）優先，再相對便宜（PE／中位），再距下緣
+    def _rel(r: Dict[str, Any]) -> float:
+        return float(r["pe"]) / max(float(r["peer_pe_median"]), 1e-9)
+
+    def _star_key(r: Dict[str, Any]) -> Tuple[Any, ...]:
+        reason = str(r.get("reason") or "")
+        both = ("同鏈" in reason) and ("自身" in reason)
+        return (0 if both else 1, _rel(r), float(r["dist_to_floor_pct"]), float(r["pe"]))
+
+    stars.sort(key=_star_key)
+    watches.sort(key=lambda r: (_rel(r), float(r["pe"])))
+    rows = stars[: max(0, int(star_cap))] + watches[: max(0, int(watch_cap))]
+    note = (
+        f"{rule} star={min(len(stars), star_cap)}/{len(stars)} "
+        f"watch={min(len(watches), watch_cap)}/{len(watches)}"
+    )
+    return {
+        "ok": True,
+        "as_of": ymd,
+        "rule_key": rule,
+        "rows": rows,
+        "n_star_raw": len(stars),
+        "n_watch_raw": len(watches),
+        "note": note,
     }

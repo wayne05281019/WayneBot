@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 from bot_servers import (
     HELP_TOPICS,
     MENU_BTN_AI,
+    MENU_BTN_UNDERVALUE,
     MENU_BTN_LEAVE_ZERO,
     MENU_BTN_MARKET,
     MENU_BTN_DONGZHU,
@@ -79,7 +80,7 @@ def test_twenty_users_menu_and_help_do_not_share_state():
         rows = await asyncio.gather(*[one(9000 + i) for i in range(20)])
         keys = [k for _, k in rows]
         assert len(set(keys)) == 20
-        assert MENU_BTN_AI in [b.text for b in bot._reply_menu().keyboard[1]]
+        assert MENU_BTN_UNDERVALUE in [b.text for b in bot._reply_menu().keyboard[1]]
         assert MENU_BTN_MARKET in [b.text for b in bot._reply_menu().keyboard[0]]
 
     asyncio.run(run())

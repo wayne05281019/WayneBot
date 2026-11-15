@@ -56,6 +56,8 @@ SCREEN_KINDS = frozenset(
         "intraday_leave_zero",
         "winrate_buypoint",
         "winrate_filter",
+        "undervalue",
+        "undervalue_next",
     }
 )
 
@@ -297,6 +299,21 @@ BUTTON_CATALOG: Tuple[Dict[str, Any], ...] = (
         "note": (
             "建議哪檔：PAINT＝vol_own_mid（可多檔；空退整包）；"
             "緊版只靜默；不准硬標優先 1～2 檔；不准改 leave_zero／藍▲紅框"
+        ),
+    },
+    {
+        "btn": "低估名單",
+        "kinds": ("undervalue", "undervalue_next"),
+        "class": CLASS_SCREEN,
+        "status": "present",
+        "pipe": (
+            "undervalue_sync 融合後掃＋undervalue_confront "
+            "（話筒 RULE_PHONE／下一版 RULE_NEXT 靜默；judge_tape 1／5）"
+        ),
+        "window": "盤後官方本益＋同鏈中位／下緣＋流動張；前瞻 1／5 日官方收",
+        "note": (
+            "估值≠買訊；與海選／黃金買點分開對質；"
+            "§13 n≥20 且下一版贏現況才換話筒規則並再生；空名單不算"
         ),
     },
     {
@@ -924,6 +941,22 @@ def snapshot_winrate_buypoint(market_db: str, as_of: str = "") -> int:
         return 0
 
 
+def snapshot_undervalue(market_db: str, as_of: str = "") -> int:
+    """低估名單靜默凍（讀 undervalue_picks；空名單不算）。失敗吞掉。"""
+    day = _as_of(market_db, as_of)
+    if not market_db or not day:
+        return 0
+    try:
+        from undervalue_confront import remember_scan_rows
+        from undervalue_scan import RULE_PHONE
+        from undervalue_sync import load_picks
+
+        rows = load_picks(market_db, day) or []
+        return int(remember_scan_rows(market_db, day, rows, rule_key=RULE_PHONE) or 0)
+    except Exception:
+        return 0
+
+
 def snapshot_all_button_gaps(market_db: str, as_of: str = "") -> Dict[str, int]:
     """補缺鈕骨架一輪。一條失敗不擋其他；各軌各自蓋 sv-* 成功／失敗戳。"""
     day = _as_of(market_db, as_of)
@@ -951,6 +984,7 @@ def snapshot_all_button_gaps(market_db: str, as_of: str = "") -> Dict[str, int]:
             snapshot_biaoke_dist_channel_second,
         ),
         ("winrate_buypoint", "winrate-buypoint", snapshot_winrate_buypoint),
+        ("undervalue", "undervalue", snapshot_undervalue),
     )
     for key, track, fn in runners:
         prev = track_status(market_db, track, day)

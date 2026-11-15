@@ -23,6 +23,7 @@ from ai_trader import ai_user_id
 from bot_servers import (
     HELP_TOPICS,
     MENU_BTN_AI,
+    MENU_BTN_UNDERVALUE,
     MENU_BTN_CHONG,
     MENU_BTN_DONGZHU,
     MENU_BTN_FLOW,
@@ -172,11 +173,15 @@ def _bot(db: str) -> WayneTelegramBot:
     async def _ai(message, uid):
         hits.setdefault(str(uid), []).append("AI倉")
 
+    async def _uv(message, uid):
+        hits.setdefault(str(uid), []).append(MENU_BTN_UNDERVALUE)
+
     async def _bk(message, *, ask="", uid=""):
         uid = str(uid or getattr(getattr(message, "from_user", None), "id", "") or "")
         hits.setdefault(uid, []).append("飆客")
 
     bot._send_ai_desk_view = AsyncMock(side_effect=_ai)
+    bot._send_undervalue_view = AsyncMock(side_effect=_uv)
     bot._send_biaoke_page = AsyncMock(side_effect=_bk)
     bot._enter_biaoke_chat = MagicMock()
     return bot
@@ -342,6 +347,7 @@ def test_two_users_all_buttons_and_help_topics_interleaved(tmp_path):
         MENU_BTN_CHONG,
         MENU_BTN_PRESSURE,
         MENU_BTN_AI,
+        MENU_BTN_UNDERVALUE,
         MENU_BTN_STREAK,
         MENU_BTN_LEAVE_ZERO,
         MENU_BTN_DONGZHU,
@@ -370,7 +376,7 @@ def test_two_users_all_buttons_and_help_topics_interleaved(tmp_path):
     asyncio.run(run())
     for uid in (WAYNE, BRO):
         names = set(bot._stress_hits[uid])
-        for need in ("勝率買點", "海選", "持股", "加入觀察", "飆客", "大盤", "資金", "波浪位階", "沖區", "壓撐觀察", "AI倉", "連買區", "剛脫離零", MENU_BTN_DONGZHU):
+        for need in ("勝率買點", "海選", "持股", "加入觀察", "飆客", "大盤", "資金", "波浪位階", "沖區", "壓撐觀察", "AI倉", "低估名單", "連買區", "剛脫離零", MENU_BTN_DONGZHU):
             assert need in names, (uid, need, names)
     assert bot._last_card[WAYNE] == "2330"
     assert bot._last_card[BRO] == "2317"

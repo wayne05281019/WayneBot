@@ -170,6 +170,7 @@ def test_newbie_menu_buttons_do_not_fall_through_to_stock_lookup():
     bot.menu_cmd = AsyncMock()
     bot.streak_cmd = AsyncMock()
     bot._send_ai_desk_view = AsyncMock()
+    bot._send_undervalue_view = AsyncMock()
     bot.report_cmd = AsyncMock()
 
     async def run():
@@ -179,6 +180,7 @@ def test_newbie_menu_buttons_do_not_fall_through_to_stock_lookup():
             ("加入觀察", bot._send_watch),
             ("海選", bot.screen_cmd),
             ("連買區", bot.streak_cmd),
+            ("低估名單", bot._send_undervalue_view),
             ("AI倉", bot._send_ai_desk_view),
             ("回報", bot.report_cmd),
         ):

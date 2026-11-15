@@ -87,6 +87,7 @@ def test_catalog_covers_full_keyboard():
         "盤中剛離零→收盤",
         "買點排除層",
         "勝率大量區再篩",
+        "低估名單",
         "AI倉",
         "連買區",
         "剛脫離零",
@@ -100,6 +101,10 @@ def test_catalog_covers_full_keyboard():
     assert cov["missing"] == 0
     assert cov["gap_filled"] >= 5
     assert cov["total"] == len(want)
+    uv = next(r for r in BUTTON_CATALOG if r["btn"] == "低估名單")
+    assert "undervalue" in uv["kinds"] and "undervalue_next" in uv["kinds"]
+    assert uv["class"] == "screen_verify"
+    assert "不是買訊" in str(uv.get("note") or "") or "估值≠買訊" in str(uv.get("note") or "") or "買訊" in str(uv.get("note") or "")
     red = next(r for r in BUTTON_CATALOG if r["btn"] == "紅箭確認")
     assert "ma60_lower" in red["kinds"]
     assert red["class"] == "screen_verify"

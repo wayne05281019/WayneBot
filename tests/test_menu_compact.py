@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 from bot_servers import (
     MENU_BTN_AI,
+    MENU_BTN_UNDERVALUE,
     MENU_BTN_BIAOKE_FACE,
     MENU_BTN_FLOW,
     MENU_BTN_LEAVE_ZERO,
@@ -27,7 +28,7 @@ from wayne_db import init_database
 
 
 def test_full_menu_is_two_rows_no_compact():
-    assert MENU_LAYOUT_VERSION == "35"
+    assert MENU_LAYOUT_VERSION == "37"
     assert MENU_ROW1 == (
         MENU_BTN_WINRATE,
         "海選",
@@ -37,13 +38,14 @@ def test_full_menu_is_two_rows_no_compact():
         MENU_BTN_MARKET,
         MENU_BTN_FLOW,
     )
-    from bot_servers import MENU_BTN_CHONG, MENU_BTN_WAVE_STATUS
+    from bot_servers import MENU_BTN_AI, MENU_BTN_CHONG, MENU_BTN_WAVE_STATUS
 
     assert MENU_ROW2 == (
         MENU_BTN_WAVE_STATUS,
         MENU_BTN_CHONG,
         MENU_BTN_PRESSURE,
         MENU_BTN_AI,
+        MENU_BTN_UNDERVALUE,
         MENU_BTN_STREAK,
         MENU_BTN_LEAVE_ZERO,
         MENU_BTN_DONGZHU,
@@ -68,7 +70,7 @@ def test_old_compact_flag_cannot_shrink_keyboard(tmp_path):
     assert labels == list(MENU_ROW1) + list(MENU_ROW2)
     assert "波浪位階" in labels
     assert "沖區" in labels
-    assert MENU_BTN_AI in labels
+    assert MENU_BTN_UNDERVALUE in labels
     assert bot._menu_compact_on("9") is False
 
 

@@ -643,6 +643,13 @@ MENU_BTN_FLOW_ALIASES = (
 )
 MENU_BTN_STREAK = "連買區"
 MENU_BTN_AI = "AI倉"
+MENU_BTN_UNDERVALUE = "低估名單"
+MENU_BTN_UNDERVALUE_ALIASES = (
+    MENU_BTN_UNDERVALUE,
+    "低估",
+    "低估清單",
+    "估值名單",
+)
 MENU_BTN_REPORT = "回報"
 MENU_BTN_CARD = "刷新"
 MENU_BTN_BIAOKE = "飆大"
@@ -737,6 +744,7 @@ MENU_ROW2 = (
     MENU_BTN_CHONG,
     MENU_BTN_PRESSURE,
     MENU_BTN_AI,
+    MENU_BTN_UNDERVALUE,
     MENU_BTN_STREAK,
     MENU_BTN_LEAVE_ZERO,
     MENU_BTN_DONGZHU,
@@ -774,7 +782,9 @@ MENU_FULL_ALIASES = ("完整選單", "完整鍵盤")
 # v34：下排「當沖」→「波浪現況」（三張位階圖＋敘述）；「隔日沖」→「沖區」（子選當沖／隔日沖）。
 #      台股大盤不再附送三張教具；打字「當沖」「隔日沖」仍可叫出。背後名單落檔照留。
 # v35：下排「波浪現況」→「波浪位階」（同三張＋敘述）；沖區子選不變。
-MENU_LAYOUT_VERSION = "35"
+# v36：（作廢）曾誤把 AI倉換成低估名單；違功能全同／AI倉鈕留著。
+# v37：下排保留 AI倉，其右加「低估名單」（估值≠買訊；融合後掃；打字別名仍認）。上七下八。
+MENU_LAYOUT_VERSION = "37"
 MAX_PICK_INLINE_ROWS = 8
 
 # 輸入列左邊三條槓（Telegram BotCommand）。跟下方兩排重複的不放，避免兩套入口。
@@ -9320,6 +9330,12 @@ class WayneTelegramBot:
             await self._cancel_actor_ops(actor, dismiss=True)
             await self.dongzhu_cmd(update, context)
             return
+        if text in MENU_BTN_UNDERVALUE_ALIASES:
+            logger.info("主選單：低估名單 uid=%s", uid)
+            self._pending.pop(actor, None)
+            await self._cancel_actor_ops(actor, dismiss=True)
+            await self._send_undervalue_view(update.message, uid)
+            return
         if text in ("AI模擬倉", "模擬倉", "AI倉"):
             logger.info("主選單：AI模擬倉 uid=%s", uid)
             self._pending.pop(actor, None)
@@ -9670,6 +9686,84 @@ class WayneTelegramBot:
             await self._send_industry(message, code, uid)
             return True
         return False
+
+    def _undervalue_pick_keyboard(self, picks: list):
+        """名單下可點代號查股（與海選／剛脫離零同一套查股路）。"""
+        from tg_layout import stock_btn_label
+
+        rows = []
+        line = []
+        for p in list(picks or [])[:16]:
+            if not isinstance(p, dict):
+                continue
+            sid = str(p.get("stock_id") or "").strip()
+            if not sid:
+                continue
+            mark = "★" if str(p.get("mark") or "") == "star" else "☆"
+            lab = f"{mark}{stock_btn_label(sid, str(p.get('name') or ''))}"
+            line.append(InlineKeyboardButton(lab[:28], callback_data=f"k:{sid}"))
+            if len(line) >= 2:
+                rows.append(line)
+                line = []
+        if line:
+            rows.append(line)
+        if not rows:
+            return self._keyboard()
+        return InlineKeyboardMarkup(rows)
+
+    async def _send_undervalue_view(self, message, uid: str):
+        """讀融合後低估名單快取出圖。不是買訊；不重算掃描。"""
+        from import_health import latest_complete_quote_date
+        from undervalue_card import render_undervalue_png
+        from undervalue_sync import empty_note_for_button, load_picks
+
+        self._touch_user(uid)
+        wait_h = await self._start_plain_wait(
+            message,
+            text_fn=lambda s: self._wait_bubble(
+                "低估名單進行中", s, now="讀名單", rest="出圖", fill_sec=20.0
+            ),
+        )
+        try:
+            as_of = await asyncio.to_thread(
+                latest_complete_quote_date, self.db_path
+            ) or ""
+            picks = await asyncio.to_thread(load_picks, self.db_path, as_of) if as_of else []
+            note = await asyncio.to_thread(
+                empty_note_for_button, self.db_path, as_of
+            ) if as_of else "盤後還沒算完（融合後掃描）"
+            path = self._scratch_chart_path(
+                self.charts_dir, "UV", "undervalue", uid or "0"
+            )
+
+            def _paint() -> str:
+                return render_undervalue_png(
+                    picks,
+                    path,
+                    as_of=as_of or None,
+                    empty_note=note if not picks else None,
+                )
+
+            png = await asyncio.to_thread(_paint)
+            n_star = sum(1 for p in picks if str(p.get("mark") or "") == "star")
+            n_watch = len(picks) - n_star
+            cap = (
+                f"低估名單 {as_of}　★{n_star}☆{n_watch}（估值≠買訊；進場只認黃金買點）"
+                if as_of
+                else "低估名單（估值≠買訊）"
+            )
+            kb = self._undervalue_pick_keyboard(picks) if picks else self._keyboard()
+            with open(png, "rb") as f:
+                await message.reply_photo(
+                    photo=f,
+                    caption=cap,
+                    reply_markup=kb,
+                )
+        except Exception:
+            logger.exception("低估名單出圖失敗")
+            await message.reply_text(PHONE_BUSY, reply_markup=self._keyboard())
+        finally:
+            await self._stop_plain_wait(*wait_h)
 
     async def _send_ai_desk_view(self, message, uid: str):
         """只顯示模擬倉現況，不執行買賣。晚上 20:00 模擬操盤不推播。"""

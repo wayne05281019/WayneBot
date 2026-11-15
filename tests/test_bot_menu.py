@@ -24,6 +24,7 @@ def test_refresh_last_button_keeps_decision_card_alias():
 def test_reply_menu_is_two_rows_not_three():
     from bot_servers import (
         MENU_BTN_AI,
+        MENU_BTN_UNDERVALUE,
         MENU_BTN_BIAOKE_FACE,
         MENU_BTN_LEAVE_ZERO,
         MENU_BTN_MARKET,
@@ -38,10 +39,11 @@ def test_reply_menu_is_two_rows_not_three():
     )
 
     assert MENU_BTN_MARKET == "台股大盤"
+    assert MENU_BTN_UNDERVALUE == "低估名單"
     assert MENU_BTN_AI == "AI倉"
     assert MENU_BTN_WINRATE == "勝率買點"
     assert MENU_BTN_WATCH == "加入觀察"
-    assert MENU_LAYOUT_VERSION == "35"
+    assert MENU_LAYOUT_VERSION == "37"
     from bot_servers import MENU_BTN_CHONG, MENU_BTN_WAVE_STATUS
 
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
@@ -49,7 +51,7 @@ def test_reply_menu_is_two_rows_not_three():
     assert len(kb.keyboard) == 2
     row1 = [btn.text for btn in kb.keyboard[0]]
     row2 = [btn.text for btn in kb.keyboard[1]]
-    assert len(row1) == 7 and len(row2) == 7
+    assert len(row1) == 7 and len(row2) == 8
     assert row1 == [
         MENU_BTN_WINRATE,
         "海選",
@@ -64,6 +66,7 @@ def test_reply_menu_is_two_rows_not_three():
         MENU_BTN_CHONG,
         MENU_BTN_PRESSURE,
         MENU_BTN_AI,
+        MENU_BTN_UNDERVALUE,
         MENU_BTN_STREAK,
         MENU_BTN_LEAVE_ZERO,
         MENU_BTN_DONGZHU,

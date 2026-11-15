@@ -10,6 +10,7 @@ import pytest
 
 from bot_servers import (
     MENU_BTN_AI,
+    MENU_BTN_UNDERVALUE,
     MENU_BTN_BIAOKE_FACE,
     MENU_BTN_CARD,
     MENU_BTN_CHONG,
@@ -32,7 +33,7 @@ MENU_BUTTONS = [
     ("持股", "_send_portfolio"),
     ("加入觀察", "_send_watch"),
     ("海選", "screen_cmd"),
-    (MENU_BTN_AI, "_send_ai_desk_view"),
+    (MENU_BTN_UNDERVALUE, "_send_undervalue_view"),
     ("隔日沖", "overnight_cmd"),  # 隱藏打字入口仍認
     ("壓撐觀察", "pressure_cmd"),
     (MENU_BTN_FLOW, "flow_cmd"),
