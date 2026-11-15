@@ -188,3 +188,152 @@ def test_post_fuse_hooks_narrative_fresh():
     src = inspect.getsource(MainRunner._run_post_fuse_silent_tracks)
     assert "narrative-fresh" in src
     assert "refresh_and_check" in src
+
+
+def test_blank_biaoke_refreshes_posts_before_oral():
+    """空白飆大主述前先補公開文，與波浪同層；不准只讀舊 corpus。"""
+    import inspect
+
+    from bot_servers import WayneTelegramBot
+
+    src = inspect.getsource(WayneTelegramBot._send_biaoke_page)
+    assert "_ensure_teach_biaoke_posts_fresh" in src
+    posts_at = src.index("_ensure_teach_biaoke_posts_fresh")
+    focus_at = src.index("format_latest_focus")
+    assert posts_at < focus_at
+
+
+def test_blank_teach_charts_reject_stale_kit_fallback():
+    """遠窗 fallback 不准送 as_of 落後加權的舊教具。"""
+    import inspect
+
+    from bot_servers import WayneTelegramBot
+
+    src = inspect.getsource(WayneTelegramBot._send_biaoke_teach_charts)
+    assert "_twii_chart_as_of" in src
+    assert "latest_teach_kit" in src
+    assert "fallback 略過" in src or "存檔 as_of" in src
+
+
+def test_level_teach_push_skips_nov4_stale_on_rescan(tmp_path, monkeypatch):
+    """重掃 11/4 大盤點位舊文不准當「飆大更新」推兩支話筒。"""
+    from datetime import datetime
+
+    from biaoke_level_learn import maybe_push_level_teach_update
+
+    db = str(tmp_path / "push.db")
+    text = (
+        "目前大盤用期貨日盤比較容易定波浪位階，目前應該是在3-3走完，"
+        "轉3-4機率比較高，會去測9865，3-5會去測7/29低點40000；"
+        "跌到35000~38000之間，雖然非常慘烈"
+    )
+    ev = {
+        "id": "187638311",
+        "date": "2026-11-04",
+        "time": "13:16",
+        "kind": "post",
+        "text": text,
+        "_ingest": "updated",  # 重掃補齊
+    }
+    monkeypatch.setenv("WAYNE_LEVEL_LEARN_LIVE", "1")
+    monkeypatch.setattr(
+        "config.allowed_telegram_uids", lambda: ["111", "222"], raising=False
+    )
+    sent: list = []
+    monkeypatch.setattr(
+        "biaoke_alert._send_family",
+        lambda *a, **k: sent.append("text") or 2,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "biaoke_alert._send_family_photos",
+        lambda *a, **k: sent.append("photo") or 2,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "biaoke_alert._claim_chat_dedupe",
+        lambda *a, **k: True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn.maybe_paint_open_day_after_ingest",
+        lambda *a, **k: {"ok": False},
+        raising=False,
+    )
+    out = maybe_push_level_teach_update(
+        db,
+        [ev],
+        now=datetime(2026, 11, 15, 23, 43, tzinfo=TAIPEI),
+    )
+    assert out.get("pushed", 0) == 0
+    assert not sent
+    assert int(out.get("updated_skip") or 0) >= 1 or out.get("skipped") == "stale_or_updated"
+
+    # 即使誤標 added，超過 24h 仍不准推
+    ev2 = dict(ev)
+    ev2["_ingest"] = "added"
+    out2 = maybe_push_level_teach_update(
+        db,
+        [ev2],
+        now=datetime(2026, 11, 15, 23, 43, tzinfo=TAIPEI),
+    )
+    assert out2.get("pushed", 0) == 0
+    assert not sent
+    assert int(out2.get("stale") or 0) >= 1 or out2.get("skipped") == "stale_or_updated"
+
+
+def test_level_teach_push_allows_fresh_added(tmp_path, monkeypatch):
+    """當日新 added 位階文才准推。"""
+    from datetime import datetime
+
+    from biaoke_level_learn import maybe_push_level_teach_update
+
+    db = str(tmp_path / "push2.db")
+    text = "大盤目前 C3-3 主跌段，會去測加權 42000 附近"
+    ev = {
+        "id": "new1",
+        "date": "2026-11-15",
+        "time": "21:00",
+        "kind": "post",
+        "text": text,
+        "_ingest": "added",
+    }
+    monkeypatch.setenv("WAYNE_LEVEL_LEARN_LIVE", "1")
+    monkeypatch.setattr(
+        "config.allowed_telegram_uids", lambda: ["111"], raising=False
+    )
+    sent: list = []
+    monkeypatch.setattr(
+        "biaoke_alert._send_family",
+        lambda *a, **k: sent.append(a[0] if a else "t") or 1,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "biaoke_alert._send_family_photos",
+        lambda *a, **k: 0,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "biaoke_alert._claim_chat_dedupe",
+        lambda *a, **k: True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn.maybe_paint_open_day_after_ingest",
+        lambda *a, **k: {"ok": False},
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn.latest_teach_kit",
+        lambda *_a, **_k: {},
+        raising=False,
+    )
+    out = maybe_push_level_teach_update(
+        db,
+        [ev],
+        now=datetime(2026, 11, 15, 21, 30, tzinfo=TAIPEI),
+    )
+    assert int(out.get("pushed") or 0) >= 1
+    assert sent
+    assert "飆大更新・大盤點位" in str(sent[0])
+    assert "2026-11-15" in str(sent[0])

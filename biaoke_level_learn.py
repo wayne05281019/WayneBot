@@ -21857,17 +21857,24 @@ def _level_events_with_prices(
 
 
 def maybe_push_level_teach_update(
-    db_path: str, events: Sequence[Dict[str, Any]]
+    db_path: str,
+    events: Sequence[Dict[str, Any]],
+    *,
+    now: Optional[datetime] = None,
+    max_age_hours: float = 24.0,
 ) -> Dict[str, Any]:
     """他新文／自回提到大盤最新點位 → 強制重畫遠近超近 → 雙人推播文＋圖。
 
     只推他確實寫出的價；不准補假點。同一則 post_id 不重推。不是買訊。
+    重掃／deploy 回補舊文、純 updated 欄位補齊 → 不准當「更新」推播（對齊急推時效）。
     """
     stats: Dict[str, Any] = {
         "seen": 0,
         "pushed": 0,
         "photos": 0,
         "skipped": 0,
+        "stale": 0,
+        "updated_skip": 0,
         "painted": False,
     }
     if not db_path or not events:
@@ -21878,14 +21885,13 @@ def maybe_push_level_teach_update(
     stats["seen"] = len(rows)
     if not rows:
         return stats
-    # 同一輪取最新一則（主文／自回都算）
-    row = rows[-1]
-    post_id = str(row.get("id") or "").strip()
-    if not post_id:
-        return {**stats, "skipped": "no_id"}
-    dedupe = f"level_teach:{post_id}"
     try:
-        from biaoke_alert import _claim_chat_dedupe, _send_family, _send_family_photos
+        from biaoke_alert import (
+            _claim_chat_dedupe,
+            _send_family,
+            _send_family_photos,
+            event_too_old_for_urgent,
+        )
         from config import allowed_telegram_uids
     except Exception:
         logger.exception("位階教具推播模組略過")
@@ -21894,6 +21900,69 @@ def maybe_push_level_teach_update(
     uids = [str(u).strip() for u in allowed_telegram_uids() if str(u).strip()]
     if not uids:
         return {**stats, "skipped": "no_uid"}
+    dt = now
+    if dt is None:
+        dt = datetime.now(TAIPEI)
+    elif dt.tzinfo is None:
+        dt = dt.replace(tzinfo=TAIPEI)
+    else:
+        dt = dt.astimezone(TAIPEI)
+    # 時效＋只認 added（缺 _ingest 當可推＝舊呼叫相容；updated＝欄位補齊不推）
+    fresh_rows: List[Dict[str, Any]] = []
+    for raw in rows:
+        # _level_events_with_prices 丟掉 _ingest；從原 events 對回
+        pid = str(raw.get("id") or "").strip()
+        src = next(
+            (
+                e
+                for e in (events or [])
+                if str(e.get("id") or e.get("post_id") or "").strip() == pid
+            ),
+            raw,
+        )
+        hit = str(src.get("_ingest") or "").strip().lower()
+        if hit == "updated":
+            stats["updated_skip"] = int(stats.get("updated_skip") or 0) + 1
+            continue
+        if event_too_old_for_urgent(
+            src, now=dt, max_age_hours=float(max_age_hours)
+        ):
+            stats["stale"] = int(stats.get("stale") or 0) + 1
+            # 占位：同則／同指紋之後重掃也不准再當更新
+            if pid:
+                _claim_chat_dedupe(uids[0], f"level_teach:{pid}", db_path=db_path)
+            as_of_d = str(raw.get("date") or "").replace("-", "")[:8]
+            lv_fp = "|".join(
+                sorted(
+                    {
+                        f"{round(float(h.get('level')), 1)}"
+                        for h in (raw.get("levels") or [])
+                        if h.get("level") is not None
+                    }
+                )
+            )
+            if as_of_d and lv_fp:
+                _claim_chat_dedupe(
+                    uids[0],
+                    f"level_teach:fp:{as_of_d}:{lv_fp}",
+                    db_path=db_path,
+                )
+            continue
+        merged = dict(raw)
+        merged["_ingest"] = hit
+        fresh_rows.append(merged)
+    if not fresh_rows:
+        stats["skipped"] = "stale_or_updated"
+        return stats
+    # 同一輪取時間最新一則（主文／自回都算）；不准用 list 尾端舊文
+    fresh_rows.sort(
+        key=lambda r: (str(r.get("date") or ""), str(r.get("time") or ""), str(r.get("id") or ""))
+    )
+    row = fresh_rows[-1]
+    post_id = str(row.get("id") or "").strip()
+    if not post_id:
+        return {**stats, "skipped": "no_id"}
+    dedupe = f"level_teach:{post_id}"
     # 同日同組價＝重複，不重推（主文＋自回各寫一次仍只發一輪）
     as_of_d = str(row.get("date") or "").replace("-", "")[:8]
     lv_fp = "|".join(
