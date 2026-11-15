@@ -109,6 +109,7 @@ def test_menu_buttons_exist_in_order_seven_plus_seven():
         MENU_BTN_WAVE_STATUS,
         MENU_BTN_CHONG,
         MENU_BTN_PRESSURE,
+        MENU_BTN_AI,
         MENU_BTN_UNDERVALUE,
         MENU_BTN_STREAK,
         MENU_BTN_LEAVE_ZERO,
