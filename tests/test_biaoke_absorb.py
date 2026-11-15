@@ -88,7 +88,9 @@ def test_agents_rank12_absorb_slots():
     assert "不准等對話提醒" in blob
     assert "不補操作" in blob
     assert "能講才講（B）" in blob
-    assert "17:40、18:50、22:30" in blob
+    # 2026-11-15 鎖：盤後改融合後立刻一檔＋隔日 01:00；不准再排三檔錯開
+    assert "不准再排 17:40／18:50／22:30" in blob
+    assert "融合成功後立刻一檔" in blob
     assert "隔日 01:00" in blob
     assert "沒有 02:00 窗" in blob
     assert "他自己講的全部都記" in blob
