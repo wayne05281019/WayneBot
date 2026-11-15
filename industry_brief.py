@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 import sqlite3
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 try:
     from config import get_db_path
@@ -1038,13 +1038,15 @@ def attach_fine_industry(
     return attach_price_eps_bijia(snap, db_path)
 
 
-def _recent_eps_sum(conn: sqlite3.Connection, stock_id: str, *, max_n: int = 2) -> Dict[str, Any]:
-    """近最多兩季「真實單季」EPS 合計。累計列先還原；不准把上半年+前三季加總灌水。"""
+def _recent_eps_windows(
+    conn: sqlite3.Connection, stock_id: str, *, max_n: int = 2
+) -> Dict[int, Dict[str, Any]]:
+    """這檔可算的「近 n 季」EPS 精確窗（見 fundamentals.recent_eps_windows）。"""
     sid = str(stock_id).strip()
-    # 多抓幾列才夠還原 YTD（同年度 Q1～Q4）
+    # 最新年度 Q1～Q4＋前一年全年／切點，8 列夠
     raw = conn.execute(
         """
-        SELECT year, season, eps, revenue FROM quarterly_income
+        SELECT year, season, eps FROM quarterly_income
         WHERE stock_id=? ORDER BY year DESC, season DESC LIMIT 8
         """,
         (sid,),
@@ -1056,33 +1058,30 @@ def _recent_eps_sum(conn: sqlite3.Connection, stock_id: str, *, max_n: int = 2) 
                 {
                     "year": int(r["year"] if isinstance(r, sqlite3.Row) else r[0] or 0),
                     "season": int(r["season"] if isinstance(r, sqlite3.Row) else r[1] or 0),
-                    "eps": float(r["eps"] if isinstance(r, sqlite3.Row) else r[2] or 0),
-                    "revenue": float(
-                        (r["revenue"] if isinstance(r, sqlite3.Row) else r[3]) or 0
-                    ),
+                    "eps": float(r["eps"] if isinstance(r, sqlite3.Row) else r[2]),
                 }
             )
         except (TypeError, ValueError, IndexError, KeyError):
             continue
-    try:
-        from fundamentals import expand_ytd_income_eps_to_single
+    from fundamentals import recent_eps_windows
 
-        single = expand_ytd_income_eps_to_single(income_rows)
-    except Exception:
-        single = {}
-        for rec in income_rows:
-            y, s = int(rec["year"]), int(rec["season"])
-            if y >= 1990 and s in (1, 2, 3, 4):
-                single[(y, s)] = float(rec["eps"])
-    ordered = sorted(single.keys(), key=lambda ks: (ks[0], ks[1]), reverse=True)
-    seasons: List[str] = []
-    total = 0.0
-    n = 0
-    for y, s in ordered[: int(max_n)]:
-        seasons.append(f"{y}Q{s}")
-        total += float(single[(y, s)])
-        n += 1
-    return {"eps_sum": total if n else None, "eps_n": n, "eps_seasons": seasons}
+    return recent_eps_windows(income_rows, max_n=max_n)
+
+
+def _recent_eps_sum(conn: sqlite3.Connection, stock_id: str, *, max_n: int = 2) -> Dict[str, Any]:
+    """近最多兩季 EPS 合計：以最新已公告季收尾的精確累計窗（上半年累計＝近2季）。
+
+    不准把上半年＋前三季加總灌水，也不准拿更舊的季湊數。
+    """
+    wins = _recent_eps_windows(conn, stock_id, max_n=max_n)
+    if not wins:
+        return {"eps_sum": None, "eps_n": 0, "eps_seasons": []}
+    best = wins[max(wins)]
+    return {
+        "eps_sum": float(best["eps_sum"]),
+        "eps_n": int(best["eps_n"]),
+        "eps_seasons": list(best["eps_seasons"]),
+    }
 
 
 def has_positive_eps(db_path: str, stock_id: str) -> bool:
@@ -1201,40 +1200,52 @@ def attach_price_eps_bijia(snap: Dict[str, Any], db_path: str) -> Dict[str, Any]
         snap["bijia"]["note"] = "產業鏈表未就緒"
         return snap
 
-    rows_out: List[Dict[str, Any]] = []
-    close_dates: List[str] = []
-    eps_ns: List[int] = []
+    cands: List[Tuple[Any, Dict[str, Any], Dict[int, Dict[str, Any]]]] = []
     for r in peers:
         psid = str(r["stock_id"])
         px = _latest_close(conn, psid)
-        eps = _recent_eps_sum(conn, psid, max_n=2)
-        close = px.get("close")
-        eps_sum = eps.get("eps_sum")
-        eps_n = int(eps.get("eps_n") or 0)
-        if close is None or eps_sum is None or eps_n < 1 or float(eps_sum) <= 0:
+        if px.get("close") is None:
             continue
-        mult = float(close) / float(eps_sum)
+        wins = {
+            n: w
+            for n, w in _recent_eps_windows(conn, psid, max_n=2).items()
+            if float(w["eps_sum"]) > 0
+        }
+        if wins:
+            cands.append((r, px, wins))
+    conn.close()
+
+    mine_wins = next((w for r, _px, w in cands if str(r["stock_id"]) == sid), None)
+    if not mine_wins:
+        snap["bijia"].update({"chain": chain, "note": "缺收盤或EPS"})
+        return snap
+    # 同一把尺：近1季只跟近1季比、近2季只跟近2季比；取含這檔可對照最多的窗，同數取長窗
+    n_use = max(mine_wins, key=lambda n: (sum(1 for _r, _p, w in cands if n in w), n))
+
+    rows_out: List[Dict[str, Any]] = []
+    close_dates: List[str] = []
+    for r, px, wins in cands:
+        w = wins.get(n_use)
+        if w is None:
+            continue
+        psid = str(r["stock_id"])
+        close = float(px["close"])
+        eps_sum = float(w["eps_sum"])
         if px.get("close_date"):
             close_dates.append(str(px["close_date"]))
-        eps_ns.append(eps_n)
         rows_out.append(
             {
                 "stock_id": psid,
                 "stock_name": str(r["stock_name"] or psid),
                 "listing": listing_zh(r["market_type"]),
-                "close": float(close),
-                "eps_sum": float(eps_sum),
-                "eps_n": eps_n,
-                "eps_seasons": list(eps.get("eps_seasons") or []),
-                "mult": mult,
+                "close": close,
+                "eps_sum": eps_sum,
+                "eps_n": n_use,
+                "eps_seasons": list(w.get("eps_seasons") or []),
+                "mult": close / eps_sum,
                 "is_mine": psid == sid,
             }
         )
-    conn.close()
-
-    if not any(r["is_mine"] for r in rows_out):
-        snap["bijia"].update({"chain": chain, "note": "缺收盤或EPS"})
-        return snap
     if len(rows_out) < 2:
         snap["bijia"].update({"chain": chain, "note": "同鏈可對照不足"})
         return snap
@@ -1256,12 +1267,7 @@ def attach_price_eps_bijia(snap: Dict[str, Any], db_path: str) -> Dict[str, Any]
                 break
     keep.sort(key=lambda x: (float(x["mult"]), float(x["close"])))
 
-    max_eps_n = max(eps_ns) if eps_ns else 1
-    min_eps_n = min(eps_ns) if eps_ns else 1
-    if max_eps_n >= 2 and min_eps_n >= 2:
-        eps_label = "近2季EPS"
-    else:
-        eps_label = "近1季EPS"
+    eps_label = f"近{n_use}季EPS"
 
     extras = [str(t) for t in list(snap.get("extra_tags") or []) if str(t)]
     chain_label = chain

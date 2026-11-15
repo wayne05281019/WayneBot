@@ -1428,6 +1428,64 @@ def expand_ytd_income_eps_to_single(
     return out
 
 
+def recent_eps_windows(
+    income_rows: Optional[Sequence[Dict[str, Any]]] = None,
+    *,
+    max_n: int = 2,
+) -> Dict[int, Dict[str, Any]]:
+    """近 n 季 EPS 合計（n＝1～max_n），只認以「最新已公告季」收尾的精確累計窗。
+
+    觀測站／OpenAPI 列皆為年初至該季累計：
+    同年度 cum(y,s)−cum(y,s−n)；s＝n 時累計本身就是近 n 季（上半年＝近2季）。
+    跨年度 cum(y,s)＋[全年(y−1)−cum(y−1,4−(n−s))]。
+    缺任何一個錨就沒有那個 n；不准拿更舊的季或孤列湊「近季」。
+    """
+    cum: Dict[Tuple[int, int], float] = {}
+    for r in income_rows or ():
+        try:
+            y, s = int(r["year"]), int(r["season"])
+            v = float(r.get("eps") or 0)
+        except (KeyError, TypeError, ValueError):
+            continue
+        if y < 1990 or s not in (1, 2, 3, 4):
+            continue
+        cum[(y, s)] = v
+    if not cum:
+        return {}
+    ly, ls = max(cum.keys())
+    out: Dict[int, Dict[str, Any]] = {}
+    for n in range(1, max(1, int(max_n)) + 1):
+        if ls > n:
+            base = cum.get((ly, ls - n))
+            if base is None:
+                continue
+            total = cum[(ly, ls)] - base
+        elif ls == n:
+            total = cum[(ly, ls)]
+        else:
+            fy_prev = cum.get((ly - 1, 4))
+            if fy_prev is None:
+                continue
+            cut = 4 - (n - ls)
+            if cut < 0:
+                continue
+            if cut == 0:
+                prev_part = fy_prev
+            else:
+                base = cum.get((ly - 1, cut))
+                if base is None:
+                    continue
+                prev_part = fy_prev - base
+            total = cum[(ly, ls)] + prev_part
+        seasons: List[str] = []
+        y, s = ly, ls
+        for _ in range(n):
+            seasons.append(f"{y}Q{s}")
+            y, s = (y, s - 1) if s > 1 else (y - 1, 4)
+        out[n] = {"eps_sum": float(total), "eps_n": n, "eps_seasons": seasons}
+    return out
+
+
 def attach_quarter_box_eps(
     boxes: List[Dict[str, Any]],
     income_rows: Optional[Sequence[Dict[str, Any]]] = None,
