@@ -186,7 +186,7 @@ def card_issues(card: dict, texts: Iterable[str] | None = None) -> list[str]:
         ("h60", card.get("h60"), card.get("dist_h60")),
     ):
         if px and close and dist is not None:
-            want = round((close - float(px)) / close * 100.0, 1)
+            want = round((close - float(px)) / float(px) * 100.0, 1)
             if not _approx(dist, want):
                 out.append(f"{lab} 距高 {dist} ≠ {want}")
     for lab, px, dist in (
