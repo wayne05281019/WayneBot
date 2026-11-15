@@ -127,3 +127,19 @@ def estimate_year_revenue(
         "proj": proj,
         "label": "推估" if r_m > 0 else "已公告",
     }
+
+
+def run_undervalue_scan(db_path: str, as_of: str) -> Dict[str, Any]:
+    """盤後低估掃描入口。
+
+    MVP stub：硬濾 ★☆ 尚未接母體 → success＋0 列（算完 0 檔，不是還沒算完）。
+    不是買訊。不准假資料塞名單。
+    """
+    _ = db_path
+    ymd = str(as_of or "").replace("-", "")[:8]
+    return {
+        "ok": True,
+        "as_of": ymd,
+        "rows": [],
+        "note": "stub：硬濾未接母體；算完 0 檔",
+    }

@@ -2210,6 +2210,14 @@ class MainRunner:
             return run_absorb_after_fuse(self.db_path, day, skip_if_done=True)
 
         _maybe("biaoke-postfuse", _biaoke_postfuse)
+
+        # 低估名單：融合成功後立刻掃（2026-11-15 使用者鎖；不准硬等 19:20）
+        def _undervalue() -> Dict[str, Any]:
+            from undervalue_sync import run_undervalue_sync
+
+            return run_undervalue_sync(self.db_path, skip_if_done=True, notify=False)
+
+        _maybe("undervalue", _undervalue)
         return report
 
     @staticmethod

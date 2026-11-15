@@ -102,6 +102,7 @@ def test_menu_slow_paths_start_plain_wait():
         "_run_leave_zero_now": "剛脫離零進行中",
         "_send_dongzhu_page": "洞燭先機進行中",
         "_run_manual_screening": "_screening_progress_text",
+        "_send_undervalue_view": "低估名單進行中",
         "_send_ai_desk_view": "AI倉進行中",
         "_run_ai_now": "AI倉進行中",
         "_streak_show_days": "連買區進行中",
