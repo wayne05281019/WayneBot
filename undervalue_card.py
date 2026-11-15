@@ -4,10 +4,10 @@
 """
 from __future__ import annotations
 
+import math
 import os
-from datetime import datetime
+import re
 from typing import Any, Dict, List, Optional, Sequence, Tuple
-from zoneinfo import ZoneInfo
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -30,7 +30,26 @@ NEG = (120, 220, 168)
 POS = (255, 160, 140)
 DIV = (48, 68, 88)
 
-_TAIPEI = ZoneInfo("Asia/Taipei")
+_HERE = os.path.dirname(os.path.abspath(__file__))
+
+# 版面（邏輯 px）
+PAD_X = 44
+PAD_Y = 40
+TITLE_H = 56
+LEGEND_H = 40
+HEAD_H = 40
+HEAD_AFTER = 10
+MAIN_H = 52
+REASON_LINE_H = 44
+ROW_GAP = 8
+FOOT_H = 44
+# 數字欄之間至少留這麼寬，避免「980 22.4 28.1」糊成一串
+COL_GAP = 26
+REASON_MAX_LINES = 3
+# 數字欄最小寬（邏輯 px）；內容更寬時自動撐開
+COL_MIN = {"close": 104, "pe": 72, "med": 88, "dist": 118, "flow": 120}
+EST_MARK = "推"
+EST_FOOTNOTE = "推＝推估值，不是官方已公告數"
 
 
 def _px(n: float) -> int:
@@ -39,15 +58,16 @@ def _px(n: float) -> int:
 
 def _font(size_logic: float, *, bold: bool = False) -> ImageFont.FreeTypeFont:
     size = _px(size_logic)
+    weight = "w860" if bold else "w560"
+    sys_name = "NotoSansCJK-Bold.ttc" if bold else "NotoSansCJK-Regular.ttc"
     candidates = [
-        "/workspace/fonts/NotoSansTC-w860.ttf" if bold else "/workspace/fonts/NotoSansTC-w560.ttf",
-        "/workspace/NotoSansTC-Regular.otf",
-        "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"
-        if bold
-        else "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        os.path.join(_HERE, "fonts", f"NotoSansTC-{weight}.ttf"),
+        os.path.join(_HERE, "NotoSansTC-Regular.otf"),
+        f"/usr/share/fonts/opentype/noto/{sys_name}",
+        f"/usr/share/fonts/truetype/noto/{sys_name}",
     ]
     for path in candidates:
-        if not path or not os.path.exists(path):
+        if not os.path.exists(path):
             continue
         try:
             if path.endswith(".ttc"):
@@ -120,69 +140,174 @@ def _truncate(font: ImageFont.ImageFont, text: str, max_w: float) -> str:
     return (s + ell) if s else ell
 
 
-def _fmt_num(v: Any, digits: int = 1) -> str:
+def _fit_name(
+    fonts: Sequence[ImageFont.ImageFont], text: str, max_w: float
+) -> Tuple[str, ImageFont.ImageFont]:
+    """股名先降字級塞進欄寬，真的塞不下才截；不准一開始就把股名切掉。"""
+    s = str(text or "").strip() or "—"
+    for f in fonts:
+        if f.getlength(s) <= max_w:
+            return s, f
+    return _truncate(fonts[-1], s, max_w), fonts[-1]
+
+
+# 數字／英文詞整塊不拆（12,345、31.2%、PE、IET-KY）；其餘逐字
+_TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9,.\-+%]*|\s+|.", re.S)
+_BREAK_AFTER = set("，、；。：！？）」』,;:!? ")
+_NO_LINE_START = set("，、；。：！？）」』%,.;:!?")
+
+
+def _wrap_reason(
+    font: ImageFont.ImageFont, text: str, max_w: float, max_lines: int = REASON_MAX_LINES
+) -> List[str]:
+    """理由能一行就一行；排不下才在標點處換行，數字與英文詞不切斷。"""
+    s = " ".join(str(text or "").split())
+    if not s:
+        return ["—"]
+    if font.getlength(s) <= max_w:
+        return [s]
+    tokens = _TOKEN_RE.findall(s)
+    lines: List[str] = []
+    cur: List[str] = []
+    for tok in tokens:
+        if not cur and tok.isspace():
+            continue
+        if not cur or font.getlength("".join(cur) + tok) <= max_w:
+            cur.append(tok)
+            continue
+        if tok in _NO_LINE_START and len(cur) > 1:
+            # 行首禁則：標點不准開新行，連前一塊一起帶下去
+            carry = cur.pop()
+            lines.append("".join(cur).rstrip())
+            cur = [carry, tok]
+            continue
+        cut = len(cur)
+        for i in range(len(cur) - 1, 0, -1):
+            if cur[i] in _BREAK_AFTER:
+                cut = i + 1
+                break
+        if font.getlength("".join(cur[:cut])) < max_w * 0.55:
+            cut = len(cur)
+        lines.append("".join(cur[:cut]).rstrip())
+        cur = cur[cut:] + [tok]
+        while cur and cur[0].isspace():
+            cur.pop(0)
+    if cur:
+        lines.append("".join(cur).rstrip())
+    # 末行只剩一個字：往上一行借一塊（遇標點多借），不留孤字
+    if len(lines) >= 2 and len(lines[-1]) <= 1:
+        prev = _TOKEN_RE.findall(lines[-2])
+        take = 1
+        while take < len(prev) and prev[-take] in _NO_LINE_START:
+            take += 1
+        if take < len(prev):
+            lines[-1] = "".join(prev[-take:]).lstrip() + lines[-1]
+            lines[-2] = "".join(prev[:-take]).rstrip()
+    if len(lines) > max_lines:
+        keep = lines[: max_lines - 1]
+        last_tokens = _TOKEN_RE.findall(lines[max_lines - 1])
+        ell = "…"
+        while last_tokens and font.getlength("".join(last_tokens) + ell) > max_w:
+            last_tokens.pop()
+        keep.append("".join(last_tokens).rstrip() + ell)
+        lines = keep
+    return lines
+
+
+def _finite(v: Any) -> Optional[float]:
     if v is None or v == "":
-        return "—"
+        return None
     try:
         x = float(v)
     except (TypeError, ValueError):
+        return None
+    return x if math.isfinite(x) else None
+
+
+def _fmt_num(v: Any, digits: int = 1) -> str:
+    x = _finite(v)
+    if x is None:
         return "—"
     if digits == 0:
         return f"{x:.0f}"
     return f"{x:.{digits}f}"
 
 
-def _fmt_pct(v: Any) -> str:
-    if v is None or v == "":
+def _fmt_close(v: Any) -> str:
+    """官方收盤照原檔位顯示（21.35 不准印成 21.4）；整數不補 .0。"""
+    x = _finite(v)
+    if x is None:
         return "—"
-    try:
-        x = float(v)
-    except (TypeError, ValueError):
+    return f"{x:.2f}".rstrip("0").rstrip(".")
+
+
+def _fmt_pct(v: Any) -> str:
+    x = _finite(v)
+    if x is None:
         return "—"
     return f"{x:+.1f}%"
 
 
 def _fmt_flow(v: Any) -> str:
-    if v is None or v == "":
+    """流動張一律整數千分位，上下行尾數對齊（不混「1.2萬」與「8,200」）。"""
+    x = _finite(v)
+    if x is None:
         return "—"
-    try:
-        n = float(v)
-    except (TypeError, ValueError):
-        return "—"
-    if abs(n) >= 10000:
-        return f"{n / 10000:.1f}萬"
-    if abs(n) >= 1000:
-        return f"{n:,.0f}"
-    return f"{n:.0f}"
+    return f"{x:,.0f}"
 
 
 def _as_of_label(as_of: Optional[str]) -> str:
+    """只認呼叫端給的資料日；沒給就不印日期，不拿現在時間冒充資料日。"""
     raw = (as_of or "").strip()
     if len(raw) == 8 and raw.isdigit():
         return f"{raw[:4]}-{raw[4:6]}-{raw[6:8]}（台北）"
     if len(raw) >= 10 and raw[4] == "-" and raw[7] == "-":
         return f"{raw[:10]}（台北）"
-    now = datetime.now(_TAIPEI)
-    return f"{now:%Y-%m-%d}（台北）"
+    return ""
+
+
+def _is_star(mark: Any) -> bool:
+    return str(mark or "").strip().lower() in ("star", "true", "★", "*")
 
 
 def _mark_glyph(mark: str) -> Tuple[str, Tuple[int, int, int]]:
-    m = str(mark or "").strip().lower()
-    if m in ("star", "true", "★", "*"):
+    if _is_star(mark):
         return "★", STAR
     return "☆", WATCH
 
 
-def _measure_h(n_rows: int) -> int:
-    """邏輯高度；至少 BASE_H。"""
-    pad_y = 40
-    header_block = 48 + 12 + 26 + 16 + 26 + 16 + 40 + 12
-    row_h = 96
-    gap = 8
-    body = n_rows * (row_h + gap) if n_rows else 220
-    footer = 36
-    need = pad_y + header_block + body + footer + pad_y
-    return max(BASE_H, int(need))
+def _order_rows(rows: Optional[Sequence[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+    """★ 在前、☆ 在後；組內維持呼叫端順序（圖例 ★3 ☆2 一眼對得上）。"""
+    return sorted(list(rows or []), key=lambda r: 0 if _is_star(r.get("mark")) else 1)
+
+
+def _cells(row: Dict[str, Any]) -> Dict[str, str]:
+    pe_s = _fmt_num(row.get("pe"), 1)
+    if row.get("pe_est") and pe_s != "—":
+        pe_s = f"{EST_MARK} {pe_s}"
+    return {
+        "close": _fmt_close(row.get("close")),
+        "pe": pe_s,
+        "med": _fmt_num(row.get("peer_pe_median"), 1),
+        "dist": _fmt_pct(row.get("dist_to_floor_pct")),
+        "flow": _fmt_flow(row.get("flow_shares")),
+    }
+
+
+def _column_widths(
+    cells: Sequence[Dict[str, str]],
+    headers_txt: Dict[str, str],
+    col_f: ImageFont.ImageFont,
+    cell_f: ImageFont.ImageFont,
+) -> Dict[str, int]:
+    """數字欄寬＝max(最小寬, 表頭／最寬內容＋欄距)；右對齊時相鄰欄字不會互壓。"""
+    cols: Dict[str, int] = {}
+    for key, min_w in COL_MIN.items():
+        need = col_f.getlength(headers_txt[key])
+        for c in cells:
+            need = max(need, cell_f.getlength(c[key]))
+        cols[key] = max(_px(min_w), int(math.ceil(need)) + _px(COL_GAP))
+    return cols
 
 
 def render_undervalue_png(
@@ -191,82 +316,81 @@ def render_undervalue_png(
     *,
     as_of: Optional[str] = None,
     title: str = "低估名單",
+    pe_label: str = "PE",
 ) -> str:
-    """把已算好的低估／觀察列畫成話筒 PNG。回傳 save_path。"""
-    rows = list(rows or [])
-    H_logic = _measure_h(len(rows))
-    W, H = _px(BASE_W), _px(H_logic)
-    pad_x, pad_y = _px(44), _px(40)
+    """把已算好的低估／觀察列畫成話筒 PNG。回傳 save_path。
 
-    im = Image.new("RGB", (W, H), BG)
-    dr = ImageDraw.Draw(im)
-
-    # 卡面
-    card_box = (_px(18), _px(14), W - _px(18), H - _px(14))
-    dr.rounded_rectangle(card_box, radius=_px(28), fill=CARD, outline=CARD_EDGE, width=max(1, _px(2)))
+    列內 pe_est 為真＝PE 用推估 EPS，數字前標「推」並在卡底註明（推估必標）。
+    ★ 列排在 ☆ 前，組內維持呼叫端順序。
+    """
+    rows = _order_rows(rows)
+    W = _px(BASE_W)
+    pad_x, pad_y = _px(PAD_X), _px(PAD_Y)
+    content_l = pad_x
+    content_r = W - pad_x
 
     title_f = _font(48, bold=True)
     date_f = _font(26)
     legend_f = _font(26, bold=True)
     col_f = _font(22, bold=True)
     cell_f = _font(30, bold=True)
-    name_f = _font(28)
+    name_fonts = [_font(28), _font(24), _font(22)]
     reason_f = _font(24)
     empty_f = _font(36, bold=True)
     empty_sub_f = _font(26)
+    foot_f = _font(22)
 
-    content_l = pad_x
-    content_r = W - pad_x
-    y = pad_y
-
-    # 標題列
-    _text_left_mid(dr, (content_l, y, content_r, y + _px(52)), title, title_f, TEXT)
-    date_s = _as_of_label(as_of)
-    _text_right_mid(dr, (content_l, y + _px(8), content_r, y + _px(52)), date_s, date_f, MUTED)
-    y += _px(56)
-
-    # 圖例
-    n_star = sum(1 for r in rows if _mark_glyph(r.get("mark"))[0] == "★")
-    n_watch = len(rows) - n_star
-    leg = f"★真低估 {n_star}　☆觀察 {n_watch}　　共 {len(rows)} 檔"
-    _text_left_mid(dr, (content_l, y, content_r, y + _px(32)), leg, legend_f, HEAD)
-    y += _px(40)
-
-    # 欄寬（實像素）
-    # 標記 代號 股名 | 收盤 PE 中位 距下緣 流動
-    cols = {
-        "mark": _px(52),
-        "sid": _px(100),
-        "name": _px(150),
-        "close": _px(104),
-        "pe": _px(72),
-        "med": _px(88),
-        "dist": _px(118),
-        "flow": _px(120),
-    }
-    # 右緣對齊：從右往左堆數字欄
+    cells = [_cells(r) for r in rows]
+    headers_txt = {"close": "收盤", "pe": pe_label, "med": "中位", "dist": "距下緣％", "flow": "流動張"}
+    cols = _column_widths(cells, headers_txt, col_f, cell_f)
     x_flow_r = content_r
     x_dist_r = x_flow_r - cols["flow"]
     x_med_r = x_dist_r - cols["dist"]
     x_pe_r = x_med_r - cols["med"]
     x_close_r = x_pe_r - cols["pe"]
     x_mark = content_l
-    x_sid = x_mark + cols["mark"]
-    x_name = x_sid + cols["sid"]
-    # 股名右緣不得撞收盤欄
+    x_sid = x_mark + _px(52)
+    x_name = x_sid + _px(100)
     name_max = max(_px(40), x_close_r - cols["close"] - x_name - _px(8))
+    reason_max = content_r - x_name
 
-    # 表頭
-    head_h = _px(40)
+    reasons = [_wrap_reason(reason_f, str(r.get("reason") or ""), reason_max) for r in rows]
+    row_hs = [_px(MAIN_H) + _px(REASON_LINE_H) * len(lines) for lines in reasons]
+    has_est = any(r.get("pe_est") and _finite(r.get("pe")) is not None for r in rows)
+
+    top_block = pad_y + _px(TITLE_H + LEGEND_H + HEAD_H + HEAD_AFTER)
+    body_h = sum(h + _px(ROW_GAP) for h in row_hs) if rows else _px(220)
+    foot_h = _px(FOOT_H) if has_est else 0
+    H = max(_px(BASE_H), top_block + body_h + foot_h + pad_y + _px(14))
+
+    im = Image.new("RGB", (W, H), BG)
+    dr = ImageDraw.Draw(im)
+    card_box = (_px(18), _px(14), W - _px(18), H - _px(14))
+    dr.rounded_rectangle(card_box, radius=_px(28), fill=CARD, outline=CARD_EDGE, width=max(1, _px(2)))
+
+    y = pad_y
+    _text_left_mid(dr, (content_l, y, content_r, y + _px(52)), title, title_f, TEXT)
+    date_s = _as_of_label(as_of)
+    if date_s:
+        _text_right_mid(dr, (content_l, y + _px(8), content_r, y + _px(52)), date_s, date_f, MUTED)
+    y += _px(TITLE_H)
+
+    n_star = sum(1 for r in rows if _is_star(r.get("mark")))
+    n_watch = len(rows) - n_star
+    leg = f"★真低估 {n_star}　☆觀察 {n_watch}　　共 {len(rows)} 檔"
+    _text_left_mid(dr, (content_l, y, content_r, y + _px(32)), leg, legend_f, HEAD)
+    y += _px(LEGEND_H)
+
+    head_h = _px(HEAD_H)
     headers = [
-        ("★☆", x_mark, x_mark + cols["mark"], "c"),
-        ("代號", x_sid, x_sid + cols["sid"], "l"),
+        ("★☆", x_mark, x_mark + _px(52), "c"),
+        ("代號", x_sid, x_sid + _px(100), "l"),
         ("股名", x_name, x_name + name_max, "l"),
-        ("收盤", x_close_r - cols["close"], x_close_r, "r"),
-        ("PE", x_pe_r - cols["pe"], x_pe_r, "r"),
-        ("中位", x_med_r - cols["med"], x_med_r, "r"),
-        ("距下緣％", x_dist_r - cols["dist"], x_dist_r, "r"),
-        ("流動張", x_flow_r - cols["flow"], x_flow_r, "r"),
+        (headers_txt["close"], x_close_r - cols["close"], x_close_r, "r"),
+        (headers_txt["pe"], x_pe_r - cols["pe"], x_pe_r, "r"),
+        (headers_txt["med"], x_med_r - cols["med"], x_med_r, "r"),
+        (headers_txt["dist"], x_dist_r - cols["dist"], x_dist_r, "r"),
+        (headers_txt["flow"], x_flow_r - cols["flow"], x_flow_r, "r"),
     ]
     for lab, x0, x1, align in headers:
         box = (x0, y, x1, y + head_h)
@@ -278,12 +402,10 @@ def render_undervalue_png(
             _text_left_mid(dr, box, lab, col_f, MUTED)
     y += head_h
     dr.line([(content_l, y), (content_r, y)], fill=DIV, width=max(1, _px(1)))
-    y += _px(10)
+    y += _px(HEAD_AFTER)
 
-    row_h = _px(96)
-    gap = _px(8)
-    main_h = _px(52)
-    reason_h = _px(44)
+    main_h = _px(MAIN_H)
+    line_h = _px(REASON_LINE_H)
 
     if not rows:
         mid_y = y + (H - pad_y - y) // 2
@@ -304,7 +426,7 @@ def render_undervalue_png(
     else:
         for i, row in enumerate(rows):
             top = y
-            bot = y + row_h
+            bot = y + row_hs[i]
             bg = ROW_A if i % 2 == 0 else ROW_B
             dr.rounded_rectangle(
                 (content_l - _px(6), top, content_r + _px(6), bot),
@@ -312,87 +434,40 @@ def render_undervalue_png(
                 fill=bg,
             )
             glyph, gfill = _mark_glyph(row.get("mark"))
-            main_box_y0, main_box_y1 = top, top + main_h
+            m0, m1 = top, top + main_h
+            c = cells[i]
 
-            _text_center_mid(
-                dr, (x_mark, main_box_y0, x_mark + cols["mark"], main_box_y1), glyph, cell_f, gfill
-            )
+            _text_center_mid(dr, (x_mark, m0, x_mark + _px(52), m1), glyph, cell_f, gfill)
             _text_left_mid(
                 dr,
-                (x_sid, main_box_y0, x_sid + cols["sid"], main_box_y1),
+                (x_sid, m0, x_sid + _px(100), m1),
                 str(row.get("stock_id") or "—"),
                 cell_f,
                 TEXT,
             )
-            name = _truncate(name_f, str(row.get("name") or ""), name_max)
-            _text_left_mid(dr, (x_name, main_box_y0, x_name + name_max, main_box_y1), name, name_f, TEXT)
+            name, name_f = _fit_name(name_fonts, str(row.get("name") or ""), name_max)
+            _text_left_mid(dr, (x_name, m0, x_name + name_max, m1), name, name_f, TEXT)
+            _text_right_mid(dr, (x_close_r - cols["close"], m0, x_close_r, m1), c["close"], cell_f, TEXT)
+            _text_right_mid(dr, (x_pe_r - cols["pe"], m0, x_pe_r, m1), c["pe"], cell_f, TEXT)
+            _text_right_mid(dr, (x_med_r - cols["med"], m0, x_med_r, m1), c["med"], cell_f, TEXT)
+            dv = _finite(row.get("dist_to_floor_pct"))
+            dist_fill = MUTED if dv is None else (NEG if dv < 0 else (POS if dv > 0 else TEXT))
+            _text_right_mid(dr, (x_dist_r - cols["dist"], m0, x_dist_r, m1), c["dist"], cell_f, dist_fill)
+            _text_right_mid(dr, (x_flow_r - cols["flow"], m0, x_flow_r, m1), c["flow"], cell_f, TEXT)
 
-            _text_right_mid(
-                dr,
-                (x_close_r - cols["close"], main_box_y0, x_close_r, main_box_y1),
-                _fmt_num(row.get("close"), 1 if _needs_decimal(row.get("close")) else 0),
-                cell_f,
-                TEXT,
-            )
-            _text_right_mid(
-                dr,
-                (x_pe_r - cols["pe"], main_box_y0, x_pe_r, main_box_y1),
-                _fmt_num(row.get("pe"), 1),
-                cell_f,
-                TEXT,
-            )
-            _text_right_mid(
-                dr,
-                (x_med_r - cols["med"], main_box_y0, x_med_r, main_box_y1),
-                _fmt_num(row.get("peer_pe_median"), 1),
-                cell_f,
-                TEXT,
-            )
-            dist = row.get("dist_to_floor_pct")
-            dist_s = _fmt_pct(dist)
-            dist_fill = MUTED
-            try:
-                dv = float(dist)
-                dist_fill = NEG if dv < 0 else (POS if dv > 0 else TEXT)
-            except (TypeError, ValueError):
-                pass
-            _text_right_mid(
-                dr,
-                (x_dist_r - cols["dist"], main_box_y0, x_dist_r, main_box_y1),
-                dist_s,
-                cell_f,
-                dist_fill,
-            )
-            _text_right_mid(
-                dr,
-                (x_flow_r - cols["flow"], main_box_y0, x_flow_r, main_box_y1),
-                _fmt_flow(row.get("flow_shares")),
-                cell_f,
-                TEXT,
-            )
+            ry = top + main_h
+            for line in reasons[i]:
+                _text_left_mid(dr, (x_name, ry, content_r, ry + line_h), line, reason_f, MUTED)
+                ry += line_h
+            y = bot + _px(ROW_GAP)
 
-            reason = str(row.get("reason") or "").strip() or "—"
-            reason = _truncate(reason_f, reason, content_r - x_name)
-            _text_left_mid(
-                dr,
-                (x_name, top + main_h, content_r, top + main_h + reason_h),
-                reason,
-                reason_f,
-                MUTED,
-            )
-            y = bot + gap
+    if has_est:
+        fy = H - _px(14) - pad_y - _px(FOOT_H) + _px(12)
+        _text_left_mid(dr, (content_l, fy, content_r, fy + _px(FOOT_H)), EST_FOOTNOTE, foot_f, MUTED)
 
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
     im.save(save_path, format="PNG", optimize=True)
     return save_path
-
-
-def _needs_decimal(v: Any) -> bool:
-    try:
-        x = float(v)
-    except (TypeError, ValueError):
-        return False
-    return abs(x - round(x)) > 1e-9
 
 
 # --- 本機樣張（假資料僅示範排版；非產品買訊）---
