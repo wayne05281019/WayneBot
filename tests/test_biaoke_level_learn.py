@@ -2973,6 +2973,11 @@ def test_pipeline_08_module_exc_soft_pass_when_tip_priced(monkeypatch, tmp_path)
             "sox_degraded": False,
         },
     )
+    # reuse pack 路徑會重算 tip；空庫會洗掉 → 釘回有價 tip
+    monkeypatch.setattr(
+        "biaoke_level_learn.compute_teach_tip_snapshot",
+        lambda *_a, **_k: dict(tip),
+    )
     monkeypatch.setattr("biaoke_level_learn._twii_chart_as_of", lambda *_a, **_k: "20261113")
     monkeypatch.setattr(
         "biaoke_level_learn._force_refill_twii_daily_to_target", lambda *_a, **_k: {}
