@@ -1037,25 +1037,41 @@ def _cached_taifex_sessions_by_date() -> Dict[str, Dict[str, Dict[str, Any]]]:
 def _fetch_taifex_tx_sessions(
     date: str, *, symbol: str = _FUTURES_SYMBOL
 ) -> Dict[str, Dict[str, Any]]:
-    """指定日的日盤／夜盤。對不到該日時不拿別日來充數。"""
+    """指定日的日盤／夜盤。對不到該日時不拿別日來充數。
+
+    OpenAPI 快取常只有日盤、缺夜盤：不准就此 return，必須再打歷史 CSV 補夜盤
+    （波浪／遠窗電子盤第二來源）。
+    """
     d = _norm_ymd(date)
     want_sym = _norm_futures_symbol(symbol)
     if len(d) != 8:
         return {}
+    out: Dict[str, Dict[str, Any]] = {}
     cached = _cached_taifex_all_sessions()
-    found = ((cached.get(d) or {}).get(want_sym) or {}) if isinstance(cached.get(d), dict) else {}
-    if found:
-        return dict(found)
+    found = (
+        ((cached.get(d) or {}).get(want_sym) or {})
+        if isinstance(cached.get(d), dict)
+        else {}
+    )
+    if isinstance(found, dict):
+        for key in ("regular", "night"):
+            row = found.get(key)
+            if row and row.get("close"):
+                out[key] = dict(row)
+    # 日＋夜都齊才可早退；缺夜盤／全日 → 歷史 CSV 備援
+    if out.get("regular") and out.get("night"):
+        return out
     dt = datetime.strptime(d, "%Y%m%d")
     start = (dt - timedelta(days=5)).strftime("%Y/%m/%d")
     end = (dt + timedelta(days=5)).strftime("%Y/%m/%d")
     chunk = _download_taifex_history_chunk(start, end, symbol=want_sym)
-    found = chunk.get(d) or {}
-    out: Dict[str, Dict[str, Any]] = {}
+    hist = chunk.get(d) or {}
     for key in ("regular", "night"):
-        row = found.get(key)
+        if out.get(key):
+            continue
+        row = hist.get(key) if isinstance(hist, dict) else None
         if row and row.get("close"):
-            out[key] = row
+            out[key] = dict(row)
     return out
 
 

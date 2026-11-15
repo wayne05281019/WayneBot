@@ -1121,6 +1121,38 @@ def test_decode_official_bytes_utf8_and_big5():
     assert "交易日期" in _decode_official_bytes(s.encode("big5"))
 
 
+@patch("taiwan_market._download_taifex_history_chunk")
+@patch("taiwan_market._cached_taifex_all_sessions")
+def test_fetch_taifex_sessions_fills_night_from_history(mock_cache, mock_hist):
+    """OpenAPI 只有日盤時，必須再用歷史 CSV 補夜盤（第二來源）。"""
+    from taiwan_market import _fetch_taifex_tx_sessions
+
+    mock_cache.return_value = {
+        "20261113": {
+            "TX": {
+                "regular": {
+                    "date": "20261113",
+                    "close": 43000.0,
+                    "session": "regular",
+                }
+            }
+        }
+    }
+    mock_hist.return_value = {
+        "20261113": {
+            "night": {
+                "date": "20261113",
+                "close": 43706.0,
+                "session": "night",
+            }
+        }
+    }
+    out = _fetch_taifex_tx_sessions("20261113")
+    assert float(out["regular"]["close"]) == 43000.0
+    assert float(out["night"]["close"]) == 43706.0
+    mock_hist.assert_called_once()
+
+
 @patch("taiwan_market._fetch_taifex_tx_sessions")
 def test_sync_futures_daily_writes_row(mock_fetch, tmp_path):
     from taiwan_market import ensure_futures_daily_table, load_futures_daily, load_futures_night, sync_futures_daily

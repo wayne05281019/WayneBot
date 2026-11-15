@@ -1730,6 +1730,10 @@ def ensure_teach_tip_preflight(
             except Exception:
                 logger.exception("preflight 強制補加權失敗")
             try:
+                pack["_teach_m60"] = _ensure_teach_minute_legs(db_path)
+            except Exception:
+                logger.exception("preflight 補60分略過")
+            try:
                 _ensure_latest_tx_night_row(db_path)
             except Exception:
                 logger.exception("preflight 補電子盤夜盤失敗")
@@ -3609,16 +3613,50 @@ def _tx_night_rows_on_evening_axis(
     return [best[k] for k in sorted(best)]
 
 
+def _ensure_teach_minute_legs(db_path: str) -> Dict[str, Any]:
+    """波浪鍵：加權／0050／費半 60 分寫進 minute_bars（Yahoo query1→query2）。
+
+    超近窗＋日K 60 分聚合備援都吃這批；主源不通不擋日K FMTQIK 路徑。
+    """
+    out: Dict[str, Any] = {"ok": False, "saved": 0, "sids": []}
+    if not db_path:
+        return out
+    try:
+        from kline_hop import fetch_yahoo_minutes
+    except Exception:
+        return out
+    saved = 0
+    got: List[str] = []
+    for sid in ("TWII", "0050", "SOX"):
+        try:
+            bars = fetch_yahoo_minutes(sid, "60", db_path) or []
+            n = len(bars)
+            if n:
+                saved += n
+                got.append(f"{sid}:{n}")
+        except Exception:
+            logger.debug("教具補 %s 60分略過", sid, exc_info=True)
+            got.append(f"{sid}:exc")
+    out["saved"] = int(saved)
+    out["sids"] = got
+    out["ok"] = bool(got) and any(
+        str(x).split(":")[-1].isdigit() and int(str(x).split(":")[-1]) > 0
+        for x in got
+    )
+    return out
+
+
 def _ensure_latest_tx_night_row(db_path: str) -> None:
     """牆鐘 cap 當日夜盤列必須在庫；缺列會讓戳／末K吃到更舊夜盤。
 
     不准用 load_futures_night(date<=cap) 有舊列就當已齊——05:00 後 cap 已是今晨
     結束標（例 11/12），庫內若只有 11/11，舊寫法會誤判已齊、遠窗電子盤少最新一根。
+    主源 OpenAPI sync；仍缺 → resolve_futures_night（歷史 CSV 第二來源）。
     """
     if not db_path:
         return
     try:
-        from taiwan_market import sync_futures_daily
+        from taiwan_market import resolve_futures_night, sync_futures_daily
         from trading_calendar import futures_night_date_cap
     except Exception:
         return
@@ -3628,22 +3666,34 @@ def _ensure_latest_tx_night_row(db_path: str) -> None:
         return
     if len(cap) != 8:
         return
+
+    def _have() -> bool:
+        try:
+            rows = _load_tx_futures_daily(db_path, session="night", since=cap)
+            for r in rows or []:
+                if (
+                    _ymd((r or {}).get("date")) == cap
+                    and float((r or {}).get("close") or 0) > 0
+                ):
+                    return True
+        except Exception:
+            return False
+        return False
+
     # 只認 cap 當日那一列（官方結束標），不准 date<=cap 舊夜冒充
-    have_cap = False
-    try:
-        rows = _load_tx_futures_daily(db_path, session="night", since=cap)
-        for r in rows or []:
-            if _ymd((r or {}).get("date")) == cap and float((r or {}).get("close") or 0) > 0:
-                have_cap = True
-                break
-    except Exception:
-        have_cap = False
-    if have_cap:
+    if _have():
         return
     try:
         sync_futures_daily(db_path, dates=[cap])
     except Exception:
         logger.debug("補最新台指夜盤列略過 cap=%s", cap, exc_info=True)
+    if _have():
+        return
+    # 第二來源：歷史 CSV／OpenAPI 合併寫入
+    try:
+        resolve_futures_night(db_path, cap)
+    except Exception:
+        logger.debug("夜盤歷史備援略過 cap=%s", cap, exc_info=True)
 
 
 def _ensure_teach_tx_day_row(db_path: str, *, now: Optional[datetime] = None) -> None:
@@ -5271,10 +5321,17 @@ def _ensure_us_index_daily(db_path: str) -> Dict[str, int]:
             stats[sym] = int(written or n_have or 0)
     finally:
         conn.close()
-    # Yahoo 失敗時：費半還可從 minute_bars 日切（庫內已有 SOX 分K）
+    # Yahoo 失敗／近窗太短：先抓費半 60 分（query1→query2）再日切備援
     if stats.get("SOX", 0) < 10:
         try:
+            from kline_hop import fetch_yahoo_minutes
+
+            fetch_yahoo_minutes("SOX", "60", db_path)
+        except Exception:
+            logger.debug("費半 60分備援抓取略過", exc_info=True)
+        try:
             stats["SOX"] = int(_sox_daily_from_minutes(db_path) or 0)
+            stats["SOX_from_minutes"] = 1
         except Exception:
             logger.exception("SOX 分K日切略過")
     # 已收後對質末日收＝Yahoo regularMarketPrice（修盤中殘值卡黃框）
@@ -5521,12 +5578,23 @@ def _fetch_yahoo_index_near_bars(yid: str = "^SOX") -> List[Dict[str, Any]]:
             "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
         )
     }
-    url = (
-        f"https://query1.finance.yahoo.com/v8/finance/chart/{yid_s}"
-        f"?interval=1d&range=10d"
+    hosts = (
+        "https://query1.finance.yahoo.com",
+        "https://query2.finance.yahoo.com",
     )
+    resp = None
     try:
-        resp = requests.get(url, timeout=12, headers=ua)
+        for host in hosts:
+            url = f"{host}/v8/finance/chart/{yid_s}?interval=1d&range=10d"
+            try:
+                cand = requests.get(url, timeout=12, headers=ua)
+            except Exception:
+                continue
+            if cand.status_code == 200:
+                resp = cand
+                break
+        if resp is None:
+            return []
         if int(getattr(resp, "status_code", 0) or 0) != 200:
             return []
         block = ((resp.json() or {}).get("chart") or {}).get("result") or [None]
@@ -20331,9 +20399,9 @@ def verify_live_hyps_with_speech(db_path: str, snippet: str) -> int:
 # 順序＝prepare → 終檢 → 現況簡述 → paint；倒推＝從出圖往回查哪步漂了
 # 01–08＝出圖前流水線（run_teach_trio_preflight_pipeline）；09–12＝送圖
 TEACH_TRIO_PIPELINE: Tuple[Tuple[str, str], ...] = (
-    ("01_twii_daily", "補加權官方日K（落後開市／60分→sync＋60分聚合）"),
-    ("02_tx_night", "補電子盤夜盤 cap＋收後日盤 regular"),
-    ("03_sox_daily", "補費半官方日K（可降級）"),
+    ("01_twii_daily", "補加權日K（FMTQIK／Yahoo／60分）＋60分 minute（query1→2）"),
+    ("02_tx_night", "補電子盤夜盤：OpenAPI→歷史CSV；收後日盤 regular"),
+    ("03_sox_daily", "補費半日K：Yahoo query1→2；失敗再60分日切（可降級）"),
     ("04_posts_fresh", "補飆大公開文；題旨／右標跟貼文庫"),
     ("05_build_pack", "_build_live_pack：題旨≤查詢日＋pred／量價位"),
     ("06_live_legs", "MIS／費半／夜盤即時（台北時段對才盤中螢光）"),
@@ -20391,19 +20459,25 @@ def run_teach_trio_preflight_pipeline(
             and (not tw_asof or tw_asof < target)
             and not _twii_cash_session_live(dt)
         )
+        # 不論日K是否已齊：波浪鍵都抓 60 分（超近＋聚合備援；query1→2）
+        try:
+            mins = _ensure_teach_minute_legs(db_path)
+        except Exception:
+            mins = {"ok": False, "sids": ["exc"]}
         if need_force:
             force = _force_refill_twii_daily_to_target(db_path, target_ymd=target)
             tw_asof = _ymd(force.get("asof_after")) or _twii_chart_as_of(db_path)
             _step(
                 "01_twii_daily",
                 bool(tw_asof and (not target or tw_asof >= target)),
-                f"asof={tw_asof} target={target} force={force.get('paths')}",
+                f"asof={tw_asof} target={target} force={force.get('paths')} "
+                f"m60={mins.get('sids')}",
             )
         else:
             _step(
                 "01_twii_daily",
                 bool(tw_asof),
-                f"asof={tw_asof} target={target}",
+                f"asof={tw_asof} target={target} m60={mins.get('sids')}",
             )
     except Exception as exc:
         logger.exception("pipeline 01 加權日K 失敗")
@@ -20413,7 +20487,7 @@ def run_teach_trio_preflight_pipeline(
     try:
         _ensure_latest_tx_night_row(db_path)
         _ensure_teach_tx_day_row(db_path, now=dt)
-        _step("02_tx_night", True, "night+day ensured")
+        _step("02_tx_night", True, "night+day ensured (openapi→hist)")
     except Exception as exc:
         logger.exception("pipeline 02 電子盤 失敗")
         _step("02_tx_night", False, type(exc).__name__)
@@ -20425,7 +20499,7 @@ def run_teach_trio_preflight_pipeline(
             _sox_daily_from_minutes(db_path)
         except Exception:
             pass
-        _step("03_sox_daily", True, "sox sync attempted")
+        _step("03_sox_daily", True, "sox yahoo→query2→60m日切")
     except Exception as exc:
         logger.exception("pipeline 03 費半 失敗")
         _step("03_sox_daily", False, type(exc).__name__)

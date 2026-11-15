@@ -2669,6 +2669,10 @@ def test_run_teach_trio_preflight_pipeline_records_steps(monkeypatch):
         lambda *_a, **_k: {"ok": True, "wrote": 0, "asof_after": "20261113"},
     )
     monkeypatch.setattr(
+        "biaoke_level_learn._ensure_teach_minute_legs",
+        lambda *_a, **_k: {"ok": True, "saved": 3, "sids": ["TWII:1", "0050:1", "SOX:1"]},
+    )
+    monkeypatch.setattr(
         "biaoke_level_learn._ensure_latest_tx_night_row", lambda *_a, **_k: None
     )
     monkeypatch.setattr(
@@ -4399,6 +4403,25 @@ def test_teach_trio_pipeline_table_locked():
     pipe_src = inspect.getsource(run_teach_trio_preflight_pipeline)
     assert "ensure_teach_tip_preflight" in pipe_src
     assert "_force_refill_twii_daily_to_target" in pipe_src
+    assert "_ensure_teach_minute_legs" in pipe_src
+
+
+def test_ensure_teach_minute_legs_fetches_twii_0050_sox(monkeypatch):
+    """波浪鍵 60 分備援：加權／0050／費半都要抓進 minute_bars。"""
+    from biaoke_level_learn import _ensure_teach_minute_legs
+
+    seen = []
+
+    def _fetch(sid, iv, db):
+        seen.append((sid, iv))
+        return [{"ts": "202611131000", "c": 1}]
+
+    monkeypatch.setattr("kline_hop.fetch_yahoo_minutes", _fetch)
+    out = _ensure_teach_minute_legs("/tmp/x.db")
+    assert out["ok"]
+    assert ("TWII", "60") in seen
+    assert ("0050", "60") in seen
+    assert ("SOX", "60") in seen
 
 
 def test_twii_chart_as_of_empty_not_today(tmp_path):
