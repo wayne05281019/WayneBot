@@ -53,12 +53,13 @@ def _seed(db: str, rows: list) -> None:
             "VALUES (?,?,?,'TW',100,101,99,?,1000,100000,1.0,?,0,0,0)",
             ("20260917", sid, name, close, close),
         )
+        # 種子給 Q1 真實單季（缺 Q1 的孤 Q2 累計列不准當假單季）
         conn.execute(
             "INSERT OR REPLACE INTO quarterly_income"
             "(stock_id,year,season,stock_name,market,revenue,gross_profit,"
             "gross_margin_pct,operating_income,net_income,eps) "
             "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-            (sid, 2026, 2, name, "TW", 1e6, 3e5, 30.0, 2e5, 1e5, eps),
+            (sid, 2026, 1, name, "TW", 1e6, 3e5, 30.0, 2e5, 1e5, eps),
         )
         tags = chain.split("-")
         conn.execute(
@@ -103,7 +104,7 @@ def test_bijia_ranks_and_skips_cross_chain(tmp_path):
     assert "勝率／報酬" not in html
     assert "已偏貴" in html
     assert "3081" in html and "2455" in html
-    assert "價/EPS" in html
+    assert "價/近季EPS" in html
     assert "2330" not in html
     assert "細項" not in html
 
@@ -150,7 +151,11 @@ def test_bijia_png_layout_short(tmp_path):
     bj = snap["bijia"]
     assert bj["ok"] is True
     assert any(r["stock_id"] == "3105" and r["is_mine"] for r in bj["rows"])
-    assert "價／EPS" in bj["read"] or "價/EPS" in bj["read"] or "中位" in bj["read"]
+    assert (
+        "價／近季EPS" in bj["read"]
+        or "價/近季EPS" in bj["read"]
+        or "中位" in bj["read"]
+    )
     html = format_industry_html("3105", db, allow_fetch=False)
     assert "怎麼做" not in html and "勝率" not in html
     from industry_brief import format_bijia_cells, pad_listing_slot, pad_stock_name, widest_stock_name

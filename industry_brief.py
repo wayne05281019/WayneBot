@@ -1039,28 +1039,48 @@ def attach_fine_industry(
 
 
 def _recent_eps_sum(conn: sqlite3.Connection, stock_id: str, *, max_n: int = 2) -> Dict[str, Any]:
-    """近最多兩季 EPS 合計。官方常只有最新一期→n=1；有兩季才合計。不准自造。"""
-    rows = conn.execute(
+    """近最多兩季「真實單季」EPS 合計。累計列先還原；不准把上半年+前三季加總灌水。"""
+    sid = str(stock_id).strip()
+    # 多抓幾列才夠還原 YTD（同年度 Q1～Q4）
+    raw = conn.execute(
         """
-        SELECT year, season, eps FROM quarterly_income
-        WHERE stock_id=? ORDER BY year DESC, season DESC LIMIT ?
+        SELECT year, season, eps, revenue FROM quarterly_income
+        WHERE stock_id=? ORDER BY year DESC, season DESC LIMIT 8
         """,
-        (str(stock_id).strip(), int(max_n)),
+        (sid,),
     ).fetchall()
+    income_rows: List[Dict[str, Any]] = []
+    for r in raw:
+        try:
+            income_rows.append(
+                {
+                    "year": int(r["year"] if isinstance(r, sqlite3.Row) else r[0] or 0),
+                    "season": int(r["season"] if isinstance(r, sqlite3.Row) else r[1] or 0),
+                    "eps": float(r["eps"] if isinstance(r, sqlite3.Row) else r[2] or 0),
+                    "revenue": float(
+                        (r["revenue"] if isinstance(r, sqlite3.Row) else r[3]) or 0
+                    ),
+                }
+            )
+        except (TypeError, ValueError, IndexError, KeyError):
+            continue
+    try:
+        from fundamentals import expand_ytd_income_eps_to_single
+
+        single = expand_ytd_income_eps_to_single(income_rows)
+    except Exception:
+        single = {}
+        for rec in income_rows:
+            y, s = int(rec["year"]), int(rec["season"])
+            if y >= 1990 and s in (1, 2, 3, 4):
+                single[(y, s)] = float(rec["eps"])
+    ordered = sorted(single.keys(), key=lambda ks: (ks[0], ks[1]), reverse=True)
     seasons: List[str] = []
     total = 0.0
     n = 0
-    for r in rows:
-        try:
-            eps = float(r["eps"] if isinstance(r, sqlite3.Row) else r[2] or 0)
-            y = int(r["year"] if isinstance(r, sqlite3.Row) else r[0] or 0)
-            s = int(r["season"] if isinstance(r, sqlite3.Row) else r[1] or 0)
-        except (TypeError, ValueError, IndexError, KeyError):
-            continue
-        if y < 1990 or s not in (1, 2, 3, 4):
-            continue
+    for y, s in ordered[: int(max_n)]:
         seasons.append(f"{y}Q{s}")
-        total += eps
+        total += float(single[(y, s)])
         n += 1
     return {"eps_sum": total if n else None, "eps_n": n, "eps_seasons": seasons}
 
@@ -1249,19 +1269,19 @@ def attach_price_eps_bijia(snap: Dict[str, Any], db_path: str) -> Dict[str, Any]
         chain_label = f"{chain}；跨族 {'／'.join(extras)}" if chain else "跨族 " + "／".join(extras)
 
     if mult_med is not None and my_mult <= float(mult_med) * 0.92:
-        read = f"價／EPS {my_mult:.0f}　中位 {float(mult_med):.0f}　相對便宜"
+        read = f"價／近季EPS {my_mult:.0f}　中位 {float(mult_med):.0f}　相對便宜"
         flag = "lag"
         flag_text = "落後補漲對照"
         top = max((float(r["mult"]) for r in rows_out if not r["is_mine"]), default=0.0)
         if top >= my_mult * 1.8 and my_mult > 0:
             flag_text = "落後補漲對照　遠低同鏈高檔"
     elif mult_med is not None and my_mult >= float(mult_med) * 1.08:
-        read = f"價／EPS {my_mult:.0f}　中位 {float(mult_med):.0f}　相對貴"
+        read = f"價／近季EPS {my_mult:.0f}　中位 {float(mult_med):.0f}　相對貴"
         flag = "dear"
         flag_text = "已偏貴"
     else:
         med_s = f"{float(mult_med):.0f}" if mult_med is not None else "—"
-        read = f"價／EPS {my_mult:.0f}　中位 {med_s}"
+        read = f"價／近季EPS {my_mult:.0f}　中位 {med_s}"
         flag = ""
         flag_text = ""
 
@@ -1303,18 +1323,21 @@ def pad_listing_slot(listing: str) -> str:
 
 
 def format_bijia_cells(row: Dict[str, Any]) -> Dict[str, str]:
-    """圖卡／HTML 共用欄位字串。名稱與上市／上櫃分開，預留對齊格。"""
+    """圖卡／HTML 共用欄位字串。名稱與上市／上櫃分開，預留對齊格。
+
+    EPS 只留數字；口數改由外層 eps_label（近1季EPS／近2季EPS），不准黏「×2」疊字。
+    mult＝收盤÷真實單季EPS合計，標籤用「價／EPS」並與證交所本益分開。
+    """
     mark = "這檔" if row.get("is_mine") else ""
     name = str(row.get("stock_name") or "")
     listing = str(row.get("listing") or "").strip()
-    eps_n = int(row.get("eps_n") or 1)
     return {
         "mark": mark,
         "sid": str(row.get("stock_id") or ""),
         "name": name,
         "listing": listing,
         "close": f"{float(row.get('close') or 0):.0f}",
-        "eps": f"{float(row.get('eps_sum') or 0):.2f}" + (f"×{eps_n}" if eps_n > 1 else ""),
+        "eps": f"{float(row.get('eps_sum') or 0):.2f}",
         "mult": f"{float(row.get('mult') or 0):.0f}",
     }
 
@@ -1454,7 +1477,7 @@ def format_industry_html(stock_id: str, db_path: str = None, *, allow_fetch: boo
                 f"{html_escape(name_bit)}{html_escape(list_bit)}　"
                 f"{html_escape(c['close'])}　"
                 f"EPS {html_escape(c['eps'])}　"
-                f"價/EPS <b>{html_escape(c['mult'])}</b>"
+                f"價/近季EPS <b>{html_escape(c['mult'])}</b>"
             )
         if bijia.get("read"):
             bj_lines.append(html_escape(str(bijia["read"])))

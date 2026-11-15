@@ -536,9 +536,10 @@ def render_industry_png(
     # 同鏈比價表欄位（右緣對齊數字；名稱用最長股名，上市／上櫃預留同寬格）
     BIJIA_MARK_W = ipx(72)
     BIJIA_SID_W = ipx(100)
-    BIJIA_CLOSE_W = ipx(120)
-    BIJIA_EPS_W = ipx(140)
-    BIJIA_MULT_W = ipx(120)
+    BIJIA_CLOSE_W = ipx(100)
+    BIJIA_EPS_W = ipx(120)
+    # 「價/近季EPS」比舊「價/EPS」長，右欄加寬免得表頭裁切／疊字
+    BIJIA_MULT_W = ipx(168)
     BIJIA_ROW_H = ipx(52)
     x0_b = pad_x
     x_sid_b = x0_b + BIJIA_MARK_W
@@ -722,7 +723,7 @@ def render_industry_png(
                 dr.text((px, py), pct, font=body_f, fill=TEXT + (255,))
                 cy += line_h
         elif kind == "bijia_head":
-            # 欄：標記 | 代號 | 名稱 | 上市／上櫃 | 收盤 | EPS | 價/EPS
+            # 欄：標記 | 代號 | 名稱 | 上市／上櫃 | 收盤 | EPS | 價/近季EPS（≠證交所本益）
             x0 = x0_b
             x_sid = x_sid_b
             x_name = x_name_b
@@ -745,7 +746,7 @@ def render_industry_png(
             _col("上市", x_listing_b, x_listing_b + bijia_lay["listing_w"], font=bijia_nf)
             _col("收盤", x_close_r - BIJIA_CLOSE_W, x_close_r, right=True)
             _col("EPS", x_eps_r - BIJIA_EPS_W, x_eps_r, right=True)
-            _col("價/EPS", x_mult_r - BIJIA_MULT_W, x_mult_r, right=True)
+            _col("價/近季EPS", x_mult_r - BIJIA_MULT_W, x_mult_r, right=True)
             dr.line(
                 [(pad_x, cy + BIJIA_ROW_H - ipx(6)), (pad_x + max_w, cy + BIJIA_ROW_H - ipx(6))],
                 fill=CARD_INNER + (255,),

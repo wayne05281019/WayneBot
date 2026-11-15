@@ -1973,7 +1973,8 @@ def valuation_plain_rows(
         bits = []
         if not etf:
             if val.get("pe") is not None:
-                bits.append(f"本益 {val['pe']:.2f}")
+                # 證交所日報本益（近四季合計 EPS 口徑），與同鏈「價/近季EPS」分開，不准混講
+                bits.append(f"證交所本益 {val['pe']:.2f}")
             if val.get("pb") is not None:
                 bits.append(f"淨值 {val['pb']:.2f}")
         if val.get("dividend_yield") is not None:

@@ -1351,20 +1351,92 @@ def list_quarterly_income(
     return [dict(r) for r in rows]
 
 
+def _income_year_looks_ytd(by_season: Dict[int, Dict[str, Any]]) -> bool:
+    """同年各季營收明顯遞增＝觀測站累計列（上半年／前三季／全年），不是單季。"""
+    seasons = sorted(int(s) for s in by_season.keys() if int(s) in (1, 2, 3, 4))
+    for i in range(1, len(seasons)):
+        a, b = seasons[i - 1], seasons[i]
+        try:
+            ra = float((by_season[a] or {}).get("revenue") or 0)
+            rb = float((by_season[b] or {}).get("revenue") or 0)
+        except (TypeError, ValueError):
+            continue
+        if ra > 0 and rb > ra * 1.02:
+            return True
+    return False
+
+
+def expand_ytd_income_eps_to_single(
+    income_rows: Optional[Sequence[Dict[str, Any]]] = None,
+) -> Dict[Tuple[int, int], float]:
+    """把綜合損益「年初至該期累計 EPS」還原成真實單季 EPS。
+
+    規則（山太士範本）：Q1＝累計；Q2＝H1−Q1；Q3＝前三季−H1；Q4＝全年−前三季。
+    同年營收未呈累計遞增（興櫃單季種子等）→ 原值當單季，不准再減一次。
+    缺前期累計時該季不上單季（不准瞎減）。
+    """
+    by_year: Dict[int, Dict[int, Dict[str, Any]]] = {}
+    for r in income_rows or ():
+        try:
+            y, s = int(r["year"]), int(r["season"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if y < 1990 or s not in (1, 2, 3, 4):
+            continue
+        by_year.setdefault(y, {})[s] = dict(r)
+
+    out: Dict[Tuple[int, int], float] = {}
+    for y, by_s in by_year.items():
+        has_q1 = 1 in by_s
+        if not _income_year_looks_ytd(by_s):
+            # 興櫃等已是單季：必須有 Q1 錨才敢整年當單季。
+            # 只有上半年／前三季孤列、缺 Q1 → 可能是累計卻無法還原，不上假單季。
+            if not has_q1:
+                continue
+            for s, row in by_s.items():
+                try:
+                    out[(y, s)] = float(row.get("eps") or 0)
+                except (TypeError, ValueError):
+                    continue
+            continue
+        prev_cum: Optional[float] = None
+        prev_season = 0
+        for s in (1, 2, 3, 4):
+            row = by_s.get(s)
+            if row is None:
+                continue
+            try:
+                cum = float(row.get("eps") or 0)
+            except (TypeError, ValueError):
+                continue
+            if s == 1 or prev_cum is None:
+                # 缺更早累計：第1季＝本身；若首列就是 Q2/Q3 無法還原單季
+                if s == 1:
+                    out[(y, s)] = cum
+                    prev_cum = cum
+                    prev_season = s
+                else:
+                    # 沒有 Q1 累計錨 → 不上假單季（仍記 cum 供後續差分若之後有）
+                    prev_cum = cum
+                    prev_season = s
+                continue
+            if s > prev_season and prev_cum is not None:
+                out[(y, s)] = cum - prev_cum
+            prev_cum = cum
+            prev_season = s
+    return out
+
+
 def attach_quarter_box_eps(
     boxes: List[Dict[str, Any]],
     income_rows: Optional[Sequence[Dict[str, Any]]] = None,
 ) -> List[Dict[str, Any]]:
-    """季框併官方季 EPS；該年季無綜合損益列 → eps 空，不准填假數。
+    """季框併官方「真實單季」EPS；該年季無綜合損益列 → eps 空，不准填假數。
 
-    eps_better＝有上季官方 EPS 且本季＞上季（話筒紅字）。
+    觀測站 02/03/04 常為累計：先還原再上框（3595 Q2 累計 3.02／Q1 1.27 → 單季 1.75）。
+    eps_better＝有上季真實單季且本季＞上季（話筒紅字）。
     """
-    by: Dict[Tuple[int, int], Dict[str, Any]] = {}
-    for r in income_rows or ():
-        try:
-            by[(int(r["year"]), int(r["season"]))] = r
-        except (KeyError, TypeError, ValueError):
-            continue
+    single = expand_ytd_income_eps_to_single(income_rows)
     out: List[Dict[str, Any]] = []
     for raw in boxes or ():
         b = dict(raw)
@@ -1382,25 +1454,15 @@ def attach_quarter_box_eps(
             prev_key = (y - 1, 4)
         else:
             prev_key = (y, s - 1)
-        row = by.get(key)
-        if row is None:
+        if key not in single:
             b["eps"] = None
             b["eps_lab"] = ""
         else:
-            try:
-                eps_v = float(row.get("eps") or 0)
-            except (TypeError, ValueError):
-                eps_v = 0.0
+            eps_v = float(single[key])
             b["eps"] = eps_v
             b["eps_lab"] = f"{eps_v:.2f}"
-            prev = by.get(prev_key)
-            if prev is not None:
-                try:
-                    prev_eps = float(prev.get("eps") or 0)
-                except (TypeError, ValueError):
-                    prev_eps = None
-                if prev_eps is not None and eps_v > prev_eps:
-                    b["eps_better"] = True
+            if prev_key in single and eps_v > float(single[prev_key]):
+                b["eps_better"] = True
         out.append(b)
     return out
 
