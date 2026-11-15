@@ -317,11 +317,13 @@ def render_undervalue_png(
     as_of: Optional[str] = None,
     title: str = "低估名單",
     pe_label: str = "PE",
+    empty_note: Optional[str] = None,
 ) -> str:
     """把已算好的低估／觀察列畫成話筒 PNG。回傳 save_path。
 
     列內 pe_est 為真＝PE 用推估 EPS，數字前標「推」並在卡底註明（推估必標）。
     ★ 列排在 ☆ 前，組內維持呼叫端順序。
+    empty_note：空名單副句，呼叫端分清「盤後還沒算完」與「已算完 0 檔」。
     """
     rows = _order_rows(rows)
     W = _px(BASE_W)
@@ -412,14 +414,14 @@ def render_undervalue_png(
         _text_center_mid(
             dr,
             (content_l, mid_y - _px(40), content_r, mid_y),
-            "今日無低估／觀察名單",
+            "無低估／觀察名單",
             empty_f,
             TEXT,
         )
         _text_center_mid(
             dr,
             (content_l, mid_y + _px(8), content_r, mid_y + _px(48)),
-            "有資料再顯示 ★真低估／☆觀察",
+            str(empty_note or "有資料再顯示 ★真低估／☆觀察"),
             empty_sub_f,
             MUTED,
         )
@@ -532,16 +534,16 @@ _DEMO_ROWS: List[Dict[str, Any]] = [
 
 def main() -> None:
     out_dir = "/opt/cursor/artifacts"
-    as_of = "2026-11-14"
+    # 示範列是假數字：只准標「排版示意」、不帶資料日，不准當名單送話筒
     p1 = render_undervalue_png(
         _DEMO_ROWS,
         os.path.join(out_dir, "undervalue_list_demo_filled.png"),
-        as_of=as_of,
+        title="排版示意（非名單）",
     )
     p2 = render_undervalue_png(
         [],
         os.path.join(out_dir, "undervalue_list_demo_empty.png"),
-        as_of=as_of,
+        title="排版示意（非名單）",
     )
     print(p1)
     print(p2)
