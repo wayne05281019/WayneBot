@@ -148,3 +148,29 @@ def test_classify_biaoke_before_huang_is_verify(tmp_path):
     assert out["verify_n"] == 2
     assert out["compare_n"] == 2
     assert out["mode"] == "verify+compare"
+
+
+def test_classify_accepts_dashed_biaoke_date(tmp_path):
+    """正式庫常寫 2026-11-16；對質不准因格式對不上變 0。"""
+    import sqlite3
+
+    from huang_teach_sync import classify_biaoke_vs_huang
+
+    db = str(tmp_path / "dash.db")
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE biaoke_posts(id TEXT, date TEXT, time TEXT, text TEXT)"
+    )
+    conn.executemany(
+        "INSERT INTO biaoke_posts VALUES (?,?,?,?)",
+        [
+            ("a", "2026-11-16", "09:50", "波浪4帶"),
+            ("b", "2026-11-16", "15:10", "盤後補充"),
+        ],
+    )
+    conn.commit()
+    conn.close()
+    out = classify_biaoke_vs_huang(db, "20261116", video_hm="1430")
+    assert out["verify_n"] == 1
+    assert out["compare_n"] == 1
+    assert out["mode"] == "verify+compare"
