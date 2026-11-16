@@ -159,6 +159,8 @@ def send_photo(chat: str, path: str, caption: str = "") -> dict:
 
 def _forwarding_message(chat_id: int, uid: int, text: str = ""):
     """reply_* 同時轉送到真話筒。"""
+    from datetime import timezone as _tz
+
     user = SimpleNamespace(id=uid, first_name="sweep")
     chat = SimpleNamespace(id=chat_id)
     message = MagicMock()
@@ -167,6 +169,9 @@ def _forwarding_message(chat_id: int, uid: int, text: str = ""):
     message.from_user = user
     message.text = text
     message.message_id = 1
+    # 必填真實 date：MagicMock.date 會被 _message_is_preboot_replay 當「重開前舊訊」
+    # 整串回「雲端剛重開…作廢」，洗爆話筒。
+    message.date = datetime.now(_tz.utc)
     sent = {"texts": [], "photos": [], "htmls": []}
 
     async def _reply_text(*args, **kwargs):
