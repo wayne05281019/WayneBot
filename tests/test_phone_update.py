@@ -69,8 +69,8 @@ def test_file_note_matches_this_change():
     raw = Path(pu._NOTE_FILE).read_text(encoding="utf-8").splitlines()[0]
     assert "舊海選早報" not in raw
     assert "依時段" not in raw
-    assert "低估" in raw or "真成長" in raw
-    assert pu._clean_note(raw) == "低估名單改真成長掃描：剔除假低估陷阱，顯示今明目標價與三段卡片"
+    assert "低估" in raw or "中位" in raw
+    assert pu._clean_note(raw) == "低估目標價改吃同鏈中位（破頂才用產業表）；高估檔不再進現在可買"
 
 
 def test_schedule_wait_note_at_fuse_window():

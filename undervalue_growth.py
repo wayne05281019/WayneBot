@@ -57,7 +57,10 @@ def _blob(*parts: Any) -> str:
 
 def industry_bucket(chain: str = "", tags: Sequence[str] = (), name: str = "") -> str:
     blob = _blob(chain, " ".join(tags), name)
-    if _IP_RE.search(blob) or re.search(r"IC設計|矽智財", blob):
+    # 記憶體／成熟晶圓先走 default，不准被「IC設計」誤判成 IP/ASIC 40 倍
+    if re.search(r"記憶體|DRAM|SRAM|NAND|Flash|晶豪|力積|標準型", blob, re.I):
+        return "default"
+    if _IP_RE.search(blob) or re.search(r"矽智財|(?<!記憶體)IC設計|IP/ASIC", blob):
         return "ic_ip"
     if re.search(r"先進封裝|特化材料|半導體材料|設備", blob):
         return "adv_pack_mat"
@@ -70,6 +73,25 @@ def industry_bucket(chain: str = "", tags: Sequence[str] = (), name: str = "") -
     if _AI_SERVER_RE.search(blob):
         return "ai_server_oem"
     return "default"
+
+
+def select_fair_pe_pair(
+    peer_med_raw: Optional[float], bucket: str
+) -> Tuple[float, float, float]:
+    """同鏈中位未破硬頂→用中位算目標價；破頂才改產業表。
+
+    回傳 (pe_year, pe_next, peer_for_display)。
+    """
+    ind_y, ind_n = fair_pe_pair(bucket)
+    cap = peer_pe_cap(bucket)
+    med = _finite(peer_med_raw)
+    if med is None or med <= 0:
+        return float(ind_y), float(ind_n), float(ind_y)
+    if med > cap:
+        return float(ind_y), float(ind_n), float(ind_y)
+    # 中位可信：今年用中位；明年按產業表比例縮
+    scale = float(ind_n) / float(ind_y) if ind_y else 1.0
+    return float(med), float(med) * scale, float(med)
 
 
 def fair_pe_pair(bucket: str) -> Tuple[float, float]:
@@ -434,15 +456,11 @@ def enrich_growth_row(
     )
     if not ok:
         return None
-    pe_year, pe_next = fair_pe_pair(bucket)
     med_cap = capped_peer_median(peer_med_raw, bucket)
     if med_cap is None:
         return None
-    # 合理 PE：產業表為準（封頂後同鏈中位若仍高於產業今年 PE，仍用產業表）
-    use_pe_year = min(float(pe_year), float(med_cap)) if med_cap < pe_year else float(pe_year)
-    # 使用者規格：失真中位→改用產業合理 PE；通過 cap 後仍用產業表算目標價
-    use_pe_year = float(pe_year)
-    use_pe_next = float(pe_next)
+    # 中位未破硬頂→用中位；破頂→產業表（不准再無視中位硬套 40 倍）
+    use_pe_year, use_pe_next, _peer_disp = select_fair_pe_pair(peer_med_raw, bucket)
 
     moms, last_rev, ytd_rev, m_last = load_recent_moms(conn, sid, n=3)
     eps_est = estimate_eps_year_next(
