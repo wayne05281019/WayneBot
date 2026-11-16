@@ -743,7 +743,6 @@ MENU_ROW2 = (
     MENU_BTN_WAVE_STATUS,
     MENU_BTN_CHONG,
     MENU_BTN_PRESSURE,
-    MENU_BTN_AI,
     MENU_BTN_UNDERVALUE,
     MENU_BTN_STREAK,
     MENU_BTN_LEAVE_ZERO,
@@ -784,7 +783,8 @@ MENU_FULL_ALIASES = ("完整選單", "完整鍵盤")
 # v35：下排「波浪現況」→「波浪位階」（同三張＋敘述）；沖區子選不變。
 # v36：（作廢）曾誤把 AI倉換成低估名單；違功能全同／AI倉鈕留著。
 # v37：下排保留 AI倉，其右加「低估名單」（估值≠買訊；融合後掃；打字別名仍認）。上七下八。
-MENU_LAYOUT_VERSION = "37"
+# v38：主選單拿掉「AI倉」鈕（2026-11-16 使用者鎖）；假錢倉改打字「AI倉」／「模擬倉」仍開。上七下七。
+MENU_LAYOUT_VERSION = "38"
 MAX_PICK_INLINE_ROWS = 8
 
 # 輸入列左邊三條槓（Telegram BotCommand）。跟下方兩排重複的不放，避免兩套入口。

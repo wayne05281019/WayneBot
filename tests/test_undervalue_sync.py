@@ -77,11 +77,24 @@ def test_post_fuse_hook_calls_undervalue(monkeypatch):
     assert "run_undervalue_sync" in src
 
 
-def test_menu_undervalue_keeps_ai_slot():
+def test_menu_undervalue_without_ai_button():
     from bot_servers import MENU_BTN_AI, MENU_BTN_UNDERVALUE, MENU_ROW2, MENU_LAYOUT_VERSION
 
-    assert MENU_LAYOUT_VERSION == "37"
+    assert MENU_LAYOUT_VERSION == "38"
     assert MENU_BTN_UNDERVALUE == "低估名單"
-    assert MENU_ROW2[3] == MENU_BTN_AI
-    assert MENU_ROW2[4] == MENU_BTN_UNDERVALUE
-    assert MENU_BTN_AI in MENU_ROW2
+    assert MENU_ROW2[3] == MENU_BTN_UNDERVALUE
+    assert MENU_BTN_AI not in MENU_ROW2
+    assert MENU_BTN_AI == "AI倉"  # 打字別名仍認
+
+
+def test_ai_desk_type_alias_still_routes():
+    """主選單無 AI倉鈕；打字 AI倉／模擬倉仍進假錢倉。"""
+    import inspect
+
+    from bot_servers import MENU_BTN_AI, MENU_ROW2, WayneTelegramBot
+
+    assert MENU_BTN_AI not in MENU_ROW2
+    src = inspect.getsource(WayneTelegramBot._on_text_bound)
+    assert '"AI倉"' in src
+    assert "模擬倉" in src
+    assert "_send_ai_desk_view" in src

@@ -27,7 +27,6 @@ ROW2_LABELS = [
     MENU_BTN_WAVE_STATUS,
     MENU_BTN_CHONG,
     MENU_BTN_PRESSURE,
-    MENU_BTN_AI,
     MENU_BTN_UNDERVALUE,
     MENU_BTN_STREAK,
     MENU_BTN_LEAVE_ZERO,
@@ -45,9 +44,10 @@ def test_reply_keyboard_matches_menu_layout():
     assert row1 == ROW1
     assert row2 == ROW2_LABELS
     assert row2[2] == MENU_BTN_PRESSURE
-    assert row2[3] == MENU_BTN_AI
+    assert row2[3] == MENU_BTN_UNDERVALUE
+    assert MENU_BTN_AI not in row2
     assert row2[-1] == MENU_BTN_DONGZHU
-    assert MENU_LAYOUT_VERSION == "37"
+    assert MENU_LAYOUT_VERSION == "38"
 
 
 def test_picture_guide_cancelled_stubs_remain():
