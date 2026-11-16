@@ -69,8 +69,8 @@ def test_file_note_matches_this_change():
     raw = Path(pu._NOTE_FILE).read_text(encoding="utf-8").splitlines()[0]
     assert "舊海選早報" not in raw
     assert "依時段" not in raw
-    assert "盤後融合" in raw
-    assert pu._clean_note(raw) == "週末休市不再誤說盤後融合"
+    assert "三窗" in raw or "夜盤" in raw
+    assert pu._clean_note(raw) == "三窗：日盤 tip 改吃夜盤，不再擋出圖"
 
 
 def test_schedule_wait_note_at_fuse_window():
