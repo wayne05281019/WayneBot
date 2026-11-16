@@ -92,6 +92,16 @@ def test_cookies_path_accepts_inline_netscape(tmp_path, monkeypatch):
     assert "youtube.com" in cookie_file.read_text(encoding="utf-8")
 
 
+def test_cookies_path_rejects_missing_probe_path(monkeypatch):
+    from huang_youtube import cookies_path, youtube_cookies_ready
+
+    monkeypatch.setenv("HUANG_YT_COOKIES", "/tmp/huang_yt_cookies_probe.txt")
+    assert cookies_path() == ""
+    st = youtube_cookies_ready()
+    assert st["ready"] is False
+    assert st["env_set"] is True
+
+
 def test_parse_drive_name_and_known_ids():
     from huang_youtube import (
         HUANG_DRIVE_FOLDER_ID_DEFAULT,

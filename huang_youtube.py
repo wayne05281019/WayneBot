@@ -648,9 +648,10 @@ def cookies_path() -> str:
     """回傳可用的 cookies 檔路徑。
 
     支援：
-    - 環境變數是既有檔路徑
-    - 環境變數直接是 Netscape cookies 內容（Render Secret 常這樣放）→ 寫入暫存檔
+    - 環境變數是既有檔路徑（檔必須真的在；探測路徑／空檔＝無效）
+    - 環境變數直接是 Netscape cookies 內容（Render／Cursor Secret 常這樣放）→ 寫入暫存檔
     不准把 cookies 貼進 git／聊天。
+    使用者已鎖：日常不用手動抓片；程式自己上 YT。缺的是一次性有效 cookies 祕密，不是每天貼 Drive。
     """
     raw = (
         os.getenv("HUANG_YT_COOKIES")
@@ -660,9 +661,7 @@ def cookies_path() -> str:
     ).strip()
     if not raw:
         return ""
-    if os.path.isfile(raw):
-        return raw
-    # 內嵌 cookies 文本
+    # 先認內嵌 Netscape 文本（內容裡常有「\t/\t」，不准誤判成路徑）
     if ("# Netscape" in raw) or ("\t" in raw and "youtube.com" in raw):
         path = os.getenv("HUANG_YT_COOKIES_TMP") or "/tmp/huang_yt_cookies.txt"
         try:
@@ -673,7 +672,47 @@ def cookies_path() -> str:
         except Exception:
             logger.exception("huang_youtube：寫入 cookies 暫存失敗")
             return ""
+    # 路徑型：單行路徑且檔真的在；probe／空殼／不存在＝無效（使用者已鎖自己上 YT，缺的是一次有效祕密）
+    looks_path = ("\n" not in raw) and (
+        raw.startswith("/") or raw.endswith(".txt") or raw.endswith(".cookies")
+    )
+    if looks_path or os.path.isfile(raw):
+        if os.path.isfile(raw) and os.path.getsize(raw) > 64:
+            try:
+                head = open(raw, encoding="utf-8", errors="ignore").read(800)
+            except Exception:
+                head = ""
+            if ("youtube.com" in head) or ("# Netscape" in head):
+                return raw
+            logger.warning("huang_youtube：cookies 檔不像 YouTube Netscape，忽略 path")
+            return ""
+        logger.warning("huang_youtube：HUANG_YT_COOKIES 路徑無效，YT 自抓會被擋")
+        return ""
     return ""
+
+
+def youtube_cookies_ready() -> Dict[str, Any]:
+    """自檢：YT 自抓要的 cookies 祕密是否可用（不讀出內容）。"""
+    raw = (
+        os.getenv("HUANG_YT_COOKIES")
+        or os.getenv("YTDLP_COOKIES")
+        or os.getenv("YOUTUBE_COOKIES")
+        or ""
+    ).strip()
+    path = cookies_path()
+    return {
+        "ready": bool(path and os.path.isfile(path)),
+        "env_set": bool(raw),
+        "env_looks_like_path": bool(raw) and (
+            raw.startswith("/") or raw.endswith(".txt") or (os.sep in raw)
+        ),
+        "path_ok": bool(path),
+        "hint_zh": (
+            "YT 自抓就緒"
+            if path
+            else "HUANG_YT_COOKIES 無效或過期：請在 Cursor／Render Secrets 一次放 Netscape YouTube cookies（不要貼聊天、不用每天抓片）"
+        ),
+    }
 
 
 def _vtt_to_text(vtt_path: str) -> str:

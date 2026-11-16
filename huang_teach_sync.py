@@ -186,7 +186,7 @@ def classify_biaoke_vs_huang(
 
     只數他自己的公開文（biaoke_posts）；空庫＝兩邊都 0。
     """
-    ymd = str(as_of_ymd or "").strip()
+    ymd = re.sub(r"\D", "", str(as_of_ymd or "").strip())[:8]
     hm = _hm_norm(video_hm) or DEFAULT_VIDEO_HM
     out: Dict[str, Any] = {
         "video_hm": hm,
@@ -196,15 +196,17 @@ def classify_biaoke_vs_huang(
         "verify_ids": [],
         "compare_ids": [],
     }
-    if not ymd or not os.path.isfile(db_path):
+    if len(ymd) != 8 or not os.path.isfile(db_path):
         return out
+    # 庫內 date 有時是 20261116、有時是 2026-11-16；兩種都認，否則對質會變 0
+    ymd_dash = f"{ymd[:4]}-{ymd[4:6]}-{ymd[6:8]}"
     try:
         conn = sqlite3.connect(db_path, timeout=10.0)
         try:
             rows = conn.execute(
                 "SELECT id, time, substr(text,1,80) FROM biaoke_posts "
-                "WHERE date=? ORDER BY time, id",
-                (ymd,),
+                "WHERE date IN (?, ?) ORDER BY time, id",
+                (ymd, ymd_dash),
             ).fetchall()
         finally:
             conn.close()
