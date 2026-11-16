@@ -2797,6 +2797,77 @@ def test_stamp_preflight_blocks_tw_behind_last_open(monkeypatch):
     assert "tw_asof_behind_session" in codes
 
 
+def test_stamp_preflight_preopen_allows_prev_close(monkeypatch):
+    """開市日 07:40：tip=昨收、今日尚未已收 → 不准 tw_asof_behind_session。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_level_learn import verify_teach_stamp_preflight
+
+    wall = datetime(2026, 11, 17, 7, 40, tzinfo=ZoneInfo("Asia/Taipei"))
+    pack = {
+        "query_now": wall.isoformat(),
+        "teach_tip": {
+            "tw_asof": "20261116",
+            "tw_close": 41040.08,
+            "tw_live": 0,
+            "sox_asof": "20261116",
+            "sox_close": 9610.65,
+            "sox_live": 0,
+            "tx_asof": "20261116",
+            "tx_close": 40935.0,
+            "tx_live": 0,
+        },
+    }
+    monkeypatch.setattr(
+        "biaoke_level_learn._query_now_from_pack", lambda *_a, **_k: wall
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._twii_cash_session_live", lambda *_a, **_k: False
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._twii_bars_for_teach",
+        lambda *_a, **_k: [
+            {"date": "20261116", "close": 41040.08, "live_session": 0}
+        ],
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._load_us_daily",
+        lambda *_a, **_k: [{"date": "20261116", "close": 9610.65}],
+    )
+    import taiwan_market
+    import trading_calendar
+
+    monkeypatch.setattr(
+        taiwan_market,
+        "load_futures_night",
+        lambda *_a, **_k: {"date": "20261116", "close": 40935.0},
+    )
+    monkeypatch.setattr(
+        trading_calendar,
+        "futures_night_date_cap",
+        lambda *_a, **_k: "20261116",
+    )
+
+    def _last_open(ymd, *_a, **_k):
+        y = str(ymd or "")[:8]
+        if y >= "20261117":
+            return "20261117"
+        if y >= "20261116":
+            return "20261116"
+        return "20261113"
+
+    monkeypatch.setattr(
+        trading_calendar,
+        "last_open_calendar_day_on_or_before",
+        _last_open,
+    )
+    gate = verify_teach_stamp_preflight("/tmp/fake.db", pack)
+    codes = {f["code"] for f in (gate.get("fails") or [])}
+    assert "tw_asof_behind_session" not in codes, gate.get("fails")
+    assert gate["ok"], gate.get("fails")
+
+
 def test_verify_teach_stamp_preflight_catches_stale_legs(monkeypatch):
     """出圖前硬閘：加權對上仍擋費半／電子盤舊 tip。"""
     from datetime import datetime

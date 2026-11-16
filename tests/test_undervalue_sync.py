@@ -67,6 +67,39 @@ def test_empty_note_before_scan(tmp_path):
     assert empty_note_for_button(db, "20261114") == "盤後還沒算完（融合後掃描）"
 
 
+def test_resolve_button_as_of_falls_back_to_success(tmp_path, monkeypatch):
+    """latest_complete 已新、該日還沒掃 → 話筒退回最近 success，不准空卡。"""
+    from undervalue_sync import (
+        ensure_tables,
+        resolve_button_as_of,
+    )
+
+    db = str(tmp_path / "uv_fb.db")
+    init_database(db)
+    ensure_tables(db)
+    conn = sqlite3.connect(db)
+    try:
+        conn.execute(
+            "INSERT INTO undervalue_runs "
+            "(as_of, status, n_star, n_watch, note, started_at, finished_at) "
+            "VALUES ('20261109', 'success', 2, 8, 'uv_growth_fair_v1', 't', 't')"
+        )
+        conn.execute(
+            "INSERT INTO undervalue_picks "
+            "(as_of, stock_id, name, mark, close, pe, pe_est, peer_pe_median, "
+            "dist_to_floor_pct, flow_shares, reason, detail_json) "
+            "VALUES ('20261109', '2383', '台光電', 'star', 4000, 40, 0, 35, "
+            "-10, 1000, 'x', '{}')"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    monkeypatch.setattr(
+        "import_health.latest_complete_quote_date", lambda _p: "20261116"
+    )
+    assert resolve_button_as_of(db) == "20261109"
+
+
 def test_post_fuse_hook_calls_undervalue(monkeypatch):
     import inspect
 

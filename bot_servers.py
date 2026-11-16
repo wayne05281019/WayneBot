@@ -9793,10 +9793,19 @@ class WayneTelegramBot:
         return InlineKeyboardMarkup(rows)
 
     async def _send_undervalue_view(self, message, uid: str):
-        """讀融合後低估名單快取出圖。不是買訊；不重算掃描。"""
-        from import_health import latest_complete_quote_date
+        """讀融合後低估名單快取出圖。不是買訊。
+
+        最新完整日還沒掃成功時：先補掃一次；仍空再退回最近 success，
+        不准整張「盤後還沒算完」空卡蓋住已有名單。
+        """
         from undervalue_card import render_undervalue_png
-        from undervalue_sync import empty_note_for_button, load_picks
+        from undervalue_sync import (
+            empty_note_for_button,
+            load_picks,
+            load_run,
+            resolve_button_as_of,
+            run_undervalue_sync,
+        )
 
         self._touch_user(uid)
         wait_h = await self._start_plain_wait(
@@ -9806,13 +9815,43 @@ class WayneTelegramBot:
             ),
         )
         try:
-            as_of = await asyncio.to_thread(
-                latest_complete_quote_date, self.db_path
-            ) or ""
-            picks = await asyncio.to_thread(load_picks, self.db_path, as_of) if as_of else []
-            note = await asyncio.to_thread(
-                empty_note_for_button, self.db_path, as_of
-            ) if as_of else "盤後還沒算完（融合後掃描）"
+            as_of = await asyncio.to_thread(resolve_button_as_of, self.db_path) or ""
+            picks = (
+                await asyncio.to_thread(load_picks, self.db_path, as_of)
+                if as_of
+                else []
+            )
+            run = (
+                await asyncio.to_thread(load_run, self.db_path, as_of) if as_of else None
+            )
+            # 最新日缺 success／缺列 → 補掃一次（融合後漏掃的根因）
+            if as_of and (
+                not picks
+                or not run
+                or str((run or {}).get("status") or "") != "success"
+            ):
+                try:
+                    await asyncio.to_thread(
+                        run_undervalue_sync,
+                        self.db_path,
+                        skip_if_done=False,
+                        notify=False,
+                    )
+                except Exception:
+                    logger.exception("低估名單現場補掃略過")
+                as_of = (
+                    await asyncio.to_thread(resolve_button_as_of, self.db_path) or as_of
+                )
+                picks = (
+                    await asyncio.to_thread(load_picks, self.db_path, as_of)
+                    if as_of
+                    else []
+                )
+            note = (
+                await asyncio.to_thread(empty_note_for_button, self.db_path, as_of)
+                if as_of
+                else "盤後還沒算完（融合後掃描）"
+            )
             path = self._scratch_chart_path(
                 self.charts_dir, "UV", "undervalue", uid or "0"
             )

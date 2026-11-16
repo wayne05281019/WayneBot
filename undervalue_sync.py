@@ -206,6 +206,47 @@ def empty_note_for_button(db_path: str, as_of: str) -> Optional[str]:
     return None
 
 
+def latest_success_as_of(db_path: str) -> str:
+    """最近一次 success 低估掃描日（YYYYMMDD）；沒有則空字。"""
+    ensure_tables(db_path)
+    conn = sqlite3.connect(str(db_path or ""), timeout=15.0)
+    try:
+        row = conn.execute(
+            "SELECT as_of FROM undervalue_runs WHERE status='success' "
+            "ORDER BY as_of DESC LIMIT 1"
+        ).fetchone()
+    except sqlite3.Error:
+        return ""
+    finally:
+        conn.close()
+    ymd = str(row[0] or "").replace("-", "")[:8] if row else ""
+    return ymd if len(ymd) == 8 else ""
+
+
+def resolve_button_as_of(db_path: str) -> str:
+    """話筒要用的 as_of：優先最新完整行情日；該日還沒掃成功→退回最近 success。
+
+    避免 Render latest_complete 已到 11/16、庫裡只有 11/09 success 時
+    整張顯示「盤後還沒算完」空卡。
+    """
+    as_of = ""
+    try:
+        from import_health import latest_complete_quote_date
+
+        as_of = str(latest_complete_quote_date(db_path) or "").replace("-", "")[:8]
+    except Exception:
+        as_of = ""
+    if len(as_of) == 8:
+        run = load_run(db_path, as_of)
+        if run and str(run.get("status") or "") == "success":
+            return as_of
+        picks = load_picks(db_path, as_of)
+        if picks:
+            return as_of
+    prev = latest_success_as_of(db_path)
+    return prev or as_of
+
+
 def run_undervalue_sync(
     db_path: str,
     *,
