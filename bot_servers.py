@@ -7332,22 +7332,29 @@ class WayneTelegramBot:
                 if not self._market_teach_path_ok(far_path) and _stored_reuse_ok():
                     far_path = str(stored.get("far_path") or "")
                 if not self._market_teach_path_ok(far_path):
-                    if wait_h and wait_h[0] is not None:
-                        await self._safe_edit_text(
-                            wait_h[0],
-                            self._wait_bubble(
-                                "大盤圖進行中",
-                                0,
-                                now="補畫遠窗",
-                                rest="近／超近窗",
-                                fill_sec=20.0,
-                            ),
-                            parse_mode="HTML",
+                    # 活畫已逾時：單 worker 上那刀還在跑；再 submit 補渲會排到後面
+                    # 再燒一整段預算，話筒更晚才空窗失敗。跳過補渲，直接請再按。
+                    if far_timed_out:
+                        logger.warning(
+                            "大盤遠窗活畫逾時，跳過補渲以免疊單 worker"
                         )
-                    # 沿用同口 pack，逾時預算給滿，不准再 prep 吃掉時間
-                    far2 = await self._retry_market_far_paint(pack=pack)
-                    if self._market_teach_path_ok(far2):
-                        far_path = far2
+                    else:
+                        if wait_h and wait_h[0] is not None:
+                            await self._safe_edit_text(
+                                wait_h[0],
+                                self._wait_bubble(
+                                    "大盤圖進行中",
+                                    0,
+                                    now="補畫遠窗",
+                                    rest="近／超近窗",
+                                    fill_sec=20.0,
+                                ),
+                                parse_mode="HTML",
+                            )
+                        # 沿用同口 pack，逾時預算給滿，不准再 prep 吃掉時間
+                        far2 = await self._retry_market_far_paint(pack=pack)
+                        if self._market_teach_path_ok(far2):
+                            far_path = far2
                 if not self._market_teach_path_ok(far_path):
                     if far_timed_out:
                         await message.reply_text(

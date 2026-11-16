@@ -342,3 +342,18 @@ def test_retry_market_far_paint_uses_full_budget_and_pack():
     assert "live_pack" in src or "pack:" in src
     assert "_CHART_RENDER_TIMEOUT" in src
     assert float(_CHART_RENDER_TIMEOUT) >= 120.0
+
+
+def test_far_timeout_skips_retry_on_single_worker():
+    """活畫逾時不准再 submit 補渲：單 worker 會疊第二刀再燒一整段預算。"""
+    import inspect
+
+    from bot_servers import WayneTelegramBot
+
+    wave = inspect.getsource(WayneTelegramBot._send_market_wave_charts)
+    assert "far_timed_out" in wave
+    assert "跳過補渲" in wave
+    # 逾時分支先於 _retry_market_far_paint 呼叫
+    assert wave.index("if far_timed_out:") < wave.index(
+        "_retry_market_far_paint(pack=pack)"
+    )
