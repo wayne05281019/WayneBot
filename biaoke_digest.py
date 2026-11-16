@@ -1083,39 +1083,26 @@ def _numbered_bits(text: str) -> List[str]:
     return [raw] if raw else []
 
 
-def _scrub_stale_fake_break_retest(text: str) -> str:
-    """下降壓改口之後：拿掉過期「再測週五低／假跌破」子句，留其餘仍有效句。"""
+def _scrub_by_drop_re(
+    text: str,
+    drop: re.Pattern[str],
+    *,
+    keep_if: Optional[re.Pattern[str]] = None,
+) -> str:
+    """句／子句級丟過期；同句另有有效判斷則只剁過期子句。"""
     s = _SPACE.sub(" ", str(text or "")).strip()
     if not s:
         return ""
-    # 整句若主軸就是再測假跌破，整句丟
-    drop = re.compile(
-        r"(?:接下來)?還會再去測星期五低點一次|"
-        r"一定再測週五低|"
-        r"頂多在測一次低破星期五低點假跌破|"
-        r"破不破，跌破上星期五低點是假跌破|"
-        r"跌破上星期五低點是假跌破|"
-        r"破＝假跌破觀察|"
-        r"再測一次假跌破"
-    )
     parts = re.split(r"(?<=[。！？；])", s)
     keep: List[str] = []
     for part in parts:
         bit = part.strip()
         if not bit:
             continue
-        if drop.search(bit) and not re.search(
-            r"不可能假跌破|不再假跌破|下降壓力線", bit
-        ):
-            # 句內若還有其他大盤判斷，只剁過期子句
+        if drop.search(bit) and not (keep_if and keep_if.search(bit)):
             if "，" in bit or "、" in bit:
                 clauses = re.split(r"(?<=[，、])", bit)
-                kept_c = [
-                    c
-                    for c in clauses
-                    if c.strip()
-                    and not drop.search(c)
-                ]
+                kept_c = [c for c in clauses if c.strip() and not drop.search(c)]
                 if kept_c:
                     merged = "".join(kept_c).strip(" ，、")
                     if bit[-1] in "。！？；" and merged and merged[-1] not in "。！？；":
@@ -1126,6 +1113,57 @@ def _scrub_stale_fake_break_retest(text: str) -> str:
             continue
         keep.append(bit)
     return _SPACE.sub(" ", "".join(keep)).strip(" ，、")
+
+
+def _scrub_stale_fake_break_retest(text: str) -> str:
+    """下降壓改口之後：拿掉過期「再測週五低／假跌破」子句，留其餘仍有效句。"""
+    drop = re.compile(
+        r"(?:接下來)?還會再去測星期五低點一次|"
+        r"一定再測週五低|"
+        r"頂多在測一次低破星期五低點假跌破|"
+        r"破不破，跌破上星期五低點是假跌破|"
+        r"跌破上星期五低點是假跌破|"
+        r"破＝假跌破觀察|"
+        r"再測一次假跌破"
+    )
+    keep_if = re.compile(r"不可能假跌破|不再假跌破|下降壓力線")
+    return _scrub_by_drop_re(text, drop, keep_if=keep_if)
+
+
+# 波浪4帶當令：前一則「5-3-5 abc／b波反彈／下星期c」不准再當現況進「他還說」
+_STALE_PRE_WAVE4_ABC_B = re.compile(
+    r"5\s*[-–]?\s*3\s*[-–]?\s*5\s*(?:abc|ABC)|"
+    r"走\s*5\s*[-–]\s*3\s*[-–]\s*5|"
+    r"3\s*波\s*b\s*波|"
+    r"[bB]\s*波反彈|"
+    r"下星期還有最後\s*[cC]\s*波|"
+    r"最後\s*[cC]\s*波修正就結束|"
+    r"11\s*/\s*6\s*低點不會來|"
+    r"星期二就說.{0,8}11\s*/\s*6"
+)
+
+
+def _scrub_stale_pre_wave4_abc_b(text: str) -> str:
+    """最新已是波浪4帶／細微C・1 4重疊：拿掉過期 5-3-5／b 波現況句。"""
+    return _scrub_by_drop_re(text, _STALE_PRE_WAVE4_ABC_B)
+
+
+def _blob_has_wave4_now(blob: str) -> bool:
+    """現況主線是否已鎖波浪4帶（只認他文／彙整欄）。"""
+    s = str(blob or "")
+    if not s.strip():
+        return False
+    try:
+        from biaoke_level_learn import _text_has_wave4_band_418_427
+
+        if _text_has_wave4_band_418_427(s):
+            return True
+    except Exception:
+        pass
+    return bool(
+        re.search(r"41800\s*[-~～到至]\s*42700|42700\s*[-~～到至]\s*41800", s)
+        and re.search(r"波浪\s*4|波浪位階\s*4|回測上漲小\s*5\s*波", s)
+    )
 
 
 def _apply_pressure_break_oral_to_board(
@@ -1276,12 +1314,18 @@ def format_focus_oral(
     # 大盤欄只認最新主文；舊主文不准回填把「現在在講」鎖在更早一天。
     if not board:
         board = _speak(str(latest.get("text") or ""), 420)
+    _wave4_latest = _blob_has_wave4_now(str(latest.get("text") or "")) or _blob_has_wave4_now(
+        board
+    )
     for p in mains[1:]:
         t = str(p.get("text") or "")
         if re.search(r"整理三個月|全面減碼", t):
             older_long = True
         # 最近兩則都要對齊：前一則主文重點進「他還說」，不准整則丟掉。
+        # 波浪4當令：過期 5-3-5／b波現況句先清再進備援。
         prior = _speak(t, 140)
+        if _wave4_latest and prior:
+            prior = _scrub_stale_pre_wave4_abc_b(prior)
         if prior:
             spare.append(prior)
         if not field:
@@ -1371,6 +1415,17 @@ def format_focus_oral(
                 row["text"] = _scrub_stale_fake_break_retest(str(row.get("text") or ""))
     except Exception:
         pass
+    # 波浪4帶當令：他還說不准再塞過期 5-3-5／b波反彈當現況
+    _wave4_now = _blob_has_wave4_now(board) or _blob_has_wave4_now(latest_t) or _blob_has_wave4_now(
+        _pb_blob
+    )
+    if _wave4_now:
+        said = _scrub_stale_pre_wave4_abc_b(said)
+        for row in cleaned_mains:
+            # 最新主文本身可含否定第二支腳等；只清較早主文／備援
+            if str(row.get("id") or "") == str(latest.get("id") or ""):
+                continue
+            row["text"] = _scrub_stale_pre_wave4_abc_b(str(row.get("text") or ""))
     # 再保險：他還說若只是大盤欄開頭複述，整欄拿掉（智慧融合，不重複唸）
     if said and board and _overlaps_shown(said, [board], min_chars=10):
         said2 = _strip_shown_sentences(said, [board])
@@ -1537,6 +1592,80 @@ def _bar_px(val: Any) -> Optional[float]:
         return None
 
 
+def _bar_range_score(
+    *,
+    open_: Optional[float],
+    high: Optional[float],
+    low: Optional[float],
+    close: Optional[float],
+    symbol: str = "",
+) -> Tuple[int, float, int]:
+    """關卡用柱：有高低距優先；尖端（高≈低）最後才用。同日優先 TWII 標。"""
+    if high is None or low is None:
+        return (0, 0.0, 0)
+    span = float(high) - float(low)
+    usable = 1 if span >= 1.0 else 0
+    # 高＝低＝收的尖端柱：span 近 0，usable=0
+    if close is not None and span < 1.0 and abs(float(high) - float(close)) < 0.51:
+        usable = 0
+    sym = str(symbol or "").strip().upper()
+    pref = 2 if sym in ("TWII", "^TWII") else (1 if sym else 0)
+    return (usable, span, pref)
+
+
+def _pick_best_closed_bar(
+    rows: Sequence[Tuple[Any, ...]],
+    *,
+    clock: datetime,
+    is_official_daily_bar,
+    label: str,
+    date_i: int = 0,
+    o_i: int = 1,
+    h_i: int = 2,
+    l_i: int = 3,
+    c_i: int = 4,
+    sym_i: Optional[int] = None,
+) -> Optional[Dict[str, Any]]:
+    """同一日多列（尖端＋完整）→ 取高低距最大那根；不准尖端蓋完整。"""
+    best_by_ymd: Dict[str, Tuple[Tuple[int, float, int], Dict[str, Any]]] = {}
+    for row in rows:
+        ymd = _ymd8(row[date_i])
+        if not ymd or not is_official_daily_bar(ymd, now=clock):
+            continue
+        o = _bar_px(row[o_i])
+        h = _bar_px(row[h_i])
+        l = _bar_px(row[l_i])
+        c = _bar_px(row[c_i])
+        if h is None or l is None or c is None:
+            continue
+        sym = str(row[sym_i] or "") if sym_i is not None else ""
+        score = _bar_range_score(open_=o, high=h, low=l, close=c, symbol=sym)
+        bar = {
+            "date": ymd,
+            "open": o,
+            "high": h,
+            "low": l,
+            "close": c,
+            "label": label,
+        }
+        prev = best_by_ymd.get(ymd)
+        if prev is None or score > prev[0]:
+            best_by_ymd[ymd] = (score, bar)
+    if not best_by_ymd:
+        return None
+    # 日新→舊；同日已是最佳柱。優先有高低距的最新日，尖端日可被較舊完整日取代？
+    # 規則：最新官方日若只有尖端，退回次新有高低距的日；有完整則用最新。
+    ymds = sorted(best_by_ymd.keys(), reverse=True)
+    tip_fallback: Optional[Dict[str, Any]] = None
+    for ymd in ymds:
+        score, bar = best_by_ymd[ymd]
+        if score[0] >= 1:
+            return bar
+        if tip_fallback is None:
+            tip_fallback = bar
+    return tip_fallback
+
+
 def _latest_closed_index_bars(
     db_path: str, *, now: Optional[datetime] = None
 ) -> Dict[str, Any]:
@@ -1560,71 +1689,56 @@ def _latest_closed_index_bars(
     try:
         tw_rows = conn.execute(
             """
-            SELECT date, open, high, low, close FROM index_daily
+            SELECT date, open, high, low, close, COALESCE(symbol, '')
+            FROM index_daily
             WHERE symbol='TWII' OR symbol='^TWII' OR symbol='' OR symbol IS NULL
-            ORDER BY date DESC LIMIT 12
+            ORDER BY date DESC LIMIT 36
             """
         ).fetchall()
-        for date, o, h, l, c in tw_rows:
-            ymd = _ymd8(date)
-            if not ymd or not is_official_daily_bar(ymd, now=clock):
-                continue
-            out["twii"] = {
-                "date": ymd,
-                "open": _bar_px(o),
-                "high": _bar_px(h),
-                "low": _bar_px(l),
-                "close": _bar_px(c),
-                "label": "加權",
-            }
-            break
+        out["twii"] = _pick_best_closed_bar(
+            tw_rows,
+            clock=clock,
+            is_official_daily_bar=is_official_daily_bar,
+            label="加權",
+            sym_i=5,
+        )
         try:
             tx_rows = conn.execute(
                 """
-                SELECT date, session, open, high, low, close FROM futures_daily
+                SELECT date, open, high, low, close, COALESCE(session, '')
+                FROM futures_daily
                 WHERE symbol='TX' AND (session='regular' OR session='day' OR session='' OR session IS NULL)
-                ORDER BY date DESC LIMIT 12
+                ORDER BY date DESC LIMIT 24
                 """
             ).fetchall()
         except sqlite3.Error:
             tx_rows = []
-        for date, _sess, o, h, l, c in tx_rows:
-            ymd = _ymd8(date)
-            if not ymd or not is_official_daily_bar(ymd, now=clock):
-                continue
-            out["tx"] = {
-                "date": ymd,
-                "open": _bar_px(o),
-                "high": _bar_px(h),
-                "low": _bar_px(l),
-                "close": _bar_px(c),
-                "label": "台指日盤",
-            }
-            break
+        out["tx"] = _pick_best_closed_bar(
+            tx_rows,
+            clock=clock,
+            is_official_daily_bar=is_official_daily_bar,
+            label="台指日盤",
+            sym_i=5,
+        )
         try:
             txn_rows = conn.execute(
                 """
-                SELECT date, session, open, high, low, close FROM futures_daily
+                SELECT date, open, high, low, close, COALESCE(session, '')
+                FROM futures_daily
                 WHERE symbol='TX' AND session='night'
-                ORDER BY date DESC LIMIT 12
+                ORDER BY date DESC LIMIT 24
                 """
             ).fetchall()
         except sqlite3.Error:
             txn_rows = []
-        for date, _sess, o, h, l, c in txn_rows:
-            ymd = _ymd8(date)
-            # 夜盤：交易日當天白天不算「已收」；用同一把官方日收閘（過 13:30 才認當日）
-            if not ymd or not is_official_daily_bar(ymd, now=clock):
-                continue
-            out["txn"] = {
-                "date": ymd,
-                "open": _bar_px(o),
-                "high": _bar_px(h),
-                "low": _bar_px(l),
-                "close": _bar_px(c),
-                "label": "台指夜盤",
-            }
-            break
+        # 夜盤：交易日當天白天不算「已收」；用同一把官方日收閘（過 13:30 才認當日）
+        out["txn"] = _pick_best_closed_bar(
+            txn_rows,
+            clock=clock,
+            is_official_daily_bar=is_official_daily_bar,
+            label="台指夜盤",
+            sym_i=5,
+        )
     finally:
         conn.close()
 
