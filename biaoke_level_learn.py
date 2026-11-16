@@ -32,6 +32,8 @@ _LEVEL_NOW = re.compile(
     r"波浪位階|細微波|主跌段|初跌段|末跌段|"
     r"C\s*波|C\d|C3-\d|B\s*波|B-[abc]|"
     r"橫台|中繼站|第[一二三四五1-5]波|第[1-5]小浪|"
+    # 11/16：回測波浪4／波浪位階4（無「第」字也要認）
+    r"波浪\s*[1-5一二三四五]|回測上漲小\s*5\s*波|上漲小\s*5\s*波結束|"
     # 他常寫「1 4重疊／1-4重疊」；假跌破／有效穿刺／走3-5＝大盤現況位階口語
     r"1\s*[-–]?\s*4\s*重疊|假跌破|有效穿刺|(?:今天)?走\s*3-5|(?<![0-9])3-5(?![0-9])|"
     r"鐵律|破底翻|第二隻腳|第二支腳|"
@@ -4269,7 +4271,9 @@ def _biaoke_level_snip_score(blob: str, *, is_main: bool) -> int:
         r"第二組下跌|落底確認|劇本|5\s*波\s*跌完|走\s*B\s*[-–]?\s*b|"
         r"9\s*波\s*擴延|37837|底部判斷|41760|大盤止跌|大盤已經落底|"
         r"確認.{0,12}(?:上)?週五.{0,8}低點|"
-        r"下降壓力線|不可能假跌破|回測下降壓|清洗籌碼",
+        r"下降壓力線|不可能假跌破|回測下降壓|清洗籌碼|"
+        r"波浪\s*[1-5]|波浪位階\s*[1-5]|回測上漲小\s*5\s*波|"
+        r"41800|42700|細微波\s*C\s*波|C\s*波修正|重疊\s*\d+\s*點",
         blob,
     ):
         score += 12
@@ -4298,7 +4302,7 @@ def _reply_level_delta(blob: str) -> bool:
     # 明確大盤／費半數字或改口
     if re.search(
         r"45546|46292|44210|44042|39384|42000|41000|40000|35000|38000|"
-        r"35500|37300|37000|37500|9865|10445|8498|47500",
+        r"35500|37300|37000|37500|9865|10445|8498|47500|41800|41900|42700|43135|41760",
         s,
     ):
         return True
@@ -4791,13 +4795,27 @@ def _latest_level_thesis(
     try:
         if cap >= _LOW_BAND_419_427_ORAL_AS_OF:
             _ensure_low_band_419_427_oral_thesis_snap(db_path, as_of=cap)
-        if cap >= _LOW_BAND_419_427_ORAL_AS_OF and not _text_has_low_band_419_427(
-            snip
+        if (
+            cap >= _LOW_BAND_419_427_ORAL_AS_OF
+            and cap < _WAVE4_BAND_418_427_ORAL_AS_OF
+            and not _text_has_low_band_419_427(snip)
         ):
             snip = f"{_LOW_BAND_419_427_ORAL_SNIP} {snip}".strip()
             post_id = post_id or _LOW_BAND_419_427_ORAL_POST_ID
     except Exception:
         logger.debug("41900～42700 低點帶口頭題旨覆寫略過", exc_info=True)
+    # 後文：波浪4帶 41800～42700（11/16；壓 11/12 的 41900～42700）
+    try:
+        if cap >= _WAVE4_BAND_418_427_ORAL_AS_OF:
+            _ensure_wave4_band_418_427_oral_thesis_snap(db_path, as_of=cap)
+        if cap >= _WAVE4_BAND_418_427_ORAL_AS_OF and not _text_has_wave4_band_418_427(
+            snip
+        ):
+            # 接在後：_parse_retest_band_lo_hi 取最後一組 → 41800～42700 壓 41900
+            snip = f"{snip} {_WAVE4_BAND_418_427_ORAL_SNIP}".strip()
+            post_id = post_id or _WAVE4_BAND_418_427_ORAL_POST_ID
+    except Exception:
+        logger.debug("41800～42700 波浪4帶口頭題旨覆寫略過", exc_info=True)
     morph_blob = snip + " " + " ".join(str(r["snippet"] or "") for r in (extra or []))
     if post_snip:
         morph_blob = f"{morph_blob} {post_snip}"
@@ -4860,8 +4878,33 @@ def _latest_level_thesis(
     has_41760 = bool(re.search(r"41760", snip))
     has_41500 = _text_has_retest_41500(snip) or bool(re.search(r"41500", snip))
     has_low_band = _text_has_low_band_419_427(snip)
+    has_wave4_band = _text_has_wave4_band_418_427(snip)
+    has_micro_c14 = _text_has_micro_c_14_overlap(snip)
+    denies_foot2 = _text_denies_second_foot_38000(snip)
     # 夜盤第二組落底（C3-5完成）優先於舊 C3-3 題旨；後文改口壓前文
-    if has_pressure_break:
+    if has_wave4_band:
+        # 11/16：回測小5波結束→波浪4帶 41800～42700；細微C＋1 4重疊（說明・非買訊）
+        thesis = "大A→大B→大C｜回測小5波後・波浪4帶（預估）"
+        _rb = _retest_avg_min_from_text(snip) or {
+            "min": _WAVE4_BAND_418_427_LO,
+            "avg": _WAVE4_BAND_418_427_MID,
+            "hi": _WAVE4_BAND_418_427_HI,
+        }
+        wait_bits = [
+            f"波浪4帶{_px(_rb['min'])}～{_px(_rb.get('hi') or _WAVE4_BAND_418_427_HI)}",
+            f"回測平均{_px(_rb['avg'])}",
+            f"回測最低{_px(_rb['min'])}",
+        ]
+        if has_micro_c14:
+            wait_bits.append("台指期細微C波・1 4重疊約80點（有效否有模糊）")
+            if re.search(r"3\s*段修正", snip):
+                wait_bits.append("若有效重疊→C走3段修正")
+        if denies_foot2:
+            wait_bits.append("非第二支腳／非38000之下")
+        wait_bits.append("最差明天略破41800觀察")
+        wait_bits.append("非買訊")
+        wait = "；".join(wait_bits)
+    elif has_pressure_break:
         # 他最新改口：夜盤過 C3 下降壓；上週五低不再假跌破；拉回回測下降壓（非買訊）
         # 斜線回測 ≠ 水平台指壓41760；11/12 低點帶壓 11/10 單點41500
         thesis = "大A→大B→大C｜夜盤過C3下降壓・週五低不再假跌破（預估）"
@@ -8016,6 +8059,25 @@ _LOW_BAND_419_427_ORAL_SNIP = (
     "不用害怕 低點絕對不會破，低點應該在41900~42700左右…這個區間95%。"
 )
 
+# 飆大口頭（已確認・11/16）：41800～42700＝回測上漲小5波結束後的波浪4帶
+# 後文壓前文：當令回測帶改 41800～42700（不是 11/12 的 41900）；非第二支腳／非38000
+# 台指期細微波 C 波修正＋1 4重疊約80點（有效與否有模糊）；說明用・非買訊
+_WAVE4_BAND_418_427_ORAL_AS_OF = "20261116"
+_WAVE4_BAND_418_427_ORAL_POST_ID = "oral-wave4-band-418-427"
+_WAVE4_BAND_418_427_LO = 41800.0
+_WAVE4_BAND_418_427_HI = 42700.0
+_WAVE4_BAND_418_427_MID = 42250.0
+_WAVE4_BAND_418_427_ORAL_SNIP = (
+    "個股安全上車最低買點已經到了，不是今天就是明天。"
+    "大盤已經到41800~42700區間了，也就是回測上漲小5波結束回測波浪4的點位區間了。"
+    "台指期是還沒跌完，但個股看高價股又幾乎都跌停了，個人認為個股安全買點上車時間是差不多到了，"
+    "最差就是明天大盤稍微跌破41800。"
+    "不要搞錯，沒有打第二支腳，第二支腳是回到38000之下，那是技術分析沒學好或只懂基本型態學的人說的，"
+    "我用的是波浪理論高等型態學，是回測5波上漲結束的波浪位階4。"
+    "台指期細微波C波修正，我剛才檢查了一下是有1 4重疊，重疊80點，是不是有效重疊有模糊空間。"
+    "如果是有效重疊C波是走3段修正，也就是說以台指期來看大盤今天是最佳買點。"
+)
+
 # 回測帶：4xxxx～4xxxx（低點／回測／區間／95% 語境）；後文最新一組壓前文
 _RETEST_BAND_PAIR_RE = re.compile(
     r"(?:低點|回測|區間|95\s*%).{0,40}?"
@@ -8046,7 +8108,7 @@ def _text_has_retest_41500(blob: str) -> bool:
 
 def _parse_retest_band_lo_hi(blob: str) -> Optional[Tuple[float, float]]:
     """從原文抓最新回測／低點區間（lo, hi）。只認他寫的兩個 4xxxx，不准發明。"""
-    s = str(blob or "")
+    s = str(blob or "").replace(",", "").replace("，", "")
     if not s.strip():
         return None
     last: Optional[Tuple[float, float]] = None
@@ -8110,6 +8172,7 @@ def _retest_avg_min_from_pack(
     blob = " ".join(
         str(x or "")
         for x in (
+            (pack or {}).get("snippet_full"),
             (pack or {}).get("snippet"),
             (pack or {}).get("thesis"),
             (pack or {}).get("wait_struct"),
@@ -8121,6 +8184,7 @@ def _retest_avg_min_from_pack(
         return got
     avg_lv = None
     min_lv = None
+    hi_lv = None
     for row in ((pack or {}).get("pred_levels") or {}).get("tw") or []:
         try:
             role = str(row.get("role") or "")
@@ -8131,10 +8195,15 @@ def _retest_avg_min_from_pack(
             avg_lv = lv
         elif role == "回測最低":
             min_lv = lv
+        elif role == "回測上沿":
+            hi_lv = lv
     if avg_lv is not None and min_lv is not None:
         lo, hi = (min_lv, avg_lv) if min_lv <= avg_lv else (avg_lv, min_lv)
-        # 平均在中間時：用 2*avg-min 還原 hi
-        if abs(avg_lv - min_lv) > 1.0:
+        # 平均在中間時：用 2*avg-min 還原 hi；有「回測上沿」列則直接用
+        if hi_lv is not None and abs(float(hi_lv) - float(min_lv)) >= 0.6:
+            hi = float(hi_lv)
+            lo = float(min_lv)
+        elif abs(avg_lv - min_lv) > 1.0:
             hi = float(round(2.0 * avg_lv - min_lv, 1))
             lo = float(min_lv)
         return {
@@ -8156,6 +8225,52 @@ def _retest_avg_min_from_pack(
 def _text_has_low_band_419_427(blob: str) -> bool:
     """相容舊呼叫：文內是否有回測／低點雙價區間。"""
     return _parse_retest_band_lo_hi(blob) is not None
+
+
+def _text_has_wave4_band_418_427(blob: str) -> bool:
+    """11/16：41800～42700＝回測小5波後波浪4帶（或同句波浪位階4）。"""
+    s = str(blob or "")
+    if not s.strip():
+        return False
+    band = _parse_retest_band_lo_hi(s)
+    if band is None:
+        return False
+    lo, hi = band
+    has_wave4 = bool(
+        re.search(
+            r"波浪\s*4|波浪位階\s*4|回測上漲小\s*5\s*波|回測5波上漲結束",
+            s,
+        )
+    )
+    near = abs(lo - 41800.0) < 1.0 and abs(hi - 42700.0) < 1.0
+    return bool(
+        has_wave4
+        and (near or (41000 <= lo <= 42000 and 42000 <= hi <= 43500))
+    )
+
+
+def _text_has_micro_c_14_overlap(blob: str) -> bool:
+    """台指期細微波 C 波＋1 4重疊（只認他寫）。"""
+    s = str(blob or "")
+    if not s.strip():
+        return False
+    return bool(
+        re.search(r"細微(?:波)?\s*C\s*波|C\s*波修正", s)
+        and re.search(r"1\s*[-–]?\s*4\s*重疊", s)
+    )
+
+
+def _text_denies_second_foot_38000(blob: str) -> bool:
+    """他否認第二支腳／38000 之下（不准再當當令低點劇本）。"""
+    s = str(blob or "")
+    return bool(
+        re.search(r"沒有打第二支腳|沒有打第二隻腳", s)
+        or (
+            re.search(r"第二支腳|第二隻腳", s)
+            and re.search(r"38000", s)
+            and re.search(r"不要搞錯|沒學好|不是", s)
+        )
+    )
 
 
 def _pack_has_low_band_419_427(pack: Optional[Dict[str, Any]]) -> bool:
@@ -8593,6 +8708,28 @@ def _ensure_low_band_419_427_oral_thesis_snap(db_path: str, *, as_of: str = "") 
         )
     except Exception:
         logger.debug("補41900～42700低點帶口頭題旨 snap 略過", exc_info=True)
+
+
+def _ensure_wave4_band_418_427_oral_thesis_snap(db_path: str, *, as_of: str = "") -> None:
+    """題旨庫補 11/16 口頭：波浪4帶 41800～42700；細微C＋1 4重疊；非買訊。"""
+    if not db_path:
+        return
+    day = str(as_of or "").replace("-", "")[:8]
+    if not day or day < _WAVE4_BAND_418_427_ORAL_AS_OF:
+        return
+    oral_day = _WAVE4_BAND_418_427_ORAL_AS_OF
+    try:
+        _upsert_snap(
+            db_path,
+            post_id=_WAVE4_BAND_418_427_ORAL_POST_ID,
+            as_of=oral_day,
+            post_date=f"{oral_day[:4]}-{oral_day[4:6]}-{oral_day[6:8]}",
+            post_time="09:50",
+            snippet=_WAVE4_BAND_418_427_ORAL_SNIP,
+            chart_path="",
+        )
+    except Exception:
+        logger.debug("補41800～42700波浪4帶口頭題旨 snap 略過", exc_info=True)
 
 
 # 主圖／右下九波縮圖共用色（C1…C9）：奇數浪偏暖紅、偶數浪偏冷青／綠，C7 最醒目，虛線 C9 淡紫
@@ -9356,6 +9493,81 @@ def _paint_ai_end_zone_band(
     return (lo, hi)
 
 
+def _paint_wave4_retest_band(
+    ax: Any,
+    pack: Optional[Dict[str, Any]],
+    *,
+    fp: Any,
+    label_x: Optional[float] = None,
+) -> Optional[Tuple[float, float]]:
+    """三窗共用：11/16 波浪4回測帶 41800～42700（他點名・非買訊）。
+
+    帶＋中標；右欄另掛回測平均／最低／上沿水平線。
+    """
+    blob = " ".join(
+        str(x or "")
+        for x in (
+            (pack or {}).get("snippet_full"),
+            (pack or {}).get("snippet"),
+            (pack or {}).get("thesis"),
+            (pack or {}).get("wait_struct"),
+        )
+    )
+    if not _text_has_wave4_band_418_427(blob):
+        # thesis 已寫波浪4帶但 snippet 被截時仍畫
+        if "波浪4帶" not in blob and "回測小5波後" not in blob:
+            return None
+    lo = float(_WAVE4_BAND_418_427_LO)
+    hi = float(_WAVE4_BAND_418_427_HI)
+    for row in ((pack or {}).get("pred_levels") or {}).get("tw") or []:
+        try:
+            role = str(row.get("role") or "")
+            lv = float(row.get("level") or 0)
+        except (TypeError, ValueError):
+            continue
+        if role == "回測最低" and lv > 0:
+            lo = lv
+        elif role == "回測上沿" and lv > 0:
+            hi = lv
+    rb = _retest_avg_min_from_text(blob)
+    if rb is not None and abs(float(rb.get("hi") or 0) - float(rb.get("min") or 0)) >= 80:
+        # 原文區間優先；逗號化 wait 句可能解析失敗則留 pred／預設
+        lo = float(rb.get("min") or rb.get("lo") or lo)
+        hi = float(rb.get("hi") or hi)
+    if hi < lo:
+        lo, hi = hi, lo
+    if hi - lo < 80.0:
+        return None
+    face, ink = "#26a69a", "#b2dfdb"
+    ax.axhspan(lo, hi, facecolor=face, alpha=0.14, zorder=0.57)
+    # 上下沿細線，對得上右欄回測最低／上沿
+    ax.axhline(lo, color=ink, lw=1.05, ls=(0, (3.0, 2.2)), alpha=0.9, zorder=2.4)
+    ax.axhline(hi, color=ink, lw=1.05, ls=(0, (3.0, 2.2)), alpha=0.9, zorder=2.4)
+    y_lab = (float(lo) + float(hi)) * 0.5
+    x_lab = float(_TEACH_ZONE_LABEL_X if label_x is None else label_x)
+    ax.text(
+        x_lab,
+        y_lab,
+        f"波浪4帶{_px(lo)}~{_px(hi)}（回測・非買訊）",
+        transform=ax.get_yaxis_transform(),
+        fontproperties=fp(10.5, "bold"),
+        color=ink,
+        ha="left",
+        va="center",
+        zorder=12.1,
+        bbox=dict(
+            boxstyle=f"round,pad={float(_TEACH_ZONE_LABEL_PAD)}",
+            fc="#0a1614",
+            ec=ink,
+            lw=1.35,
+            alpha=0.96,
+        ),
+        clip_on=False,
+    )
+    _reserve_zone_label_avoid(ax, x_ax=x_lab, y=y_lab, lo=lo, hi=hi)
+    return (lo, hi)
+
+
 def _level_break_tag(level: float, lows: Sequence[float]) -> str:
     """官方柱是否已破該價；未破不准寫已破。"""
     try:
@@ -9414,6 +9626,19 @@ def _format_tw_pred_note(
         return f"回測平均／{_px(level)}・{br}"
     if role == "回測最低":
         return f"回測最低／{_px(level)}・{br}"
+    if role == "回測上沿":
+        blob_fmt = " ".join(
+            str(x or "")
+            for x in (
+                (pack or {}).get("snippet_full"),
+                (pack or {}).get("snippet"),
+                (pack or {}).get("thesis"),
+                (pack or {}).get("wait_struct"),
+            )
+        )
+        if _text_has_wave4_band_418_427(blob_fmt):
+            return f"波浪4上沿／{_px(level)}・{br}"
+        return f"回測上沿／{_px(level)}・{br}"
     _rb_fmt = _retest_avg_min_from_pack(pack)
     _band_fmt = bool(
         _rb_fmt is not None
@@ -9709,6 +9934,7 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
     if _rb is not None:
         _avg = float(_rb["avg"])
         _min = float(_rb["min"])
+        _hi = float(_rb.get("hi") or _avg)
         if abs(_avg - _min) < 0.6:
             _add(
                 "tw",
@@ -9735,6 +9961,19 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
                 tag="未到",
                 label=f"回測最低／{_px(_min)}",
             )
+            # 波浪4／回測帶上沿：近窗／超近要畫得到 42700 那條
+            if abs(_hi - _avg) >= 0.6 and abs(_hi - _min) >= 0.6:
+                _lab_hi = f"回測上沿／{_px(_hi)}"
+                if _text_has_wave4_band_418_427(s):
+                    _lab_hi = f"波浪4上沿／{_px(_hi)}"
+                _add(
+                    "tw",
+                    level=_hi,
+                    ref_ymd="",
+                    role="回測上沿",
+                    tag="未到",
+                    label=_lab_hi,
+                )
     # 11/8 雙軌點位（只認原文）：37837／37164／35579／31705
     # 右欄：最佳買點 37837＋深殺上緣 35579＋深殺端 31705；39000／37164 改走黃底帶
     # 下降壓改口：37837＝已確認最低／不再假跌破；止跌確認後文未改口前＝再測／假跌破觀察
@@ -13883,6 +14122,7 @@ def _wave_now_ladder(pack: Optional[Dict[str, Any]] = None, *, blob: str = "") -
         for x in (
             blob,
             pack.get("thesis"),
+            pack.get("snippet_full"),
             pack.get("snippet"),
             pack.get("wait_struct"),
         )
@@ -13927,18 +14167,30 @@ def _wave_now_ladder(pack: Optional[Dict[str, Any]] = None, *, blob: str = "") -
             or "備線九波" in thesis
         )
     )
+    has_wave4_ladder = (not pol.get("seal_big_c")) and (
+        _text_has_wave4_band_418_427(text)
+        or "波浪4帶" in thesis
+        or "回測小5波後" in thesis
+    )
     if not pol.get("seal_big_c"):
-        if has_pressure_ladder:
+        if has_wave4_ladder:
+            steps.append("回測小5波後・波浪4帶")
+            if _text_has_micro_c_14_overlap(text):
+                steps.append("細微C・1 4重疊")
+        elif has_pressure_ladder:
             steps.append("止跌確認・已過C3下降壓")
         elif has_stop_ladder:
             steps.append("止跌確認・再測週五低")
         elif has_bb_ladder:
             steps.append("主B-b／備九波")
         elif (
-            deg == "第二隻腳"
-            or "第二隻腳" in thesis
-            or "等第二隻腳" in thesis
-            or _text_has_foot2_revision(text)
+            not _text_denies_second_foot_38000(text)
+            and (
+                deg == "第二隻腳"
+                or "第二隻腳" in thesis
+                or "等第二隻腳" in thesis
+                or _text_has_foot2_revision(text)
+            )
         ):
             steps.append("等第二隻腳")
         elif (
@@ -13986,8 +14238,39 @@ def _wave_now_ladder(pack: Optional[Dict[str, Any]] = None, *, blob: str = "") -
     else:
         day_zh = ""
         day_bit = ""
-    # 下降壓改口／止跌確認／雙軌／改口第二隻腳／9波擴延：話筒／超近說明用人話，不准只丟代號
-    if "止跌確認・已過C3下降壓" in steps or has_pressure_ladder:
+    # 波浪4帶／下降壓改口／止跌確認／雙軌／改口第二隻腳／9波擴延：話筒／超近說明用人話
+    if has_wave4_ladder or "回測小5波後・波浪4帶" in steps:
+        _rb_now = _retest_avg_min_from_text(text) or {
+            "min": _WAVE4_BAND_418_427_LO,
+            "avg": _WAVE4_BAND_418_427_MID,
+            "hi": _WAVE4_BAND_418_427_HI,
+        }
+        _hi = float(_rb_now.get("hi") or _WAVE4_BAND_418_427_HI)
+        oral_now = (
+            f"波浪4帶{_px(_rb_now['min'])}～{_px(_hi)}；"
+            f"回測平均{_px(_rb_now['avg'])}；回測最低{_px(_rb_now['min'])}"
+        )
+        if _text_has_micro_c_14_overlap(text) or "細微C・1 4重疊" in steps:
+            oral_now += "；台指期細微波C・1 4重疊約80點（有效否有模糊）"
+        if _text_denies_second_foot_38000(text):
+            oral_now += "；非第二支腳／非38000之下"
+        oral_now += "；非買訊"
+        one_line = "現在：回測小5波後・波浪4帶（預估）"
+        now_line = (
+            oral_now
+            + (f"・{day_bit}" if day_bit else "")
+            + "・預估會改・非買訊"
+        )
+        teach_box = (
+            "現在走到（大→小）\n"
+            f"{chain}\n"
+            f"{oral_now}"
+            + (f"・{day_bit}" if day_bit else "")
+            + "\n預估會改・非買訊"
+        )
+    elif "止跌確認・已過C3下降壓" in steps or (
+        has_pressure_ladder and not has_wave4_ladder
+    ):
         _rb_now = _retest_avg_min_from_text(text)
         if _rb_now is not None:
             if abs(float(_rb_now["avg"]) - float(_rb_now["min"])) < 0.6:
@@ -15793,10 +16076,15 @@ def _tw_pred_right_notes(
         # 水平台指壓：白／淺黃，跟紫大C斜線路徑分色
         if role == "台指壓力" or abs(lv - 41760.0) < 0.6:
             col = "#ffe082"
-        elif role in {"回測平均", "回測最低", "至少回測"} or abs(
+        elif role in {"回測平均", "回測最低", "回測上沿", "至少回測"} or abs(
             lv - 41500.0
         ) < 0.6:
-            col = "#80cbc4" if role != "回測平均" else "#26a69a"
+            if role == "回測平均":
+                col = "#26a69a"
+            elif role == "回測上沿":
+                col = "#4db6ac"
+            else:
+                col = "#80cbc4"
         out.append(
             {
                 "x": x_note,
@@ -17989,6 +18277,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         pass
     _paint_c9_low_zone_band(ax, pack, fp=_fp, label_x=_zx)
     _paint_ai_end_zone_band(ax, pack, fp=_fp, label_x=_zx)
+    _paint_wave4_retest_band(ax, pack, fp=_fp, label_x=_zx)
     fig.savefig(save_path, facecolor=_LIVE_BG, bbox_inches="tight", pad_inches=0.22)
     plt.close(fig)
     if not (os.path.isfile(save_path) and os.path.getsize(save_path) > 4000):
@@ -18289,6 +18578,9 @@ def _render_twii_c_wave_60_dark(
         vol_sr=c60_vol_sr,
         avoid_top_left_stamp=True,
         pack=pack,
+    )
+    _paint_wave4_retest_band(
+        ax, pack, fp=_fp, label_x=_TEACH_ZONE_LABEL_X_MICRO
     )
     _xticks, _xlabs, _bounds = _c9_60m_day_boundary_ticks(rows)
     for bi in _bounds[1:]:
@@ -19433,6 +19725,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         pass
     _paint_c9_low_zone_band(ax, pack, fp=_fp, label_x=_zx_n)
     _paint_ai_end_zone_band(ax, pack, fp=_fp, label_x=_zx_n)
+    _paint_wave4_retest_band(ax, pack, fp=_fp, label_x=_zx_n)
     fig.savefig(save_path, facecolor=_LIVE_BG, bbox_inches="tight")
     plt.close(fig)
     return save_path if os.path.isfile(save_path) and os.path.getsize(save_path) > 4000 else ""
@@ -19555,6 +19848,9 @@ def _render_twii_super_near_c9_60m(
     _paint_c9_low_zone_band(ax, pack, fp=_fp, label_x=_TEACH_ZONE_LABEL_X_MICRO)
     # 超近60分：黃標／AI標同欄偏左，齊頭且不准壓末K
     _paint_ai_end_zone_band(ax, pack, fp=_fp, label_x=_TEACH_ZONE_LABEL_X_MICRO)
+    _paint_wave4_retest_band(
+        ax, pack, fp=_fp, label_x=_TEACH_ZONE_LABEL_X_MICRO
+    )
     # 交易日界線：垂直淡線，對日期
     _xticks, _xlabs, _bounds = _c9_60m_day_boundary_ticks(rows)
     for bi in _bounds[1:]:
