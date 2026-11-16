@@ -2857,7 +2857,11 @@ def test_verify_teach_stamp_preflight_catches_stale_legs(monkeypatch):
     assert not bad["ok"]
     codes = {f["code"] for f in bad["fails"]}
     assert "sox_asof_stale" in codes
-    assert "tx_asof_stale" in codes
+    # 電子盤：日盤／舊 tip ≠ 夜盤 → 覆寫夜盤，不准再硬擋 tx_*_mismatch
+    assert "tx_asof_stale" not in codes
+    assert "tx_close_mismatch" not in codes
+    assert abs(float((bad.get("tip") or {}).get("tx_close") or 0) - 43706.0) < 0.1
+    assert str((bad.get("tip") or {}).get("tx_asof") or "") == "20261113"
     monkeypatch.setattr(
         "biaoke_level_learn.compute_teach_tip_snapshot",
         lambda *_a, **_k: {
@@ -2876,6 +2880,76 @@ def test_verify_teach_stamp_preflight_catches_stale_legs(monkeypatch):
     assert good["ok"]
     assert good["tip"]["sox_asof"] == "20261113"
     assert good["tip"]["tx_asof"] == "20261113"
+
+
+def test_verify_teach_stamp_heals_day_tx_tip_to_night(monkeypatch):
+    """話筒實況：日盤 tip ~408xx ≠ 夜盤 43706 → 覆寫夜盤、三窗可過閘。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_level_learn import verify_teach_stamp_preflight
+
+    wall = datetime(2026, 11, 16, 20, 47, tzinfo=ZoneInfo("Asia/Taipei"))
+    pack = {
+        "query_now": wall.isoformat(),
+        "teach_tip": {
+            "tw_asof": "20261116",
+            "tw_close": 41040.08,
+            "tw_live": 0,
+            "sox_asof": "20261114",
+            "sox_close": 10100.0,
+            "sox_live": 0,
+            "tx_asof": "20261116",
+            "tx_close": 40856.0,  # 日盤殘價
+            "tx_live": 0,
+        },
+    }
+    monkeypatch.setattr(
+        "biaoke_level_learn._query_now_from_pack", lambda *_a, **_k: wall
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._twii_bars_for_teach",
+        lambda *_a, **_k: [
+            {"date": "20261116", "close": 41040.08, "live_session": 0}
+        ],
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._load_us_daily",
+        lambda *_a, **_k: [{"date": "20261114", "close": 10100.0}],
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._tx_night_evening_ymd",
+        lambda ymd: "20261116" if str(ymd).startswith("202611") else "",
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._twii_cash_session_live", lambda *_a, **_k: False
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._sox_cash_session_live", lambda *_a, **_k: False
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._tx_night_session_live", lambda *_a, **_k: True
+    )
+    import taiwan_market
+    import trading_calendar
+
+    monkeypatch.setattr(
+        taiwan_market,
+        "load_futures_night",
+        lambda *_a, **_k: {"date": "20261116", "close": 43706.0},
+    )
+    monkeypatch.setattr(
+        trading_calendar,
+        "futures_night_date_cap",
+        lambda *_a, **_k: "20261116",
+    )
+    # 費半日對齊，只測電子盤 heal
+    pack["teach_tip"]["sox_asof"] = "20261114"
+    gate = verify_teach_stamp_preflight("/tmp/fake.db", pack)
+    codes = {f["code"] for f in (gate.get("fails") or [])}
+    assert "tx_close_mismatch" not in codes
+    assert abs(float((gate.get("tip") or {}).get("tx_close") or 0) - 43706.0) < 0.1
+    assert str((gate.get("tip") or {}).get("tx_asof") or "") == "20261116"
 
 
 def test_wave_structure_playbook_c_complete_and_c5():

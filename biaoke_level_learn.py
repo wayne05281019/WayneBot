@@ -1140,38 +1140,31 @@ def verify_teach_stamp_preflight(
             night_label = _ymd(night.get("date"))
             night_eve = _tx_night_evening_ymd(night_label) or night_label
             night_c = float(night.get("close") or 0)
-            if (not tip_tx or tip_tx_c <= 0) and night_eve and night_c > 0:
+            # tip 缺／落後／日盤殘價 ≠ 夜盤 → 直接覆寫夜盤，不准 tx_*_mismatch 硬擋三窗
+            need_night_heal = False
+            if night_eve and night_c > 0:
+                if not tip_tx or tip_tx_c <= 0:
+                    need_night_heal = True
+                elif tip_tx < night_eve:
+                    need_night_heal = True
+                elif tip_tx != night_eve and tip_tx != night_label:
+                    need_night_heal = True
+                elif abs(tip_tx_c - night_c) > float(tx_px_tol):
+                    need_night_heal = True
+            if need_night_heal:
+                logger.warning(
+                    "teach tip 電子盤改吃夜盤 tip=%s/%.2f → %s/%.2f",
+                    tip_tx or "-",
+                    tip_tx_c,
+                    night_eve,
+                    night_c,
+                )
                 tip0["tx_asof"] = night_eve
                 tip0["tx_close"] = night_c
                 tip0["tx_live"] = 0
                 tip_tx, tip_tx_c = night_eve, night_c
                 if isinstance(pack, dict):
                     pack["teach_tip"] = dict(tip0)
-            if tip_tx and night_eve and tip_tx < night_eve:
-                fails.append(
-                    {
-                        "code": "tx_asof_stale",
-                        "detail": f"電子盤 tip {tip_tx} < 夜盤起日 {night_eve}",
-                    }
-                )
-            elif tip_tx and night_eve and tip_tx != night_eve:
-                # tip 殘周一標且等於最新夜標 → 仍可對價；否則 mismatch
-                if tip_tx != night_label:
-                    fails.append(
-                        {
-                            "code": "tx_asof_mismatch",
-                            "detail": f"電子盤 tip {tip_tx} ≠ 起日 {night_eve}",
-                        }
-                    )
-            if tip_tx_c > 0 and night_c > 0 and abs(tip_tx_c - night_c) > float(
-                tx_px_tol
-            ):
-                fails.append(
-                    {
-                        "code": "tx_close_mismatch",
-                        "detail": f"電子盤 tip {tip_tx_c:.2f} ≠ 夜盤 {night_c:.2f}",
-                    }
-                )
         if not tip_tx or tip_tx_c <= 0:
             fails.append({"code": "tx_tip_missing", "detail": "缺電子盤 tip"})
     except Exception as exc:
