@@ -7001,39 +7001,51 @@ class WayneTelegramBot:
                     break
         return sent, failed
 
-    async def _retry_market_far_paint(self) -> str:
-        """遠窗缺檔時單獨重渲一次（不准整包重畫拖一分鐘）。"""
+    async def _retry_market_far_paint(self, *, pack: dict | None = None) -> str:
+        """遠窗缺檔時單獨重渲一次（不准整包 trio 重畫）。
+
+        有傳 pack 就沿用（同口 tip／as_of），不准再 prep 吃掉逾時預算。
+        逾時＝整段渲染預算，不准再砍成 60s（開機／盤中負載下 prep+渲常 >60s）。
+        """
         try:
             from biaoke_level_learn import (
                 _paint_dir,
                 _render_twii_far_dark,
                 _sparse_slot_id,
+                prepare_wave_live_pack,
             )
             from wayne_navigator import submit_mpl_paint
+
+            live_pack = dict(pack) if isinstance(pack, dict) and pack else None
 
             def _one():
                 from datetime import datetime
                 from zoneinfo import ZoneInfo
 
-                from biaoke_level_learn import prepare_wave_live_pack
-
                 dt = datetime.now(ZoneInfo("Asia/Taipei"))
-                # 單張遠窗補渲走同一 prep：官方落後也要疊今日加權，不准畫到昨日收
-                pack = dict(prepare_wave_live_pack(self.db_path, now=dt) or {})
-                pack.pop("_prep_now", None)
+                if live_pack is not None:
+                    p = dict(live_pack)
+                else:
+                    # 單張遠窗補渲走同一 prep：官方落後也要疊今日加權，不准畫到昨日收
+                    p = dict(prepare_wave_live_pack(self.db_path, now=dt) or {})
+                p.pop("_prep_now", None)
                 slot = _sparse_slot_id(dt, force=True) or f"force-{dt.strftime('%Y%m%d')}"
                 out = os.path.join(_paint_dir(self.db_path), f"{slot}-far.png")
-                return _render_twii_far_dark(self.db_path, out, pack) or ""
+                return _render_twii_far_dark(self.db_path, out, p) or ""
 
             got = await asyncio.wait_for(
                 asyncio.wrap_future(submit_mpl_paint(_one)),
-                timeout=min(60.0, _CHART_RENDER_TIMEOUT),
+                timeout=float(_CHART_RENDER_TIMEOUT),
             )
             return str(got or "")
+        except asyncio.TimeoutError:
+            logger.warning(
+                "大盤遠窗單張重渲逾時 budget=%.0fs", float(_CHART_RENDER_TIMEOUT)
+            )
+            return ""
         except Exception:
             logger.exception("大盤遠窗單張重渲失敗")
             return ""
-
     async def _retry_market_micro_paint(self, *, pack: dict | None = None) -> str:
         """超近窗缺檔時單獨重渲一次（庫內 60 分優先，不准整包重畫）。"""
         try:
@@ -7295,11 +7307,15 @@ class WayneTelegramBot:
 
             async with paint_lock:
                 # 1) 先畫遠窗（硬閘）
+                far_timed_out = False
                 try:
                     far_painted = await _paint_panel("far")
                 except asyncio.TimeoutError:
-                    logger.warning("大盤遠窗活畫逾時")
+                    logger.warning(
+                        "大盤遠窗活畫逾時 budget=%.0fs", float(_CHART_RENDER_TIMEOUT)
+                    )
                     far_painted = {}
+                    far_timed_out = True
                 except Exception:
                     logger.exception("大盤遠窗活畫略過")
                     far_painted = {}
@@ -7316,28 +7332,41 @@ class WayneTelegramBot:
                 if not self._market_teach_path_ok(far_path) and _stored_reuse_ok():
                     far_path = str(stored.get("far_path") or "")
                 if not self._market_teach_path_ok(far_path):
-                    if wait_h and wait_h[0] is not None:
-                        await self._safe_edit_text(
-                            wait_h[0],
-                            self._wait_bubble(
-                                "大盤圖進行中",
-                                0,
-                                now="補畫遠窗",
-                                rest="近／超近窗",
-                                fill_sec=20.0,
-                            ),
-                            parse_mode="HTML",
+                    # 活畫已逾時：單 worker 上那刀還在跑；再 submit 補渲會排到後面
+                    # 再燒一整段預算，話筒更晚才空窗失敗。跳過補渲，直接請再按。
+                    if far_timed_out:
+                        logger.warning(
+                            "大盤遠窗活畫逾時，跳過補渲以免疊單 worker"
                         )
-                    far2 = await self._retry_market_far_paint()
-                    if self._market_teach_path_ok(far2):
-                        far_path = far2
+                    else:
+                        if wait_h and wait_h[0] is not None:
+                            await self._safe_edit_text(
+                                wait_h[0],
+                                self._wait_bubble(
+                                    "大盤圖進行中",
+                                    0,
+                                    now="補畫遠窗",
+                                    rest="近／超近窗",
+                                    fill_sec=20.0,
+                                ),
+                                parse_mode="HTML",
+                            )
+                        # 沿用同口 pack，逾時預算給滿，不准再 prep 吃掉時間
+                        far2 = await self._retry_market_far_paint(pack=pack)
+                        if self._market_teach_path_ok(far2):
+                            far_path = far2
                 if not self._market_teach_path_ok(far_path):
-                    await message.reply_text(
-                        "大盤教具第1張遠窗這次沒好（上費半／中加權／下量），"
-                        "先不送近窗以免順序錯。請稍後再按一次台股大盤。"
-                    )
+                    if far_timed_out:
+                        await message.reply_text(
+                            "大盤教具第1張遠窗畫太久逾時（上費半／中加權／下量），"
+                            "先不送近窗以免順序錯。請稍後再按一次台股大盤。"
+                        )
+                    else:
+                        await message.reply_text(
+                            "大盤教具第1張遠窗這次沒好（上費半／中加權／下量），"
+                            "先不送近窗以免順序錯。請稍後再按一次台股大盤。"
+                        )
                     return
-
                 # 2) 開近窗 paint，同時送遠窗
                 near_fut = submit_mpl_paint(
                     lambda: paint_open_day_hypothesis(

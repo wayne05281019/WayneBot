@@ -2784,7 +2784,10 @@ _TG_PHOTO_MAX_WH_SUM = 9900
 
 
 def _shrink_png_for_telegram(path: str, *, max_sum: int = _TG_PHOTO_MAX_WH_SUM) -> str:
-    """話筒送圖前：若寬+高超限就等比縮小寫回同一檔。不准裁內容。"""
+    """話筒送圖前：若寬+高超限就等比縮小寫回同一檔。不准裁內容。
+
+    RGBA→RGB：遠窗四欄常 4MB+；去透明可減半體積，送圖／轉 JPEG 較不易逾時。
+    """
     if not path or not os.path.isfile(path):
         return path
     try:
@@ -2793,18 +2796,24 @@ def _shrink_png_for_telegram(path: str, *, max_sum: int = _TG_PHOTO_MAX_WH_SUM) 
         return path
     try:
         im = Image.open(path)
+        if im.mode == "RGBA":
+            bg = Image.new("RGB", im.size, (18, 22, 28))
+            bg.paste(im, mask=im.split()[3])
+            im.close()
+            im = bg
+        elif im.mode != "RGB":
+            im = im.convert("RGB")
         w, h = im.size
         lim = int(max_sum or _TG_PHOTO_MAX_WH_SUM)
-        if w + h <= lim or w <= 0 or h <= 0:
+        if w + h > lim and w > 0 and h > 0:
+            scale = float(lim) / float(w + h)
+            nw = max(1, int(w * scale))
+            nh = max(1, int(h * scale))
+            out = im.resize((nw, nh), Image.Resampling.LANCZOS)
             im.close()
-            return path
-        scale = float(lim) / float(w + h)
-        nw = max(1, int(w * scale))
-        nh = max(1, int(h * scale))
-        out = im.resize((nw, nh), Image.Resampling.LANCZOS)
+            im = out
+        im.save(path, format="PNG", optimize=True)
         im.close()
-        out.save(path, format="PNG", optimize=True)
-        out.close()
     except Exception:
         logger.debug("Telegram 圖縮略過 path=%s", path, exc_info=True)
     return path
@@ -16309,11 +16318,13 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
 
     # 上費半 / 台指電子盤 / 加權日K / 下加權量；加權欄略高；欄間留空給日期
     # Telegram sendPhoto 硬限寬+高≤10000；存檔後仍會 _shrink_png_for_telegram
+    # 遠窗四欄 Agg 在 320dpi 易 >45s／逾時；話筒縮圖用 260 仍清，先求送得出
+    _far_dpi = int(min(int(NAV_CHART_DPI or 320), 260))
     fig, (axu, axt, ax, axv) = plt.subplots(
         4,
         1,
-        figsize=(15.6, 15.6),
-        dpi=NAV_CHART_DPI,
+        figsize=(14.8, 14.8),
+        dpi=_far_dpi,
         sharex=True,
         # 欄間加高：三白底戳上移仍落在各格內，不准擋縮圖K／九波
         gridspec_kw=dict(height_ratios=(2.15, 2.30, 3.30, 0.95), hspace=0.18),
