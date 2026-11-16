@@ -4340,6 +4340,10 @@ def test_merge_live_twii_display_bar_overlays_today(monkeypatch):
     from biaoke_level_learn import _merge_live_twii_display_bar
 
     monkeypatch.setattr("live_quote.is_live_merge_window", lambda: True)
+    # 鎖現金盤中，避免夜跑 CI 被牆鐘清成收盤
+    monkeypatch.setattr(
+        "biaoke_level_learn._twii_cash_session_live", lambda _now=None: True
+    )
     bars = [
         {
             "date": "20261029",
@@ -4384,6 +4388,10 @@ def test_merge_live_twii_off_hours_when_official_lags(monkeypatch):
     from biaoke_level_learn import _merge_live_twii_display_bar
 
     monkeypatch.setattr("live_quote.is_live_merge_window", lambda: False)
+    # 鎖非現金盤中，避免開市日白天 CI 仍標盤中
+    monkeypatch.setattr(
+        "biaoke_level_learn._twii_cash_session_live", lambda _now=None: False
+    )
     bars = [
         {
             "date": "20261105",
