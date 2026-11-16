@@ -797,7 +797,22 @@ def run_absorb(
             stats["live_match"] = refresh_live_match(db_path)
         except Exception:
             logger.exception("飆大彙整後可點／勿追重算略過")
+        try:
+            # 主述／波浪題旨刷新＋自主檢查（過舊落檔；不准擋彙整）
+            from feature_self_check import refresh_and_check
+
+            stats["narrative_fresh"] = refresh_and_check(db_path)
+        except Exception:
+            logger.exception("飆大彙整後主述新鮮度刷新略過")
         _mark_absorbed(db_path, [str(ev.get("id") or "") for ev in events], now=dt)
+    elif slot_id:
+        # 無新文仍自檢新鮮度（過舊要落檔，不然話筒卡舊句沒人知）
+        try:
+            from phone_narrative_freshness import run_narrative_self_check
+
+            stats["narrative_fresh"] = run_narrative_self_check(db_path)
+        except Exception:
+            logger.exception("飆大彙整槽主述自檢略過")
     if str(slot_id).endswith("-0100"):
         try:
             from silent_progress import night_review

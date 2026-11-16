@@ -51,6 +51,8 @@ TRACK_LABELS: Dict[str, str] = {
     "twii-forecast": "大盤默默落檔",
     "twii-session": "開盤前當日盤勢",
     "screen-review": "海選復盤對帳",
+    "biaoke-postfuse": "飆大盤後彙整（融合後）",
+    "narrative-fresh": "飆大／波浪主述新鮮度",
 }
 
 # 融合後必跑的核心軌（缺／錯＝健檢要亮）

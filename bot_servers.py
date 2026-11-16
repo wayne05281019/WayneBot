@@ -7644,6 +7644,15 @@ class WayneTelegramBot:
                 html = ""
                 field_advice = False
                 try:
+                    # 空白鍵主述與波浪同層：先補公開文，不准讀多天前 corpus 當現況
+                    from biaoke_level_learn import _ensure_teach_biaoke_posts_fresh
+
+                    await asyncio.to_thread(
+                        _ensure_teach_biaoke_posts_fresh, self.db_path
+                    )
+                except Exception:
+                    logger.exception("飆大空白鍵補公開文略過")
+                try:
                     from biaoke_digest import format_latest_focus, take_unread_digest
 
                     html = await asyncio.to_thread(take_unread_digest, uid, self.db_path)
@@ -8041,7 +8050,31 @@ class WayneTelegramBot:
             logger.exception("飆大遠窗活畫略過")
         if not str(kit.get("far_path") or "").strip():
             try:
-                kit = await asyncio.to_thread(latest_teach_kit, self.db_path) or {}
+                stored = await asyncio.to_thread(latest_teach_kit, self.db_path) or {}
+                # 存檔 as_of 不得落後加權官方日；落後＝舊圖，不准回退當現況
+                want_as = ""
+                try:
+                    from biaoke_level_learn import _twii_chart_as_of
+
+                    want_as = str(_twii_chart_as_of(self.db_path) or "").replace(
+                        "-", ""
+                    )[:8]
+                except Exception:
+                    want_as = ""
+                got_as = str(stored.get("as_of") or "").replace("-", "")[:8]
+                if want_as and len(want_as) == 8 and got_as and len(got_as) == 8:
+                    if got_as >= want_as:
+                        kit = stored
+                    else:
+                        logger.info(
+                            "飆大教具 fallback 略過：存檔 as_of=%s < 加權=%s",
+                            got_as,
+                            want_as,
+                        )
+                elif not want_as:
+                    kit = stored
+                elif got_as and len(got_as) == 8:
+                    kit = stored
             except Exception:
                 logger.exception("讀飆大教具路徑略過")
                 kit = {}
@@ -8058,13 +8091,30 @@ class WayneTelegramBot:
         try:
             from biaoke_level_learn import _build_live_pack, _wave_now_ladder
 
-            pack_for_ladder = await asyncio.to_thread(_build_live_pack, self.db_path)
-            if thesis and not str(pack_for_ladder.get("thesis") or "").strip():
+            # 活畫成功優先用 painted 題旨；否則才另建 pack（與波浪鍵對齊）
+            pack_for_ladder: dict = {}
+            if thesis or kit.get("as_of"):
+                pack_for_ladder = {
+                    "thesis": thesis,
+                    "wait_struct": wait_struct,
+                    "chart_as_of": str(kit.get("as_of") or ""),
+                }
+            else:
+                pack_for_ladder = (
+                    await asyncio.to_thread(_build_live_pack, self.db_path) or {}
+                )
+            if not str(pack_for_ladder.get("thesis") or "").strip():
+                live = await asyncio.to_thread(_build_live_pack, self.db_path) or {}
                 pack_for_ladder = dict(pack_for_ladder or {})
-                pack_for_ladder["thesis"] = thesis
-            if kit.get("as_of") and not pack_for_ladder.get("chart_as_of"):
-                pack_for_ladder = dict(pack_for_ladder or {})
-                pack_for_ladder["chart_as_of"] = str(kit.get("as_of") or "")
+                pack_for_ladder["thesis"] = str(live.get("thesis") or thesis)
+                if not pack_for_ladder.get("chart_as_of"):
+                    pack_for_ladder["chart_as_of"] = str(
+                        live.get("chart_as_of") or kit.get("as_of") or ""
+                    )
+                if not pack_for_ladder.get("wait_struct"):
+                    pack_for_ladder["wait_struct"] = str(
+                        live.get("wait_struct") or wait_struct
+                    )
             ladder = _wave_now_ladder(pack_for_ladder or {"thesis": thesis})
             bits_l = []
             if ladder.get("one_line"):
@@ -8075,7 +8125,9 @@ class WayneTelegramBot:
             if not thesis:
                 thesis = str((pack_for_ladder or {}).get("thesis") or "").strip()
             if not wait_struct:
-                wait_struct = str((pack_for_ladder or {}).get("wait_struct") or "").strip()
+                wait_struct = str(
+                    (pack_for_ladder or {}).get("wait_struct") or ""
+                ).strip()
         except Exception:
             logger.exception("教具層級一句略過")
             ladder_line = ""

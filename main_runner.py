@@ -2218,6 +2218,13 @@ class MainRunner:
             return run_undervalue_sync(self.db_path, skip_if_done=True, notify=False)
 
         _maybe("undervalue", _undervalue)
+
+        def _narrative_fresh() -> Dict[str, Any]:
+            from feature_self_check import refresh_and_check
+
+            return refresh_and_check(self.db_path)
+
+        _maybe("narrative-fresh", _narrative_fresh)
         return report
 
     @staticmethod
