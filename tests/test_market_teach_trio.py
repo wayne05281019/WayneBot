@@ -328,3 +328,17 @@ def test_market_wave_send_overlaps_next_paint_contract():
     assert wave.index('panels="near"') < wave.index("_send_market_teach_one")
     assert wave.index('panels="near"') < wave.index('panels="micro"')
     assert getattr(_MPL_PAINT_EXECUTOR, "_max_workers", 1) == 1
+
+
+def test_retry_market_far_paint_uses_full_budget_and_pack():
+    """遠窗補渲：沿用 pack、逾時給滿渲染預算，不准再砍 60s。"""
+    import inspect
+
+    from bot_servers import WayneTelegramBot, _CHART_RENDER_TIMEOUT
+
+    src = inspect.getsource(WayneTelegramBot._retry_market_far_paint)
+    assert "min(60.0" not in src
+    assert "prepare_wave_live_pack" in src
+    assert "live_pack" in src or "pack:" in src
+    assert "_CHART_RENDER_TIMEOUT" in src
+    assert float(_CHART_RENDER_TIMEOUT) >= 120.0
