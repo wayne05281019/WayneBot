@@ -7,9 +7,10 @@
 - 飆大 11/09 封印：龍頭「本益被低估」＝官方 PE 近自身近窗低緣（非買訊；切入仍黃金買點）。
 - A4：近 3 月 MoM 動能 g 夾在 [-5%, +10%]；無官方月營收不推估（估 PE 軌另開）。
 
-話筒現況碼 RULE_PHONE＝uv_chain_own_v1；下一版靜默 RULE_NEXT＝uv_own_floor_tight_v2。
+話筒現況碼 RULE_PHONE＝uv_growth_fair_v1（毛利／循環／本業鐵律＋產業PE封頂＋今明目標價）；
+下一版靜默 RULE_NEXT＝uv_growth_fair_tight_v2。
 §13：n≥20 且下一版贏現況才換話筒規則並再生；勝率不准混進海選／黃金買點。
-不是進場買訊。
+不是進場買訊。估值≠買訊；切入仍只認高低卡黃金買點。
 """
 from __future__ import annotations
 
@@ -27,11 +28,12 @@ EXTREME_YOY_ABS_PCT = 80.0
 MOM_UNITS = ("pct", "frac")
 
 # --- 滾動規則鍵（§13：換現況時必須同時再生下一版）---
-RULE_PHONE = "uv_chain_own_v1"
-RULE_NEXT = "uv_own_floor_tight_v2"
-# 話筒名單上限（手機卡讀得完）
-PHONE_STAR_CAP = 10
-PHONE_WATCH_CAP = 10
+RULE_PHONE = "uv_growth_fair_v1"
+RULE_NEXT = "uv_growth_fair_tight_v2"
+# 話筒名單上限（三段卡片：現在可買／等止穩／興櫃觀察）
+PHONE_STAR_CAP = 8
+PHONE_WATCH_CAP = 8
+PHONE_EMERGING_CAP = 5
 # 官方本益合理窗（排除極端／負值；無真數不上）
 PE_MIN = 3.0
 PE_MAX = 200.0
@@ -45,6 +47,7 @@ YOY_MIN_PCT = 15.0
 QTY60_A_MIN = 400.0  # A 穩當核心：近 60 日均量（張）
 # 距下緣％＝(PE／同鏈中位−1)×100；≤−8%≈中位×0.92（比價 lag 帶）
 STAR_DIST_MAX = -8.0
+STAR_DIST_MAX_TIGHT = -12.0
 
 
 def _finite(raw: Any) -> Optional[float]:
@@ -283,12 +286,24 @@ def _quote_meta(
         name = str(
             (q[0] if not isinstance(q, sqlite3.Row) else q["stock_name"]) or sid
         )
+        mkt = ""
+        try:
+            ur = conn.execute(
+                "SELECT market_type FROM stock_universe WHERE stock_id=?", (sid,)
+            ).fetchone()
+            if ur is not None:
+                mkt = str(
+                    ur[0] if not isinstance(ur, sqlite3.Row) else ur["market_type"] or ""
+                )
+        except sqlite3.Error:
+            mkt = ""
         out[sid] = {
             "name": name,
             "close": float(close),
             "flow_shares": float(sum(flow_vals) / len(flow_vals)),
             "qty60": qty60,
             "yoy_pct": yoy,
+            "market_type": mkt,
         }
     return out
 
@@ -457,7 +472,7 @@ def _classify_v2(
     tight = (
         pe <= own_min * 1.01
         and pe <= own_med * 0.82
-        and dist <= -12.0
+        and dist <= STAR_DIST_MAX_TIGHT
         and flow >= 2000.0
         and (is_leader or pe <= med * 0.95)
     )
@@ -476,6 +491,9 @@ def _classify_v2(
 _CLASSIFIERS = {
     RULE_PHONE: _classify_v1,
     RULE_NEXT: _classify_v2,
+    # 舊鍵仍可對質歷史落檔
+    "uv_chain_own_v1": _classify_v1,
+    "uv_own_floor_tight_v2": _classify_v2,
 }
 
 
@@ -486,12 +504,14 @@ def run_undervalue_scan(
     rule_key: str = RULE_PHONE,
     star_cap: int = PHONE_STAR_CAP,
     watch_cap: int = PHONE_WATCH_CAP,
+    emerging_cap: int = PHONE_EMERGING_CAP,
 ) -> Dict[str, Any]:
-    """盤後低估掃描入口。只吃官方本益／收／量／同鏈；不准假成本。不是買訊。"""
+    """盤後低估掃描入口。只吃官方本益／收／量／同鏈／季報；不准假成本。不是買訊。"""
     path = str(db_path or "").strip()
     ymd = _ymd(as_of)
     rule = str(rule_key or RULE_PHONE).strip() or RULE_PHONE
     classify = _CLASSIFIERS.get(rule) or _classify_v1
+    growth_mode = rule in (RULE_PHONE, RULE_NEXT) or rule.startswith("uv_growth_")
     empty = {
         "ok": True,
         "as_of": ymd,
@@ -511,6 +531,8 @@ def run_undervalue_scan(
         empty["note"] = type(exc).__name__
         return empty
     try:
+        from undervalue_growth import enrich_growth_row
+
         pe_map = _load_latest_pe_map(conn, ymd)
         if not pe_map:
             empty["note"] = "無官方本益"
@@ -520,6 +542,7 @@ def run_undervalue_scan(
         peer_ix = _peer_index(path)
         stars: List[Dict[str, Any]] = []
         watches: List[Dict[str, Any]] = []
+        emergings: List[Dict[str, Any]] = []
         for sid, pe in pe_map.items():
             if sid not in meta:
                 continue
@@ -533,9 +556,9 @@ def run_undervalue_scan(
             peer_pes = [pe_map[p] for p in peers if p in pe_map]
             if len(peer_pes) < PEER_MIN_N:
                 continue
-            med = _median(peer_pes)
+            med_raw = _median(peer_pes)
             floor = min(peer_pes) if peer_pes else None
-            if med is None or floor is None or floor <= 0:
+            if med_raw is None or floor is None or floor <= 0:
                 continue
             hist = _own_pe_series(conn, sid, ymd)
             if len(hist) < 12:
@@ -544,6 +567,24 @@ def run_undervalue_scan(
             own_med = float(statistics.median(hist))
             flow = float(meta[sid]["flow_shares"])
             qty60 = float(meta[sid].get("qty60") or 0.0)
+            detail = None
+            med = float(med_raw)
+            if growth_mode:
+                detail = enrich_growth_row(
+                    conn,
+                    sid=sid,
+                    name=str(meta[sid]["name"]),
+                    close=float(meta[sid]["close"]),
+                    pe=float(pe),
+                    peer_med_raw=float(med_raw),
+                    as_of=ymd,
+                    yoy_pct=float(yoy),
+                    qty60=qty60,
+                    market_type=str(meta[sid].get("market_type") or ""),
+                )
+                if detail is None:
+                    continue
+                med = float(detail.get("peer_pe_median") or med_raw)
             mark, reason, dist = classify(
                 pe=float(pe),
                 med=float(med),
@@ -555,9 +596,28 @@ def run_undervalue_scan(
                 qty60=qty60,
                 yoy_pct=float(yoy),
             )
-            if not mark:
+            if not mark and not (growth_mode and detail):
                 continue
-            row = {
+            # 成長模式：通過鐵律且相對中位不貴（≤0）也可進觀察／興櫃池
+            if not mark and growth_mode and detail:
+                dist = _dist_to_peer_floor_pct(float(pe), float(med))
+                if dist > 0:
+                    continue
+                mark = "watch"
+                reason = f"成長體質過關；PE≤封頂中位{med:.1f}"
+            # 技術／量能分區覆寫
+            if growth_mode and detail:
+                if detail.get("emerging"):
+                    mark = "emerging"
+                elif detail.get("prefer_watch") and mark == "star":
+                    mark = "watch"
+                bits = [reason]
+                if detail.get("tech_status"):
+                    bits.append(str(detail["tech_status"]))
+                if detail.get("chip_note"):
+                    bits.append(str(detail["chip_note"]))
+                reason = "；".join(x for x in bits if x)
+            row: Dict[str, Any] = {
                 "stock_id": sid,
                 "name": meta[sid]["name"],
                 "mark": mark,
@@ -572,8 +632,30 @@ def run_undervalue_scan(
                 "qty60": qty60,
                 "yoy_pct": float(yoy),
             }
+            if detail:
+                row.update(
+                    {
+                        "industry": detail.get("industry"),
+                        "gross_margin": detail.get("gross_margin"),
+                        "core_ratio_pct": detail.get("core_ratio_pct"),
+                        "fair_year": detail.get("fair_year"),
+                        "target_next": detail.get("target_next"),
+                        "ups_fair_pct": detail.get("ups_fair_pct"),
+                        "ups_tgt_pct": detail.get("ups_tgt_pct"),
+                        "pe_year": detail.get("pe_year"),
+                        "pe_next": detail.get("pe_next"),
+                        "rev_threshold_yi": detail.get("rev_threshold_yi"),
+                        "rev_oct_yi": detail.get("rev_oct_yi"),
+                        "support": detail.get("support"),
+                        "tech_status": detail.get("tech_status"),
+                        "chip_note": detail.get("chip_note"),
+                        "detail": detail,
+                    }
+                )
             if mark == "star":
                 stars.append(row)
+            elif mark == "emerging":
+                emergings.append(row)
             else:
                 watches.append(row)
     finally:
@@ -586,14 +668,28 @@ def run_undervalue_scan(
     def _star_key(r: Dict[str, Any]) -> Tuple[Any, ...]:
         reason = str(r.get("reason") or "")
         both = ("同鏈" in reason) and ("自身" in reason)
-        return (0 if both else 1, _rel(r), float(r["dist_to_floor_pct"]), float(r["pe"]))
+        ups = _finite(r.get("ups_tgt_pct"))
+        # 成長卡：空間大的優先
+        return (
+            0 if both else 1,
+            -(ups if ups is not None else 0.0),
+            _rel(r),
+            float(r["dist_to_floor_pct"]),
+            float(r["pe"]),
+        )
 
     stars.sort(key=_star_key)
     watches.sort(key=lambda r: (_rel(r), float(r["pe"])))
-    rows = stars[: max(0, int(star_cap))] + watches[: max(0, int(watch_cap))]
+    emergings.sort(key=lambda r: (_rel(r), float(r["pe"])))
+    rows = (
+        stars[: max(0, int(star_cap))]
+        + watches[: max(0, int(watch_cap))]
+        + emergings[: max(0, int(emerging_cap))]
+    )
     note = (
         f"{rule} star={min(len(stars), star_cap)}/{len(stars)} "
-        f"watch={min(len(watches), watch_cap)}/{len(watches)}"
+        f"watch={min(len(watches), watch_cap)}/{len(watches)} "
+        f"emerging={min(len(emergings), emerging_cap)}/{len(emergings)}"
     )
     return {
         "ok": True,
@@ -602,5 +698,6 @@ def run_undervalue_scan(
         "rows": rows,
         "n_star_raw": len(stars),
         "n_watch_raw": len(watches),
+        "n_emerging_raw": len(emergings),
         "note": note,
     }
