@@ -38,35 +38,68 @@ def _band(close: float) -> str:
     return "hi"
 
 
+def _latest_fat_quote_date(
+    con: sqlite3.Connection,
+    table: str,
+    *,
+    min_rows: int,
+) -> str | None:
+    """取最新「夠厚」的行情日。MAX(date) 常是盤中／補洞只寫十幾檔的尖端日，
+    直接拿會讓 1000 檔抽測只湊到幾百（CI full-suite 假紅）。"""
+    try:
+        row = con.execute(
+            f"""
+            SELECT date FROM {table}
+            WHERE close > 0
+            GROUP BY date
+            HAVING COUNT(*) >= ?
+            ORDER BY date DESC
+            LIMIT 1
+            """,
+            (int(min_rows),),
+        ).fetchone()
+    except sqlite3.Error:
+        return None
+    return str(row[0]) if row and row[0] is not None else None
+
+
 def sample_universe(db: str, n: int = 1000) -> list[dict]:
     """上市／上櫃／興櫃 × 低中高價，湊滿 n 檔。先放 MUST。"""
     con = sqlite3.connect(db)
     rows: list[tuple] = []
     try:
-        last = con.execute("SELECT MAX(date) FROM daily_quotes").fetchone()[0]
-        em_last = con.execute("SELECT MAX(date) FROM emerging_quotes").fetchone()[0]
-        rows.extend(
-            con.execute(
-                """
-                SELECT u.stock_id, u.stock_name, u.market_type, q.close
-                FROM stock_universe u
-                JOIN daily_quotes q ON q.stock_id=u.stock_id AND q.date=?
-                WHERE u.market_type IN ('TW','TWO') AND q.close>0
-                """,
-                (last,),
-            ).fetchall()
-        )
-        rows.extend(
-            con.execute(
-                """
-                SELECT u.stock_id, u.stock_name, 'EM', e.close
-                FROM stock_universe u
-                JOIN emerging_quotes e ON e.stock_id=u.stock_id AND e.date=?
-                WHERE u.market_type='EM' AND e.close>0
-                """,
-                (em_last,),
-            ).fetchall()
-        )
+        # 上市櫃全日通常 >2000；尖端日可能只有十幾檔。門檻取 max(n, 800)。
+        last = _latest_fat_quote_date(con, "daily_quotes", min_rows=max(int(n), 800))
+        if not last:
+            last = con.execute("SELECT MAX(date) FROM daily_quotes").fetchone()[0]
+        # 興櫃全日約 360+；尖端日也可能很瘦。
+        em_last = _latest_fat_quote_date(con, "emerging_quotes", min_rows=200)
+        if not em_last:
+            em_last = con.execute("SELECT MAX(date) FROM emerging_quotes").fetchone()[0]
+        if last:
+            rows.extend(
+                con.execute(
+                    """
+                    SELECT u.stock_id, u.stock_name, u.market_type, q.close
+                    FROM stock_universe u
+                    JOIN daily_quotes q ON q.stock_id=u.stock_id AND q.date=?
+                    WHERE u.market_type IN ('TW','TWO') AND q.close>0
+                    """,
+                    (last,),
+                ).fetchall()
+            )
+        if em_last:
+            rows.extend(
+                con.execute(
+                    """
+                    SELECT u.stock_id, u.stock_name, 'EM', e.close
+                    FROM stock_universe u
+                    JOIN emerging_quotes e ON e.stock_id=u.stock_id AND e.date=?
+                    WHERE u.market_type='EM' AND e.close>0
+                    """,
+                    (em_last,),
+                ).fetchall()
+            )
     finally:
         con.close()
     by_key: dict[tuple, list] = {}
