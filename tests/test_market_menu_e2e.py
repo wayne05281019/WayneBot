@@ -59,12 +59,15 @@ def _seed_market_db(path: str) -> str:
     ensure_index_breadth_daily_table(path)
     conn = sqlite3.connect(path)
     conn.execute("CREATE TABLE stock_universe (stock_id TEXT, is_active INT)")
-    conn.execute("CREATE TABLE daily_quotes (stock_id TEXT, date TEXT, close REAL, volume REAL)")
+    # 含 market 欄：latest_complete_quote_date 才不會 SQL 炸（仍可不齊門檻）
+    conn.execute(
+        "CREATE TABLE daily_quotes (stock_id TEXT, date TEXT, close REAL, volume REAL, market TEXT)"
+    )
     conn.execute("INSERT INTO stock_universe VALUES ('2330', 1)")
     for i, c in enumerate(range(100, 121)):
         d = f"202608{i+1:02d}"
         conn.execute(
-            "INSERT INTO daily_quotes VALUES ('2330', ?, ?, 1000)",
+            "INSERT INTO daily_quotes VALUES ('2330', ?, ?, 1000, 'TW')",
             (d, float(c)),
         )
         close = 22000.0 + i * 50
@@ -344,7 +347,10 @@ class TestMarketMenuE2E:
             "regime": "unknown",
         }
 
-        with patch.object(bot, "_enter_main_menu", new_callable=AsyncMock), patch.object(
+        # CI 滿載時 analyze 偶超預設 28s → snap ok=False 假紅；本測只驗 db-only 路徑
+        with patch("bot_servers._MARKET_ANALYZE_TIMEOUT", 120.0), patch.object(
+            bot, "_enter_main_menu", new_callable=AsyncMock
+        ), patch.object(
             bot, "_start_plain_wait", new_callable=AsyncMock
         ) as wait_start, patch.object(
             bot, "_stop_plain_wait", new_callable=AsyncMock
@@ -377,6 +383,7 @@ class TestMarketMenuE2E:
         body = msg.reply_html.await_args.args[0]
         assert "台股大盤" in body
         assert "三大法人" in body or "結構" in body or "加權指數" in body
+        assert "指數資料讀取異常" not in body
         # 逾時改走 reply_text「大盤讀取逾時」＝沒做完；db-only 不准靠外網
         timeout_replies = [
             c.args[0]

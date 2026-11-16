@@ -29,9 +29,10 @@ import requests
 
 TZ = ZoneInfo("Asia/Taipei")
 HEALTH = "https://waynebot-service.onrender.com/health"
-ARTIFACT = Path(os.environ.get("WAYNE_ARTIFACT_DIR", "/opt/cursor/artifacts")) / "phone-full-button-sweep-20261028"
+ARTIFACT = Path(os.environ.get("WAYNE_ARTIFACT_DIR", "/opt/cursor/artifacts")) / "phone-full-button-sweep-20261116"
 ARTIFACT.mkdir(parents=True, exist_ok=True)
 
+# 對齊主選單 v38：上七下七；沖區子鍵／打字別名另掃
 MENU_BUTTONS = [
     "勝率買點",
     "海選",
@@ -40,13 +41,17 @@ MENU_BUTTONS = [
     "飆大",
     "台股大盤",
     "資金輪動",
-    "當沖",
-    "隔日沖",
+    "波浪位階",
+    "沖區",
     "壓撐觀察",
-    "AI倉",
+    "低估名單",
     "連買區",
     "剛脫離零",
     "洞燭先機",
+    # 子鍵／打字入口
+    "當沖",
+    "隔日沖",
+    "AI倉",  # 選單已無鈕；打字別名仍開假錢倉
 ]
 
 LOOKUP_HUB = [
@@ -154,6 +159,8 @@ def send_photo(chat: str, path: str, caption: str = "") -> dict:
 
 def _forwarding_message(chat_id: int, uid: int, text: str = ""):
     """reply_* 同時轉送到真話筒。"""
+    from datetime import timezone as _tz
+
     user = SimpleNamespace(id=uid, first_name="sweep")
     chat = SimpleNamespace(id=chat_id)
     message = MagicMock()
@@ -162,6 +169,9 @@ def _forwarding_message(chat_id: int, uid: int, text: str = ""):
     message.from_user = user
     message.text = text
     message.message_id = 1
+    # 必填真實 date：MagicMock.date 會被 _message_is_preboot_replay 當「重開前舊訊」
+    # 整串回「雲端剛重開…作廢」，洗爆話筒。
+    message.date = datetime.now(_tz.utc)
     sent = {"texts": [], "photos": [], "htmls": []}
 
     async def _reply_text(*args, **kwargs):
@@ -258,7 +268,18 @@ def _make_bot(db: str, charts: str, uid: str):
 
 def _audit_blob(blob: str) -> list[str]:
     issues = []
-    bad = ("查詢失敗", "出圖逾時", "Traceback", "Internal Server Error", "PHONE_BUSY", "資料處理中")
+    bad = (
+        "查詢失敗",
+        "出圖逾時",
+        "Traceback",
+        "Internal Server Error",
+        "PHONE_BUSY",
+        "資料處理中",
+        "出圖前檢查未過",
+        "電子盤 tip",
+        "tx_close_mismatch",
+        "這則已中斷",
+    )
     for b in bad:
         if b in blob:
             issues.append(f"marker:{b}")
