@@ -2952,6 +2952,63 @@ def test_verify_teach_stamp_heals_day_tx_tip_to_night(monkeypatch):
     assert str((gate.get("tip") or {}).get("tx_asof") or "") == "20261116"
 
 
+def test_resolve_tx_after_hours_heals_day_close_to_night(monkeypatch):
+    """組 tip：凍結日盤殘價 ≠ 庫內夜盤 → 改吃夜盤，不准鎖死 40856。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_level_learn import _resolve_tx_after_hours_tip
+
+    wall = datetime(2026, 11, 16, 12, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    pack = {
+        "query_now": wall.isoformat(),
+        "teach_tip": {
+            "tx_asof": "20261116",
+            "tx_close": 40856.0,
+            "tx_live": 0,
+        },
+    }
+    monkeypatch.setattr(
+        "biaoke_level_learn._query_now_from_pack", lambda *_a, **_k: wall
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._tx_night_session_live", lambda *_a, **_k: False
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._tx_night_evening_ymd",
+        lambda ymd: "20261116" if str(ymd).startswith("202611") else ymd,
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._ensure_latest_tx_night_row", lambda *_a, **_k: None
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._ensure_teach_tx_day_row", lambda *_a, **_k: None
+    )
+    import taiwan_market
+    import trading_calendar
+
+    monkeypatch.setattr(
+        taiwan_market,
+        "load_futures_night",
+        lambda *_a, **_k: {"date": "20261116", "close": 43706.0, "pct_change": -1.0},
+    )
+    monkeypatch.setattr(
+        trading_calendar,
+        "futures_night_date_cap",
+        lambda *_a, **_k: "20261116",
+    )
+    monkeypatch.setattr(
+        taiwan_market,
+        "load_futures_daily",
+        lambda *_a, **_k: {"settlement": 44100.0, "close": 44100.0},
+    )
+    got = _resolve_tx_after_hours_tip("/tmp/fake.db", pack)
+    assert got is not None
+    assert abs(float(got.get("close") or 0) - 43706.0) < 0.1
+    assert str(got.get("asof") or "") == "20261116"
+    assert abs(float((pack.get("teach_tip") or {}).get("tx_close") or 0) - 43706.0) < 0.1
+
+
 def test_wave_structure_playbook_c_complete_and_c5():
     """飆大改口預設：C走完→新八浪示意；C五小段→嵌閃折句。"""
     from biaoke_level_learn import (

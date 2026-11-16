@@ -3975,7 +3975,23 @@ def _resolve_tx_after_hours_tip(
             tip_c0 = 0.0
         if tip_c0 > 0 and abs(tip_c0 - latest_night_close) > 0.51:
             tip_tx_stale = True
+    # 日盤殘價／舊 tip：非夜盤進行中直接改吃庫內夜盤，不准鎖死日盤收
     if (
+        tip_tx_stale
+        and not night_live
+        and latest_night_eve
+        and latest_night_close > 0
+    ):
+        close = float(latest_night_close)
+        asof = latest_night_eve
+        tip_locked = False
+        if isinstance(pack, dict):
+            tip_fix = dict(tip0) if isinstance(tip0, dict) else {}
+            tip_fix["tx_asof"] = asof
+            tip_fix["tx_close"] = close
+            tip_fix["tx_live"] = 0
+            pack["teach_tip"] = tip_fix
+    elif (
         not night_live
         and not tip_tx_stale
         and isinstance(tip0, dict)
