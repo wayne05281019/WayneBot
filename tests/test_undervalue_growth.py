@@ -21,6 +21,10 @@ def test_cyclical_and_gross_gates():
     assert is_cyclical_trap("航運-散裝", [], "慧洋")
     assert is_cyclical_trap("營建-建設", [], "興富發")
     assert not is_cyclical_trap("電子中游-光通訊", ["光通訊"], "光聖")
+    # 成熟晶圓／記憶體不准剔除
+    assert not is_cyclical_trap("電子上游-IC-代工", ["成熟製程"], "力積電")
+    assert not is_cyclical_trap("電子上游-記憶體IC設計", ["DRAM"], "晶豪科")
+    assert not is_cyclical_trap("電子上游-記憶體", ["標準型記憶體"], "南亞科")
 
     assert passes_gross_margin(20.0)
     assert not passes_gross_margin(19.9)
