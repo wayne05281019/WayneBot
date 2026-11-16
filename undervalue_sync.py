@@ -77,10 +77,22 @@ def ensure_tables(db_path: str) -> None:
                 dist_to_floor_pct REAL,
                 flow_shares REAL,
                 reason TEXT DEFAULT '',
+                detail_json TEXT DEFAULT '',
                 PRIMARY KEY (as_of, stock_id)
             );
             """
         )
+        try:
+            cols = {
+                str(r[1])
+                for r in conn.execute("PRAGMA table_info(undervalue_picks)").fetchall()
+            }
+            if "detail_json" not in cols:
+                conn.execute(
+                    "ALTER TABLE undervalue_picks ADD COLUMN detail_json TEXT DEFAULT ''"
+                )
+        except sqlite3.Error:
+            pass
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_uv_picks_asof ON undervalue_picks(as_of);"
         )
@@ -151,9 +163,10 @@ def load_picks(db_path: str, as_of: str) -> list:
     try:
         rows = conn.execute(
             "SELECT stock_id, name, mark, close, pe, pe_est, peer_pe_median, "
-            "dist_to_floor_pct, flow_shares, reason "
+            "dist_to_floor_pct, flow_shares, reason, detail_json "
             "FROM undervalue_picks WHERE as_of=? "
-            "ORDER BY CASE mark WHEN 'star' THEN 0 ELSE 1 END, stock_id",
+            "ORDER BY CASE mark WHEN 'star' THEN 0 WHEN 'watch' THEN 1 "
+            "WHEN 'emerging' THEN 2 ELSE 3 END, stock_id",
             (ymd,),
         ).fetchall()
     finally:
@@ -162,6 +175,17 @@ def load_picks(db_path: str, as_of: str) -> list:
     for r in rows:
         d = dict(r)
         d["pe_est"] = bool(int(d.get("pe_est") or 0))
+        raw = str(d.pop("detail_json", "") or "")
+        if raw:
+            try:
+                import json
+
+                detail = json.loads(raw)
+                if isinstance(detail, dict):
+                    for k, v in detail.items():
+                        d.setdefault(k, v)
+            except Exception:
+                pass
         out.append(d)
     return out
 
@@ -261,17 +285,41 @@ def run_undervalue_sync(
     rows = list(scanned.get("rows") or [])
     n_star = sum(1 for r in rows if str(r.get("mark") or "") == "star")
     n_watch = sum(1 for r in rows if str(r.get("mark") or "") == "watch")
+    n_emerging = sum(1 for r in rows if str(r.get("mark") or "") == "emerging")
     note = str(scanned.get("note") or "")[:200]
     finished = _stamp()
     conn = sqlite3.connect(path, timeout=30.0)
     try:
+        import json
+
         conn.execute("DELETE FROM undervalue_picks WHERE as_of=?", (as_of,))
         for r in rows:
+            detail = {
+                k: r.get(k)
+                for k in (
+                    "industry",
+                    "gross_margin",
+                    "core_ratio_pct",
+                    "yoy_pct",
+                    "fair_year",
+                    "target_next",
+                    "ups_fair_pct",
+                    "ups_tgt_pct",
+                    "pe_year",
+                    "pe_next",
+                    "rev_threshold_yi",
+                    "rev_oct_yi",
+                    "support",
+                    "tech_status",
+                    "chip_note",
+                )
+                if r.get(k) is not None
+            }
             conn.execute(
                 "INSERT OR REPLACE INTO undervalue_picks "
                 "(as_of, stock_id, name, mark, close, pe, pe_est, peer_pe_median, "
-                "dist_to_floor_pct, flow_shares, reason) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                "dist_to_floor_pct, flow_shares, reason, detail_json) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     as_of,
                     str(r.get("stock_id") or ""),
@@ -284,6 +332,7 @@ def run_undervalue_sync(
                     r.get("dist_to_floor_pct"),
                     r.get("flow_shares"),
                     str(r.get("reason") or "")[:200],
+                    json.dumps(detail, ensure_ascii=False) if detail else "",
                 ),
             )
         conn.execute(
@@ -305,16 +354,20 @@ def run_undervalue_sync(
     except Exception:
         logger.exception("低估靜默／下一版失敗（名單已寫庫）")
     _mark_pipeline(
-        path, as_of, "success", f"n={len(rows)} star={n_star} watch={n_watch} {note}"
+        path,
+        as_of,
+        "success",
+        f"n={len(rows)} star={n_star} watch={n_watch} emerging={n_emerging} {note}",
     )
     out["ok"] = True
     out["n"] = len(rows)
     out["note"] = note or "ok"
     logger.info(
-        "低估掃描完成 as_of=%s n=%s star=%s watch=%s",
+        "低估掃描完成 as_of=%s n=%s star=%s watch=%s emerging=%s",
         as_of,
         len(rows),
         n_star,
         n_watch,
+        n_emerging,
     )
     return out

@@ -39,8 +39,9 @@ def _seed(db: str, as_of: str = "20261113") -> None:
                 (sid, '["電子中游","通訊設備","光通訊"]', as_of),
             )
         # 官方本益：6442 近窗低緣＋遠低同鏈中位；9999 很貴
+        # 6442 末值壓低：成長規則會把同鏈中位封頂到產業合理 PE，須相對便宜才進 ★
         pes = {
-            "6442": [45, 42, 40, 38, 35, 33, 32, 31, 30.5, 30, 29.9, 29.8, 29.73],
+            "6442": [45, 42, 40, 38, 35, 33, 32, 31, 28, 24, 22, 20, 18.0],
             "3081": [120] * 13,
             "2455": [60] * 13,
             "3105": [55] * 13,
@@ -70,16 +71,34 @@ def _seed(db: str, as_of: str = "20261113") -> None:
                     "VALUES (?, ?, ?, 'TW', 100, 101, 99, 100, 5000, 0, 0, 100)",
                     (day, sid, pes and sid),
                 )
-            # 硬濾 YoY≥15%
-            conn.execute(
-                "INSERT OR REPLACE INTO monthly_revenue "
-                "(stock_id, yyyymm, stock_name, market, industry, revenue, "
-                "revenue_prev_month, revenue_prev_year, mom_pct, yoy_pct, "
-                "ytd_revenue, ytd_prev_year, ytd_yoy_pct, published_roc, updated_at) "
-                "VALUES (?, '202610', ?, 'TW', '', 1000, 900, 800, 5.0, 25.0, "
-                "9000, 7000, 20.0, '', ?)",
-                (sid, name, as_of),
-            )
+            # 硬濾 YoY≥15%；成長鐵律需季報＋月營收可外推
+            for mm, rev, mom, ytd in (
+                ("202608", 900, 3.0, 7000),
+                ("202609", 950, 5.0, 7950),
+                ("202610", 1000, 5.0, 9000),
+            ):
+                conn.execute(
+                    "INSERT OR REPLACE INTO monthly_revenue "
+                    "(stock_id, yyyymm, stock_name, market, industry, revenue, "
+                    "revenue_prev_month, revenue_prev_year, mom_pct, yoy_pct, "
+                    "ytd_revenue, ytd_prev_year, ytd_yoy_pct, published_roc, updated_at) "
+                    "VALUES (?, ?, ?, 'TW', '', ?, 900, 800, ?, 25.0, "
+                    "?, 7000, 20.0, '', ?)",
+                    (sid, mm, name, rev, mom, ytd, as_of),
+                )
+            for season, gm, op, net, eps, rev_q in (
+                (1, 40.0, 200, 220, 2.0, 3000),
+                (2, 42.0, 420, 450, 4.2, 6200),
+                (3, 45.0, 700, 750, 6.5, 9500),
+            ):
+                conn.execute(
+                    "INSERT OR REPLACE INTO quarterly_income "
+                    "(stock_id, year, season, stock_name, market, revenue, cogs, "
+                    "gross_profit, gross_margin_pct, operating_income, net_income, "
+                    "eps, published_roc, updated_at) "
+                    "VALUES (?, 2026, ?, ?, 'TW', ?, 0, 0, ?, ?, ?, ?, '', ?)",
+                    (sid, season, name, rev_q, gm, op, net, eps, as_of),
+                )
         # 補齊 6442 名字
         conn.execute(
             "UPDATE daily_quotes SET stock_name='光聖' WHERE stock_id='6442'"

@@ -9827,9 +9827,12 @@ class WayneTelegramBot:
 
             png = await asyncio.to_thread(_paint)
             n_star = sum(1 for p in picks if str(p.get("mark") or "") == "star")
-            n_watch = len(picks) - n_star
+            n_watch = sum(1 for p in picks if str(p.get("mark") or "") == "watch")
+            n_em = sum(1 for p in picks if str(p.get("mark") or "") == "emerging")
             cap = (
-                f"低估名單 {as_of}　★{n_star}☆{n_watch}（估值≠買訊；進場只認黃金買點）"
+                f"低估名單 {as_of}　★{n_star}☆{n_watch}"
+                f"{'⚠️' + str(n_em) if n_em else ''}"
+                f"（估值≠買訊；進場只認黃金買點）"
                 if as_of
                 else "低估名單（估值≠買訊）"
             )
