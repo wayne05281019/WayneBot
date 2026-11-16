@@ -1513,3 +1513,98 @@ def test_drop_stale_sox_distance_when_will_break():
     out = _drop_stale_sox_distance(s)
     assert "還有一段距離" not in out
     assert "9865會破" in out
+
+
+def test_wave4_now_scrubs_stale_abc_b_from_said():
+    """最新波浪4帶當令：「他還說」不准再塞過期 5-3-5／b波現況。"""
+    from biaoke_digest import format_focus_oral
+
+    latest = (
+        "大盤已經到41800~42700區間了，也就是回測上漲小5波結束回測波浪4的點位區間了。"
+        "台指期細微波C波修正，有1 4重疊。不要搞錯，沒有打第二支腳。"
+    )
+    prior = (
+        "大盤我應該是在星期二就說11/6低點不會來了，昨天大盤開始拉回，"
+        "目前大盤應該是走5-3-5 abc修正，今天開始是走3波b波反彈可能即高，"
+        "下星期還有最後c波修正就結束了。"
+    )
+    html = format_focus_oral(
+        [
+            {
+                "id": "m-wave4",
+                "kind": "post",
+                "date": "2026-11-16",
+                "time": "19:45",
+                "text": latest,
+            },
+            {
+                "id": "m-abc",
+                "kind": "post",
+                "date": "2026-11-16",
+                "time": "10:00",
+                "text": prior,
+            },
+        ],
+        [],
+        now=datetime(2026, 11, 16, 20, 37, tzinfo=ZoneInfo("Asia/Taipei")),
+    )
+    assert "41800" in html and "42700" in html
+    assert "波浪4" in html or "波浪位階4" in html or "回測" in html
+    if "<b>他還說</b>" in html:
+        said = html.split("<b>他還說</b>", 1)[1]
+        said = said.split("<b>", 1)[0]
+        assert "5-3-5" not in said and "5–3–5" not in said
+        assert "b波反彈" not in said and "3波b波" not in said
+        assert "下星期還有最後c" not in said
+
+
+def test_gate_bars_prefer_full_range_over_tip(tmp_path):
+    """同日尖端柱（高＝低＝收）不准蓋完整高低；41800／42700 應區間碰到。"""
+    import sqlite3
+
+    from biaoke_digest import (
+        _gate_touch_line,
+        _latest_closed_index_bars,
+        format_index_gates_confront_html,
+    )
+
+    db = str(tmp_path / "tip.db")
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE index_daily("
+        "date TEXT, symbol TEXT, open REAL, high REAL, low REAL, close REAL, volume REAL)"
+    )
+    # 尖端先寫（空標）；完整後寫
+    conn.execute(
+        "INSERT INTO index_daily VALUES (?,?,?,?,?,?,?)",
+        ("20261116", "", 41040.08, 41040.08, 41040.08, 41040.08, 0),
+    )
+    conn.execute(
+        "INSERT INTO index_daily VALUES (?,?,?,?,?,?,?)",
+        ("20261116", "TWII", 43512.42, 43512.42, 41040.08, 41040.08, 14120171),
+    )
+    conn.commit()
+    conn.close()
+    now = datetime(2026, 11, 16, 20, 37, tzinfo=ZoneInfo("Asia/Taipei"))
+    bars = _latest_closed_index_bars(db, now=now)
+    tw = bars.get("twii") or {}
+    assert abs(float(tw["high"]) - 43512.42) < 0.1
+    assert abs(float(tw["low"]) - 41040.08) < 0.1
+    assert "區間碰到" in _gate_touch_line(41800.0, tw, ctx="加權")
+    assert "區間碰到" in _gate_touch_line(42700.0, tw, ctx="加權")
+    assert "高未到" not in _gate_touch_line(41800.0, tw, ctx="加權")
+    html = format_index_gates_confront_html(
+        db,
+        posts=[
+            {
+                "id": "g1",
+                "kind": "post",
+                "date": "2026-11-16",
+                "time": "19:45",
+                "text": "大盤已經到41800~42700區間了，回測波浪4。",
+            }
+        ],
+        now=now,
+    )
+    assert "區間碰到" in html
+    assert "高41040.08 低41040.08 收41040.08" not in html or "高43512" in html
