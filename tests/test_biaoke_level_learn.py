@@ -241,7 +241,9 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "市撮" in src and "盤前" in src and "收盤" in src
     assert "def _thesis_cap_for_query" in src
     # 遠窗四欄：費半→台指電子盤→加權日盤（加權較高）→量；欄間日期
-    assert "figsize=(15.6, 15.6)" in far_blk
+    # v遠窗逾時修：figsize 14.8、dpi≤260（送得出優先）
+    assert "figsize=(14.8, 14.8)" in far_blk
+    assert "min(int(NAV_CHART_DPI or 320), 260)" in far_blk
     assert "height_ratios=(2.15, 2.30, 3.30, 0.95)" in far_blk
     assert "hspace=0.18" in far_blk
     assert "_shrink_png_for_telegram" in far_blk
