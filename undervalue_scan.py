@@ -605,8 +605,15 @@ def run_undervalue_scan(
                     continue
                 mark = "watch"
                 reason = f"成長體質過關；PE≤封頂中位{med:.1f}"
-            # 技術／量能分區覆寫
+            # 技術／量能分區覆寫；真低估才上榜（公平價上漲空間須 > 0）
             if growth_mode and detail:
+                ups = detail.get("ups_fair_pct")
+                try:
+                    ups_f = float(ups) if ups is not None else None
+                except (TypeError, ValueError):
+                    ups_f = None
+                if ups_f is None or ups_f <= 0:
+                    continue  # 高估／無空間＝不是低估名單
                 if detail.get("emerging"):
                     mark = "emerging"
                 elif detail.get("prefer_watch") and mark == "star":

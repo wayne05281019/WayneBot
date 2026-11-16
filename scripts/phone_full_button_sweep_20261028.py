@@ -298,7 +298,12 @@ async def run_menu(bot, chat_id: int, uid: int, results: list) -> None:
         t0 = time.perf_counter()
         err = None
         try:
-            upd = SimpleNamespace(message=msg, effective_user=msg.from_user, callback_query=None)
+            upd = SimpleNamespace(
+                message=msg,
+                effective_message=msg,
+                effective_user=msg.from_user,
+                callback_query=None,
+            )
             await bot.on_text(upd, MagicMock())
         except Exception as e:
             err = f"{type(e).__name__}: {e}"
@@ -312,7 +317,12 @@ async def run_menu(bot, chat_id: int, uid: int, results: list) -> None:
             try:
                 m2 = _forwarding_message(chat_id, uid, leave)
                 await bot.on_text(
-                    SimpleNamespace(message=m2, effective_user=m2.from_user, callback_query=None),
+                    SimpleNamespace(
+                        message=m2,
+                        effective_message=m2,
+                        effective_user=m2.from_user,
+                        callback_query=None,
+                    ),
                     MagicMock(),
                 )
             except Exception:
@@ -417,7 +427,12 @@ async def run_lookup(bot, chat_id: int, uid: int, code: str, results: list, *, h
             try:
                 m2 = _forwarding_message(chat_id, uid, "回主選單")
                 await bot.on_text(
-                    SimpleNamespace(message=m2, effective_user=m2.from_user, callback_query=None),
+                    SimpleNamespace(
+                        message=m2,
+                        effective_message=m2,
+                        effective_user=m2.from_user,
+                        callback_query=None,
+                    ),
                     MagicMock(),
                 )
             except Exception:
@@ -493,7 +508,12 @@ async def main() -> int:
             t0 = time.perf_counter()
             try:
                 await bot.on_text(
-                    SimpleNamespace(message=msg, effective_user=msg.from_user, callback_query=None),
+                    SimpleNamespace(
+                        message=msg,
+                        effective_message=msg,
+                        effective_user=msg.from_user,
+                        callback_query=None,
+                    ),
                     MagicMock(),
                 )
             except Exception as e:
