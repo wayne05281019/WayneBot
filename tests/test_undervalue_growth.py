@@ -11,20 +11,36 @@ from wayne_db import ensure_core_schema, init_database
 def test_cyclical_and_gross_gates():
     from undervalue_growth import (
         capped_peer_median,
+        format_core_ratio,
         growth_gate,
         industry_bucket,
         is_cyclical_trap,
+        is_hard_excluded,
         passes_gross_margin,
+        price_targets,
+        resolve_industry_label,
     )
 
     assert is_cyclical_trap("石化-原物料", [], "和桐")
     assert is_cyclical_trap("航運-散裝", [], "慧洋")
     assert is_cyclical_trap("營建-建設", [], "興富發")
     assert not is_cyclical_trap("電子中游-光通訊", ["光通訊"], "光聖")
-    # 成熟晶圓／記憶體不准剔除
+    # D3：DRAM／通路進濾網；成熟晶圓代工仍不進
     assert not is_cyclical_trap("電子上游-IC-代工", ["成熟製程"], "力積電")
-    assert not is_cyclical_trap("電子上游-記憶體IC設計", ["DRAM"], "晶豪科")
-    assert not is_cyclical_trap("電子上游-記憶體", ["標準型記憶體"], "南亞科")
+    assert is_cyclical_trap("電子上游-記憶體IC設計", ["DRAM"], "晶豪科")
+    assert is_cyclical_trap("電子上游-記憶體", ["標準型記憶體"], "南亞科")
+    assert is_cyclical_trap("電子上游-IC-通路", ["通路"], "方土昶")
+    assert is_hard_excluded("3006") and is_hard_excluded("6265")
+    assert not is_hard_excluded("6442")
+    assert resolve_industry_label("8069", ["TFT面板"], "電子中游-LCD-TFT面板") == "電子紙"
+    assert format_core_ratio(123.4) == "純本業"
+    assert format_core_ratio(94.0) == "94%"
+
+    # 今年／明年目標不准靜默相同
+    tg = price_targets(100.0, 20.0, 10.0, 12.5, 20.0, 16.0)
+    # 10*20=200；12.5*16=200 → 應上修明年
+    assert abs(tg["fair_year"] - 200.0) < 1e-6
+    assert tg["target_next"] > tg["fair_year"] + 1.0
 
     assert passes_gross_margin(20.0)
     assert not passes_gross_margin(19.9)
@@ -78,8 +94,23 @@ def test_cyclical_and_gross_gates():
     assert (y2, n2) == (26.0, 21.0)
 
 
+def test_chip_capsule_from_daily_quotes_nets():
+    from undervalue_growth import _streak_from_nets
+
+    both = _streak_from_nets([(100, 50), (80, 40), (-10, 20)])
+    assert both["capsule"] == "外投同買"
+    sell = _streak_from_nets([(-20, -10), (-5, -1)])
+    assert sell["capsule"] == "外投同賣"
+    trust = _streak_from_nets([(0, 30), (-5, 20), (10, 15)])
+    assert trust["capsule"].startswith("投信連買")
+    adj = _streak_from_nets([(-10, 20), (0, 0)])
+    assert adj["capsule"] == "投信買・外資調節"
+
+
 def test_growth_card_renders_zones(tmp_path):
-    from undervalue_card import render_undervalue_png
+    from PIL import Image
+
+    from undervalue_card import BASE_H, BASE_W, render_undervalue_png
 
     rows = [
         {
@@ -92,14 +123,19 @@ def test_growth_card_renders_zones(tmp_path):
             "gross_margin": 59.3,
             "core_ratio_pct": 94,
             "yoy_pct": 83,
+            "eps_earned": 34.9,
+            "eps_2026": 52,
+            "eps_2027": 68,
             "fair_year": 1300,
             "target_next": 1625,
             "ups_fair_pct": 24,
             "ups_tgt_pct": 55,
             "rev_threshold_yi": 20.5,
             "rev_oct_yi": 18,
+            "support": 1045,
+            "resistance": 1210,
             "tech_status": "站回支撐區",
-            "chip_note": "投信近5日買超",
+            "chip_note": "外投同買",
         },
         {
             "mark": "watch",
@@ -117,6 +153,9 @@ def test_growth_card_renders_zones(tmp_path):
             "ups_tgt_pct": 61,
             "rev_threshold_yi": 95,
             "rev_oct_yi": 80,
+            "support": 4160,
+            "resistance": 5200,
+            "tech_broken": True,
             "tech_status": "跌破大量區撐 4160",
         },
         {
@@ -136,10 +175,13 @@ def test_growth_card_renders_zones(tmp_path):
             "rev_threshold_yi": 1.5,
             "rev_oct_yi": 1.2,
             "tech_status": "60日均量過小",
+            "chip_note": "興櫃無法人",
         },
     ]
     out = str(tmp_path / "uv_growth.png")
     assert Path(render_undervalue_png(rows, out, as_of="20261116")).is_file()
+    im = Image.open(out)
+    assert im.size == (BASE_W, BASE_H)
     assert Path(out).stat().st_size > 12000
 
 

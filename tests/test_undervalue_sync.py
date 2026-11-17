@@ -120,6 +120,20 @@ def test_menu_undervalue_without_ai_button():
     assert MENU_BTN_AI == "AI倉"  # 打字別名仍認
 
 
+def test_undervalue_page_callback_routed():
+    import inspect
+
+    from bot_servers import WayneTelegramBot
+
+    cb = inspect.getsource(WayneTelegramBot._on_callback_bound)
+    assert 'data.startswith("uv:page:")' in cb
+    assert "_handle_undervalue_page_callback" in cb
+    send = inspect.getsource(WayneTelegramBot._send_undervalue_view)
+    assert "render_undervalue_pages" in send
+    kb = inspect.getsource(WayneTelegramBot._undervalue_pick_keyboard)
+    assert "uv:page:" in kb
+
+
 def test_ai_desk_type_alias_still_routes():
     """主選單無 AI倉鈕；打字 AI倉／模擬倉仍進假錢倉。"""
     import inspect

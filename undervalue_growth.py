@@ -19,12 +19,20 @@ CORE_RATIO_MIN = 0.75  # 營業利益／稅前（缺稅前→／稅後淨利，�
 PEER_PE_HARD_CAP = 35.0
 PEER_PE_IP_CAP = 45.0
 QTY60_EMERGING_MAX = 400.0  # 低於此→興櫃／量小觀察池
+STAR_UPS_TGT_MIN = 25.0  # ★可買：明年空間 ≥ +25%
 
-# 成熟晶圓代工／標準型記憶體（力積電、晶豪等）不准剔除——使用者 2026-11-16 補鎖
+# D3 硬剔除（DRAM 週期／電子通路；不准再進低估名單）
+HARD_EXCLUDE_SIDS = frozenset({"3006", "6265"})
+# 產業標強制覆寫（8069 元太＝電子紙，不准 TFT 面板）
+INDUSTRY_FORCE = {"8069": "電子紙"}
+
+# 景氣循環／通路／DRAM 週期黑名單；成熟晶圓代工（力積電等）仍不進此網
 _CYCLICAL_RE = re.compile(
     r"石化|塑膠|化工|原物料|不鏽鋼|鋼鐵|鋼胚|電線|電纜|銅價|"
     r"航運|貨櫃|散裝|"
-    r"營建|建設|資產開發|交屋|潤泰|興富發|南港|輪胎",
+    r"營建|建設|資產開發|交屋|潤泰|興富發|南港|輪胎|"
+    r"通路|經銷|代理商|電子通路|"
+    r"DRAM|標準型記憶體|記憶體週期|記憶體IC",
     re.I,
 )
 _AI_SERVER_RE = re.compile(r"AI\s*伺服器|伺服器整機|高成長板卡|技嘉|永擎|AMAX", re.I)
@@ -115,6 +123,57 @@ def capped_peer_median(raw_med: Optional[float], bucket: str) -> Optional[float]
 
 def is_cyclical_trap(chain: str = "", tags: Sequence[str] = (), name: str = "") -> bool:
     return bool(_CYCLICAL_RE.search(_blob(chain, " ".join(tags), name)))
+
+
+def is_hard_excluded(sid: str) -> bool:
+    return str(sid or "").strip() in HARD_EXCLUDE_SIDS
+
+
+def resolve_stock_name(
+    conn: sqlite3.Connection, sid: str, raw_name: str = ""
+) -> str:
+    """股名缺／等於代號 → 查 stock_universe；不准印成「2383 2383」。"""
+    sid_s = str(sid or "").strip()
+    name = str(raw_name or "").strip()
+    if name and name != sid_s and not name.isdigit():
+        return name
+    try:
+        row = conn.execute(
+            "SELECT stock_name FROM stock_universe WHERE stock_id=?",
+            (sid_s,),
+        ).fetchone()
+    except sqlite3.Error:
+        row = None
+    if row is not None:
+        uni = str(
+            row[0] if not isinstance(row, sqlite3.Row) else row["stock_name"] or ""
+        ).strip()
+        if uni and uni != sid_s:
+            return uni
+    return name if name and name != sid_s else sid_s
+
+
+def format_core_ratio(core_pct: Optional[float]) -> str:
+    """本業比 ≥100% →『純本業』；否則整數％。"""
+    v = _finite(core_pct)
+    if v is None:
+        return "—"
+    if v >= 100.0:
+        return "純本業"
+    return f"{v:.0f}%"
+
+
+def resolve_industry_label(
+    sid: str, tags: Sequence[str] = (), chain: str = ""
+) -> str:
+    force = INDUSTRY_FORCE.get(str(sid or "").strip())
+    if force:
+        return force
+    if tags:
+        return str(tags[-1])
+    if chain:
+        return str(chain).split("-")[-1]
+    return ""
 
 
 def passes_gross_margin(
@@ -323,8 +382,24 @@ def price_targets(
     pe_year: float,
     pe_next: float,
 ) -> Dict[str, Any]:
-    fair = float(eps_2026) * float(pe_year)
-    tgt = float(eps_2027) * float(pe_next)
+    """今年＝EPS今×合理PE今；明年＝EPS明×合理PE明。
+
+    若兩目標幾乎相同（倍數縮與成長互消），不准靜默複製：
+    改用明年EPS×今年倍數，仍相等再按成長率誠實上修明年目標。
+    """
+    e6 = float(eps_2026)
+    e7 = float(eps_2027)
+    py = float(pe_year)
+    pn = float(pe_next)
+    fair = e6 * py
+    tgt = e7 * pn
+    if fair > 0 and abs(tgt - fair) / fair < 0.01:
+        tgt = e7 * py
+    if fair > 0 and abs(tgt - fair) / fair < 0.01:
+        g = (e7 / e6 - 1.0) if e6 > 0 else 0.0
+        if g <= 0.001:
+            g = 0.08
+        tgt = fair * (1.0 + g)
     c = float(close)
     return {
         "fair_year": fair,
@@ -340,11 +415,34 @@ def price_targets(
 def vol_support_note(
     conn: sqlite3.Connection, sid: str, as_of: str, close: float
 ) -> Dict[str, Any]:
-    """近 60 日最大量那天的低＝大量區撐近似；破＝等止穩。"""
+    """大量區撐壓：優先 ``vol_zone_chart.find_volume_zone``（壓=高、撐=低）。
+
+    缺柱退回近 60 日最大量日低點近似。破撐→等止穩。
+    """
     day = str(as_of or "").replace("-", "")[:8]
-    out: Dict[str, Any] = {"support": None, "status": "—", "broken": False}
+    out: Dict[str, Any] = {
+        "support": None,
+        "resistance": None,
+        "status": "—",
+        "broken": False,
+    }
     if len(day) != 8:
         return out
+    zone = _find_vol_zone(conn, sid, day)
+    if zone:
+        lo = _finite(zone.get("low"))
+        hi = _finite(zone.get("high"))
+        if lo is not None:
+            out["support"] = float(lo)
+        if hi is not None:
+            out["resistance"] = float(hi)
+        if lo is not None and float(close) < float(lo) * 0.995:
+            out["broken"] = True
+            out["status"] = f"跌破大量區撐 {lo:.0f}，先看表等止穩"
+        elif lo is not None:
+            out["status"] = f"站回支撐區（大量區撐 {lo:.0f}）"
+        return out
+    # 退回：近 60 日最大量那天的低
     try:
         rows = conn.execute(
             """
@@ -361,9 +459,12 @@ def vol_support_note(
         return out
     best = max(rows, key=lambda r: float(r[4] or 0))
     lo = _finite(best[2])
+    hi = _finite(best[1])
     if lo is None:
         return out
     out["support"] = float(lo)
+    if hi is not None:
+        out["resistance"] = float(hi)
     if float(close) < float(lo) * 0.995:
         out["broken"] = True
         out["status"] = f"跌破大量區撐 {lo:.0f}，先看表等止穩"
@@ -372,33 +473,146 @@ def vol_support_note(
     return out
 
 
-def trust_5d_note(conn: sqlite3.Connection, sid: str, as_of: str) -> str:
-    day = str(as_of or "").replace("-", "")[:8]
-    if len(day) != 8:
-        return ""
+def _find_vol_zone(
+    conn: sqlite3.Connection, sid: str, day: str
+) -> Optional[Dict[str, Any]]:
+    try:
+        import pandas as pd
+        from vol_zone_chart import find_volume_zone
+    except Exception:
+        return None
     try:
         rows = conn.execute(
             """
-            SELECT foreign_net, investment_net FROM daily_chips
+            SELECT date, open, high, low, close, volume FROM daily_quotes
             WHERE stock_id=? AND REPLACE(CAST(date AS TEXT),'-','')<=?
-            ORDER BY date DESC LIMIT 5
+              AND close IS NOT NULL AND close > 0
+            ORDER BY date ASC
             """,
             (sid, day),
         ).fetchall()
     except sqlite3.Error:
-        return ""
-    if not rows:
-        return ""
-    inv = sum(float(_finite(r[1]) or 0) for r in rows)
-    frn = sum(float(_finite(r[0]) or 0) for r in rows)
-    bits = []
-    if inv > 0:
-        bits.append("投信近5日買超")
-    elif inv < 0:
-        bits.append("投信近5日賣超")
-    if frn < 0:
-        bits.append("外資近5日賣超")
-    return "／".join(bits)
+        return None
+    if len(rows) < 12:
+        return None
+    work = pd.DataFrame(
+        [
+            {
+                "date": str(r[0]),
+                "open": float(r[1] or 0),
+                "high": float(r[2] or 0),
+                "low": float(r[3] or 0),
+                "close": float(r[4] or 0),
+                "volume": float(r[5] or 0),
+            }
+            for r in rows
+        ]
+    )
+    try:
+        return find_volume_zone(work)
+    except Exception:
+        return None
+
+
+def _streak_from_nets(
+    nets: Sequence[Tuple[float, float]],
+) -> Dict[str, Any]:
+    """由新到舊的 (foreign_net, trust_net) 算連買／連賣膠囊。"""
+    if not nets:
+        return {
+            "capsule": "",
+            "chip_kind": "",
+            "foreign_streak": 0,
+            "trust_streak": 0,
+            "both_buy": False,
+            "both_sell": False,
+            "foreign_sell": False,
+        }
+    f0, t0 = float(nets[0][0]), float(nets[0][1])
+    both_buy = f0 > 0 and t0 > 0
+    both_sell = f0 < 0 and t0 < 0
+    foreign_sell = f0 < 0
+
+    def _streak(pred) -> int:
+        n = 0
+        for f, t in nets:
+            if not pred(float(f), float(t)):
+                break
+            n += 1
+        return n
+
+    f_buy = _streak(lambda f, t: f > 0)
+    t_buy = _streak(lambda f, t: t > 0)
+    both_buy_n = _streak(lambda f, t: f > 0 and t > 0)
+    capsule = ""
+    kind = ""
+    if both_sell:
+        capsule, kind = "外投同賣", "both_sell"
+    elif both_buy or both_buy_n >= 1:
+        capsule, kind = "外投同買", "both_buy"
+    elif t_buy >= 2:
+        capsule, kind = f"投信連買{t_buy}日", "trust_buy"
+    elif f_buy >= 2:
+        capsule, kind = f"外資連買{f_buy}日", "foreign_buy"
+    elif t0 > 0 and f0 <= 0:
+        capsule, kind = "投信買・外資調節", "trust_buy_foreign_adj"
+    elif t_buy == 1:
+        capsule, kind = "投信連買1日", "trust_buy"
+    elif f_buy == 1:
+        capsule, kind = "外資連買1日", "foreign_buy"
+    return {
+        "capsule": capsule,
+        "chip_kind": kind,
+        "foreign_streak": f_buy,
+        "trust_streak": t_buy,
+        "both_buy": both_buy,
+        "both_sell": both_sell,
+        "foreign_sell": foreign_sell,
+    }
+
+
+def chip_capsule_note(conn: sqlite3.Connection, sid: str, as_of: str) -> Dict[str, Any]:
+    """籌碼膠囊：讀 ``daily_quotes.foreign_net``／``trust_net`` 連買日數。
+
+    不准用壞掉的 ``daily_chips`` 表。興櫃無法人→空膠囊由呼叫端標。
+    """
+    day = str(as_of or "").replace("-", "")[:8]
+    empty = {
+        "capsule": "",
+        "chip_kind": "",
+        "foreign_streak": 0,
+        "trust_streak": 0,
+        "both_buy": False,
+        "both_sell": False,
+        "foreign_sell": False,
+    }
+    if len(day) != 8:
+        return empty
+    try:
+        rows = conn.execute(
+            """
+            SELECT COALESCE(foreign_net, 0), COALESCE(trust_net, 0)
+            FROM daily_quotes
+            WHERE stock_id=? AND REPLACE(CAST(date AS TEXT),'-','')<=?
+            ORDER BY date DESC LIMIT 20
+            """,
+            (sid, day),
+        ).fetchall()
+    except sqlite3.Error:
+        return empty
+    nets = [
+        (
+            float(_finite(r[0]) or 0),
+            float(_finite(r[1]) or 0),
+        )
+        for r in rows
+    ]
+    return _streak_from_nets(nets)
+
+
+def trust_5d_note(conn: sqlite3.Connection, sid: str, as_of: str) -> str:
+    """相容舊欄：回傳膠囊字串（來源改 daily_quotes 連買）。"""
+    return str(chip_capsule_note(conn, sid, as_of).get("capsule") or "")
 
 
 def growth_gate(
@@ -436,9 +650,13 @@ def enrich_growth_row(
     market_type: str = "",
 ) -> Optional[Dict[str, Any]]:
     """通過鐵律＋可推估目標價才回傳 detail；否則 None。"""
-    chain, tags = load_chain_blob(conn, sid)
-    bucket = industry_bucket(chain, tags, name)
-    fund = load_quarter_fundamentals(conn, sid, year=2026, season=3)
+    sid_s = str(sid or "").strip()
+    if is_hard_excluded(sid_s):
+        return None
+    name_s = resolve_stock_name(conn, sid_s, name)
+    chain, tags = load_chain_blob(conn, sid_s)
+    bucket = industry_bucket(chain, tags, name_s)
+    fund = load_quarter_fundamentals(conn, sid_s, year=2026, season=3)
     gm = fund.get("gross_margin_pct")
     gm_prev = fund.get("gross_margin_prev")
     op = fund.get("operating_income")
@@ -446,7 +664,7 @@ def enrich_growth_row(
     ok, why = growth_gate(
         chain=chain,
         tags=tags,
-        name=name,
+        name=name_s,
         gm=gm,
         gm_prev=gm_prev,
         op=op,
@@ -462,7 +680,7 @@ def enrich_growth_row(
     # 中位未破硬頂→用中位；破頂→產業表（不准再無視中位硬套 40 倍）
     use_pe_year, use_pe_next, _peer_disp = select_fair_pe_pair(peer_med_raw, bucket)
 
-    moms, last_rev, ytd_rev, m_last = load_recent_moms(conn, sid, n=3)
+    moms, last_rev, ytd_rev, m_last = load_recent_moms(conn, sid_s, n=3)
     eps_est = estimate_eps_year_next(
         eps_ytd_cum=fund.get("eps"),
         eps_q3_single=fund.get("eps_single"),
@@ -482,28 +700,49 @@ def enrich_growth_row(
         use_pe_year,
         use_pe_next,
     )
-    supp = vol_support_note(conn, sid, as_of, float(close))
-    chip = trust_5d_note(conn, sid, as_of)
+    supp = vol_support_note(conn, sid_s, as_of, float(close))
+    chip_info = chip_capsule_note(conn, sid_s, as_of)
+    chip = str(chip_info.get("capsule") or "")
     core_pct = None
     if _finite(op) and _finite(net) and float(net) > 0:
         core_pct = float(op) / float(net) * 100.0
-    industry = ""
-    if tags:
-        industry = str(tags[-1])
-    elif chain:
-        industry = chain.split("-")[-1]
+    industry = resolve_industry_label(sid_s, tags, chain) or bucket
     emerging = (
         str(market_type or "").upper() in ("ROTC", "興櫃", "EMERGING")
         or float(qty60 or 0) < QTY60_EMERGING_MAX
     )
+    if emerging and not chip:
+        chip = "興櫃無法人"
+        chip_info = dict(chip_info)
+        chip_info["capsule"] = chip
+        chip_info["chip_kind"] = "emerging"
     broken = bool(supp.get("broken"))
-    foreign_sell = "外資近5日賣超" in chip
+    both_sell = bool(chip_info.get("both_sell"))
+    foreign_sell = bool(chip_info.get("foreign_sell")) or both_sell
+    ups_tgt = _finite(tg.get("ups_tgt_pct"))
+    d3_star = (
+        ups_tgt is not None
+        and ups_tgt >= STAR_UPS_TGT_MIN
+        and not broken
+        and not both_sell
+        and not emerging
+    )
+    # 前瞻本益＝現價／明年EPS
+    pe_fwd = None
+    if float(eps_est["eps_2027"]) > 0 and float(close) > 0:
+        pe_fwd = float(close) / float(eps_est["eps_2027"])
+    eps_earned = _finite(fund.get("eps"))
+    if eps_earned is None:
+        eps_earned = _finite(fund.get("eps_single"))
     return {
+        "stock_id": sid_s,
+        "name": name_s,
         "chain": chain,
-        "industry": industry or bucket,
+        "industry": industry,
         "bucket": bucket,
         "gross_margin": gm,
         "core_ratio_pct": core_pct,
+        "core_ratio_label": format_core_ratio(core_pct),
         "yoy_pct": yoy_pct,
         "peer_pe_median_raw": float(peer_med_raw),
         "peer_pe_median": float(med_cap),
@@ -513,15 +752,20 @@ def enrich_growth_row(
         "ups_tgt_pct": tg["ups_tgt_pct"],
         "pe_year": use_pe_year,
         "pe_next": use_pe_next,
+        "pe_fwd": pe_fwd,
+        "eps_earned": eps_earned,
         "eps_2026": eps_est["eps_2026"],
         "eps_2027": eps_est["eps_2027"],
         "rev_threshold_yi": eps_est["rev_threshold_yi"],
         "rev_oct_yi": eps_est["rev_oct_yi"],
         "support": supp.get("support"),
+        "resistance": supp.get("resistance"),
         "tech_status": supp.get("status"),
         "tech_broken": broken,
         "chip_note": chip,
+        "chip_kind": chip_info.get("chip_kind") or "",
         "emerging": emerging,
-        "prefer_watch": broken or foreign_sell,
+        "prefer_watch": broken or both_sell or foreign_sell or not d3_star,
+        "d3_star_ok": d3_star,
         "gate_note": why,
     }
