@@ -9775,19 +9775,54 @@ class WayneTelegramBot:
             return True
         return False
 
-    def _undervalue_pick_keyboard(self, picks: list):
-        """名單下可點代號查股（與海選／剛脫離零同一套查股路）。"""
+    def _undervalue_pick_keyboard(
+        self,
+        picks: list,
+        *,
+        as_of: str = "",
+        page_i: int = 0,
+        page_n: int = 1,
+    ):
+        """D3：上一頁／頁碼／下一頁＋本頁代號查股。"""
         from tg_layout import stock_btn_label
+        from undervalue_card import CARDS_PER_PAGE, _order_rows
 
         rows = []
+        ymd = str(as_of or "").replace("-", "")[:8]
+        n_pages = max(1, int(page_n or 1))
+        idx = max(0, min(int(page_i or 0), n_pages - 1))
+        if n_pages > 1 and len(ymd) == 8:
+            prev_i = (idx - 1) % n_pages
+            next_i = (idx + 1) % n_pages
+            rows.append(
+                [
+                    InlineKeyboardButton(
+                        "◀ 上一頁", callback_data=f"uv:page:{ymd}:{prev_i}"
+                    ),
+                    InlineKeyboardButton(
+                        f"{idx + 1}/{n_pages}", callback_data="noop:uv"
+                    ),
+                    InlineKeyboardButton(
+                        "下一頁 ▶", callback_data=f"uv:page:{ymd}:{next_i}"
+                    ),
+                ]
+            )
+        ordered = _order_rows(picks) if picks else []
+        page_rows = ordered[idx * CARDS_PER_PAGE : (idx + 1) * CARDS_PER_PAGE]
         line = []
-        for p in list(picks or [])[:16]:
+        for p in page_rows:
             if not isinstance(p, dict):
                 continue
             sid = str(p.get("stock_id") or "").strip()
             if not sid:
                 continue
-            mark = "★" if str(p.get("mark") or "") == "star" else "☆"
+            mk = str(p.get("mark") or "")
+            if mk == "star":
+                mark = "★"
+            elif mk == "emerging":
+                mark = "⚠️"
+            else:
+                mark = "☆"
             lab = f"{mark}{stock_btn_label(sid, str(p.get('name') or ''))}"
             line.append(InlineKeyboardButton(lab[:28], callback_data=f"k:{sid}"))
             if len(line) >= 2:
@@ -9799,13 +9834,16 @@ class WayneTelegramBot:
             return self._keyboard()
         return InlineKeyboardMarkup(rows)
 
-    async def _send_undervalue_view(self, message, uid: str):
-        """讀融合後低估名單快取出圖。不是買訊。
+    def _uv_cache(self) -> dict:
+        cache = getattr(self, "_uv_page_cache", None)
+        if cache is None:
+            cache = {}
+            self._uv_page_cache = cache
+        return cache
 
-        最新完整日還沒掃成功時：先補掃一次；仍空再退回最近 success，
-        不准整張「盤後還沒算完」空卡蓋住已有名單。
-        """
-        from undervalue_card import render_undervalue_png
+    async def _send_undervalue_view(self, message, uid: str):
+        """讀融合後低估名單快取，渲 D3 多頁，先送第 1 頁＋翻頁鈕。不是買訊。"""
+        from undervalue_card import render_undervalue_pages
         from undervalue_sync import (
             empty_note_for_button,
             load_picks,
@@ -9859,31 +9897,45 @@ class WayneTelegramBot:
                 if as_of
                 else "盤後還沒算完（融合後掃描）"
             )
-            path = self._scratch_chart_path(
-                self.charts_dir, "UV", "undervalue", uid or "0"
+            actor = self._actor_key(message, uid=uid)
+            out_dir = os.path.join(
+                self.charts_dir, f"uv_{uid or '0'}_{actor}".replace("/", "_")
             )
 
-            def _paint() -> str:
-                return render_undervalue_png(
+            def _paint() -> list:
+                return render_undervalue_pages(
                     picks,
-                    path,
+                    out_dir,
                     as_of=as_of or None,
                     empty_note=note if not picks else None,
+                    prefix="uv",
                 )
 
-            png = await asyncio.to_thread(_paint)
+            paths = await asyncio.to_thread(_paint)
+            self._uv_cache()[actor] = {
+                "as_of": str(as_of or ""),
+                "paths": list(paths),
+                "picks": list(picks or []),
+            }
             n_star = sum(1 for p in picks if str(p.get("mark") or "") == "star")
             n_watch = sum(1 for p in picks if str(p.get("mark") or "") == "watch")
             n_em = sum(1 for p in picks if str(p.get("mark") or "") == "emerging")
+            page_n = max(1, len(paths))
             cap = (
                 f"低估名單 {as_of}　★{n_star}☆{n_watch}"
                 f"{'⚠️' + str(n_em) if n_em else ''}"
-                f"（估值≠買訊；進場只認黃金買點）"
+                f"　1/{page_n}頁（估值≠買訊）"
                 if as_of
                 else "低估名單（估值≠買訊）"
             )
-            kb = self._undervalue_pick_keyboard(picks) if picks else self._keyboard()
-            with open(png, "rb") as f:
+            kb = (
+                self._undervalue_pick_keyboard(
+                    picks, as_of=as_of, page_i=0, page_n=page_n
+                )
+                if picks
+                else self._keyboard()
+            )
+            with open(paths[0], "rb") as f:
                 await message.reply_photo(
                     photo=f,
                     caption=cap,
@@ -9894,6 +9946,68 @@ class WayneTelegramBot:
             await message.reply_text(PHONE_BUSY, reply_markup=self._keyboard())
         finally:
             await self._stop_plain_wait(*wait_h)
+
+    async def _handle_undervalue_page_callback(self, q, uid: str, data: str) -> None:
+        """uv:page:{as_of}:{idx} → 送該頁 PNG＋導覽鍵盤。"""
+        parts = str(data or "").split(":")
+        # uv:page:YYYYMMDD:idx
+        if len(parts) < 4:
+            try:
+                await q.answer()
+            except Exception:
+                pass
+            return
+        as_of = parts[2].strip()
+        try:
+            idx = int(parts[3])
+        except (TypeError, ValueError):
+            idx = 0
+        actor = self._actor_key(q.message, uid=uid)
+        cached = (self._uv_cache().get(actor) or {})
+        paths = list(cached.get("paths") or [])
+        picks = list(cached.get("picks") or [])
+        if str(cached.get("as_of") or "") != as_of or not paths or not picks:
+            from undervalue_card import render_undervalue_pages
+            from undervalue_sync import load_picks
+
+            picks = await asyncio.to_thread(load_picks, self.db_path, as_of) or []
+            out_dir = os.path.join(
+                self.charts_dir, f"uv_{uid or '0'}_{actor}".replace("/", "_")
+            )
+
+            def _paint() -> list:
+                return render_undervalue_pages(
+                    picks, out_dir, as_of=as_of or None, prefix="uv"
+                )
+
+            paths = await asyncio.to_thread(_paint)
+            self._uv_cache()[actor] = {
+                "as_of": as_of,
+                "paths": list(paths),
+                "picks": list(picks),
+            }
+        page_n = max(1, len(paths))
+        idx = max(0, min(idx, page_n - 1))
+        try:
+            await q.answer(f"{idx + 1}/{page_n}")
+        except Exception:
+            pass
+        png = paths[idx]
+        if not png or not os.path.isfile(png):
+            return
+        n_star = sum(1 for p in picks if str(p.get("mark") or "") == "star")
+        n_watch = sum(1 for p in picks if str(p.get("mark") or "") == "watch")
+        n_em = sum(1 for p in picks if str(p.get("mark") or "") == "emerging")
+        cap = (
+            f"低估名單 {as_of}　★{n_star}☆{n_watch}"
+            f"{'⚠️' + str(n_em) if n_em else ''}"
+            f"　{idx + 1}/{page_n}頁（估值≠買訊）"
+        )
+        kb = self._undervalue_pick_keyboard(
+            picks, as_of=as_of, page_i=idx, page_n=page_n
+        )
+        with open(png, "rb") as f:
+            await q.message.reply_photo(photo=f, caption=cap, reply_markup=kb)
 
     async def _send_ai_desk_view(self, message, uid: str):
         """只顯示模擬倉現況，不執行買賣。晚上 20:00 模擬操盤不推播。"""
@@ -12121,6 +12235,9 @@ class WayneTelegramBot:
             if nxt is None:
                 return
             await self._run_winrate_buypoint(q.message, offset=int(nxt))
+            return
+        if data.startswith("uv:page:"):
+            await self._handle_undervalue_page_callback(q, uid, data)
             return
         if data.startswith("lz:"):
             try:

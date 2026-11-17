@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""低估名單 PNG 排版防呆：數字欄不互壓、NaN 不印、收盤不改檔位、理由不切數字。"""
+"""低估名單 PNG 排版防呆：數字欄不互壓、NaN 不印、收盤不改檔位、理由不切數字、D3 安全區。"""
 import os
 import re
 
@@ -84,12 +84,32 @@ def test_no_invented_date_and_font_shared_with_industry_card():
         assert not mine.startswith("/workspace/") or uc.__file__.startswith("/workspace/")
 
 
-def test_star_rows_first_and_estimate_footnote(tmp_path):
+def test_star_rows_first_and_d3_fixed_canvas(tmp_path):
     rows = _real_stress_rows()
     assert [r["stock_id"] for r in uc._order_rows(rows)] == ["5274", "3081", "4743"]
+    # 舊列表（無 fair_year）
     p = uc.render_undervalue_png(rows, str(tmp_path / "uv.png"), as_of="20261109")
     im = Image.open(p)
-    assert im.size[0] == uc._px(uc.BASE_W) and im.size[1] >= uc._px(uc.BASE_H)
-    long_rows = [dict(rows[0], reason="理由") for _ in range(14)]
-    im2 = Image.open(uc.render_undervalue_png(long_rows, str(tmp_path / "long.png")))
-    assert im2.size[1] > uc._px(uc.BASE_H)
+    assert im.size[0] == uc.BASE_W
+    assert im.size[1] >= uc.BASE_H
+    # 成長卡 D3：固定 1080×1920，長名單分頁不拉高單頁
+    growth = [
+        {
+            "mark": "star",
+            "stock_id": f"{1000 + i}",
+            "name": f"測{i}",
+            "close": 100 + i,
+            "pe": 15,
+            "fair_year": 120,
+            "target_next": 150,
+            "ups_fair_pct": 20,
+            "ups_tgt_pct": 50,
+        }
+        for i in range(14)
+    ]
+    paths = uc.render_undervalue_pages(growth, str(tmp_path / "pages"), as_of="20261117")
+    assert len(paths) == 4  # 14/4
+    for path in paths:
+        im2 = Image.open(path)
+        assert im2.size == (uc.BASE_W, uc.BASE_H)
+    assert uc.SAFE_TOP == 140 and uc.SAFE_BOTTOM == 180
