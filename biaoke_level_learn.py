@@ -1031,47 +1031,9 @@ def verify_teach_stamp_preflight(
 
     # —— 加權 tip 不得落後最近「已收」開市日（週末／夜盤仍要比到上一個開市收）——
     # 根因：日K 停 11/11、60 分已到 11/13 → 超近對、遠／近白底仍卡舊收
-    # 開市日開盤前／盤後未齊今日柱：last_open(今天)=今天，但今日尚未「已收」——
-    # 此時 target 應退到上一開市日，不准把 07:40 的 11/16 tip 當落後硬擋三窗。
     try:
-        from datetime import timedelta
-
-        from trading_calendar import last_open_calendar_day_on_or_before
-
-        wall_ymd = wall.strftime("%Y%m%d") if hasattr(wall, "strftime") else ""
-        target = (
-            last_open_calendar_day_on_or_before(wall_ymd) if len(wall_ymd) == 8 else ""
-        )
         tip_tw2 = _ymd(tip0.get("tw_asof"))
-        bar_asof2 = ""
-        if bars:
-            bar_asof2 = _ymd((bars[-1] or {}).get("date"))
-        today_settled = bool(
-            target
-            and target == wall_ymd
-            and (
-                tip_tw2 == wall_ymd
-                or bar_asof2 == wall_ymd
-                or int(tip0.get("tw_live") or 0) == 1
-            )
-        )
-        if (
-            target
-            and target == wall_ymd
-            and not _twii_cash_session_live(wall)
-            and not today_settled
-            and len(wall_ymd) == 8
-        ):
-            try:
-                yday = (
-                    datetime.strptime(wall_ymd, "%Y%m%d").date() - timedelta(days=1)
-                ).strftime("%Y%m%d")
-            except ValueError:
-                yday = ""
-            if yday:
-                prev = last_open_calendar_day_on_or_before(yday)
-                if prev:
-                    target = prev
+        target = _settled_open_ymd_for_tip_gate(wall, tip0, bars)
         if (
             tip_tw2
             and target
@@ -1867,16 +1829,17 @@ def ensure_teach_tip_preflight(
     except Exception:
         logger.exception("preflight 重算 tip 失敗")
     tip0 = pack.get("teach_tip") if isinstance(pack.get("teach_tip"), dict) else {}
-    # 加權日K 落後最近開市／60 分末日 → sync＋60分聚合再凍 tip
+    # 加權日K 落後最近「已收」開市／60 分末日 → sync＋60分聚合再凍 tip
+    # 開盤前 target 不准用「今天」硬補（否則每次白打 MI5／Yahoo 還誤報落後）
     try:
-        from trading_calendar import last_open_calendar_day_on_or_before
-
         wall = _query_now_from_pack(pack)
-        wall_ymd = wall.strftime("%Y%m%d") if hasattr(wall, "strftime") else ""
-        target = (
-            last_open_calendar_day_on_or_before(wall_ymd) if len(wall_ymd) == 8 else ""
-        )
         tip_tw = _ymd((tip0 or {}).get("tw_asof"))
+        bars_for_gate: List[Any] = []
+        try:
+            bars_for_gate = _twii_bars_for_teach(db_path, 4, pack) or []
+        except Exception:
+            bars_for_gate = []
+        target = _settled_open_ymd_for_tip_gate(wall, tip0 or {}, bars_for_gate)
         m60 = ""
         try:
             rows60 = _load_twii60_day_rows(db_path, since_ymd="20261001")
@@ -1890,7 +1853,7 @@ def ensure_teach_tip_preflight(
             and int((tip0 or {}).get("tw_live") or 0) != 1
             and (
                 (target and tip_tw < target)
-                or (m60 and tip_tw < m60)
+                or (m60 and tip_tw < m60 and (not target or m60 <= target))
             )
         )
         if lag:
@@ -2368,13 +2331,24 @@ def _ensure_teach_biaoke_posts_fresh(
         # 輕量：只補最近幾則主文＋討論串；seed 1709 在 ingest 內已是缺才補
         # 硬逾時：失敗／超時仍記節流，避免連按波浪每次重踩 walk。
         # 逾時不准 wait shutdown（否則仍被掛住的 ingest 拖死）。
+        # RuntimeError（interpreter shutdown／pool 已關）當略過，不准炸話筒路徑。
         pool = ThreadPoolExecutor(max_workers=1)
-        fut = pool.submit(
-            ingest_public_posts,
-            db_path=path,
-            max_ids=16,
-            refresh_latest=4,
-        )
+        try:
+            fut = pool.submit(
+                ingest_public_posts,
+                db_path=path,
+                max_ids=16,
+                refresh_latest=4,
+            )
+        except RuntimeError as exc:
+            out["ok"] = False
+            out["skipped"] = True
+            out["reason"] = f"pool_submit:{type(exc).__name__}"
+            try:
+                pool.shutdown(wait=False, cancel_futures=True)
+            except Exception:
+                pass
+            return out
         try:
             stats = fut.result(timeout=float(_TEACH_BIAOKE_INGEST_TIMEOUT_SEC)) or {}
         except FutTimeout:
@@ -2389,17 +2363,20 @@ def _ensure_teach_biaoke_posts_fresh(
             )
             try:
                 pool.shutdown(wait=False, cancel_futures=True)
-            except TypeError:
-                pool.shutdown(wait=False)
+            except Exception:
+                pass
             return out
         except Exception:
             try:
                 pool.shutdown(wait=False, cancel_futures=True)
-            except TypeError:
-                pool.shutdown(wait=False)
+            except Exception:
+                pass
             raise
         else:
-            pool.shutdown(wait=True)
+            try:
+                pool.shutdown(wait=True)
+            except Exception:
+                pass
         _TEACH_BIAOKE_FRESH_AT[key] = _time.time()
         out["ok"] = bool(stats.get("ok", True))
         out["stats"] = {
@@ -2691,6 +2668,56 @@ def _sox_cash_session_live(now: Optional[datetime] = None) -> bool:
         return us_tape_phase(dt) == "regular"
     except Exception:
         return False
+
+
+def _settled_open_ymd_for_tip_gate(
+    wall: datetime,
+    tip0: Optional[Dict[str, Any]] = None,
+    bars: Optional[Sequence[Any]] = None,
+) -> str:
+    """最近「已收」開市日（YYYYMMDD）。
+
+    開市日開盤前／盤後未齊今日柱時，last_open(今天)=今天會誤判昨收 tip 落後。
+    此時退到上一開市日；盤中或今日 tip／末根已到今天則用今天。
+    """
+    tip0 = tip0 if isinstance(tip0, dict) else {}
+    try:
+        from trading_calendar import last_open_calendar_day_on_or_before
+    except Exception:
+        return ""
+    wall_ymd = wall.strftime("%Y%m%d") if hasattr(wall, "strftime") else ""
+    if len(wall_ymd) != 8:
+        return ""
+    target = last_open_calendar_day_on_or_before(wall_ymd) or ""
+    tip_tw = _ymd(tip0.get("tw_asof"))
+    bar_asof = ""
+    if bars:
+        try:
+            bar_asof = _ymd((bars[-1] or {}).get("date"))
+        except Exception:
+            bar_asof = ""
+    today_settled = bool(
+        target
+        and target == wall_ymd
+        and (
+            tip_tw == wall_ymd
+            or bar_asof == wall_ymd
+            or int(tip0.get("tw_live") or 0) == 1
+            or _twii_cash_session_live(wall)
+        )
+    )
+    if target == wall_ymd and not today_settled:
+        try:
+            yday = (
+                datetime.strptime(wall_ymd, "%Y%m%d").date() - timedelta(days=1)
+            ).strftime("%Y%m%d")
+        except ValueError:
+            yday = ""
+        if yday:
+            prev = last_open_calendar_day_on_or_before(yday)
+            if prev:
+                return prev
+    return target
 
 
 def _twii_cash_session_live(now: Optional[datetime] = None) -> bool:

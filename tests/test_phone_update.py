@@ -69,8 +69,8 @@ def test_file_note_matches_this_change():
     raw = Path(pu._NOTE_FILE).read_text(encoding="utf-8").splitlines()[0]
     assert "舊海選早報" not in raw
     assert "依時段" not in raw
-    assert "波浪" in raw or "低估" in raw
-    assert pu._clean_note(raw) == "波浪開盤前不再誤擋；低估缺掃會補掃／退回最近名單"
+    assert "LOADING" in raw or "進度" in raw or "硬頂" in raw
+    assert pu._clean_note(raw) == "LOADING 絕對硬頂；自測不准把進度框貼上話筒"
 
 
 def test_schedule_wait_note_at_fuse_window():
