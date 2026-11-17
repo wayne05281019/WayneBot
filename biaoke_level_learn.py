@@ -1029,9 +1029,13 @@ def verify_teach_stamp_preflight(
     else:
         fails.append({"code": "tw_bars_missing", "detail": "無加權末根可對"})
 
-    # —— 加權 tip 不得落後最近已收開市日（週末／夜盤仍要比到上一個開市收）——
+    # —— 加權 tip 不得落後最近「已收」開市日（週末／夜盤仍要比到上一個開市收）——
     # 根因：日K 停 11/11、60 分已到 11/13 → 超近對、遠／近白底仍卡舊收
+    # 開市日開盤前／盤後未齊今日柱：last_open(今天)=今天，但今日尚未「已收」——
+    # 此時 target 應退到上一開市日，不准把 07:40 的 11/16 tip 當落後硬擋三窗。
     try:
+        from datetime import timedelta
+
         from trading_calendar import last_open_calendar_day_on_or_before
 
         wall_ymd = wall.strftime("%Y%m%d") if hasattr(wall, "strftime") else ""
@@ -1039,6 +1043,35 @@ def verify_teach_stamp_preflight(
             last_open_calendar_day_on_or_before(wall_ymd) if len(wall_ymd) == 8 else ""
         )
         tip_tw2 = _ymd(tip0.get("tw_asof"))
+        bar_asof2 = ""
+        if bars:
+            bar_asof2 = _ymd((bars[-1] or {}).get("date"))
+        today_settled = bool(
+            target
+            and target == wall_ymd
+            and (
+                tip_tw2 == wall_ymd
+                or bar_asof2 == wall_ymd
+                or int(tip0.get("tw_live") or 0) == 1
+            )
+        )
+        if (
+            target
+            and target == wall_ymd
+            and not _twii_cash_session_live(wall)
+            and not today_settled
+            and len(wall_ymd) == 8
+        ):
+            try:
+                yday = (
+                    datetime.strptime(wall_ymd, "%Y%m%d").date() - timedelta(days=1)
+                ).strftime("%Y%m%d")
+            except ValueError:
+                yday = ""
+            if yday:
+                prev = last_open_calendar_day_on_or_before(yday)
+                if prev:
+                    target = prev
         if (
             tip_tw2
             and target
