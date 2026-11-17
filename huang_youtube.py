@@ -291,34 +291,51 @@ def whisper_local_media(
             logger.exception("huang_youtube：whisper 前 ffmpeg 失敗")
             out["transcript_status"] = "ffmpeg_failed"
             return out
-        try:
-            subprocess.run(
-                [
-                    whisper_bin,
-                    clipped,
-                    "--language",
-                    "zh",
-                    "--model",
-                    os.getenv("HUANG_WHISPER_MODEL") or "base",
-                    "--output_format",
-                    "txt",
-                    "--output_dir",
-                    td,
-                ],
-                check=True,
-                capture_output=True,
-                timeout=1800,
-            )
-            txt_path = os.path.join(td, "clip.txt")
-            if os.path.isfile(txt_path):
-                text = open(txt_path, encoding="utf-8").read().strip()
-                out["transcript"] = text
-                out["transcript_status"] = "whisper_ok" if text else "whisper_empty"
-                return out
-        except Exception:
-            logger.exception("huang_youtube：whisper 失敗")
-            out["transcript_status"] = "whisper_failed"
-            return out
+        # base 常逾時：先試指定／base，失敗自動退 tiny（仍只抽口播；不准假造）
+        models = []
+        pref = (os.getenv("HUANG_WHISPER_MODEL") or "base").strip() or "base"
+        models.append(pref)
+        if pref != "tiny":
+            models.append("tiny")
+        last_err = ""
+        for model in models:
+            try:
+                timeout_s = 2400 if model == "base" else 900
+                subprocess.run(
+                    [
+                        whisper_bin,
+                        clipped,
+                        "--language",
+                        "zh",
+                        "--model",
+                        model,
+                        "--output_format",
+                        "txt",
+                        "--output_dir",
+                        td,
+                    ],
+                    check=True,
+                    capture_output=True,
+                    timeout=timeout_s,
+                )
+                txt_path = os.path.join(td, "clip.txt")
+                if os.path.isfile(txt_path):
+                    text = open(txt_path, encoding="utf-8").read().strip()
+                    out["transcript"] = text
+                    if text:
+                        out["transcript_status"] = (
+                            "whisper_ok" if model == pref else f"whisper_ok_{model}"
+                        )
+                    else:
+                        out["transcript_status"] = "whisper_empty"
+                    return out
+            except Exception as e:
+                last_err = f"{type(e).__name__}:{e}"
+                logger.exception("huang_youtube：whisper 失敗 model=%s", model)
+        out["transcript_status"] = "whisper_failed"
+        if last_err:
+            logger.warning("huang_youtube：whisper 全模型失敗 %s", last_err[:200])
+        return out
     out["transcript_status"] = "unknown"
     return out
 
