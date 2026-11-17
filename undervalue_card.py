@@ -218,7 +218,24 @@ def _fmt_num(v: Any, digits: int = 1) -> str:
         return "—"
     if digits == 0:
         return f"{x:.0f}"
+    # 小 EPS（如 5.99）保留兩位，不准四捨成 6.0 對不上範本
+    if digits == 1 and 0 < abs(x) < 10 and abs(x * 100 - round(x * 100)) < 1e-6:
+        if abs(x * 100 - round(x * 10) * 10) > 1e-6:
+            return f"{x:.2f}".rstrip("0").rstrip(".")
     return f"{x:.{digits}f}"
+
+
+def _fmt_eps(v: Any) -> str:
+    x = _finite(v)
+    if x is None:
+        return "—"
+    if abs(x) >= 100:
+        return f"{x:.0f}"
+    if abs(x) >= 10:
+        return f"{x:.1f}".rstrip("0").rstrip(".") if abs(x - round(x)) > 1e-6 else f"{x:.0f}"
+    # <10：最多兩位
+    s = f"{x:.2f}".rstrip("0").rstrip(".")
+    return s or "0"
 
 
 def _fmt_close(v: Any) -> str:
@@ -281,11 +298,24 @@ def _is_emerging(mark: Any) -> bool:
 
 
 def _mark_glyph(mark: str) -> Tuple[str, Tuple[int, int, int], Tuple[int, int, int], str]:
+    """回傳 (glyph, 字色, 邊框色, 標籤)。標籤不含 glyph；表頭用『★ 可買』空一格。"""
     if _is_star(mark):
         return "★", GREEN, GREEN_EDGE, "可買"
     if _is_emerging(mark):
-        return "⚠️", PURPLE, PURPLE_EDGE, "量小/興櫃"
+        return "⚠", PURPLE, PURPLE_EDGE, "量小"
     return "☆", AMBER, AMBER_EDGE, "等止穩"
+
+
+def _split_chip_pills(chip: str) -> List[str]:
+    s = str(chip or "").strip()
+    if not s:
+        return []
+    for sep in ("・", "、", "/", "|"):
+        if sep in s:
+            parts = [p.strip() for p in s.split(sep) if p.strip()]
+            if len(parts) >= 2:
+                return parts[:3]
+    return [s]
 
 
 def _order_rows(rows: Optional[Sequence[Dict[str, Any]]]) -> List[Dict[str, Any]]:
@@ -407,51 +437,33 @@ def _has_growth_fields(rows: Sequence[Dict[str, Any]]) -> bool:
 
 
 def _chip_colors(chip: str) -> Tuple[Tuple[int, int, int], Tuple[int, int, int]]:
+    """膠囊底／字色。範本：外投同買橘底深字、投信連買紅底、興櫃紫。"""
     s = str(chip or "")
     if "同賣" in s:
-        return (80, 20, 30), RED_CHIP
+        return (120, 40, 48), (20, 8, 8)
     if "同買" in s:
-        return (70, 35, 10), ORANGE
-    if "投信連買" in s:
-        return (70, 20, 30), RED_CHIP
-    if "外資連買" in s:
-        return (20, 40, 70), HEAD
+        return (232, 160, 72), (20, 12, 4)  # 外投同買：橘底深字
+    if "投信連買" in s or (s.startswith("投信") and "買" in s):
+        return (176, 48, 56), (255, 236, 236)
+    if "外資連買" in s or (s.startswith("外資") and "買" in s):
+        return (36, 72, 120), (220, 236, 255)
     if "興櫃" in s:
-        return (40, 30, 60), PURPLE
+        return (120, 100, 180), (18, 10, 28)
     if "調節" in s:
-        return (50, 40, 20), AMBER
+        return (200, 140, 56), (24, 14, 4)
     return PILL_BG, MUTED
 
 
-def _mini_bars(
-    dr: ImageDraw.ImageDraw,
-    x0: float,
-    x1: float,
-    y0: float,
-    vals: Sequence[Optional[float]],
-    colors: Sequence[Tuple[int, int, int]],
-) -> None:
-    nums = [_finite(v) for v in vals]
-    pos = [v for v in nums if v is not None and v > 0]
-    if not pos:
-        return
-    mx = max(pos)
-    bar_h = _px(10)
-    gap = _px(8)
-    track_w = x1 - x0
-    for i, v in enumerate(nums):
-        yy = y0 + i * (bar_h + gap)
-        dr.rounded_rectangle(
-            (x0, yy, x1, yy + bar_h), radius=_px(3), fill=(30, 41, 59)
-        )
-        if v is None or v <= 0 or mx <= 0:
-            continue
-        w = max(_px(6), track_w * min(1.0, float(v) / mx))
-        col = colors[i % len(colors)]
-        dr.rounded_rectangle((x0, yy, x0 + w, yy + bar_h), radius=_px(3), fill=col)
+def _header_fill(mark: Any) -> Tuple[int, int, int]:
+    """表頭底色（範本：可買深綠／等止穩琥珀／量小紫）。"""
+    if _is_star(mark):
+        return (8, 56, 42)
+    if _is_emerging(mark):
+        return (42, 30, 68)
+    return (72, 48, 14)
 
 
-def _pe_ruler(
+def _pe_dot_ruler(
     dr: ImageDraw.ImageDraw,
     x0: float,
     x1: float,
@@ -459,71 +471,81 @@ def _pe_ruler(
     pe_now: Optional[float],
     fair_lo: Optional[float],
     fair_hi: Optional[float],
+    *,
+    accent: Tuple[int, int, int],
 ) -> None:
-    """本益比圓點尺：合理區間底＋現在位置圓點。"""
-    track_y = y
-    track_h = _px(8)
-    dr.rounded_rectangle(
-        (x0, track_y, x1, track_y + track_h), radius=_px(4), fill=(30, 41, 59)
-    )
+    """本益比點列尺：暗點＋現在位置亮點（對齊範本）。"""
     lo = _finite(fair_lo)
     hi = _finite(fair_hi)
     now = _finite(pe_now)
     vals = [v for v in (lo, hi, now) if v is not None and v > 0]
-    if len(vals) < 2:
+    n_dots = 6
+    span = max(x1 - x0, 1.0)
+    cy = y + _px(4)
+    for i in range(n_dots):
+        cx = x0 + (i + 0.5) / n_dots * span
+        r = _px(2)
+        dr.ellipse((cx - r, cy - r, cx + r, cy + r), fill=(60, 72, 90))
+    if len(vals) < 1 or now is None:
         return
     span_lo = min(vals) * 0.85
     span_hi = max(vals) * 1.15
-    span = max(span_hi - span_lo, 1e-9)
-
-    def xp(v: float) -> float:
-        return x0 + (float(v) - span_lo) / span * (x1 - x0)
-
-    if lo is not None and hi is not None and hi > lo:
-        dr.rounded_rectangle(
-            (xp(lo), track_y, xp(hi), track_y + track_h),
-            radius=_px(4),
-            fill=(34, 80, 90),
-        )
-    if now is not None:
-        cx = xp(now)
-        r = _px(6)
-        dr.ellipse(
-            (cx - r, track_y + track_h / 2 - r, cx + r, track_y + track_h / 2 + r),
-            fill=CYAN,
-            outline=TEXT,
-            width=max(1, _px(1)),
-        )
+    den = max(span_hi - span_lo, 1e-9)
+    frac = max(0.0, min(1.0, (float(now) - span_lo) / den))
+    cx = x0 + frac * span
+    r = _px(5)
+    dr.ellipse((cx - r, cy - r, cx + r, cy + r), fill=accent)
 
 
-def _progress_pair(
+def _inline_bar(
     dr: ImageDraw.ImageDraw,
     x0: float,
     x1: float,
-    y0: float,
-    ups_fair: Optional[float],
-    ups_tgt: Optional[float],
+    y_mid: float,
+    frac: float,
+    *,
+    fill,
 ) -> None:
-    bar_h = _px(14)
-    gap = _px(10)
-    for i, ups in enumerate((ups_fair, ups_tgt)):
-        yy = y0 + i * (bar_h + gap)
-        dr.rounded_rectangle(
-            (x0, yy, x1, yy + bar_h), radius=_px(5), fill=(30, 41, 59)
-        )
-        u = _finite(ups)
-        if u is None:
-            continue
-        # 0%→空；+100%→滿；負值不畫填
-        frac = max(0.0, min(1.0, float(u) / 100.0))
-        if frac <= 0:
-            continue
-        col = CYAN if i == 0 else HEAD
-        dr.rounded_rectangle(
-            (x0, yy, x0 + max(_px(8), (x1 - x0) * frac), yy + bar_h),
-            radius=_px(5),
-            fill=col,
-        )
+    """目標空間右側短進度條（與文字同行）。"""
+    bar_h = _px(12)
+    yy0 = y_mid - bar_h / 2.0
+    yy1 = yy0 + bar_h
+    if x1 - x0 < _px(24):
+        return
+    dr.rounded_rectangle((x0, yy0, x1, yy1), radius=_px(6), fill=(30, 41, 59))
+    f = max(0.0, min(1.0, float(frac)))
+    if f <= 0:
+        return
+    dr.rounded_rectangle(
+        (x0, yy0, x0 + max(_px(6), (x1 - x0) * f), yy1),
+        radius=_px(6),
+        fill=fill,
+    )
+
+
+def _eps_ratio_pill(
+    dr: ImageDraw.ImageDraw,
+    x1: float,
+    y0: float,
+    y1: float,
+    pct: Optional[float],
+    *,
+    fill,
+    font: ImageFont.ImageFont,
+) -> float:
+    """EPS 今年／明年進度膠囊；回傳膠囊左緣 x（供左文字避讓）。"""
+    if pct is None:
+        return x1
+    lab = f"{int(round(pct))}%"
+    tw = font.getlength(lab)
+    pw = tw + _px(18)
+    ph = min(_px(22), max(_px(16), y1 - y0 - _px(2)))
+    px1 = x1
+    px0 = px1 - pw
+    cy0 = (y0 + y1 - ph) / 2.0
+    dr.rounded_rectangle((px0, cy0, px1, cy0 + ph), radius=_px(8), fill=fill)
+    _text_center_mid(dr, (px0, cy0, px1, cy0 + ph), lab, font, TEXT)
+    return px0 - _px(6)
 
 
 def _draw_d3_card(
@@ -531,63 +553,99 @@ def _draw_d3_card(
     box: Tuple[float, float, float, float],
     row: Dict[str, Any],
 ) -> None:
+    """對齊範本：單行表頭｜分隔＋右膠囊；體內 2×2；撐綠壓紅。"""
     x0, y0, x1, y1 = box
     glyph, gfill, edge, glabel = _mark_glyph(row.get("mark"))
-    dr.rounded_rectangle(box, radius=_px(16), fill=CARD, outline=edge, width=_px(2))
+    emerging = _is_emerging(row.get("mark"))
+    dr.rounded_rectangle(box, radius=_px(14), fill=CARD, outline=edge, width=_px(2))
 
-    title_f = _font(24, bold=True)
-    meta_f = _font(18)
-    cell_title_f = _font(16, bold=True)
-    cell_f = _font(17)
-    small_f = _font(15)
-
-    pad = _px(14)
-    head_h = _px(52)
-    hx0, hy0 = x0 + pad, y0 + _px(8)
+    head_f = _font(18, bold=True)
+    cell_title_f = _font(15, bold=True)
+    cell_f = _font(16)
+    cell_b = _font(17, bold=True)
+    small_f = _font(14)
+    micro_f = _font(13)
+    pad = _px(12)
+    head_h = _px(44)
+    hx0, hy0 = x0 + pad, y0 + _px(6)
     hx1, hy1 = x1 - pad, y0 + head_h
+
+    # 表頭底色（可買綠／等止穩琥珀／量小紫）
+    dr.rounded_rectangle(
+        (x0 + _px(2), y0 + _px(2), x1 - _px(2), y0 + head_h + _px(2)),
+        radius=_px(12),
+        fill=_header_fill(row.get("mark")),
+    )
 
     sid = str(row.get("stock_id") or "—")
     name = _display_name(row)
     close_s = _fmt_price(row.get("close"))
     gm = _fmt_num(row.get("gross_margin"), 1)
     yoy = _fmt_pct(row.get("yoy_pct"))
-    chip = str(row.get("chip_note") or "").strip()
+    pills = _split_chip_pills(str(row.get("chip_note") or ""))
 
-    # 右膠囊先量寬
-    chip_w = 0.0
-    if chip:
-        chip_w = min(_px(200), small_f.getlength(chip) + _px(28))
+    # 右膠囊（可多顆）由右往左排
+    pill_gap = _px(6)
+    cursor_r = hx1
+    pill_h = _px(24)
+    for chip in reversed(pills):
         cbg, cfg = _chip_colors(chip)
-        cx1 = hx1
-        cx0 = cx1 - chip_w
-        cy0 = hy0 + _px(6)
-        cy1 = hy1 - _px(6)
-        dr.rounded_rectangle((cx0, cy0, cx1, cy1), radius=_px(14), fill=cbg)
+        pw = min(_px(168), small_f.getlength(chip) + _px(22))
+        cx1 = cursor_r
+        cx0 = cx1 - pw
+        cy0 = (hy0 + hy1 - pill_h) / 2.0
+        cy1 = cy0 + pill_h
+        dr.rounded_rectangle((cx0, cy0, cx1, cy1), radius=_px(12), fill=cbg)
         _text_center_mid(dr, (cx0, cy0, cx1, cy1), chip, small_f, cfg)
+        cursor_r = cx0 - pill_gap
+    left_max = cursor_r - _px(8) if pills else hx1
 
-    left_max = hx1 - chip_w - _px(12) if chip_w else hx1
-    status = f"{glyph}{glabel}"
-    head_left = f"{status}  {sid}"
-    if name:
-        head_left = f"{head_left} {name}"
-    head_left = f"{head_left}  {close_s}元"
-    _text_left_mid(dr, (hx0, hy0, left_max, hy0 + _px(28)), _truncate(title_f, head_left, left_max - hx0), title_f, gfill)
-    meta = f"毛利 {gm}%｜年增 {yoy}"
-    core = _core_label(row)
-    if core and core != "—":
-        meta = f"{meta}｜{core}"
-    _text_left_mid(
-        dr, (hx0, hy0 + _px(28), left_max, hy1),
-        _truncate(meta_f, meta, left_max - hx0), meta_f, MUTED,
-    )
+    # 單行表頭：底色上白字為主
+    status = f"{glyph} {glabel}"
+    name_bit = f"{sid} {name}".strip() if name else sid
+    pipe = (170, 200, 185) if _is_star(row.get("mark")) else MUTED
+    segs: List[Tuple[str, Tuple[int, int, int]]] = [
+        (status, TEXT),
+        (" | ", pipe),
+        (name_bit, TEXT),
+        (" | ", pipe),
+        (f"{close_s}元", TEXT),
+    ]
+    if gm != "—":
+        segs += [(" | ", pipe), (f"毛利{gm}%", TEXT)]
+    if yoy != "—":
+        segs += [(" | ", pipe), (f"年增{yoy}", TEXT)]
+    # 量寬截斷
+    full = "".join(s for s, _ in segs)
+    if head_f.getlength(full) > left_max - hx0:
+        while len(segs) > 5 and head_f.getlength("".join(s for s, _ in segs)) > left_max - hx0:
+            segs.pop()
+            if segs and segs[-1][0].strip() == "|":
+                segs.pop()
+        full = "".join(s for s, _ in segs)
+        if head_f.getlength(full) > left_max - hx0:
+            _text_left_mid(
+                dr, (hx0, hy0, left_max, hy1),
+                _truncate(head_f, full, left_max - hx0), head_f, TEXT,
+            )
+            segs = []
+    if segs:
+        tx = hx0
+        ty0, ty1 = hy0, hy1
+        for s, col in segs:
+            if not s:
+                continue
+            _text_left_mid(dr, (tx, ty0, left_max, ty1), s, head_f, col)
+            tx += head_f.getlength(s)
 
     # 2×2 格
-    grid_top = y0 + head_h + _px(4)
-    grid_bot = y1 - _px(8)
+    grid_top = y0 + head_h + _px(2)
+    grid_bot = y1 - _px(6)
     mid_x = (x0 + x1) / 2.0
     mid_y = (grid_top + grid_bot) / 2.0
-    dr.line([(mid_x, grid_top), (mid_x, grid_bot)], fill=GRID, width=max(1, _px(1)))
-    dr.line([(x0 + pad, mid_y), (x1 - pad, mid_y)], fill=GRID, width=max(1, _px(1)))
+    div = (55, 68, 88)
+    dr.line([(mid_x, grid_top + _px(4)), (mid_x, grid_bot - _px(4))], fill=div, width=max(1, _px(1)))
+    dr.line([(x0 + pad, mid_y), (x1 - pad, mid_y)], fill=div, width=max(1, _px(1)))
 
     cells = [
         (x0 + pad, grid_top, mid_x - _px(8), mid_y - _px(4), "tl"),
@@ -614,79 +672,172 @@ def _draw_d3_card(
     broken = bool(row.get("tech_broken")) or (
         "破撐" in str(row.get("tech_status") or "") or "破撐" in str(row.get("reason") or "")
     )
+    accent = PURPLE if emerging else CYAN
+    pill_fill = (88, 60, 160) if emerging else GREEN_EDGE
+
+    # EPS 已賺佔明年％、今年／明年進度％（對齊範本算法）
+    earned_pct = None
+    if eps_e is not None and eps_n is not None and eps_n > 0:
+        earned_pct = max(0.0, min(999.0, eps_e / eps_n * 100.0))
+    climb_pct = None
+    if eps_y is not None and eps_n is not None and eps_n > 0:
+        climb_pct = max(0.0, min(100.0, eps_y / eps_n * 100.0))
 
     for cx0, cy0, cx1, cy1, kind in cells:
         if kind == "tl":
-            _text_left_mid(dr, (cx0, cy0, cx1, cy0 + _px(22)), "【EPS 爬坡】", cell_title_f, HEAD)
-            line = (
-                f"已賺 {_fmt_num(eps_e, 1)}｜今 {_fmt_num(eps_y, 1)}｜明 {_fmt_num(eps_n, 1)}"
+            _text_left_mid(dr, (cx0, cy0, cx1, cy0 + _px(20)), "【EPS爬坡】", cell_title_f, TEXT)
+            # 行1：已賺 X + 灰％
+            r1y0, r1y1 = cy0 + _px(22), cy0 + _px(46)
+            e_s = f"已賺 {_fmt_eps(eps_e)}"
+            _text_left_mid(dr, (cx0, r1y0, cx1, r1y1), e_s, cell_b, TEXT)
+            if earned_pct is not None:
+                ex = cx0 + cell_b.getlength(e_s) + _px(8)
+                _text_left_mid(
+                    dr, (ex, r1y0, cx1, r1y1),
+                    f"{int(round(earned_pct))}%", micro_f, MUTED,
+                )
+            # 行2：今年｜明年 + 進度膠囊（膠囊必須留在左格內）
+            r2y0, r2y1 = cy0 + _px(48), cy0 + _px(74)
+            pill_left = _eps_ratio_pill(
+                dr, cx1 - _px(2), r2y0, r2y1, climb_pct, fill=pill_fill, font=micro_f,
             )
+            n_raw = row.get("eps_2027_label")
+            n_s = str(n_raw) if n_raw else _fmt_eps(eps_n)
+            # 範本常留一位小數：52.0｜68.0
+            y_s = _fmt_eps(eps_y)
+            if eps_y is not None and abs(eps_y - round(eps_y)) < 1e-9 and abs(eps_y) < 100:
+                y_s = f"{eps_y:.1f}"
+            if not n_raw and eps_n is not None and abs(eps_n - round(eps_n)) < 1e-9 and abs(eps_n) < 100:
+                n_s = f"{eps_n:.1f}"
+            n_lab = "明" if (n_raw or (eps_n is not None and eps_n >= 100)) else "明年"
+            line2 = f"今年 {y_s} | {n_lab} {n_s}"
             _text_left_mid(
-                dr, (cx0, cy0 + _px(24), cx1, cy0 + _px(46)),
-                _truncate(cell_f, line, cx1 - cx0), cell_f, TEXT,
-            )
-            _mini_bars(
-                dr, cx0, cx1, cy0 + _px(52),
-                [eps_e, eps_y, eps_n],
-                [MUTED, CYAN, GREEN],
+                dr, (cx0, r2y0, pill_left, r2y1),
+                _truncate(cell_f, line2, max(0.0, pill_left - cx0)), cell_f, TEXT,
             )
         elif kind == "tr":
-            _text_left_mid(dr, (cx0, cy0, cx1, cy0 + _px(22)), "【本益比位階】", cell_title_f, HEAD)
+            _text_left_mid(dr, (cx0, cy0, cx1, cy0 + _px(20)), "【本益比位階】", cell_title_f, TEXT)
             fair_lo = pe_next if pe_next is not None else pe_year
             fair_hi = pe_year if pe_year is not None else pe_next
             if fair_lo is not None and fair_hi is not None and fair_lo > fair_hi:
                 fair_lo, fair_hi = fair_hi, fair_lo
+            pe_s = _fmt_num(pe_now, 1)
+            if pe_s != "—" and pe_now is not None and abs(pe_now - round(pe_now)) < 0.05:
+                pe_s = f"{pe_now:.0f}"
+            _text_left_mid(
+                dr, (cx0, cy0 + _px(22), cx1, cy0 + _px(46)),
+                f"今 {pe_s}x" if pe_s != "—" else "今 —",
+                cell_b, TEXT,
+            )
+            fwd_s = _fmt_num(pe_fwd, 1)
+            if fwd_s != "—" and pe_fwd is not None and abs(pe_fwd - round(pe_fwd)) < 0.05:
+                fwd_s = f"{pe_fwd:.0f}"
             band = "—"
-            if fair_lo is not None and fair_hi is not None:
-                band = f"{fair_lo:.0f}-{fair_hi:.0f}"
-            line = (
-                f"今 {_fmt_num(pe_now, 1)}｜前瞻 {_fmt_num(pe_fwd, 1)}｜(合理 {band})"
-            )
-            _text_left_mid(
-                dr, (cx0, cy0 + _px(24), cx1, cy0 + _px(46)),
-                _truncate(cell_f, line, cx1 - cx0), cell_f, TEXT,
-            )
-            _pe_ruler(dr, cx0, cx1, cy0 + _px(58), pe_now, fair_lo, fair_hi)
-        elif kind == "bl":
-            _text_left_mid(dr, (cx0, cy0, cx1, cy0 + _px(22)), "【目標空間】", cell_title_f, HEAD)
-            y_line = f"今年看 {_fmt_price(fair)}  ({_fmt_pct(ups_f)})"
-            n_line = f"明年看 {_fmt_price(tgt)}  ({_fmt_pct(ups_t)})"
-            _text_left_mid(
-                dr, (cx0, cy0 + _px(24), cx1, cy0 + _px(44)),
-                _truncate(cell_f, y_line, cx1 - cx0), cell_f, TEXT,
-            )
-            _text_left_mid(
-                dr, (cx0, cy0 + _px(44), cx1, cy0 + _px(64)),
-                _truncate(cell_f, n_line, cx1 - cx0), cell_f, TEXT,
-            )
-            _progress_pair(dr, cx0, cx1, cy0 + _px(70), ups_f, ups_t)
-        else:  # br
-            _text_left_mid(dr, (cx0, cy0, cx1, cy0 + _px(22)), "【對帳與撐壓】", cell_title_f, HEAD)
-            if _is_emerging(row.get("mark")):
-                thr_line = f"明年門檻 {_fmt_num(thr, 1)}億"
-                if fair is not None and tgt is not None:
-                    thr_line = f"{thr_line}｜區間 {_fmt_price(fair)}-{_fmt_price(tgt)}"
-            else:
-                thr_line = (
-                    f"月門檻 {_fmt_num(thr, 1)}億"
-                    + (f"（最新 {_fmt_num(oct_r, 1)}）" if oct_r is not None else "")
+            # 興櫃／量小範本不印合理區間（本益常遠高於帶）
+            if (not emerging) and fair_lo is not None and fair_hi is not None:
+                band = f"{fair_lo:.0f}-{fair_hi:.0f}x"
+            r2y0, r2y1 = cy0 + _px(46), cy0 + _px(70)
+            fwd_bit = f"前瞻 {fwd_s}x" if fwd_s != "—" else "前瞻 —"
+            _text_left_mid(dr, (cx0, r2y0, cx1, r2y1), fwd_bit, cell_f, TEXT)
+            if band != "—":
+                bx = cx0 + cell_f.getlength(fwd_bit) + _px(6)
+                _text_left_mid(
+                    dr, (bx, r2y0, cx1, r2y1),
+                    f"(合理 {band})", micro_f, MUTED,
                 )
-            _text_left_mid(
-                dr, (cx0, cy0 + _px(24), cx1, cy0 + _px(46)),
-                _truncate(cell_f, thr_line, cx1 - cx0), cell_f, TEXT,
+            _pe_dot_ruler(
+                dr, cx0, cx1, cy0 + _px(74), pe_now, fair_lo, fair_hi, accent=accent,
             )
-            if broken and support is not None:
-                sr = f"⚠️破撐 {_fmt_price(support)}"
-                if resist is not None:
-                    sr = f"{sr}｜壓 {_fmt_price(resist)}"
-                col = RED_CHIP
+        elif kind == "bl":
+            _text_left_mid(dr, (cx0, cy0, cx1, cy0 + _px(20)), "【目標空間】", cell_title_f, TEXT)
+            bar_w = _px(72)
+            # (label, show_pct, ups, bar_col)
+            rows_tgt: List[Tuple[str, bool, Optional[float], Tuple[int, int, int]]] = []
+            if emerging and fair is not None and tgt is not None:
+                rows_tgt.append(
+                    (f"明年看 {_fmt_price(fair)}-{_fmt_price(tgt)}", False, ups_t, accent)
+                )
             else:
-                sr = f"撐 {_fmt_price(support)}｜壓 {_fmt_price(resist)}"
-                col = TEXT
-            _text_left_mid(
-                dr, (cx0, cy0 + _px(50), cx1, cy0 + _px(72)),
-                _truncate(cell_f, sr, cx1 - cx0), cell_f, col,
-            )
+                if fair is not None:
+                    rows_tgt.append((f"今年看 {_fmt_price(fair)}", True, ups_f, CYAN))
+                if tgt is not None:
+                    rows_tgt.append((f"明年看 {_fmt_price(tgt)}", True, ups_t, accent))
+            base_y = cy0 + _px(24)
+            line_h = _px(28)
+            for i, (lab, show_pct, ups, bar_col) in enumerate(rows_tgt[:2]):
+                ly0 = base_y + i * line_h
+                ly1 = ly0 + line_h - _px(2)
+                bar_x0 = cx1 - bar_w
+                text_right = bar_x0 - _px(6)
+                _text_left_mid(dr, (cx0, ly0, text_right, ly1), lab, cell_f, TEXT)
+                tw = cell_f.getlength(lab)
+                if show_pct and ups is not None:
+                    _text_left_mid(
+                        dr, (cx0 + tw + _px(2), ly0, text_right, ly1),
+                        f"({_fmt_pct(ups)})", small_f, GREEN if not emerging else PURPLE,
+                    )
+                frac = max(0.0, min(1.0, float(ups) / 100.0)) if ups is not None else 0.0
+                _inline_bar(dr, bar_x0, cx1, (ly0 + ly1) / 2.0, frac, fill=bar_col)
+        else:  # br
+            if emerging:
+                _text_left_mid(
+                    dr, (cx0, cy0, cx1, cy0 + _px(20)),
+                    "【對帳防線】", cell_title_f, TEXT,
+                )
+                thr_line = f"明年門檻 {_fmt_num(thr, 2 if (thr is not None and thr < 10) else 1)}億/月"
+                _text_left_mid(
+                    dr, (cx0, cy0 + _px(24), cx1, cy0 + _px(48)),
+                    _truncate(cell_b, thr_line, cx1 - cx0), cell_b, TEXT,
+                )
+                sr_y0, sr_y1 = cy0 + _px(50), cy0 + _px(74)
+                # 撐｜壓 淡紫
+                s_bit = f"撐 {_fmt_price(support)}"
+                _text_left_mid(dr, (cx0, sr_y0, cx1, sr_y1), s_bit, cell_f, PURPLE)
+                mid = cx0 + cell_f.getlength(s_bit)
+                _text_left_mid(dr, (mid, sr_y0, cx1, sr_y1), " | ", cell_f, MUTED)
+                mid2 = mid + cell_f.getlength(" | ")
+                _text_left_mid(
+                    dr, (mid2, sr_y0, cx1, sr_y1),
+                    f"壓 {_fmt_price(resist)}", cell_f, PURPLE,
+                )
+            else:
+                _text_left_mid(
+                    dr, (cx0, cy0, cx1, cy0 + _px(20)),
+                    "【對帳與撐壓】", cell_title_f, TEXT,
+                )
+                thr_main = f"月門檻 {_fmt_num(thr, 1)}億"
+                _text_left_mid(
+                    dr, (cx0, cy0 + _px(22), cx1, cy0 + _px(46)),
+                    thr_main, cell_b, TEXT,
+                )
+                if oct_r is not None:
+                    ox = cx0 + cell_b.getlength(thr_main) + _px(6)
+                    mon = str(row.get("rev_month_label") or "最新").strip() or "最新"
+                    _text_left_mid(
+                        dr, (ox, cy0 + _px(22), cx1, cy0 + _px(46)),
+                        f"({mon}{_fmt_num(oct_r, 1)})", micro_f, MUTED,
+                    )
+                sr_y0, sr_y1 = cy0 + _px(50), cy0 + _px(74)
+                if broken and support is not None:
+                    warn = f"⚠破撐 {_fmt_price(support)}"
+                    _text_left_mid(dr, (cx0, sr_y0, cx1, sr_y1), warn, cell_f, ORANGE)
+                    mid = cx0 + cell_f.getlength(warn)
+                    _text_left_mid(dr, (mid, sr_y0, cx1, sr_y1), " | ", cell_f, MUTED)
+                    mid2 = mid + cell_f.getlength(" | ")
+                    _text_left_mid(
+                        dr, (mid2, sr_y0, cx1, sr_y1),
+                        f"壓 {_fmt_price(resist)}", cell_f, RED_CHIP,
+                    )
+                else:
+                    s_bit = f"撐 {_fmt_price(support)}"
+                    _text_left_mid(dr, (cx0, sr_y0, cx1, sr_y1), s_bit, cell_f, GREEN)
+                    mid = cx0 + cell_f.getlength(s_bit)
+                    _text_left_mid(dr, (mid, sr_y0, cx1, sr_y1), " | ", cell_f, MUTED)
+                    mid2 = mid + cell_f.getlength(" | ")
+                    _text_left_mid(
+                        dr, (mid2, sr_y0, cx1, sr_y1),
+                        f"壓 {_fmt_price(resist)}", cell_f, RED_CHIP,
+                    )
 
 
 def _page_count(n: int) -> int:
@@ -975,10 +1126,10 @@ _DEMO_ROWS: List[Dict[str, Any]] = [
         "name": "光聖",
         "industry": "光通訊/CPO",
         "close": 1045,
-        "pe": 20.0,
-        "pe_fwd": 15.4,
-        "pe_year": 26,
-        "pe_next": 21,
+        "pe": 20.1,
+        "pe_fwd": 15.2,
+        "pe_year": 28,
+        "pe_next": 22,
         "gross_margin": 59.3,
         "core_ratio_pct": 94,
         "core_ratio_label": "94%",
@@ -986,12 +1137,13 @@ _DEMO_ROWS: List[Dict[str, Any]] = [
         "eps_earned": 34.9,
         "eps_2026": 52.0,
         "eps_2027": 68.0,
-        "fair_year": 1300,
+        "fair_year": 1350,
         "target_next": 1625,
-        "ups_fair_pct": 24,
+        "ups_fair_pct": 29,
         "ups_tgt_pct": 55,
         "rev_threshold_yi": 20.5,
-        "rev_oct_yi": 18.2,
+        "rev_oct_yi": 18.4,
+        "rev_month_label": "10月",
         "support": 1045,
         "resistance": 1210,
         "tech_status": "站回支撐區",
@@ -1004,29 +1156,29 @@ _DEMO_ROWS: List[Dict[str, Any]] = [
     },
     {
         "mark": "star",
-        "stock_id": "4971",
-        "name": "IET-KY",
+        "stock_id": "7711",
+        "name": "永擎",
         "industry": "先進封裝",
-        "close": 650,
-        "pe": 22.0,
-        "pe_fwd": 14.0,
-        "pe_year": 28,
-        "pe_next": 23,
-        "gross_margin": 48.0,
+        "close": 481.5,
+        "pe": 13.4,
+        "pe_fwd": 10.5,
+        "pe_year": 18,
+        "pe_next": 14,
+        "gross_margin": 21.1,
         "core_ratio_pct": 105,
         "core_ratio_label": "純本業",
-        "yoy_pct": 62,
-        "eps_earned": 18.0,
-        "eps_2026": 29.0,
-        "eps_2027": 46.0,
-        "fair_year": 812,
-        "target_next": 1058,
-        "ups_fair_pct": 25,
-        "ups_tgt_pct": 63,
-        "rev_threshold_yi": 4.2,
-        "rev_oct_yi": 3.5,
-        "support": 620,
-        "resistance": 780,
+        "yoy_pct": 57,
+        "eps_earned": 24.5,
+        "eps_2026": 36.0,
+        "eps_2027": 48.0,
+        "fair_year": 620,
+        "target_next": 780,
+        "ups_fair_pct": 29,
+        "ups_tgt_pct": 62,
+        "rev_threshold_yi": 28.0,
+        "rev_oct_yi": 24.0,
+        "support": 465,
+        "resistance": 520,
         "tech_broken": False,
         "chip_note": "投信連買5日",
         "reason": "",
@@ -1036,28 +1188,28 @@ _DEMO_ROWS: List[Dict[str, Any]] = [
         "stock_id": "2383",
         "name": "台光電",
         "industry": "高階CCL",
-        "close": 3795,
-        "pe": 18.0,
-        "pe_fwd": 12.0,
-        "pe_year": 26,
-        "pe_next": 21,
+        "close": 3460,
+        "pe": 26.8,
+        "pe_fwd": 20.4,
+        "pe_year": 30,
+        "pe_next": 24,
         "gross_margin": 37.7,
         "core_ratio_pct": 92,
         "yoy_pct": 203,
-        "eps_earned": 120.0,
-        "eps_2026": 185.0,
-        "eps_2027": 240.0,
-        "fair_year": 4800,
-        "target_next": 6120,
-        "ups_fair_pct": 26,
-        "ups_tgt_pct": 61,
-        "rev_threshold_yi": 95.0,
-        "rev_oct_yi": 80.0,
+        "eps_earned": 82.9,
+        "eps_2026": 129.0,
+        "eps_2027": 170.0,
+        "fair_year": 4500,
+        "target_next": 5800,
+        "ups_fair_pct": 30,
+        "ups_tgt_pct": 68,
+        "rev_threshold_yi": 265.0,
+        "rev_oct_yi": 220.0,
         "support": 4160,
-        "resistance": 5200,
+        "resistance": 4475,
         "tech_status": "跌破大量區撐 4160，先看表等止穩",
         "tech_broken": True,
-        "chip_note": "投信買・外資調節",
+        "chip_note": "投信連買・外資調節",
         "reason": "",
     },
     {
@@ -1066,24 +1218,25 @@ _DEMO_ROWS: List[Dict[str, Any]] = [
         "name": "山太士",
         "industry": "興櫃",
         "close": 580,
-        "pe": 25.0,
-        "pe_fwd": 18.0,
+        "pe": 61.0,
+        "pe_fwd": 30.0,
         "pe_year": 28,
         "pe_next": 22,
         "gross_margin": 77.4,
         "core_ratio_pct": 90,
-        "yoy_pct": 40,
-        "eps_earned": 12.0,
-        "eps_2026": 22.0,
-        "eps_2027": 32.0,
+        "yoy_pct": 55,
+        "eps_earned": 5.99,
+        "eps_2026": 9.5,
+        "eps_2027": 19.0,
+        "eps_2027_label": "18-20",
         "fair_year": 630,
         "target_next": 800,
         "ups_fair_pct": 9,
         "ups_tgt_pct": 38,
         "rev_threshold_yi": 1.5,
         "rev_oct_yi": 1.2,
-        "support": 520,
-        "resistance": 700,
+        "support": 561,
+        "resistance": 636,
         "tech_status": "60日均量過小",
         "tech_broken": False,
         "chip_note": "興櫃無法人",

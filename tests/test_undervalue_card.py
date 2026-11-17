@@ -147,3 +147,15 @@ def test_sanitize_drops_blacklist_and_dup_name():
     hit = next(r for r in rows if r["stock_id"] == "2383")
     assert hit.get("name") == ""
     assert hit.get("target_next") in (None, "")
+
+
+def test_d3_header_mark_and_chip_split():
+    from undervalue_card import _mark_glyph, _split_chip_pills, _fmt_eps
+
+    g, _c, _e, lab = _mark_glyph("star")
+    assert g == "★" and lab == "可買"
+    g2, _, _, lab2 = _mark_glyph("emerging")
+    assert g2 == "⚠" and lab2 == "量小"
+    assert _split_chip_pills("投信連買・外資調節") == ["投信連買", "外資調節"]
+    assert _fmt_eps(5.99) == "5.99"
+    assert _fmt_eps(52.0) in ("52", "52.0")
