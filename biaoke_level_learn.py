@@ -7017,9 +7017,10 @@ def _resolve_huang_c_daily_spans(
     lows: Optional[Sequence[float]] = None,
     highs: Optional[Sequence[float]] = None,
 ) -> Dict[str, Any]:
-    """日盤 C1–C4 轉折錨：底色起迄＝紫折四段起迄（官方柱高低）。
+    """日盤 C1–C4 轉折錨：底色起迄＝紫折起迄（官方柱高低）。
 
-    C1 10/6高→10/18低｜C2→10/28高｜C3→週五低37837｜C4→今。
+    C1 10/6高→10/18低｜C2→10/28高｜C3→週五低37837｜
+    C4＝C3底後反彈高→今日低（不准用收當終點；無反彈高則低→今日低）。
     """
     empty: Dict[str, Any] = {"ok": False}
     if not bars:
@@ -7079,9 +7080,34 @@ def _resolve_huang_c_daily_spans(
         y1e = float(lo_vals[i1e])
         y2e = float(hi_vals[i2e])
         y3e = float(lo_vals[i3e])
-        y_now = float(cl_vals[i_now])
+        # 終點＝今日低（遠／近紫折；收只留欄位對照，不准當折點）
+        y_now_low = float(lo_vals[i_now])
+        y_now_close = float(cl_vals[i_now])
     except (TypeError, ValueError, IndexError):
         return empty
+    # C4 反彈高＝C3底之後官方最高（對齊超近粗藍折 C3底→C4高）
+    i4_hi: Optional[int] = None
+    y4_hi = 0.0
+    for ii in range(int(i3e) + 1, int(i_now) + 1):
+        try:
+            hh = float(hi_vals[ii])
+        except (TypeError, ValueError, IndexError):
+            continue
+        if i4_hi is None or hh > y4_hi:
+            i4_hi = int(ii)
+            y4_hi = float(hh)
+    xs = [float(i1), float(i1e), float(i2e), float(i3e)]
+    ys = [y1, y1e, y2e, y3e]
+    if (
+        i4_hi is not None
+        and int(i4_hi) > int(i3e)
+        and float(y4_hi) > float(y3e) + 1.0
+    ):
+        # 同日高＝今：仍先釘高再接今日低（同 x）；異日則中間多一尖
+        xs.append(float(i4_hi))
+        ys.append(float(y4_hi))
+    xs.append(float(i_now))
+    ys.append(float(y_now_low))
     return {
         "ok": True,
         "i1": i1,
@@ -7091,15 +7117,18 @@ def _resolve_huang_c_daily_spans(
         "i3": i3,
         "i3e": i3e,
         "i4": i4,
+        "i4_hi": int(i4_hi) if i4_hi is not None else None,
         "i_now": i_now,
         "y1": y1,
         "y1e": y1e,
         "y2e": y2e,
         "y3e": y3e,
-        "y_now": y_now,
-        # 紫折五點＝四段，起迄對底色
-        "xs": [float(i1), float(i1e), float(i2e), float(i3e), float(i_now)],
-        "ys": [y1, y1e, y2e, y3e, y_now],
+        "y4_hi": float(y4_hi) if i4_hi is not None else None,
+        "y_now": float(y_now_low),
+        "y_now_close": float(y_now_close),
+        # 紫折：C3底→反彈高→今日低（有高則六點；否則五點）
+        "xs": xs,
+        "ys": ys,
     }
 
 
@@ -7190,12 +7219,12 @@ def _paint_huang_c_degree_path(
     *,
     fade: bool = False,
 ) -> bool:
-    """大C 紫折跟 C1–C4 底色：四段（五點），起迄對齊段界轉折。"""
+    """大C 紫折跟 C1–C4：高低尖點連線（≥五點；C3底後可多反彈高→今日低）。"""
     if ax is None or not isinstance(spans, dict) or not spans.get("ok"):
         return False
     xs = list(spans.get("xs") or [])
     ys = list(spans.get("ys") or [])
-    if len(xs) < 5 or len(ys) < 5:
+    if len(xs) < 5 or len(ys) < 5 or len(xs) != len(ys):
         return False
     ax.plot(
         xs,
