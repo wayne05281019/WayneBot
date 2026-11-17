@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from types import SimpleNamespace
+import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -230,6 +231,7 @@ def test_decision_card_shows_status_bubble():
     assert kwargs.get("skip_wait_msg") is False
 
 
+@unittest.skip("2026-11-17 模擬倉整包拿掉")
 def test_ai_desk_keyboard_has_no_sell_buttons():
     bot = _bot()
     kb = bot._ai_desk_keyboard()
@@ -239,6 +241,7 @@ def test_ai_desk_keyboard_has_no_sell_buttons():
     assert not any(str(d).startswith("x:") for d in datas)
 
 
+@unittest.skip("2026-11-17 模擬倉整包拿掉")
 def test_ai_desk_keyboard_lists_held_names():
     bot = _bot()
     kb = bot._ai_desk_keyboard(
@@ -260,6 +263,7 @@ def test_pending_state_per_user_not_per_chat():
     assert bot._pending["1:222"] == "sell:2454"
 
 
+@unittest.skip("2026-11-17 模擬倉整包拿掉")
 def test_ai_desk_isolated_per_telegram_user():
     """兩人 AI 假錢倉隔離；母體＝勝率買點 roster（不准牽連真實持股）。"""
     import os

@@ -299,6 +299,7 @@ def test_op_state_map_isolated_for_two_users():
     assert bot._lookup_op_state[b]["current"] == "nav"
 
 
+@pytest.mark.skip(reason="2026-11-17 模擬倉整包拿掉")
 def test_ai_desk_button_isolated_for_brother_and_wayne():
     """偉權與哥哥同時按 AI倉：各自開模擬倉，不共用 pending。"""
     bot = _bot()
@@ -467,6 +468,7 @@ def test_same_person_five_buttons_have_separate_locks():
         assert bot._trade_slot_key(actor, kind) != bot._trade_slot_key(actor, "other")
 
 
+@pytest.mark.skip(reason="2026-11-17 模擬倉整包拿掉")
 def test_brother_ai_desk_does_not_clear_wayne_buy():
     bot = _bot()
     bot._send_ai_desk_view = AsyncMock()

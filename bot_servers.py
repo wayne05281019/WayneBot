@@ -152,13 +152,8 @@ from trade_journal import (
 )
 from screening_engine import ScreeningEngine
 from portfolio_engine import PortfolioEngine
-from ai_trader import (
-    ai_no_fill_note,
-    ai_run_wait_now,
-    format_ai_desk_html,
-    format_ai_desk_pages,
-    run_ai_desk,
-)
+# 2026-11-17 使用者鎖：模擬倉／AI倉整包拿掉。不准再 import 操盤路徑進話筒熱路徑。
+AI_DESK_RETIRED_ZH = "模擬倉已關閉。"
 from chips import generate_chips_image
 from intent_router import (
     NEEDS_STOCK,
@@ -3307,26 +3302,17 @@ class WayneTelegramBot:
         lines.append("下面每檔兩排：上＝看這檔／籌碼；下＝記買入／刪。")
         return "\n".join(lines), self._watch_list_keyboard(shown)
 
-    def _ai_desk_keyboard(self, positions=None):
-        """AI 倉專用鍵盤：持倉可點進去查圖；不含真實持股賣出。"""
-        from tg_layout import stock_btn_label
+    async def _reply_ai_desk_retired(self, message) -> None:
+        """模擬倉已關：固定一句，不准再開操盤／LOADING／產圖。"""
+        try:
+            await message.reply_text(AI_DESK_RETIRED_ZH, reply_markup=self._keyboard())
+        except Exception:
+            logger.exception("模擬倉已關閉回覆失敗")
 
-        kb = []
-        for p in (positions or [])[:3]:
-            c = str(p.get("stock_id") or p.get("stock_code") or "").strip()
-            if not c:
-                continue
-            n = str(p.get("stock_name") or "")
-            kb.append(
-                [InlineKeyboardButton(stock_btn_label(c, n), callback_data=f"k:{c}")]
-            )
-        kb.append(
-            [
-                InlineKeyboardButton("AI操盤", callback_data="ai_run"),
-                InlineKeyboardButton("進化", callback_data="ai_evolve"),
-            ]
-        )
-        return InlineKeyboardMarkup(kb)
+    def _ai_desk_keyboard(self, positions=None):
+        """模擬倉已關：保留方法名免舊測試／鍵盤 AttributeError；回空鍵盤。"""
+        del positions
+        return InlineKeyboardMarkup([])
 
     def _portfolio_keyboard(self, holdings):
         from tg_layout import stock_btn_label
@@ -3347,7 +3333,6 @@ class WayneTelegramBot:
             [
                 InlineKeyboardButton("成交", callback_data="tj:trades"),
                 InlineKeyboardButton("復盤", callback_data="tj:review"),
-                InlineKeyboardButton("AI倉", callback_data="ai_view"),
             ]
         )
         return InlineKeyboardMarkup(kb)
@@ -3851,7 +3836,7 @@ class WayneTelegramBot:
         await update.message.reply_document(
             document=bio,
             filename=fname,
-            caption="私人備份：持股／觀察／成交／AI倉。放自己電腦或加密雲端，不要上傳 GitHub。",
+            caption="私人備份：持股／觀察／成交。放自己電腦或加密雲端，不要上傳 GitHub。",
         )
 
     async def code_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -9425,7 +9410,7 @@ class WayneTelegramBot:
             await self._send_undervalue_view(update.message, uid)
             return
         if text in ("AI模擬倉", "模擬倉", "AI倉"):
-            logger.info("主選單：AI模擬倉 uid=%s", uid)
+            logger.info("主選單：模擬倉已關閉 uid=%s", uid)
             self._pending.pop(actor, None)
             await self._cancel_actor_ops(actor, dismiss=True)
             await self._send_ai_desk_view(update.message, uid)
@@ -9896,99 +9881,17 @@ class WayneTelegramBot:
             await self._stop_plain_wait(*wait_h)
 
     async def _send_ai_desk_view(self, message, uid: str):
-        """只顯示模擬倉現況，不執行買賣。晚上 20:00 模擬操盤不推播。"""
-        from ai_trader import ai_desk_positions
-
-        self._touch_user(uid)
-        wait_h = await self._start_plain_wait(
-            message,
-            text_fn=lambda s: self._wait_bubble(
-                "AI倉進行中", s, now="讀模擬倉", rest="推送頁面", fill_sec=15.0
-            ),
-        )
-        try:
-            pages = await asyncio.to_thread(format_ai_desk_pages, self.portfolio_engine, uid)
-            positions = await asyncio.to_thread(ai_desk_positions, self.portfolio_engine, uid)
-            # 這頁已依手機自行斷行；再 reflow 會把「5檔漲2檔」「倍數 1.00」拆到下一行。
-            parts: list = []
-            for page in pages:
-                parts.extend(chunk_telegram_html(page))
-            for i, part in enumerate(parts):
-                kb = self._ai_desk_keyboard(positions) if i == len(parts) - 1 else None
-                await message.reply_html(part, reply_markup=kb, disable_web_page_preview=True)
-        except Exception:
-            logger.exception("AI 模擬倉顯示失敗")
-            await message.reply_text(PHONE_BUSY, reply_markup=self._keyboard())
-        finally:
-            await self._stop_plain_wait(*wait_h)
+        """模擬倉已關；舊 callback／測試 mock 仍可呼叫，不准再開操盤。"""
+        del uid
+        await self._reply_ai_desk_retired(message)
 
     async def _send_ai_evolve(self, message, uid: str):
-        """只看進化編碼與日誌，不執行買賣。"""
-        from ai_trader import ai_user_id, format_evolve_report_html
-
-        self._touch_user(uid)
-        wait_h = await self._start_plain_wait(
-            message,
-            text_fn=lambda s: self._wait_bubble(
-                "AI倉進行中", s, now="讀進化日誌", rest="推送頁面", fill_sec=15.0
-            ),
-        )
-        try:
-            html = await asyncio.to_thread(
-                format_evolve_report_html, self.db_path, ai_user_id(uid)
-            )
-            from ai_trader import ai_desk_positions
-
-            positions = await asyncio.to_thread(ai_desk_positions, self.portfolio_engine, uid)
-            parts = chunk_telegram_html(html, reflow=True)
-            for i, part in enumerate(parts):
-                kb = self._ai_desk_keyboard(positions) if i == len(parts) - 1 else None
-                await message.reply_html(part, reply_markup=kb, disable_web_page_preview=True)
-        except Exception:
-            logger.exception("AI 進化回報失敗")
-            await message.reply_text(PHONE_BUSY, reply_markup=self._keyboard())
-        finally:
-            await self._stop_plain_wait(*wait_h)
+        del uid
+        await self._reply_ai_desk_retired(message)
 
     async def _run_ai_now(self, message, uid: str):
-        self._touch_user(uid)
-        wait_h = await self._start_plain_wait(
-            message,
-            text_fn=lambda s: self._wait_bubble(
-                "AI倉進行中",
-                s,
-                now=ai_run_wait_now(),
-                rest="模擬成交",
-                fill_sec=90.0,
-            ),
-        )
-        try:
-            result = await asyncio.to_thread(self.screener.run_full_screening)
-            as_of = result.get("as_of") or result.get("date") or ""
-            ai = await asyncio.to_thread(run_ai_desk, self.db_path, uid, result.get("results") or {}, as_of)
-            bits = [ai.get("html") or ""]
-            if not ai.get("bought") and not ai.get("sold"):
-                bits.append(ai_no_fill_note(ai.get("candidates") or 0))
-            if ai.get("bought"):
-                bits.append("<b>本次買進</b>\n" + "\n".join(html_escape(x) for x in ai["bought"]))
-            if ai.get("sold"):
-                bits.append("<b>本次賣出</b>\n" + "\n".join(html_escape(x) for x in ai["sold"]))
-            if ai.get("lesson"):
-                bits.append("進化：" + html_escape(ai["lesson"]))
-            parts = chunk_telegram_html("\n\n".join(bits), reflow=True)
-            from ai_trader import ai_desk_positions
-
-            positions = await asyncio.to_thread(
-                ai_desk_positions, self.portfolio_engine, uid
-            )
-            for i, part in enumerate(parts):
-                kb = self._ai_desk_keyboard(positions) if i == len(parts) - 1 else None
-                await message.reply_html(part, reply_markup=kb, disable_web_page_preview=True)
-        except Exception:
-            logger.exception("AI 操盤失敗")
-            await message.reply_text(PHONE_BUSY, reply_markup=self._keyboard())
-        finally:
-            await self._stop_plain_wait(*wait_h)
+        del uid
+        await self._reply_ai_desk_retired(message)
 
     def _quote_header_html(
         self,

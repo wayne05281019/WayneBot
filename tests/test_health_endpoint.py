@@ -438,6 +438,7 @@ def test_ops_force_morning_requires_secret_and_runs_on_disk(serve, monkeypatch):
         httpd.server_close()
 
 
+@pytest.mark.skip(reason="2026-11-17 模擬倉整包拿掉")
 def test_ops_ai_desk_status_readonly(serve, monkeypatch):
     """POST /ops/ai-desk-status：只讀白名單 AI 假錢倉，401 無密鑰。"""
     import urllib.request

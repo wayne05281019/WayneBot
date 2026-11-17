@@ -951,6 +951,8 @@ def ai_desk_positions(
     engine: PortfolioEngine, telegram_uid: str, quotes: Optional[dict] = None
 ) -> List[Dict[str, Any]]:
     """AI 倉持倉列，給主選單點股名查圖用。"""
+    # 模擬倉已關
+    return []
     user_id = ensure_ai_user(engine, telegram_uid)
     quotes = dict(quotes or {})
     held0 = engine.get_portfolio_summary(user_id, {})
@@ -973,6 +975,8 @@ def format_ai_desk_pages(
     engine: PortfolioEngine, telegram_uid: str, quotes: Optional[dict] = None
 ) -> List[str]:
     """帳戶／持倉／成交／復盤分開則，避免 Telegram 一則塞滿。"""
+    # 模擬倉已關
+    return ["模擬倉已關閉。"]
     from tg_layout import (
         html_escape,
         html_last_move,
@@ -1175,6 +1179,8 @@ def format_ai_desk_html(
     engine: PortfolioEngine, telegram_uid: str, quotes: Optional[dict] = None
 ) -> str:
     """券商帳戶式全文；Telegram 請走 format_ai_desk_pages 分則。"""
+    # 模擬倉已關
+    return "模擬倉已關閉。"
     return "\n\n────────────────\n\n".join(format_ai_desk_pages(engine, telegram_uid, quotes))
 
 
@@ -1273,253 +1279,17 @@ def run_ai_desk(
     *,
     skip_new_buys: bool = False,
 ) -> Dict[str, Any]:
-    """假錢操盤。skip_new_buys＝當日已有 BUY 時只做出場／清槽，不准再買／再抄底。"""
-    engine = PortfolioEngine(db_path)
-    user_id = ensure_ai_user(engine, telegram_uid)
-    try:
-        from screen_review import score_ai_fills
-
-        score_ai_fills(db_path)
-    except Exception:
-        pass
-    lesson = _adapt_from_trades(engine, db_path, user_id)
-    size_mult = _load_size_mult(db_path, user_id)
-
-    seed = engine.get_portfolio_summary(user_id, {})
-    result_quotes = _quotes_from_results(results)
-    # 勝率買點報價併入
-    for it in _winrate_roster_rows(db_path, as_of):
-        sid = str(it.get("stock_id") or "")
-        if not sid:
-            continue
-        try:
-            px = float(it.get("pick_close") or it.get("close") or 0)
-        except (TypeError, ValueError):
-            px = 0.0
-        if px > 0 and sid not in result_quotes:
-            result_quotes[sid] = {
-                "close": px,
-                "stock_name": it.get("stock_name") or "",
-                "is_k20_warning": False,
-                "d20": 0.0,
-                "pct_change": 0,
-            }
-    quotes = engine.load_quotes_for(
-        [p["stock_id"] for p in seed["positions"]],
-        result_quotes,
-    )
-
-    sold = []
-
-    def _safe_sell(sid: str, price: float, shares: int, reason: str) -> None:
-        """當日已記賣出 → 只清殘倉不入帳；否則才真賣。"""
-        sid = str(sid or "").strip()
-        if not sid or float(price or 0) <= 0:
-            return
-        if _trade_logged_today(engine, user_id, as_of, sid, "SELL"):
-            _drop_orphan_position(engine, user_id, sid)
-            return
-        r = engine.sell(
-            user_id,
-            as_of,
-            sid,
-            float(price),
-            shares=int(shares or 0) or None,
-            reason=reason,
-        )
-        if r.get("success"):
-            sold.append(r["msg"])
-            _record_fill(db_path, user_id, as_of, "SELL", r, reason=reason or "")
-
-    # 舊模擬倉若抱著 ETF，先用官方收盤清掉。
-    for p in list(seed["positions"]):
-        sid = str(p.get("stock_id") or "")
-        name = str(p.get("stock_name") or "")
-        if not sid or _held_is_equity(sid, name):
-            continue
-        price = _official_close(quotes, sid)
-        if price <= 0:
-            continue
-        _safe_sell(sid, price, int(p.get("shares") or 0), "非現股／KY，清出模擬槽")
-
-    for sig in engine.evaluate_exit_signals(user_id, quotes):
-        _safe_sell(
-            sig["stock_id"],
-            float(sig["current_price"]),
-            int(sig["shares"]),
-            sig.get("reason") or "",
-        )
-
-    summary = engine.get_portfolio_summary(user_id, quotes)
-    for p in list(summary["positions"]):
-        if p["pnl_pct"] <= STOP_PCT:
-            _safe_sell(p["stock_id"], p["current_price"], int(p.get("shares") or 0), "紀律停損 -7%")
-        elif p["pnl_pct"] >= TAKE_PCT:
-            _safe_sell(p["stock_id"], p["current_price"], int(p.get("shares") or 0), "紀律停利 +8%")
-
-    summary = engine.get_portfolio_summary(user_id, quotes)
-    held = {p["stock_id"] for p in summary["positions"]}
-    # 爆槽時先把多餘檔當日清出，畫面不准長期 4/3
-    if len(held) > MAX_ACTIVE_NAMES:
-        extras = sorted(
-            summary["positions"],
-            key=lambda x: float(x.get("unrealized_pnl") or 0),
-        )
-        for p in extras:
-            if len(held) <= MAX_ACTIVE_NAMES:
-                break
-            sid = str(p.get("stock_id") or "")
-            if not sid or sid not in held:
-                continue
-            px = float(p.get("current_price") or p.get("cost_price") or 0)
-            if px <= 0:
-                continue
-            _safe_sell(sid, px, int(p.get("shares") or 0), "超過 3 檔上限，清出多餘槽")
-            held.discard(sid)
-        summary = engine.get_portfolio_summary(user_id, quotes)
-        held = {p["stock_id"] for p in summary["positions"]}
-    max_held = min(int(market_deploy_cap(db_path, as_of, results) or 0), MAX_ACTIVE_NAMES)
-    slots = max(0, max_held - len(held))
-    bought = []
-    researched = []
-    initial = float(summary.get("initial_capital") or TOTAL_CAPITAL)
-    allow_buy = buys_allowed_on(as_of) and not bool(skip_new_buys)
-
-    # 選前：對母體做研究落檔（即使今日還不能買，也先研）
-    cands_preview = _candidates(results, db_path, as_of=as_of)
-    try:
-        from ai_research import research_batch
-
-        researched = research_batch(
-            db_path, user_id, as_of, cands_preview, allow_public=True, limit=20
-        )
-    except Exception:
-        researched = []
-
-    while allow_buy and slots > 0:
-        cands = _candidates(results, db_path, dip_only=False, as_of=as_of)
-        picked = None
-        for it in cands:
-            sid = str(it.get("stock_id") or it.get("code") or "")
-            if sid in held:
-                continue
-            if _trade_logged_today(engine, user_id, as_of, sid, "BUY"):
-                continue
-            if _trade_logged_today(engine, user_id, as_of, sid, "SELL"):
-                continue  # 當日已賣過的不准當日又買回洗版
-            price = float(it.get("close") or 0)
-            name = it.get("stock_name") or it.get("name") or sid
-            if price <= 0:
-                continue
-            cash = engine.get_cash(user_id)
-            budget = buy_budget(cash, initial, size_mult, dip=False)
-            shares = _shares_for_budget(price, budget)
-            if shares <= 0:
-                continue
-            logged = _research_and_log_buy(
-                db_path,
-                user_id,
-                as_of,
-                sid,
-                name,
-                bucket="winrate_active",
-                signal_label="勝率買點隔日操作",
-            )
-            reason = logged.get("reason") or it.get("ai_reason") or "勝率買點"
-            r = engine.buy(
-                user_id, as_of, sid, name, price, shares,
-                reason=reason,
-                strategy_type="WINRATE",
-            )
-            if r.get("success"):
-                bought.append(r["msg"])
-                held.add(sid)
-                slots -= 1
-                _record_fill(
-                    db_path, user_id, as_of, "BUY", r,
-                    reason=reason, bucket="winrate_active",
-                )
-                picked = sid
-                break
-        if not picked:
-            break
-
-    # 大跌才動 20 萬保留額加碼（同一勝率買點母體；可加碼已持有）
-    # 當日已有 dip_add 成交 → 整段略過（晚間／boot 重跑不准打光保留額）
-    dip_already = _ai_fill_logged_today(
-        db_path, user_id, as_of, action="BUY", bucket="dip_add"
-    )
-    if allow_buy and (not dip_already) and market_is_dip(db_path, as_of, results):
-        dip_cands = _candidates(results, db_path, dip_only=True, as_of=as_of)
-        for it in dip_cands:
-            sid = str(it.get("stock_id") or it.get("code") or "")
-            price = float(it.get("close") or 0)
-            name = it.get("stock_name") or it.get("name") or sid
-            if not sid or price <= 0:
-                continue
-            cash = engine.get_cash(user_id)
-            budget = buy_budget(cash, initial, size_mult, dip=True)
-            shares = _shares_for_budget(price, budget)
-            if shares <= 0:
-                continue
-            # 新開檔仍受操作最多 3 檔限制；已持有可加碼
-            if sid not in held and len(held) >= MAX_ACTIVE_NAMES:
-                continue
-            if sid not in held and _trade_logged_today(engine, user_id, as_of, sid, "BUY"):
-                continue
-            if sid not in held and _trade_logged_today(engine, user_id, as_of, sid, "SELL"):
-                continue
-            # 同股當日已抄底過 → 不准再加一筆
-            if _ai_fill_logged_today(
-                db_path, user_id, as_of, action="BUY", bucket="dip_add", stock_id=sid
-            ):
-                continue
-            logged = _research_and_log_buy(
-                db_path,
-                user_id,
-                as_of,
-                sid,
-                name,
-                bucket="dip_add",
-                signal_label="大跌加碼：當日勝率買點",
-            )
-            reason = logged.get("reason") or "大跌加碼：當日勝率買點"
-            r = engine.buy(
-                user_id, as_of, sid, name, price, shares,
-                reason=reason,
-                strategy_type="DIP_ADD",
-            )
-            if r.get("success"):
-                bought.append(r["msg"])
-                held.add(sid)
-                _record_fill(
-                    db_path, user_id, as_of, "BUY", r,
-                    reason=reason, bucket="dip_add",
-                )
-                break  # 一輪抄底先加一檔，避免一次打光
-
-    _snapshot(engine, db_path, user_id, as_of, quotes, lesson)
-    persist_ai_lesson(db_path, user_id, as_of, lesson)
-    final = engine.get_portfolio_summary(user_id, quotes)
+    """2026-11-17 使用者鎖：模擬倉整包拿掉。一律 no-op，不准假錢買賣。"""
+    del db_path, telegram_uid, results, as_of, skip_new_buys
     return {
-        "sold": sold,
-        "bought": bought,
-        "lesson": lesson,
-        "candidates": len(_candidates(results, db_path, as_of=as_of)),
-        "researched": len(researched),
-        "slot": slot_notional(initial, size_mult),
-        "max_held": max_held,
-        "active_budget": ACTIVE_BUDGET,
-        "dip_reserve": DIP_RESERVE,
-        "buys_allowed": allow_buy,
-        "html": format_ai_desk_html(engine, telegram_uid, quotes),
-        "user_id": user_id,
-        "position_count": len(final.get("positions") or []),
-        "summary": {
-            "position_count": len(final.get("positions") or []),
-            "cash": final.get("cash"),
-            "equity": final.get("total_equity") or final.get("equity"),
-        },
+        "retired": True,
+        "bought": [],
+        "sold": [],
+        "candidates": 0,
+        "html": "模擬倉已關閉。",
+        "lesson": "",
+        "summary": {"position_count": 0, "positions": []},
+        "position_count": 0,
     }
 
 

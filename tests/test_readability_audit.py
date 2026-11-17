@@ -116,6 +116,7 @@ def test_fundamentals_readable():
     assert "YoY" not in html
 
 
+@pytest.mark.skip(reason="2026-11-17 模擬倉整包拿掉")
 def test_ai_desk_readable():
     from ai_trader import format_ai_desk_html
     from portfolio_engine import PortfolioEngine

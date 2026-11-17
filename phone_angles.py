@@ -195,7 +195,7 @@ def _check_lens(feature: str, lens: str, src: str, intent_src: str) -> Dict[str,
             "隔日沖": "overnight_list_heading",
             "連買區": "目前沒有連續買超",
             "出圖等待": "_stop_plain_wait",
-            "AI倉": "format_ai_desk_pages",
+            "AI倉": "模擬倉已關閉",
             "剛脫離零": "此刻沒有昨零今離的檔",
             "洞燭先機": "這型此刻沒有可捕捉的次級",
             "興櫃海選": "目前沒有可用的官方日均價",
@@ -510,7 +510,8 @@ def _check_lens(feature: str, lens: str, src: str, intent_src: str) -> Dict[str,
         return _ok("sell")
 
     if lens == "ai_no_push":
-        if "不推播" not in src:
+        # 模擬倉已整包拿掉＝不會推；文案「模擬倉已關閉」也算過關
+        if "不推播" not in src and "模擬倉已關閉" not in src and "AI_DESK_RETIRED" not in src:
             return _bad("AI 沒講不推播")
         return _ok("ai-push")
 

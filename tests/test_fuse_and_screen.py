@@ -1306,6 +1306,7 @@ class TelegramAlignTest(unittest.TestCase):
         self.assertEqual(section_eq("AI 模擬帳戶"), "<b>== AI 模擬帳戶 ==</b>")
         self.assertEqual(section_eq("我的持股（手記）"), "<b>== 我的持股（手記） ==</b>")
 
+    @unittest.skip("2026-11-17 模擬倉整包拿掉")
     def test_holdings_and_ai_titles_use_eq(self):
         from ai_trader import format_ai_desk_html
         from portfolio_engine import PortfolioEngine
@@ -2490,6 +2491,7 @@ class LookupCardTest(unittest.TestCase):
         self.assertTrue(out_mild["select_01"])
 
 
+@unittest.skip("2026-11-17 模擬倉整包拿掉")
 class AIDeskTest(unittest.TestCase):
     """AI倉：總50萬＝30操作＋20抄底；硬閘只認勝率買點 roster。不准牽連其他鈕。"""
 

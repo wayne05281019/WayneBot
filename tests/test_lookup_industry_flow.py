@@ -265,6 +265,7 @@ class LookupIndustryFlowTests(unittest.TestCase):
         self.assertIn("目前是空的", empty)
         self.assertNotIn("資金：", empty)
 
+    @unittest.skip("2026-11-17 模擬倉整包拿掉")
     def test_ai_desk_overlay_before_discipline(self):
         from ai_trader import ensure_ai_user, format_ai_desk_html, format_ai_desk_pages
         from portfolio_engine import PortfolioEngine
