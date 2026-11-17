@@ -5735,6 +5735,8 @@ def test_paint_c3_group12_span_labels_wired():
     assert "xs" in path_src and "ys" in path_src
     res_src = inspect.getsource(_resolve_huang_c_daily_spans)
     assert "20261006" in res_src and "20261018" in res_src and "20261028" in res_src
+    assert "今日低" in res_src or "y_now_low" in res_src
+    assert "i4_hi" in res_src
     far = inspect.getsource(
         __import__("biaoke_level_learn", fromlist=["_render_twii_far_dark"])._render_twii_far_dark
     )
@@ -6242,3 +6244,45 @@ def test_pressure_break_labels_split_slant_vs_41760():
     hit = [r for r in tw if abs(float(r.get("level") or 0) - 41760.0) < 0.6]
     assert hit
     assert "≠口述下降壓" in str(hit[0].get("label") or "")
+
+
+def test_huang_c_purple_path_low_high_today_low():
+    """遠／近紫折：11/06低→反彈高→今日低（不准終點用收）。"""
+    import sqlite3
+    from pathlib import Path
+
+    from biaoke_level_learn import _resolve_huang_c_daily_spans
+
+    db = "data/wayne_market.db"
+    if not Path(db).is_file():
+        return
+    con = sqlite3.connect(db)
+    try:
+        rows = con.execute(
+            "SELECT date, open, high, low, close FROM index_daily "
+            "WHERE symbol='TWII' AND date>='20260401' AND date<='20261117' "
+            "ORDER BY date"
+        ).fetchall()
+    finally:
+        con.close()
+    if len(rows) < 80:
+        return
+    bars = [
+        {"date": d, "open": o, "high": h, "low": l, "close": c}
+        for d, o, h, l, c in rows
+    ]
+    sp = _resolve_huang_c_daily_spans(bars)
+    assert sp.get("ok")
+    xs = list(sp.get("xs") or [])
+    ys = list(sp.get("ys") or [])
+    assert len(xs) == len(ys) >= 6
+    i3 = int(xs[-3])
+    i_hi = int(xs[-2])
+    i_now = int(xs[-1])
+    assert str(bars[i3].get("date")) == "20261106"
+    assert abs(float(ys[-3]) - float(bars[i3]["low"])) < 0.05
+    assert i3 < i_hi < i_now
+    assert abs(float(ys[-2]) - float(bars[i_hi]["high"])) < 0.05
+    assert abs(float(ys[-1]) - float(bars[i_now]["low"])) < 0.05
+    assert abs(float(ys[-1]) - float(bars[i_now]["close"])) > 1.0
+
