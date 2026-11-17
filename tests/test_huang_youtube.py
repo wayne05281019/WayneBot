@@ -115,6 +115,7 @@ def test_parse_drive_name_and_known_ids():
     assert parse_drive_name_ymd("雜檔.txt") == ""
     assert resolve_drive_file_id("20261111") == "1efllG90yQBmFPC-3yFuba2TxW0FLA2jh"
     assert resolve_drive_file_id("20261112") == "12_RN9rsLBKjzbKNihFa5NceSGCJeWlm_"
+    assert resolve_drive_file_id("20261116") == "1XR0XMswvMqEvro2cTHikMKKFCKDVQYAW"
     assert HUANG_DRIVE_FOLDER_ID_DEFAULT.startswith("1")
     assert "37837" in extract_levels_from_text("低點 37837 與 42471")
 

@@ -37,6 +37,8 @@ HUANG_DRIVE_KNOWN_IDS = {
     "20261111": "1efllG90yQBmFPC-3yFuba2TxW0FLA2jh",
     # 使用者 2026-11-13 上傳雲端「1112黃培碩.mp4」
     "20261112": "12_RN9rsLBKjzbKNihFa5NceSGCJeWlm_",
+    # Drive 資料夾已有「1116黃培碩.mp4」
+    "20261116": "1XR0XMswvMqEvro2cTHikMKKFCKDVQYAW",
 }
 _ATOM = {"atom": "http://www.w3.org/2005/Atom", "yt": "http://www.youtube.com/xml/schemas/2015", "media": "http://search.yahoo.com/mrss/"}
 
