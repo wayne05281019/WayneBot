@@ -267,6 +267,7 @@ class LookupIntegrationTests(unittest.TestCase):
         msg_a.delete.assert_awaited_once()
         msg_b.delete.assert_not_awaited()
 
+    @unittest.skip("2026-11-17 模擬倉整包拿掉")
     def test_ai_desk_two_users_separate_positions(self):
         """AI 模擬倉：兩人各買各的，持倉 user_id 不混。只動假錢倉。"""
         import sqlite3

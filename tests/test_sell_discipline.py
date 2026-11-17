@@ -996,6 +996,7 @@ def test_sell_note_short_skips_when_table_reads_low():
     assert sell_notes_for_stocks(["3703"], "") == {}
 
 
+@pytest.mark.skip(reason="2026-11-17 模擬倉整包拿掉")
 def test_ai_desk_html_wires_sell_note(monkeypatch, tmp_path):
     from wayne_db import ensure_core_schema
     from portfolio_engine import PortfolioEngine

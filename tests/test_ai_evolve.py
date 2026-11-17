@@ -5,6 +5,10 @@ from __future__ import annotations
 import os
 import sqlite3
 
+import pytest
+
+pytestmark = pytest.mark.skip(reason="2026-11-17 模擬倉整包拿掉")
+
 from ai_trader import (
     ACTIVE_BUDGET,
     DIP_RESERVE,

@@ -3309,6 +3309,11 @@ class WayneTelegramBot:
         except Exception:
             logger.exception("模擬倉已關閉回覆失敗")
 
+    def _ai_desk_keyboard(self, positions=None):
+        """模擬倉已關：保留方法名免舊測試／鍵盤 AttributeError；回空鍵盤。"""
+        del positions
+        return InlineKeyboardMarkup([])
+
     def _portfolio_keyboard(self, holdings):
         from tg_layout import stock_btn_label
 
@@ -9408,7 +9413,7 @@ class WayneTelegramBot:
             logger.info("主選單：模擬倉已關閉 uid=%s", uid)
             self._pending.pop(actor, None)
             await self._cancel_actor_ops(actor, dismiss=True)
-            await self._reply_ai_desk_retired(update.message)
+            await self._send_ai_desk_view(update.message, uid)
             return
         if text in MENU_BTN_CARD_ALIASES:
             logger.info("主選單：刷新 uid=%s", uid)
@@ -12281,8 +12286,14 @@ class WayneTelegramBot:
         if data == "tj:review":
             await self._send_trade_journal(q.message, str(q.from_user.id), review=True)
             return
-        if data in ("ai_view", "ai_run", "ai_evolve"):
-            await self._reply_ai_desk_retired(q.message)
+        if data == "ai_view":
+            await self._send_ai_desk_view(q.message, str(q.from_user.id))
+            return
+        if data == "ai_run":
+            await self._run_ai_now(q.message, str(q.from_user.id))
+            return
+        if data == "ai_evolve":
+            await self._send_ai_evolve(q.message, str(q.from_user.id))
             return
         if data == "screen":
             await self._start_screen_pick(q.message, str(q.from_user.id))

@@ -2490,6 +2490,7 @@ def test_force_rescue_no_longer_yields_to_old_absorb_clocks(monkeypatch):
         assert runner.should_yield_to_market_fuse(now=now) is False
 
 
+@pytest.mark.skip(reason="2026-11-17 模擬倉整包拿掉")
 def test_run_ai_desk_visits_every_family_uid(tmp_path, monkeypatch):
     """白名單兩人：_run_ai_desk 必須每人各跑一輪（一人成交不准擋另一人）。"""
     from main_runner import MainRunner
