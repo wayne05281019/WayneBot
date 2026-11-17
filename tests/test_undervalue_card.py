@@ -128,3 +128,22 @@ def test_d3_page_canvas_and_paginate(tmp_path):
     assert im.size == (BASE_W, BASE_H)
     assert CARDS_PER_PAGE == 4
     assert SAFE_TOP == 140 and SAFE_BOTTOM == 180
+
+
+def test_sanitize_drops_blacklist_and_dup_name():
+    from undervalue_card import _sanitize_paint_rows
+
+    rows = _sanitize_paint_rows(
+        [
+            {"stock_id": "3006", "name": "晶豪科", "close": 100, "mark": "watch"},
+            {"stock_id": "6265", "name": "方土昶", "close": 40, "mark": "watch"},
+            {"stock_id": "2383", "name": "2383", "close": 3795, "mark": "watch", "fair_year": 4800, "target_next": 4800, "ups_tgt_pct": 0},
+            {"stock_id": "6442", "name": "光聖", "close": 1045, "mark": "star"},
+        ]
+    )
+    sids = {r["stock_id"] for r in rows}
+    assert "3006" not in sids and "6265" not in sids
+    assert "6442" in sids
+    hit = next(r for r in rows if r["stock_id"] == "2383")
+    assert hit.get("name") == ""
+    assert hit.get("target_next") in (None, "")

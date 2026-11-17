@@ -158,6 +158,25 @@ def load_picks(db_path: str, as_of: str) -> list:
     ymd = str(as_of or "").replace("-", "")[:8]
     if len(ymd) != 8:
         return []
+    try:
+        from undervalue_growth import (
+            HARD_EXCLUDE_SIDS,
+            format_core_ratio,
+            is_hard_excluded,
+            resolve_stock_name,
+        )
+    except Exception:
+        HARD_EXCLUDE_SIDS = frozenset({"3006", "6265"})
+
+        def is_hard_excluded(sid: str) -> bool:
+            return str(sid or "").strip() in HARD_EXCLUDE_SIDS
+
+        def resolve_stock_name(conn, sid, raw_name=""):  # type: ignore
+            return str(raw_name or "").strip()
+
+        def format_core_ratio(v):  # type: ignore
+            return "—"
+
     conn = sqlite3.connect(db_path, timeout=15.0)
     conn.row_factory = sqlite3.Row
     try:
@@ -169,24 +188,31 @@ def load_picks(db_path: str, as_of: str) -> list:
             "WHEN 'emerging' THEN 2 ELSE 3 END, stock_id",
             (ymd,),
         ).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            sid = str(d.get("stock_id") or "").strip()
+            if is_hard_excluded(sid):
+                continue
+            d["pe_est"] = bool(int(d.get("pe_est") or 0))
+            raw = str(d.pop("detail_json", "") or "")
+            if raw:
+                try:
+                    import json
+
+                    detail = json.loads(raw)
+                    if isinstance(detail, dict):
+                        for k, v in detail.items():
+                            d.setdefault(k, v)
+                except Exception:
+                    pass
+            # 股名對照；不准留下「2383 2383」
+            d["name"] = resolve_stock_name(conn, sid, str(d.get("name") or ""))
+            if not str(d.get("core_ratio_label") or "").strip():
+                d["core_ratio_label"] = format_core_ratio(d.get("core_ratio_pct"))
+            out.append(d)
     finally:
         conn.close()
-    out = []
-    for r in rows:
-        d = dict(r)
-        d["pe_est"] = bool(int(d.get("pe_est") or 0))
-        raw = str(d.pop("detail_json", "") or "")
-        if raw:
-            try:
-                import json
-
-                detail = json.loads(raw)
-                if isinstance(detail, dict):
-                    for k, v in detail.items():
-                        d.setdefault(k, v)
-            except Exception:
-                pass
-        out.append(d)
     return out
 
 

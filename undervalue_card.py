@@ -303,6 +303,52 @@ def _order_rows(rows: Optional[Sequence[Dict[str, Any]]]) -> List[Dict[str, Any]
     return sorted(list(rows or []), key=key)
 
 
+def _sanitize_paint_rows(
+    rows: Optional[Sequence[Dict[str, Any]]],
+) -> List[Dict[str, Any]]:
+    """出圖硬閘：黑名單／無收／示意列不准上卡；股名＝代號則留空不重複印。
+
+    缺欄顯示「—」，不准發明數字。DEMO／示意只准本機 demo 入口。
+    """
+    try:
+        from undervalue_growth import HARD_EXCLUDE_SIDS, format_core_ratio
+    except Exception:
+        HARD_EXCLUDE_SIDS = frozenset({"3006", "6265"})
+
+        def format_core_ratio(v):  # type: ignore
+            x = _finite(v)
+            if x is None:
+                return "—"
+            return "純本業" if x >= 100 else f"{x:.0f}%"
+
+    out: List[Dict[str, Any]] = []
+    for raw in rows or []:
+        r = dict(raw or {})
+        sid = str(r.get("stock_id") or "").strip()
+        if not sid or sid in HARD_EXCLUDE_SIDS:
+            continue
+        if str(r.get("reason") or "").strip() == "示意":
+            # 明示意列只給本地 DEMO；話筒路徑不該進來
+            continue
+        if _finite(r.get("close")) is None:
+            continue
+        name = str(r.get("name") or "").strip()
+        if not name or name == sid or name.isdigit():
+            r["name"] = ""
+        if not str(r.get("core_ratio_label") or "").strip():
+            r["core_ratio_label"] = format_core_ratio(r.get("core_ratio_pct"))
+        # 今年／明年目標若相等且明年空間為 0 → 清掉明年目標，不准複製今年價冒充
+        fy = _finite(r.get("fair_year"))
+        tn = _finite(r.get("target_next"))
+        if fy is not None and tn is not None and abs(fy - tn) < 0.05:
+            ups = _finite(r.get("ups_tgt_pct"))
+            if ups is None or abs(ups) < 0.05:
+                r["target_next"] = None
+                r["ups_tgt_pct"] = None
+        out.append(r)
+    return out
+
+
 def _display_name(row: Dict[str, Any]) -> str:
     sid = str(row.get("stock_id") or "").strip()
     name = str(row.get("name") or "").strip()
@@ -656,10 +702,10 @@ def _render_d3_page(
     as_of: Optional[str] = None,
     page_i: int = 0,
     page_n: int = 1,
-    title: str = "版本 D3｜2×2 矩陣 · 籌碼撐壓整合",
+    title: str = "版本 D3 終極版｜2×2 矩陣 · 籌碼撐壓整合",
     empty_note: Optional[str] = None,
 ) -> str:
-    rows = list(rows or [])
+    rows = _sanitize_paint_rows(rows)
     W = _px(BASE_W)
     H = _px(BASE_H)
     im = Image.new("RGB", (W, H), BG)
@@ -683,7 +729,8 @@ def _render_d3_page(
     _text_right_mid(dr, (content_l, y, content_r, y + _px(34)), page_bit, title_f, HEAD)
     y += _px(36)
     date_s = _as_of_close_label(as_of)
-    sub = "估值≠買訊｜進場只認高低卡黃金買點｜已剔循環／通路／DRAM"
+    # 對齊範本副標；估值≠買訊改腳注，不准拿示意數冒充收盤
+    sub = "已整合外資／投信連買賣與大量區撐壓"
     if date_s:
         sub = f"{date_s}｜{sub}"
     _text_left_mid(dr, (content_l, y, content_r, y + _px(24)), _truncate(sub_f, sub, content_r - content_l), sub_f, MUTED)
@@ -726,12 +773,12 @@ def render_undervalue_pages(
     out_dir: str,
     *,
     as_of: Optional[str] = None,
-    title: str = "版本 D3｜2×2 矩陣 · 籌碼撐壓整合",
+    title: str = "版本 D3 終極版｜2×2 矩陣 · 籌碼撐壓整合",
     empty_note: Optional[str] = None,
     prefix: str = "uv_d3",
 ) -> List[str]:
     """渲全部頁面；每頁最多 4 卡。回傳 PNG 路徑列表（至少 1）。"""
-    rows = _order_rows(picks)
+    rows = _order_rows(_sanitize_paint_rows(picks))
     os.makedirs(out_dir or ".", exist_ok=True)
     n_pages = _page_count(len(rows)) if rows else 1
     paths: List[str] = []
@@ -765,13 +812,13 @@ def render_undervalue_png(
     save_path: str,
     *,
     as_of: Optional[str] = None,
-    title: str = "版本 D3｜2×2 矩陣 · 籌碼撐壓整合",
+    title: str = "版本 D3 終極版｜2×2 矩陣 · 籌碼撐壓整合",
     pe_label: str = "PE",
     empty_note: Optional[str] = None,
 ) -> str:
     """相容入口：有成長欄→D3 第 1 頁；否則舊列表（測試／舊快取）。"""
     _ = pe_label
-    rows_l = list(rows or [])
+    rows_l = _sanitize_paint_rows(rows)
     if not rows_l or _has_growth_fields(rows_l):
         ordered = _order_rows(rows_l)
         page_n = _page_count(len(ordered)) if ordered else 1
@@ -953,7 +1000,7 @@ _DEMO_ROWS: List[Dict[str, Any]] = [
         "peer_pe_median": 26,
         "dist_to_floor_pct": -23,
         "flow_shares": 5000,
-        "reason": "示意",
+        "reason": "",
     },
     {
         "mark": "star",
@@ -982,7 +1029,7 @@ _DEMO_ROWS: List[Dict[str, Any]] = [
         "resistance": 780,
         "tech_broken": False,
         "chip_note": "投信連買5日",
-        "reason": "示意",
+        "reason": "",
     },
     {
         "mark": "watch",
@@ -1011,7 +1058,7 @@ _DEMO_ROWS: List[Dict[str, Any]] = [
         "tech_status": "跌破大量區撐 4160，先看表等止穩",
         "tech_broken": True,
         "chip_note": "投信買・外資調節",
-        "reason": "示意",
+        "reason": "",
     },
     {
         "mark": "emerging",
@@ -1040,7 +1087,7 @@ _DEMO_ROWS: List[Dict[str, Any]] = [
         "tech_status": "60日均量過小",
         "tech_broken": False,
         "chip_note": "興櫃無法人",
-        "reason": "示意",
+        "reason": "",
     },
 ]
 
