@@ -1,0 +1,130 @@
+{
+  "as_of": "20261117",
+  "as_of_taipei": "2026-11-17T16:56:05+0800",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "certainty": false,
+  "segment_numbers": "REQUIRED",
+  "bar_status": {
+    "twii_daily": "healed_60m_ohlc_plus_fmtqik_volume",
+    "tx_regular": "missing_in_db",
+    "tx_night": "in_db",
+    "note_zh": "FMTQIK 1117 為 O=H=L=C 尖端柱不當完整收；OHLC 用官方60分聚合（O40546.64/H41533.84/L39786.45/C40092.11），量用 FMTQIK V14624794>0。台指日盤 regular 庫內缺，日盤對質以加權為主。"
+  },
+  "official": {
+    "twii": {
+      "o": 40546.640625,
+      "h": 41533.83984375,
+      "l": 39786.44921875,
+      "c": 40092.109375,
+      "v": 14624794.0
+    },
+    "tx_regular": null,
+    "tx_night": {
+      "o": 40900.0,
+      "h": 41627.0,
+      "l": 40616.0,
+      "c": 40935.0,
+      "v": 63335,
+      "note": "庫內 20261117 night"
+    },
+    "support_43135": 43135.92,
+    "support_41760": 41760.0,
+    "friday_low_twii": 37837.05,
+    "wave4_band_oral_1116": [
+      41800.0,
+      42700.0
+    ],
+    "wave4_mid": 42250.0
+  },
+  "paths": [
+    {
+      "id": "M3_seek_37837_after_41760_fail",
+      "verdict": "升權維持／37837未測",
+      "segments_provisional": [
+        {
+          "label": "B-a_hold_fail",
+          "role": "昨已失41760；今日H41533仍低於41760",
+          "level": 41760.0
+        },
+        {
+          "label": "B-b",
+          "role": "37837升權但本日未觸（L39786≫37837）",
+          "level": 37837.05
+        }
+      ],
+      "evidence_zh": "TWII（60分補）H41533.84＜41760；L39786.45／C40092.11 皆未到37837。弱勢續但未測週五低。",
+      "next_zh": "下一開市日：弱則續看37837；強反彈先看能否收回41800～42700。不准發明新五波①。"
+    },
+    {
+      "id": "W4_reclaim_418_427_band",
+      "verdict": "否決：未收回波浪4帶",
+      "segments_provisional": [
+        {
+          "label": "wave4_band_reclaim",
+          "role": "未收回（H41533＜41800）",
+          "lo": 41800.0,
+          "hi": 42700.0
+        },
+        {
+          "label": "wave4_mid_42250",
+          "role": "未觸",
+          "level": 42250.0
+        }
+      ],
+      "evidence_zh": "日高41533.84未到41800；收40092仍在帶下。",
+      "next_zh": "反彈門檻仍是先收回41800～42700；非買訊。"
+    },
+    {
+      "id": "N1_follow_through_below_band",
+      "verdict": "成立：帶下續弱並再探低",
+      "segments_provisional": [
+        {
+          "label": "stay_below_wave4",
+          "role": "全日H/C皆＜41800",
+          "level": 41800.0
+        },
+        {
+          "label": "path_to_B_b",
+          "role": "L39786 往37837靠近但未到",
+          "level": 37837.05
+        }
+      ],
+      "evidence_zh": "O40546／H41533／L39786／C40092 皆在41800下；較昨收41040再弱。",
+      "next_zh": "續弱鏈與M3同向；測37837仍未完成。"
+    },
+    {
+      "id": "M2_dead_reclaim_watch",
+      "verdict": "否決：未收復43135",
+      "segments_provisional": [
+        {
+          "label": "post_hold_reclaim",
+          "role": "H41533≪43135",
+          "level": 43135.92
+        }
+      ],
+      "evidence_zh": "日高遠低於43135；低權對照維持。",
+      "next_zh": "未收復則維持低權；收復≠新五波①。"
+    }
+  ],
+  "miss_analysis": {
+    "expected_segments": [
+      "M3：失守41760後測37837",
+      "W4：收回41800～42700／42250",
+      "N1：帶下續弱",
+      "M2：收復43135（低權）"
+    ],
+    "actual_path": "N1成立（帶下續弱再探L39786）；W4收回否決；M2收復否決；M3升權維持但37837未測。收40092仍在波浪4帶下。",
+    "unexpected_level": "相對 preferred（測37837），實際走出帶下續弱但低點停在39786，未到週五低；亦未反彈進418～427。",
+    "which_segment_broke": "B-b/37837 尚未發生；wave4_band_reclaim 未發生。B-a_hold_fail 狀態延續。",
+    "rule_patch": "preferred＝升權測37837 時：若下一開市日仍失41760且L落在『帶下～37837之上』（例 39000～41000），標 N1_follow_through＋M3_pending_37837，不准把『未測到37837』當M3否決，也不准標新①。",
+    "two_diff": {
+      "vs_biaoke_zh": "他11/16：41800～42700波浪4帶；最差略破41800；否決第二腳／38000。官方11/17收40092、低39786：仍在帶下續弱、未測37837／未讀第二腳。",
+      "vs_official_zh": "加權（60分OHLC＋FMTQIK量）O40546.64/H41533.84/L39786.45/C40092.11 V14624794；台指日盤 regular 庫缺；night列 O40900/H41627/L40616/C40935 V63335。"
+    }
+  },
+  "cycle8_review_zh": "大C修正：昨失41760今帶下續弱再探39786，未測37837、未收回波浪4帶。下看37837 vs 收回418～427；非買訊；不准發明新五波①。",
+  "not_buy_signal": true,
+  "preferred_was": "M3_seek_37837_after_41760_fail",
+  "preferred_outcome_zh": "方向同向（續弱）但目標位未觸；N1 同步成立。"
+}
