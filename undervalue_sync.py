@@ -341,6 +341,7 @@ def run_undervalue_sync(
                     "industry",
                     "gross_margin",
                     "core_ratio_pct",
+                    "core_ratio_label",
                     "yoy_pct",
                     "fair_year",
                     "target_next",
@@ -348,11 +349,18 @@ def run_undervalue_sync(
                     "ups_tgt_pct",
                     "pe_year",
                     "pe_next",
+                    "pe_fwd",
+                    "eps_earned",
+                    "eps_2026",
+                    "eps_2027",
                     "rev_threshold_yi",
                     "rev_oct_yi",
                     "support",
+                    "resistance",
                     "tech_status",
+                    "tech_broken",
                     "chip_note",
+                    "chip_kind",
                 )
                 if r.get(k) is not None
             }

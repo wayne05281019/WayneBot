@@ -283,20 +283,32 @@ def _quote_meta(
                 yoy = _finite(mr[0] if not isinstance(mr, sqlite3.Row) else mr["yoy_pct"])
         except sqlite3.Error:
             yoy = None
-        name = str(
-            (q[0] if not isinstance(q, sqlite3.Row) else q["stock_name"]) or sid
-        )
+        raw_name = str(
+            (q[0] if not isinstance(q, sqlite3.Row) else q["stock_name"]) or ""
+        ).strip()
         mkt = ""
+        uni_name = ""
         try:
             ur = conn.execute(
-                "SELECT market_type FROM stock_universe WHERE stock_id=?", (sid,)
+                "SELECT market_type, stock_name FROM stock_universe WHERE stock_id=?",
+                (sid,),
             ).fetchone()
             if ur is not None:
                 mkt = str(
                     ur[0] if not isinstance(ur, sqlite3.Row) else ur["market_type"] or ""
                 )
+                uni_name = str(
+                    ur[1] if not isinstance(ur, sqlite3.Row) else ur["stock_name"] or ""
+                ).strip()
         except sqlite3.Error:
             mkt = ""
+            uni_name = ""
+        # 名缺／等於代號 → 用宇宙名；不准「2383 2383」
+        name = raw_name
+        if (not name or name == sid or name.isdigit()) and uni_name and uni_name != sid:
+            name = uni_name
+        if not name:
+            name = sid
         out[sid] = {
             "name": name,
             "close": float(close),
@@ -543,8 +555,12 @@ def run_undervalue_scan(
         stars: List[Dict[str, Any]] = []
         watches: List[Dict[str, Any]] = []
         emergings: List[Dict[str, Any]] = []
+        from undervalue_growth import is_hard_excluded
+
         for sid, pe in pe_map.items():
             if sid not in meta:
+                continue
+            if is_hard_excluded(sid):
                 continue
             # 硬濾：最新月營收 YoY ≥ +15%（無 YoY 不上；不准假成長）
             yoy = meta[sid].get("yoy_pct")
@@ -585,6 +601,8 @@ def run_undervalue_scan(
                 if detail is None:
                     continue
                 med = float(detail.get("peer_pe_median") or med_raw)
+                if detail.get("name"):
+                    meta[sid]["name"] = str(detail["name"])
             mark, reason, dist = classify(
                 pe=float(pe),
                 med=float(med),
@@ -605,7 +623,7 @@ def run_undervalue_scan(
                     continue
                 mark = "watch"
                 reason = f"成長體質過關；PE≤封頂中位{med:.1f}"
-            # 技術／量能分區覆寫；真低估才上榜（公平價上漲空間須 > 0）
+            # D3 分區：★＝明年≥+25%＋站穩撐＋非同賣＋非興櫃；破撐／同賣→☆；量小→⚠️
             if growth_mode and detail:
                 ups = detail.get("ups_fair_pct")
                 try:
@@ -616,11 +634,17 @@ def run_undervalue_scan(
                     continue  # 高估／無空間＝不是低估名單
                 if detail.get("emerging"):
                     mark = "emerging"
-                elif detail.get("prefer_watch") and mark == "star":
+                elif detail.get("d3_star_ok"):
+                    mark = "star"
+                else:
                     mark = "watch"
                 bits = [reason]
-                if detail.get("tech_status"):
+                if detail.get("tech_broken") and detail.get("support") is not None:
+                    bits.append(f"⚠️破撐 {float(detail['support']):.0f}")
+                elif detail.get("tech_status"):
                     bits.append(str(detail["tech_status"]))
+                if detail.get("resistance") is not None:
+                    bits.append(f"壓 {float(detail['resistance']):.0f}")
                 if detail.get("chip_note"):
                     bits.append(str(detail["chip_note"]))
                 reason = "；".join(x for x in bits if x)
@@ -645,17 +669,25 @@ def run_undervalue_scan(
                         "industry": detail.get("industry"),
                         "gross_margin": detail.get("gross_margin"),
                         "core_ratio_pct": detail.get("core_ratio_pct"),
+                        "core_ratio_label": detail.get("core_ratio_label"),
                         "fair_year": detail.get("fair_year"),
                         "target_next": detail.get("target_next"),
                         "ups_fair_pct": detail.get("ups_fair_pct"),
                         "ups_tgt_pct": detail.get("ups_tgt_pct"),
                         "pe_year": detail.get("pe_year"),
                         "pe_next": detail.get("pe_next"),
+                        "pe_fwd": detail.get("pe_fwd"),
+                        "eps_earned": detail.get("eps_earned"),
+                        "eps_2026": detail.get("eps_2026"),
+                        "eps_2027": detail.get("eps_2027"),
                         "rev_threshold_yi": detail.get("rev_threshold_yi"),
                         "rev_oct_yi": detail.get("rev_oct_yi"),
                         "support": detail.get("support"),
+                        "resistance": detail.get("resistance"),
                         "tech_status": detail.get("tech_status"),
+                        "tech_broken": detail.get("tech_broken"),
                         "chip_note": detail.get("chip_note"),
+                        "chip_kind": detail.get("chip_kind"),
                         "detail": detail,
                     }
                 )
