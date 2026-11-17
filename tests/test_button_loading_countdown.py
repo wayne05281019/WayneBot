@@ -1180,6 +1180,9 @@ def test_plain_wait_hard_cap_dismisses_frozen_bubble():
     # 勝率長掃可 overtime_keep，不准先收框再丟假逾時
     assert "overtime_keep" in src
     assert "max_elapsed" in src
+    # overtime_keep 仍要絕對硬頂，不准「好了這則會消失」永遠釘話筒
+    assert "hard_cap" in src
+    assert "_WAIT_HARD_CAP_S" in src
 
 
 def test_lookup_defers_struct_vol_prep_until_after_card():

@@ -4928,6 +4928,11 @@ class WayneTelegramBot:
             if max_elapsed is not None
             else (getattr(self, "_WAIT_MAX_ELAPSED_S", 120.0) or 120.0)
         )
+        # overtime_keep 可過預估續跳秒，但仍要絕對硬頂：不准「好了這則會消失」永遠釘在話筒
+        hard_cap = float(
+            getattr(self, "_WAIT_HARD_CAP_S", None)
+            or max(max_elapsed * 2.5, 900.0)
+        )
 
         async def _tick() -> None:
             while not stop.is_set():
@@ -4938,7 +4943,9 @@ class WayneTelegramBot:
                 except Exception:
                     pass
                 elapsed = time.monotonic() - t0
-                if elapsed >= max_elapsed and not overtime_keep:
+                if elapsed >= hard_cap or (
+                    elapsed >= max_elapsed and not overtime_keep
+                ):
                     # 硬上限：收起殘框，不准永遠停在「已 N 秒」
                     try:
                         await self._dismiss_progress_now(wait_msg)
