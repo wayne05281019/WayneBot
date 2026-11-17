@@ -6283,6 +6283,11 @@ def test_huang_c_purple_path_low_high_today_low():
     assert abs(float(ys[-3]) - float(bars[i3]["low"])) < 0.05
     assert i3 < i_hi < i_now
     assert abs(float(ys[-2]) - float(bars[i_hi]["high"])) < 0.05
+    # 終點釘今日低（收＝低的日子也算對；不准改釘收盤欄）
     assert abs(float(ys[-1]) - float(bars[i_now]["low"])) < 0.05
-    assert abs(float(ys[-1]) - float(bars[i_now]["close"])) > 1.0
+    assert abs(float(sp.get("y_now")) - float(bars[i_now]["low"])) < 0.05
+    close_now = float(bars[i_now]["close"])
+    low_now = float(bars[i_now]["low"])
+    if abs(close_now - low_now) > 1.0:
+        assert abs(float(ys[-1]) - close_now) > 1.0
 
