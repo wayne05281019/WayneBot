@@ -2490,6 +2490,7 @@ class LookupCardTest(unittest.TestCase):
         self.assertTrue(out_mild["select_01"])
 
 
+@unittest.skip("2026-11-17 模擬倉整包拿掉")
 class AIDeskTest(unittest.TestCase):
     """AI倉：總50萬＝30操作＋20抄底；硬閘只認勝率買點 roster。不准牽連其他鈕。"""
 

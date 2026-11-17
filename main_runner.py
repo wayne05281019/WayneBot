@@ -12,10 +12,10 @@
 #   - 真休市日（連假／北市停班／颱風）：不寄勝率早報；screen-closed-* 記略過；不准改買訊
 # 12:45 雙時段比價：只對照今早剛離零＋還在零；開盤 vs 約 12:45 現價
 #   - 休市日整段略過（midday-closed-*；連「今天沒開盤」也不寄）
-# 20:00 晚間台股收盤海選寫快照，並讓 AI 模擬倉依收盤名單買（海選本文不寄；不主動推播模擬倉）
+# 20:00 晚間台股收盤海選寫快照（海選本文不寄）。2026-11-17 起模擬倉／AI倉整包拿掉＝不再假錢買賣。
 # 22:15 抓人事行政總處北市停班（週日也跑）；05:10 再抓一次涵蓋 04:30 補發；06:30 海選前再確認
-# 16:30 融合成功後會順便跑晚間海選＋AI，讓 Release zip 帶得走模擬持倉。
-# 20:00／重啟若快照已寫過，不再重掃全市場，仍用快照再跑 AI 模擬倉（清 ETF 槽、依收盤停利停損）。
+# 16:30 融合成功後會順便跑晚間海選快照（模擬倉已關，不再寫假錢持倉進 zip）。
+# 20:00／重啟若快照已寫過，不再重掃全市場（模擬倉 no-op）。
 # 16:30 寫入項目（皆融合進同一 sqlite）：
 #   1. 母體 stock_universe（ISIN，現股／KY／ETF）
 #   2. 上市 MI_INDEX ＋ 上櫃收盤 → daily_quotes 價量
@@ -30,7 +30,7 @@
 #   7. 興櫃 emerging_quotes（櫃買當日行情表／日表；不寫進上市櫃 daily_quotes）
 #   8. 匯入健康檢查；上市／上櫃／興櫃沒齊就不標成功、不覆蓋完整舊資料
 # 06:30 勝率買點＋大量圖寄給偉權與哥哥；海選只後台落檔。盤後 16:30 只融合；20:00／21:00 見各排程。
-# 盤後融合順便用庫內下一根日 K 對昨天海選復盤；不另抓數。弱類別只調 AI 模擬倉權重。
+# 盤後融合順便用庫內下一根日 K 對昨天海選復盤；不另抓數。
 # 早上海選會再抓美股現金收盤：四大＋VIX＋費半／台積ADR；收盤後再看盤後（ADR／那指期續勢）。
 # 盤中期貨不看。大跌併入 06:30 早報彙整開頭，不另寄。逆風時當沖／隔日沖不列；半導體對照費半。美股抓不到就不過濾。
 # 證交所 13:30 收、盤後到 14:30；櫃買 15:00 收。兩邊絕大多數收盤最慢 16:30 齊，所以抓數排 16:30。
@@ -1914,15 +1914,9 @@ class MainRunner:
         return "\n".join(lines)
 
     def _format_portfolio_section(self, telegram_uid: str = "") -> str:
-        if not self.portfolio_engine or not telegram_uid:
-            return ""
-        try:
-            from ai_trader import format_ai_desk_html
-
-            return format_ai_desk_html(self.portfolio_engine, telegram_uid)
-        except Exception as e:
-            logger.warning("AI 帳戶概況略過：%s", e)
-            return ""
+        # 模擬倉已關：早報／附帶文字不准再塞假錢倉摘要。
+        del telegram_uid
+        return ""
 
     def _watch_radar_rows(self, uid: str) -> List[Dict[str, Any]]:
         """觀察鈕寫 user_watchlist；舊表 user_watchlists 若還有列就併入，不互蓋。"""
@@ -2651,154 +2645,16 @@ class MainRunner:
         notify: bool = True,
         telegram_uid: str = "",
     ) -> Dict[str, Any]:
-        """模擬倉真正下單（每人 ai_{uid}／總 50 萬＝30 操作＋20 抄底）。母體＝勝率買點；最多 3 檔。"""
-        try:
-            from ai_trader import ai_user_id, run_ai_desk
-            from config import allowed_telegram_uids, telegram_uid_allowed
-
-            if results is None:
-                if not run_full_screening:
-                    return {}
-                # 最重負荷預設：不准在常駐行程內重掃全市場（OOM→話筒死）。
-                screening = self._screening_surviving_oom(
-                    as_of,
-                    session=str(session or "evening"),
-                    apply_us=bool(apply_us),
-                )
-                results = (screening or {}).get("results") or {}
-
-            if telegram_uid:
-                uids = [str(telegram_uid)] if telegram_uid_allowed(telegram_uid) else []
-            else:
-                uids = list(allowed_telegram_uids())
-            if not uids and self.chat_id:
-                uids = [str(self.chat_id)]
-            if not uids:
-                logger.info("尚無已註冊 Telegram 使用者，略過 AI 模擬倉")
-                return {}
-
-            last: Dict[str, Any] = {}
-            per_uid: Dict[str, Any] = {}
-            # 雙人全同：白名單每個 uid 都要跑一遍；一人成交不准擋另一人
-            logger.info("AI 模擬倉本輪 uid=%s", ",".join(uids))
-            for uid in uids:
-                ai_uid = ai_user_id(uid)
-                # 該戶當日已有 BUY → 只做出場／清槽，不准再買／再抄底（雙人分開算）
-                skip_buys = self._ai_desk_has_buy_fills(as_of, user_id=ai_uid)
-                ai = run_ai_desk(
-                    self.db_path,
-                    uid,
-                    results or {},
-                    as_of,
-                    skip_new_buys=skip_buys,
-                )
-                # 空倉＋當日未 BUY＋母體有候選 → 再強制買一輪（防 env／略過漏建哥哥戶）
-                def _pos_n(payload: Dict[str, Any]) -> int:
-                    try:
-                        if payload.get("position_count") is not None:
-                            return int(payload.get("position_count") or 0)
-                        return int(
-                            (payload.get("summary") or {}).get("position_count") or 0
-                        )
-                    except Exception:
-                        return 0
-
-                n_pos = _pos_n(ai)
-                if (
-                    not skip_buys
-                    and n_pos <= 0
-                    and not (ai.get("bought") or [])
-                    and int(ai.get("candidates") or 0) > 0
-                ):
-                    logger.info(
-                        "AI 模擬倉 uid=%s 空倉有候選→強制再買一輪", uid
-                    )
-                    ai = run_ai_desk(
-                        self.db_path,
-                        uid,
-                        results or {},
-                        as_of,
-                        skip_new_buys=False,
-                    )
-                    n_pos = _pos_n(ai)
-                last = ai
-                n_buy = len(ai.get("bought") or [])
-                n_sell = len(ai.get("sold") or [])
-                per_uid[str(uid)] = {
-                    "bought": n_buy,
-                    "sold": n_sell,
-                    "candidates": ai.get("candidates") or 0,
-                    "positions": n_pos,
-                    "skip_buys": skip_buys,
-                }
-                logger.info(
-                    "AI 模擬倉 uid=%s 買進 %s 賣出 %s 候選 %s 持倉 %s skip_buys=%s",
-                    uid,
-                    n_buy,
-                    n_sell,
-                    ai.get("candidates") or 0,
-                    n_pos,
-                    skip_buys,
-                )
-                # 排程推播只在有實際成交時寄；空倉桌面不准每次 boot／補跑洗版
-                if notify and (n_buy or n_sell):
-                    bits = [ai.get("html") or ""]
-                    if ai.get("bought"):
-                        bits.append("<b>AI 模擬本次買進</b>\n" + "\n".join(ai["bought"]))
-                    if ai.get("sold"):
-                        bits.append("<b>AI 模擬本次賣出</b>\n" + "\n".join(ai["sold"]))
-                    if ai.get("lesson"):
-                        bits.append("進化：" + str(ai["lesson"]))
-                    text = "\n\n".join(x for x in bits if x)
-                    if text:
-                        self.send_telegram_message(text, chat_id=uid)
-            if isinstance(last, dict):
-                last = dict(last)
-                last["per_uid"] = per_uid
-                last["family_uids"] = list(uids)
-            # 成交後才凍 AI倉名單；失敗不擋話筒／海選（海選 snapshot 常在 AI 成交前）。
-            try:
-                from button_silent_verify import snapshot_ai_desk
-
-                snapshot_ai_desk(self.db_path, as_of or "")
-            except Exception:
-                pass
-            return last
-        except Exception as e:
-            logger.warning("AI 模擬操盤略過：%s", e, exc_info=True)
-            return {}
+        """2026-11-17 使用者鎖：模擬倉整包拿掉。呼叫端可留，這裡一律 no-op，不准真下單／推播。"""
+        del results, apply_us, session, notify, telegram_uid
+        logger.info("AI 模擬倉已關閉，略過 as_of=%s", as_of)
+        return {"retired": True, "bought": [], "sold": [], "candidates": 0}
 
     def _maybe_send_evolve_digest(self, as_of: str) -> None:
-        """週五晚間：買賣仍不推播，另寄一則進化編碼週報。"""
-        try:
-            from config import allowed_telegram_uids, scheduler_may_push
-            from ai_trader import (
-                ai_user_id,
-                format_evolve_report_html,
-                mark_weekly_evolve_sent,
-                should_send_weekly_evolve,
-            )
-        except Exception:
-            return
-        if not scheduler_may_push("evening"):
-            return
-        uids = list(allowed_telegram_uids())
-        if not uids and self.chat_id:
-            uids = [str(self.chat_id)]
-        for uid in uids:
-            user_id = ai_user_id(uid)
-            if not should_send_weekly_evolve(self.db_path, user_id, as_of):
-                continue
-            html = format_evolve_report_html(self.db_path, user_id)
-            if not html:
-                continue
-            try:
-                self.send_telegram_message(html, chat_id=uid)
-                mark_weekly_evolve_sent(self.db_path, user_id, as_of)
-            except Exception:
-                logger.exception("AI 進化週報失敗 uid=%s", uid)
+        """模擬倉已關：進化週報一併停。"""
+        logger.info("AI 進化週報已關閉，略過 as_of=%s", as_of)
+        return
 
-    @staticmethod
     def _fuse_done_message(cap: str, health: Dict[str, Any]) -> str:
         """盤後融合通過關卡後才准發。不是海選、不是買訊。"""
         ymd = str(cap or "").replace("-", "")[:8]
