@@ -1207,11 +1207,12 @@ _DEMO_ROWS: List[Dict[str, Any]] = [
         "rev_threshold_yi": 20.5,
         "rev_oct_yi": 18.4,
         "rev_month_label": "10月",
+        "rev_yyyymm": "202610",
         "support": 1045,
         "resistance": 1210,
         "tech_status": "站回支撐區",
         "tech_broken": False,
-        "chip_note": "外投同買",
+        "chip_note": "",
         "peer_pe_median": 26,
         "dist_to_floor_pct": -23,
         "flow_shares": 5000,
@@ -1239,11 +1240,13 @@ _DEMO_ROWS: List[Dict[str, Any]] = [
         "ups_fair_pct": 29,
         "ups_tgt_pct": 62,
         "rev_threshold_yi": 28.0,
-        "rev_oct_yi": 24.0,
+        "rev_oct_yi": 29.7,
+        "rev_month_label": "10月",
+        "rev_yyyymm": "202610",
         "support": 465,
         "resistance": 520,
         "tech_broken": False,
-        "chip_note": "投信連買5日",
+        "chip_note": "",
         "reason": "",
     },
     {
@@ -1267,12 +1270,14 @@ _DEMO_ROWS: List[Dict[str, Any]] = [
         "ups_fair_pct": 30,
         "ups_tgt_pct": 68,
         "rev_threshold_yi": 265.0,
-        "rev_oct_yi": 220.0,
+        "rev_oct_yi": 244.7,
+        "rev_month_label": "10月",
+        "rev_yyyymm": "202610",
         "support": 4160,
         "resistance": 4475,
         "tech_status": "跌破大量區撐 4160，先看表等止穩",
         "tech_broken": True,
-        "chip_note": "投信連買・外資調節",
+        "chip_note": "",
         "reason": "",
     },
     {
@@ -1297,7 +1302,10 @@ _DEMO_ROWS: List[Dict[str, Any]] = [
         "ups_fair_pct": 9,
         "ups_tgt_pct": 38,
         "rev_threshold_yi": 1.5,
-        "rev_oct_yi": 1.2,
+        "rev_oct_yi": 0.95,
+        "rev_month_label": "10月",
+        "rev_yyyymm": "202610",
+        "placement_price": 400,
         "support": 561,
         "resistance": 636,
         "tech_status": "60日均量過小",
@@ -1311,14 +1319,16 @@ _DEMO_ROWS: List[Dict[str, Any]] = [
 def main() -> None:
     out_dir = "/opt/cursor/artifacts/uv-d3"
     os.makedirs(out_dir, exist_ok=True)
+    db = os.environ.get("WAYNE_DB_PATH") or "data/wayne_market.db"
     paths = render_undervalue_pages(
-        _DEMO_ROWS, out_dir, as_of="20261117", prefix="demo"
+        _DEMO_ROWS, out_dir, as_of="20261118", prefix="demo", db_path=db
     )
     print(paths)
     p1 = render_undervalue_png(
         _DEMO_ROWS,
         os.path.join(out_dir, "page1.png"),
-        as_of="20261117",
+        as_of="20261118",
+        db_path=db,
     )
     print(p1)
 

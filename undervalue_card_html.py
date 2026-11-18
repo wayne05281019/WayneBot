@@ -269,7 +269,7 @@ def _build_card_html(s: dict) -> str:
           <div class="cell-v mono cyan">{html.escape(s['pe_fwd12m'])}倍 <span class="cell-sub">({html.escape(s['pe_note'])})</span></div>
           <div class="ruler-wrap">
             <div class="ruler-track"><div class="ruler-dot" style="left: {pe_left}%;"></div></div>
-            <div class="ruler-labels mono"><span>15x</span><span>20x</span><span>25x</span></div>
+            <div class="ruler-labels mono"><span>{html.escape(str(s.get('pe_min') or '—'))}</span><span>{html.escape(str(s.get('pe_mid') or '—'))}</span><span>{html.escape(str(s.get('pe_max') or '—'))}</span></div>
           </div>
         </div>
         <div class="d3-cell">
@@ -418,13 +418,126 @@ def _date_str(as_of: Optional[str]) -> str:
     return d.strftime("%m/%d")
 
 
+def _q4_progress_from_rev_yyyymm(yyyymm: Optional[str]) -> str:
+    """依資料庫最新已公布月營收月份，不准用日曆月假裝已公布。"""
+    s = str(yyyymm or "").replace("-", "")[:6]
+    if len(s) != 6 or not s.isdigit():
+        return "Q4: 10·11·12待補"
+    m = int(s[4:6])
+    if m < 10:
+        return "Q4: 10·11·12待補"
+    if m == 10:
+        return "Q4: 10月✓・11·12待補"
+    if m == 11:
+        return "Q4: 10月✓・11月✓・12待補"
+    return "Q4: 10·11·12月✓"
+
+
+def _pe_scale_labels(
+    pe_fwd12: Optional[float],
+    fair_lo: Optional[float],
+    fair_hi: Optional[float],
+) -> tuple[str, str, str, float]:
+    """依各股合理帶＋實際滾動本益比動態產生 pe_min/mid/max 與圓點％。"""
+    vals = [v for v in (pe_fwd12, fair_lo, fair_hi) if v is not None and v > 0]
+    if not vals:
+        return "—", "—", "—", 50.0
+    lo = float(min(vals))
+    hi = float(max(vals))
+    span = max(hi - lo, 1.0)
+    pad = max(span * 0.2, 1.5)
+    a0 = max(1.0, math.floor(lo - pad))
+    a2 = math.ceil(hi + pad)
+    if a2 <= a0:
+        a2 = a0 + 5
+    a1 = round((a0 + a2) / 2.0)
+    pe_dot = 50.0
+    if pe_fwd12 is not None and a2 > a0:
+        pe_dot = (float(pe_fwd12) - a0) / (a2 - a0) * 100.0
+        pe_dot = max(8.0, min(92.0, pe_dot))
+    return f"{int(a0)}x", f"{int(a1)}x", f"{int(a2)}x", pe_dot
+
+
+def _streak_flags(flags: Sequence[str], want: str) -> int:
+    n = 0
+    for x in reversed(list(flags)[:5]):
+        if str(x).upper()[:1] != want:
+            break
+        n += 1
+    return n
+
+
+def _pill_from_5d_flags(
+    foreign_5d: Sequence[str], trust_5d: Sequence[str], *, emerging: bool
+) -> tuple[str, str]:
+    """膠囊必須與方塊同一組 ['B'/'S'/'N']，不准另寫死字樣。"""
+    if emerging:
+        return "warn", "興櫃無法人"
+    f5 = _normalize_5d_flags(foreign_5d)
+    t5 = _normalize_5d_flags(trust_5d)
+    f_buy = sum(1 for x in f5 if x == "B")
+    f_sell = sum(1 for x in f5 if x == "S")
+    t_buy = sum(1 for x in t5 if x == "B")
+    t_sell = sum(1 for x in t5 if x == "S")
+    tb = _streak_flags(t5, "B")
+    fb = _streak_flags(f5, "B")
+    newest_f = f5[-1] if f5 else "N"
+    newest_t = t5[-1] if t5 else "N"
+    if newest_f == "S" and newest_t == "S":
+        return "sell", "外投同賣"
+    if newest_f == "B" and newest_t == "B":
+        return "buy", "外投同買"
+    if t_buy >= 2 and f_sell >= 2 and newest_t == "B":
+        return "sell", "投信護盤・外資賣"
+    if tb >= 2:
+        return "buy", f"投信連買{tb}日"
+    if fb >= 2:
+        return "buy", f"外資連買{fb}日"
+    if newest_t == "B" and newest_f != "B":
+        return "sell", "投信護盤・外資賣" if newest_f == "S" else "投信買・外資平"
+    if newest_f == "B":
+        return "buy", "外資買超"
+    if t_sell >= 2 or f_sell >= 2:
+        return "sell", "法人調節"
+    return "buy", "—"
+
+
+def _emerging_note_text(row: Dict[str, Any]) -> str:
+    """興櫃左下：寫出暫定價數字，不准只印空泛警示。"""
+    tech = str(row.get("tech_status") or "").strip()
+    place = _finite(row.get("placement_price"))
+    if place is None:
+        place = _finite(row.get("offer_price"))
+    tech_tail = tech
+    for prefix in ("現增暫定價", "現增暫定", "現增"):
+        if tech_tail.startswith(prefix):
+            tech_tail = tech_tail[len(prefix) :].lstrip("＋+｜| 、")
+            break
+    tech_tail = tech_tail.strip() or "60日均量過小"
+    if place is not None:
+        return f"現增暫定 {_fmt_price(place)}元｜{tech_tail}"[:36]
+    if tech:
+        return tech[:36]
+    return "現增暫定價｜60日均量過小"
+
+
 def pick_row_to_screener_stock(row: Dict[str, Any], *, as_of: Optional[str] = None) -> dict:
     """把融合庫低估列填進模板欄位；不准改 HTML 結構。"""
     mark = str(row.get("mark") or "").lower()
     emerging = mark in ("emerging", "emerge") or bool(row.get("emerging"))
+    close = _finite(row.get("close"))
+    support = _finite(row.get("support"))
     broken = bool(row.get("tech_broken")) or (
         "破撐" in str(row.get("tech_status") or "") or "破撐" in str(row.get("reason") or "")
     )
+    # 現價跌破大量支撐 → ★ 自動降 ☆（不准寫死可買）
+    if (
+        not emerging
+        and close is not None
+        and support is not None
+        and close < support
+    ):
+        broken = True
     if emerging:
         status, icon, status_label = "risk", "⚠️", "興櫃量小"
     elif mark in ("star", "true", "★", "*") and not broken:
@@ -432,26 +545,10 @@ def pick_row_to_screener_stock(row: Dict[str, Any], *, as_of: Optional[str] = No
     else:
         status, icon, status_label = "wait", "☆", "等止穩"
 
-    chip = str(row.get("chip_note") or "").strip()
-    # 膠囊精簡：右邊單留籌碼，避免蓋住左側「毛利%」
-    if emerging or "興櫃" in chip:
-        flow_type, flow_pill = "warn", "興櫃無法人"
-    elif "同賣" in chip:
-        flow_type, flow_pill = "sell", "外投同賣"
-    elif "投信" in chip and ("調節" in chip or "賣" in chip):
-        flow_type, flow_pill = "sell", "投信護盤・外資賣"
-    elif "同買" in chip:
-        flow_type, flow_pill = "buy", "外投同買"
-    elif "投信連買" in chip:
-        flow_type, flow_pill = "buy", chip.replace("投信連買", "投信連買")[:10]
-    elif "外資連買" in chip:
-        flow_type, flow_pill = "buy", chip[:10]
-    elif chip:
-        flow_type, flow_pill = "buy", chip[:10]
-    else:
-        flow_type, flow_pill = "buy", "—"
+    foreign_5d = _normalize_5d_flags(row.get("foreign_5d"))
+    trust_5d = _normalize_5d_flags(row.get("trust_5d"))
+    flow_type, flow_pill = _pill_from_5d_flags(foreign_5d, trust_5d, emerging=emerging)
 
-    close = _finite(row.get("close"))
     eps_y = _finite(row.get("eps_2026"))
     eps_n = _finite(row.get("eps_2027"))
     eps_e = _finite(row.get("eps_earned"))
@@ -467,13 +564,8 @@ def pick_row_to_screener_stock(row: Dict[str, Any], *, as_of: Optional[str] = No
     pe_fwd12 = None
     if close is not None and fwd_eps is not None and fwd_eps > 0:
         pe_fwd12 = close / fwd_eps
-
-    # 固定軌道 15x～25x；圓點座標限 5%～95%
-    pe_lo, pe_hi = 15.0, 25.0
-    pe_dot = 50.0
-    if pe_fwd12 is not None:
-        pe_dot = (float(pe_fwd12) - pe_lo) / (pe_hi - pe_lo) * 100.0
-        pe_dot = max(8.0, min(92.0, pe_dot))
+    elif _finite(row.get("pe_fwd")) is not None:
+        pe_fwd12 = _finite(row.get("pe_fwd"))
 
     pe_year = _finite(row.get("pe_year"))
     pe_next = _finite(row.get("pe_next"))
@@ -481,6 +573,8 @@ def pick_row_to_screener_stock(row: Dict[str, Any], *, as_of: Optional[str] = No
     fair_hi = pe_year if pe_year is not None else pe_next
     if fair_lo is not None and fair_hi is not None and fair_lo > fair_hi:
         fair_lo, fair_hi = fair_hi, fair_lo
+    pe_min, pe_mid, pe_max, pe_dot = _pe_scale_labels(pe_fwd12, fair_lo, fair_hi)
+
     if pe_fwd12 is not None and fair_lo is not None and fair_hi is not None:
         if pe_fwd12 < fair_lo:
             pe_note = "偏低"
@@ -489,12 +583,7 @@ def pick_row_to_screener_stock(row: Dict[str, Any], *, as_of: Optional[str] = No
         else:
             pe_note = "合理帶"
     elif pe_fwd12 is not None:
-        if pe_fwd12 < 18:
-            pe_note = "偏低"
-        elif pe_fwd12 > 22:
-            pe_note = "偏貴"
-        else:
-            pe_note = "合理帶"
+        pe_note = "滾動"
     else:
         pe_note = "滾動"
 
@@ -508,7 +597,6 @@ def pick_row_to_screener_stock(row: Dict[str, Any], *, as_of: Optional[str] = No
     if thr is not None and thr > 0 and oct_r is not None:
         rev_pct = max(0, min(999, int(round(oct_r / thr * 100.0))))
 
-    support = _finite(row.get("support"))
     resist = _finite(row.get("resistance"))
     support_ok = not broken
     if broken and support is not None:
@@ -524,23 +612,33 @@ def pick_row_to_screener_stock(row: Dict[str, Any], *, as_of: Optional[str] = No
     gm = _finite(row.get("gross_margin"))
     gm_s = f"{gm:.1f}%" if gm is not None else "—"
 
-    # Q4: 10月✓・11·12待補（依 as_of 月份）
-    m = ref_d.month
-    if m <= 9:
-        q4 = "Q4: 10·11·12待補"
-    elif m == 10:
-        q4 = "Q4: 10月✓・11·12待補"
-    elif m == 11:
-        q4 = "Q4: 10月✓・11月✓・12待補"
-    else:
-        q4 = "Q4: 10·11·12月✓"
+    rev_ym = str(row.get("rev_yyyymm") or "").replace("-", "")[:6]
+    q4 = _q4_progress_from_rev_yyyymm(rev_ym) if rev_ym else _q4_progress_from_rev_yyyymm(
+        None
+    )
+    # 列上若已帶最新公布月標籤但沒 yyyymm，仍不准用日曆月假裝 11月✓
+    if not rev_ym:
+        lab = str(row.get("rev_month_label") or "").strip()
+        if lab.startswith("10"):
+            q4 = "Q4: 10月✓・11·12待補"
+        elif lab.startswith("11"):
+            q4 = "Q4: 10月✓・11月✓・12待補"
+        elif lab.startswith("12"):
+            q4 = "Q4: 10·11·12月✓"
 
-    emerging_note = "現增暫定價＋量小警示"
-    tech = str(row.get("tech_status") or "").strip()
-    if tech and "現增" not in tech:
-        emerging_note = f"現增暫定價＋{tech}"[:28]
-    elif tech:
-        emerging_note = tech[:28]
+    month_lab = str(row.get("rev_month_label") or "").strip()
+    if not month_lab and len(rev_ym) == 6:
+        month_lab = f"{int(rev_ym[4:6])}月"
+    if oct_r is not None:
+        # 小營收保留兩位（山太士 0.95億），大數一位
+        rev_digits = 2 if abs(float(oct_r)) < 10 else 1
+        rev_body = f"{_fmt_num(oct_r, rev_digits)}億"
+        # _fmt_num 對 0.95/digits=1 會進位成 1；digits=2 才留 0.95
+        if rev_digits == 2:
+            rev_body = f"{float(oct_r):.2f}".rstrip("0").rstrip(".") + "億"
+        rev_now = f"{month_lab}{rev_body}" if month_lab else rev_body
+    else:
+        rev_now = "—"
 
     return {
         "status": status,
@@ -559,16 +657,16 @@ def pick_row_to_screener_stock(row: Dict[str, Any], *, as_of: Optional[str] = No
         "pe_fwd12m": _fmt_num(pe_fwd12, 1),
         "pe_note": pe_note,
         "pe_dot_pct": pe_dot,
-        "pe_min": "15x",
-        "pe_mid": "20x",
-        "pe_max": "25x",
+        "pe_min": pe_min,
+        "pe_mid": pe_mid,
+        "pe_max": pe_max,
         "target_norm": target_norm,
         "target_cons": target_cons,
-        "foreign_5d": _normalize_5d_flags(row.get("foreign_5d")),
-        "trust_5d": _normalize_5d_flags(row.get("trust_5d")),
+        "foreign_5d": foreign_5d,
+        "trust_5d": trust_5d,
         "is_emerging": emerging,
-        "emerging_note": emerging_note,
-        "rev_now": f"{_fmt_num(oct_r, 1)}億" if oct_r is not None else "—",
+        "emerging_note": _emerging_note_text(row),
+        "rev_now": rev_now,
         "rev_gate": f"{_fmt_num(thr, 1)}億" if thr is not None else "—",
         "rev_pct": rev_pct,
         "support_ok": support_ok,
@@ -585,8 +683,23 @@ def resolve_regime(
 ) -> dict:
     fx = _finite(usd_twd)
     if fx is None:
-        fx = 31.50
-    regime = detect_market_regime(float(fx), int(foreign_sell_days or 0), bool(market_above_ma20))
+        # 不准寫死 31.50；缺匯率只標 —
+        if not market_above_ma20 and int(foreign_sell_days or 0) >= 3:
+            regime = {
+                "class": "regime-bear",
+                "text": "🔴 系統性修正盤・嚴守站回支撐再買",
+                "fx_text": "USD/TWD —",
+            }
+        else:
+            regime = {
+                "class": "regime-normal",
+                "text": "🟢 資金常態盤・依區間與黃金買點操作",
+                "fx_text": "USD/TWD —",
+            }
+    else:
+        regime = detect_market_regime(
+            float(fx), int(foreign_sell_days or 0), bool(market_above_ma20)
+        )
     if empty_note:
         regime = dict(regime)
         regime["text"] = str(empty_note)[:48]
@@ -594,25 +707,40 @@ def resolve_regime(
 
 
 def load_usd_twd_hint(db_path: Optional[str] = None) -> Optional[float]:
-    """盡量讀庫內已有匯率；沒有就 None（不准假造）。"""
+    """讀庫內即時／最新台幣匯率；沒有就 None（不准假造 31.50）。"""
     path = db_path or os.environ.get("WAYNE_DB_PATH") or ""
     if not path or not os.path.isfile(path):
         return None
     try:
+        import json
         import sqlite3
 
         con = sqlite3.connect(path)
         try:
+            try:
+                row = con.execute(
+                    "SELECT payload FROM us_overnight ORDER BY as_of DESC LIMIT 1"
+                ).fetchone()
+            except Exception:
+                row = None
+            if row and row[0]:
+                try:
+                    payload = json.loads(row[0]) if isinstance(row[0], str) else row[0]
+                    fx = _finite((payload or {}).get("usdtwd_px"))
+                    if fx is not None:
+                        return float(fx)
+                except Exception:
+                    pass
             for sql in (
-                "SELECT value FROM market_snapshots WHERE key IN ('usd_twd','USDTWD','USD/TWD') ORDER BY as_of DESC LIMIT 1",
+                "SELECT close FROM index_daily WHERE symbol IN ('USDTWD','USD/TWD') ORDER BY date DESC LIMIT 1",
                 "SELECT close FROM daily_quotes WHERE stock_id IN ('USDTWD','USD/TWD','TWD=X') ORDER BY date DESC LIMIT 1",
             ):
                 try:
-                    row = con.execute(sql).fetchone()
+                    r2 = con.execute(sql).fetchone()
                 except Exception:
-                    row = None
-                if row and _finite(row[0]) is not None:
-                    return float(row[0])
+                    r2 = None
+                if r2 and _finite(r2[0]) is not None:
+                    return float(r2[0])
         finally:
             con.close()
     except Exception:
@@ -620,54 +748,215 @@ def load_usd_twd_hint(db_path: Optional[str] = None) -> Optional[float]:
     return None
 
 
-def enrich_chip_5d_on_rows(
+def load_regime_inputs(db_path: Optional[str] = None, as_of: Optional[str] = None) -> dict:
+    """匯率＋外資連賣日數＋大盤是否站上 MA20（Asia/Taipei 開市日鍵）。"""
+    path = db_path or os.environ.get("WAYNE_DB_PATH") or ""
+    day = str(as_of or "").replace("-", "")[:8]
+    out = {
+        "usd_twd": load_usd_twd_hint(path) if path else None,
+        "foreign_sell_days": 0,
+        "market_above_ma20": True,
+    }
+    if not path or not os.path.isfile(path):
+        return out
+    try:
+        import sqlite3
+
+        con = sqlite3.connect(path)
+        try:
+            try:
+                tw = con.execute(
+                    """
+                    SELECT close, ma20 FROM index_daily
+                    WHERE symbol='TWII'
+                      AND (?='' OR REPLACE(CAST(date AS TEXT),'-','')<=?)
+                    ORDER BY date DESC LIMIT 1
+                    """,
+                    (day if len(day) == 8 else "", day if len(day) == 8 else "99999999"),
+                ).fetchone()
+            except Exception:
+                tw = None
+            if tw and _finite(tw[0]) is not None and _finite(tw[1]) is not None:
+                out["market_above_ma20"] = float(tw[0]) >= float(tw[1])
+            try:
+                sells = con.execute(
+                    """
+                    SELECT foreign_net_yi FROM market_inst_bfi_daily
+                    WHERE (?='' OR REPLACE(CAST(date AS TEXT),'-','')<=?)
+                    ORDER BY date DESC LIMIT 12
+                    """,
+                    (day if len(day) == 8 else "", day if len(day) == 8 else "99999999"),
+                ).fetchall()
+            except Exception:
+                sells = []
+            streak = 0
+            for r in sells:
+                v = _finite(r[0])
+                if v is not None and v < 0:
+                    streak += 1
+                else:
+                    break
+            out["foreign_sell_days"] = streak
+        finally:
+            con.close()
+    except Exception:
+        return out
+    return out
+
+
+def _chip_coverage_days(con: Any, day: str, n: int = 5) -> List[str]:
+    """近 n 個「市場有法人買賣超資料」的交易日（新→舊）。缺資料日（全 0）跳過。"""
+    try:
+        rows = con.execute(
+            """
+            SELECT REPLACE(CAST(date AS TEXT),'-','') AS d
+            FROM daily_quotes
+            WHERE REPLACE(CAST(date AS TEXT),'-','')<=?
+            GROUP BY d
+            HAVING SUM(ABS(COALESCE(foreign_net,0)))
+                 + SUM(ABS(COALESCE(trust_net,0))) > 0
+            ORDER BY d DESC
+            LIMIT ?
+            """,
+            (day, int(n)),
+        ).fetchall()
+    except Exception:
+        return []
+    return [str(r[0]) for r in rows if r and r[0]]
+
+
+def enrich_live_rows_from_db(
     rows: Sequence[Dict[str, Any]],
     *,
     db_path: Optional[str] = None,
     as_of: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
-    """若列上尚無 foreign_5d／trust_5d，從 daily_quotes 近 5 日淨額填入（左舊→右新）。"""
+    """出圖當下接真收盤／月營收／近5日籌碼；覆寫寫死樣本，不准假 11月✓。"""
     path = db_path or os.environ.get("WAYNE_DB_PATH") or ""
     day = str(as_of or "").replace("-", "")[:8]
+    if len(day) != 8:
+        day = date.today().strftime("%Y%m%d")
     out: List[Dict[str, Any]] = []
     con = None
-    if path and os.path.isfile(path) and len(day) == 8:
+    chip_days: List[str] = []
+    if path and os.path.isfile(path):
         try:
             import sqlite3
 
             con = sqlite3.connect(path)
+            chip_days = _chip_coverage_days(con, day, 5)
         except Exception:
             con = None
+            chip_days = []
     try:
         for raw in rows:
             row = dict(raw)
-            if row.get("foreign_5d") and row.get("trust_5d"):
-                out.append(row)
-                continue
             sid = str(row.get("stock_id") or "").strip()
-            if con is None or not sid:
-                row.setdefault("foreign_5d", ["N"] * 5)
-                row.setdefault("trust_5d", ["N"] * 5)
-                out.append(row)
-                continue
-            try:
-                nets = con.execute(
-                    """
-                    SELECT COALESCE(foreign_net, 0), COALESCE(trust_net, 0)
-                    FROM daily_quotes
-                    WHERE stock_id=? AND REPLACE(CAST(date AS TEXT),'-','')<=?
-                    ORDER BY date DESC LIMIT 5
-                    """,
-                    (sid, day),
-                ).fetchall()
-            except Exception:
-                nets = []
-            # DB 新→舊；畫面左舊→右新
-            nets_old_first = list(reversed(nets))
-            while len(nets_old_first) < 5:
-                nets_old_first.insert(0, (0, 0))
-            row["foreign_5d"] = [_net_to_flag(float(n[0])) for n in nets_old_first[-5:]]
-            row["trust_5d"] = [_net_to_flag(float(n[1])) for n in nets_old_first[-5:]]
+            emerging = str(row.get("mark") or "").lower() in ("emerging", "emerge") or bool(
+                row.get("emerging")
+            )
+            if con is not None and sid:
+                # 即時／最新收
+                try:
+                    cq = con.execute(
+                        """
+                        SELECT close FROM daily_quotes
+                        WHERE stock_id=? AND REPLACE(CAST(date AS TEXT),'-','')<=?
+                          AND close IS NOT NULL AND close>0
+                        ORDER BY date DESC LIMIT 1
+                        """,
+                        (sid, day),
+                    ).fetchone()
+                except Exception:
+                    cq = None
+                if (cq is None or _finite(cq[0]) is None) and emerging:
+                    try:
+                        cq = con.execute(
+                            """
+                            SELECT close FROM emerging_quotes
+                            WHERE stock_id=? AND REPLACE(CAST(date AS TEXT),'-','')<=?
+                              AND close IS NOT NULL AND close>0
+                            ORDER BY date DESC LIMIT 1
+                            """,
+                            (sid, day),
+                        ).fetchone()
+                    except Exception:
+                        cq = None
+                if cq and _finite(cq[0]) is not None:
+                    row["close"] = float(cq[0])
+
+                # 最新月營收（千元→億）
+                try:
+                    mr = con.execute(
+                        """
+                        SELECT yyyymm, revenue FROM monthly_revenue
+                        WHERE stock_id=? AND REPLACE(CAST(yyyymm AS TEXT),'-','')<=?
+                        ORDER BY yyyymm DESC LIMIT 1
+                        """,
+                        (sid, day[:6]),
+                    ).fetchone()
+                except Exception:
+                    mr = None
+                if mr and mr[0] is not None and _finite(mr[1]) is not None:
+                    yyyymm = str(mr[0]).replace("-", "")[:6]
+                    row["rev_yyyymm"] = yyyymm
+                    row["rev_month_label"] = f"{int(yyyymm[4:6])}月"
+                    row["rev_oct_yi"] = float(mr[1]) / 100000.0
+
+                # 近 5 個有法人資料的交易日 → B/S/N（強制覆寫樣本陣列）
+                if not emerging and chip_days:
+                    f_flags: List[str] = []
+                    t_flags: List[str] = []
+                    for d in reversed(chip_days):  # 左舊→右新
+                        try:
+                            net = con.execute(
+                                """
+                                SELECT COALESCE(foreign_net,0), COALESCE(trust_net,0)
+                                FROM daily_quotes
+                                WHERE stock_id=? AND REPLACE(CAST(date AS TEXT),'-','')=?
+                                LIMIT 1
+                                """,
+                                (sid, d),
+                            ).fetchone()
+                        except Exception:
+                            net = None
+                        if net is None:
+                            f_flags.append("N")
+                            t_flags.append("N")
+                        else:
+                            f_flags.append(_net_to_flag(float(net[0] or 0)))
+                            t_flags.append(_net_to_flag(float(net[1] or 0)))
+                    while len(f_flags) < 5:
+                        f_flags.insert(0, "N")
+                        t_flags.insert(0, "N")
+                    row["foreign_5d"] = f_flags[-5:]
+                    row["trust_5d"] = t_flags[-5:]
+                    ft, pill = _pill_from_5d_flags(
+                        row["foreign_5d"], row["trust_5d"], emerging=False
+                    )
+                    _ = ft
+                    row["chip_note"] = pill
+                elif emerging:
+                    row["foreign_5d"] = ["N"] * 5
+                    row["trust_5d"] = ["N"] * 5
+                    row["chip_note"] = "興櫃無法人"
+
+            # 無 DB 時仍清掉與方塊矛盾的寫死 chip；有陣列就依陣列重算
+            if row.get("foreign_5d") is not None and row.get("trust_5d") is not None:
+                _, pill2 = _pill_from_5d_flags(
+                    row.get("foreign_5d"), row.get("trust_5d"), emerging=emerging
+                )
+                row["chip_note"] = pill2
+
+            close = _finite(row.get("close"))
+            support = _finite(row.get("support"))
+            if (
+                not emerging
+                and close is not None
+                and support is not None
+                and close < support
+            ):
+                row["tech_broken"] = True
             out.append(row)
     finally:
         if con is not None:
@@ -676,6 +965,16 @@ def enrich_chip_5d_on_rows(
             except Exception:
                 pass
     return out
+
+
+# 相容舊名
+def enrich_chip_5d_on_rows(
+    rows: Sequence[Dict[str, Any]],
+    *,
+    db_path: Optional[str] = None,
+    as_of: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    return enrich_live_rows_from_db(rows, db_path=db_path, as_of=as_of)
 
 
 def render_html_pages(
@@ -694,12 +993,14 @@ def render_html_pages(
     from undervalue_card import _order_rows, _sanitize_paint_rows
 
     rows = _order_rows(_sanitize_paint_rows(picks))
-    rows = enrich_chip_5d_on_rows(rows, db_path=db_path, as_of=as_of)
+    rows = enrich_live_rows_from_db(rows, db_path=db_path, as_of=as_of)
     stocks = [pick_row_to_screener_stock(r, as_of=as_of) for r in rows]
     os.makedirs(out_dir or ".", exist_ok=True)
-    fx = load_usd_twd_hint(db_path)
+    rin = load_regime_inputs(db_path, as_of)
     reg = regime or resolve_regime(
-        usd_twd=fx,
+        usd_twd=rin.get("usd_twd"),
+        foreign_sell_days=int(rin.get("foreign_sell_days") or 0),
+        market_above_ma20=bool(rin.get("market_above_ma20", True)),
         empty_note=empty_note if not stocks else None,
     )
     date_s = _date_str(as_of)
