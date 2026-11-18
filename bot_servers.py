@@ -37,6 +37,9 @@ _CARD_BUILD_TIMEOUT = float(os.getenv("WAYNE_CARD_BUILD_TIMEOUT", "90"))
 _CHART_RENDER_TIMEOUT = float(os.getenv("WAYNE_CHART_RENDER_TIMEOUT", "120"))
 # 介紹圖／決策卡／產業圖與導航圖同一逾時。醒機時 matplotlib 冷啟，60s 會只送到介紹圖。
 _LOOKUP_PNG_TIMEOUT = float(os.getenv("WAYNE_LOOKUP_PNG_TIMEOUT", str(_CHART_RENDER_TIMEOUT)))
+# 飆大鍵附遠窗：活畫內含補官方柱／夜盤／飆大文，Render 單核常 >120s；兩人同按共用一次。
+_BIAOKE_FAR_PAINT_TIMEOUT = float(os.getenv("WAYNE_BIAOKE_FAR_PAINT_TIMEOUT", "240"))
+_BIAOKE_FAR_FRESH_S = float(os.getenv("WAYNE_BIAOKE_FAR_FRESH_S", "1200"))
 # 旗艦卡（chromium）逾時就略過、照常出高低卡；不准拖住第 2 張起。
 _LOOKUP_FLAGSHIP_TIMEOUT = float(os.getenv("WAYNE_LOOKUP_FLAGSHIP_TIMEOUT", "30"))
 
@@ -4676,7 +4679,7 @@ class WayneTelegramBot:
         total: int | None = None,
     ) -> str:
         """飆大產圖：方框泡泡；出圖階段帶 已完成/總檔數，好了魔法消逝。"""
-        labels = {"chart": "結構圖", "reply": "回覆", "stock": "對檔"}
+        labels = {"chart": "結構圖", "reply": "回覆", "stock": "對檔", "far": "大盤遠窗圖"}
         now = labels.get(str(current or ""), "結構圖")
         rest = "回覆" if now != "回覆" else "結構圖"
         if total is not None and int(total) > 0:
@@ -8041,6 +8044,61 @@ class WayneTelegramBot:
             except Exception:
                 logger.exception("飆大略過提示送出失敗 sid=%s", sid)
 
+    def _fresh_biaoke_far_kit(self) -> dict:
+        """已存遠窗夠新就直接送：同加權日、20 分內、且畫在他最新一則之後。否則回空。"""
+        try:
+            from zoneinfo import ZoneInfo
+
+            from biaoke_level_learn import _twii_chart_as_of, latest_teach_kit
+
+            kit = latest_teach_kit(self.db_path) or {}
+            far = str(kit.get("far_path") or "")
+            created = str(kit.get("created_at") or "")[:19]
+            if not far or not os.path.isfile(far) or len(created) < 16:
+                return {}
+            if not self._png_looks_ok(far, min_bytes=8_000, min_w=480, min_h=280):
+                return {}
+            tz = ZoneInfo("Asia/Taipei")
+            made = datetime.fromisoformat(created).replace(tzinfo=tz)
+            now = datetime.now(tz)
+            if not (0 <= (now - made).total_seconds() <= _BIAOKE_FAR_FRESH_S):
+                return {}
+            want_as = str(_twii_chart_as_of(self.db_path) or "").replace("-", "")[:8]
+            got_as = str(kit.get("as_of") or "").replace("-", "")[:8]
+            if len(want_as) == 8 and (len(got_as) != 8 or got_as < want_as):
+                return {}
+            import sqlite3
+
+            con = sqlite3.connect(self.db_path, timeout=5)
+            try:
+                row = con.execute(
+                    "SELECT MAX(REPLACE(date,'-','') || ' ' || COALESCE(time,'')) "
+                    "FROM biaoke_posts WHERE COALESCE(kind,'') != 'bystander'"
+                ).fetchone()
+            finally:
+                con.close()
+            last_post = str((row or [""])[0] or "")
+            if len(last_post) >= 14 and made.strftime("%Y%m%d %H:%M") < last_post[:14]:
+                return {}
+            return kit
+        except Exception:
+            logger.debug("飆大遠窗新鮮檔判斷略過", exc_info=True)
+            return {}
+
+    async def _biaoke_far_paint_shared(self) -> dict:
+        """兩人同按飆大只跑一次遠窗活畫；逾時不取消，下一按接同一份。"""
+        fut = getattr(self, "_biaoke_far_inflight", None)
+        if fut is None or fut.done():
+            from biaoke_level_learn import paint_open_day_hypothesis
+
+            fut = asyncio.ensure_future(
+                asyncio.to_thread(
+                    paint_open_day_hypothesis, self.db_path, force=True, panels="far"
+                )
+            )
+            self._biaoke_far_inflight = fut
+        return await fut
+
     async def _send_biaoke_teach_charts(
         self,
         message,
@@ -8062,30 +8120,46 @@ class WayneTelegramBot:
             logger.exception("飆大教具模組略過")
             return
         kit: dict = {}
-        try:
-            # panels=far：只渲費半上／加權下，省近／超近兩張時間
-            painted = await asyncio.wait_for(
-                asyncio.to_thread(
-                    paint_open_day_hypothesis,
-                    self.db_path,
-                    force=True,
-                    panels="far",
-                ),
-                timeout=_CHART_RENDER_TIMEOUT,
+        fail_why = ""
+        stale_note = ""
+        fresh = await asyncio.to_thread(self._fresh_biaoke_far_kit)
+        if fresh:
+            kit = fresh
+        else:
+            wait_h = await self._start_plain_wait(
+                message,
+                text_fn=lambda s: self._biaoke_progress_text(s, current="far"),
+                actor=actor,
+                kind=kind,
+                gen=gen,
+                max_elapsed=_BIAOKE_FAR_PAINT_TIMEOUT,
             )
-            if painted and painted.get("ok"):
-                kit = {
-                    "far_path": str(painted.get("far_path") or ""),
-                    "oral_path": str(painted.get("oral_path") or ""),
-                    "thesis": str(painted.get("thesis") or "")[:180],
-                    "wait_struct": str(painted.get("wait_struct") or "")[:240],
-                    "slot_id": str(painted.get("slot_id") or ""),
-                    "as_of": str(painted.get("as_of") or ""),
-                }
-        except asyncio.TimeoutError:
-            logger.warning("飆大遠窗活畫逾時")
-        except Exception:
-            logger.exception("飆大遠窗活畫略過")
+            try:
+                # 補官方柱／夜盤／飆大文都在 paint 內（Render 單核常 >120s）；兩人同按共用一次
+                painted = await asyncio.wait_for(
+                    asyncio.shield(self._biaoke_far_paint_shared()),
+                    timeout=_BIAOKE_FAR_PAINT_TIMEOUT,
+                )
+                if painted and painted.get("ok"):
+                    kit = {
+                        "far_path": str(painted.get("far_path") or ""),
+                        "oral_path": str(painted.get("oral_path") or ""),
+                        "thesis": str(painted.get("thesis") or "")[:180],
+                        "wait_struct": str(painted.get("wait_struct") or "")[:240],
+                        "slot_id": str(painted.get("slot_id") or ""),
+                        "as_of": str(painted.get("as_of") or ""),
+                    }
+                else:
+                    err = str((painted or {}).get("error") or (painted or {}).get("skipped") or "")
+                    fail_why = "官方柱戳日沒對上" if err.startswith("stamp_preflight") else (err or "畫圖失敗")
+            except asyncio.TimeoutError:
+                logger.warning("飆大遠窗活畫逾時 %.0fs", _BIAOKE_FAR_PAINT_TIMEOUT)
+                fail_why = "補官方資料逾時"
+            except Exception:
+                logger.exception("飆大遠窗活畫略過")
+                fail_why = "畫圖失敗"
+            finally:
+                await self._stop_plain_wait(*wait_h, actor=actor, kind=kind, gen=gen)
         if not str(kit.get("far_path") or "").strip():
             try:
                 stored = await asyncio.to_thread(latest_teach_kit, self.db_path) or {}
@@ -8116,12 +8190,25 @@ class WayneTelegramBot:
             except Exception:
                 logger.exception("讀飆大教具路徑略過")
                 kit = {}
+            stamp = str(kit.get("created_at") or "").replace("T", " ")[5:16]
+            if kit.get("far_path") and stamp:
+                stale_note = f"（{fail_why or '這次沒重畫'}，先送 {stamp} 已畫好的遠窗）"
         if actor and kind and not self._actor_op_alive(actor, kind, gen):
             return
         path = str(kit.get("far_path") or "").strip()
-        if not path or not os.path.isfile(path):
-            return
-        if not self._png_looks_ok(path, min_bytes=8_000, min_w=480, min_h=280):
+        if (
+            not path
+            or not os.path.isfile(path)
+            or not self._png_looks_ok(path, min_bytes=8_000, min_w=480, min_h=280)
+        ):
+            try:
+                await message.reply_text(
+                    f"大盤遠窗圖這次沒出：{fail_why or '沒有今天的圖'}。"
+                    "可按「波浪位階」重畫三窗。",
+                    reply_markup=self._biaoke_reply_menu(uid),
+                )
+            except Exception:
+                logger.exception("飆大遠窗缺圖提示送出失敗")
             return
         thesis = str(kit.get("thesis") or "").strip()
         wait_struct = str(kit.get("wait_struct") or "").strip()
@@ -8170,6 +8257,8 @@ class WayneTelegramBot:
             logger.exception("教具層級一句略過")
             ladder_line = ""
         bits = ["遠窗・上費半／下加權・非買訊", "近／超近請按「波浪位階」"]
+        if stale_note:
+            bits.insert(1, stale_note)
         if ladder_line:
             bits.extend(ln.strip() for ln in ladder_line.splitlines() if ln.strip())
         elif thesis:
@@ -8185,10 +8274,31 @@ class WayneTelegramBot:
                     await chat.send_action("upload_photo")
             except Exception:
                 pass
-            with open(path, "rb") as f:
-                await message.reply_photo(
-                    photo=f,
-                    caption=cap[:900],
+            sent = False
+            for attempt in range(2):
+                try:
+                    with open(path, "rb") as f:
+                        await message.reply_photo(
+                            photo=f,
+                            caption=cap[:900],
+                            reply_markup=kb,
+                            read_timeout=60,
+                            write_timeout=60,
+                        )
+                    sent = True
+                    break
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    if type(exc).__name__ == "TimedOut":
+                        # 大圖上傳常回 TimedOut 但已送達；不重送免得兩張
+                        logger.warning("飆大遠窗圖 TimedOut 視同已送達")
+                        sent = True
+                        break
+                    logger.exception("飆大遠窗圖送出失敗 attempt=%s", attempt + 1)
+            if not sent:
+                await message.reply_text(
+                    "大盤遠窗圖送出失敗（Telegram 上傳），請再按一次飆大。",
                     reply_markup=kb,
                 )
         except asyncio.CancelledError:

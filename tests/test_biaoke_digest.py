@@ -1442,7 +1442,9 @@ def test_biaoke_teach_charts_only_far_no_us_outer():
 
     src = inspect.getsource(WayneTelegramBot._send_biaoke_teach_charts)
     assert '("us_path"' not in src
-    assert "panels=\"far\"" in src or "panels='far'" in src
+    shared = inspect.getsource(WayneTelegramBot._biaoke_far_paint_shared)
+    assert "panels=\"far\"" in shared or "panels='far'" in shared
+    assert "_biaoke_far_paint_shared" in src
     assert "far_path" in src
     assert "oral_cap" not in src and "oral-dual-path-latest" not in src
     assert "micro_path" not in src or "近／超近請按" in src

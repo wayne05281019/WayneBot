@@ -22107,6 +22107,7 @@ def latest_teach_kit(db_path: str) -> Dict[str, Any]:
         "thesis": "",
         "slot_id": "",
         "as_of": "",
+        "created_at": "",
         "teach_tip": {},
     }
     if not db_path:
@@ -22117,7 +22118,8 @@ def latest_teach_kit(db_path: str) -> Dict[str, Any]:
         try:
             row = conn.execute(
                 "SELECT slot_id, as_of, thesis, far_path, near_path, us_path, "
-                "COALESCE(micro_path,''), COALESCE(key_levels,'') "
+                "COALESCE(micro_path,''), COALESCE(key_levels,''), "
+                "COALESCE(created_at,'') "
                 "FROM biaoke_open_day_paints "
                 "ORDER BY created_at DESC, slot_id DESC LIMIT 1"
             ).fetchone()
@@ -22137,6 +22139,7 @@ def latest_teach_kit(db_path: str) -> Dict[str, Any]:
     out["slot_id"] = str(row[0] or "")
     out["as_of"] = str(row[1] or "")
     out["thesis"] = str(row[2] or "")[:180]
+    out["created_at"] = str(row[8] or "")
     if far and os.path.isfile(far):
         out["far_path"] = far
     if near and os.path.isfile(near):
