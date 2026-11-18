@@ -76,14 +76,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
   /* Header */
   .header-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
-  .stock-title { font-size: 21px; font-weight: 900; line-height: 1.15; }
-  .stock-sub { font-size: 12px; color: #CBD5E1; margin-top: 3px; }
+  .header-top > div:first-child { min-width: 0; flex: 1; }
+  .stock-title { font-size: 26px; font-weight: 900; line-height: 1.15; white-space: nowrap; overflow: hidden; }
+  .stock-sub { font-size: 15px; color: #CBD5E1; margin-top: 5px; white-space: nowrap; overflow: hidden; }
   .header-right { text-align: right; flex-shrink: 0; }
-  .price-main { font-size: 19px; font-weight: 800; line-height: 1.1; }
-  .price-chg { font-size: 11.5px; font-weight: 700; margin-top: 2px; }
+  .price-main { font-size: 26px; font-weight: 800; line-height: 1.1; }
+  .price-chg { font-size: 15px; font-weight: 700; margin-top: 4px; }
   .flow-pill {
-    display: inline-block; margin-top: 4px; font-size: 10px; font-weight: 700;
-    padding: 2px 8px; border-radius: 999px;
+    display: inline-block; margin-top: 6px; font-size: 13px; font-weight: 700;
+    padding: 3px 10px; border-radius: 999px;
     background: rgba(52, 211, 153, 0.14); color: var(--tw-down); border: 1px solid rgba(52, 211, 153, 0.3);
   }
   .up { color: var(--tw-up); } .down { color: var(--tw-down); }
@@ -2020,7 +2021,7 @@ _AUTOFIT_JS = """async () => {
   for (const el of document.querySelectorAll('.d3-grid .cell-sub')) {
     el.style.whiteSpace = 'nowrap';
   }
-  for (const el of document.querySelectorAll('.cell-v, .cell-sub, .m4-v, .callout-bar')) {
+  for (const el of document.querySelectorAll('.stock-title, .stock-sub, .cell-v, .cell-sub, .m4-v, .callout-bar')) {
     let fs = parseFloat(getComputedStyle(el).fontSize);
     while (el.scrollWidth > el.clientWidth + 0.5 && fs > 9.5) {
       fs -= 0.5;
