@@ -211,7 +211,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         <div class="d3-cell">
           <div class="cell-k">營收達標進度＋撐壓</div>
-          <div class="cell-v mono">{{REV_NOW}} / {{REV_GATE}} ({{REV_PCT}}%)</div>
+          <div class="cell-v mono" style="font-size:10.5px;">{{REV_NOW}} / {{REV_GATE}} ({{REV_PCT}}%)</div>
           <div class="prog-track"><div class="prog-fill {{BAR_CLS}}" style="width: {{REV_PCT_CLAMP}}%;"></div></div>
           <div class="cell-sub mono {{SUPPORT_CLASS}}">{{SUPPORT_TEXT}}</div>
         </div>
@@ -236,7 +236,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <!-- EXTRA DEPTH STRIP (利用統整後的空間補上融資/10日累計/關鍵事件) -->
       <div class="d3-cell" style="padding: 6px 9px;">
         <div class="cell-k">{{EXTRA_STRIP_TITLE}}</div>
-        <div class="cell-v mono" style="font-size: 11.5px;">{{EXTRA_STRIP_VAL}}</div>
+        <div class="cell-v mono" style="font-size:10.5px; white-space:normal; overflow:visible; text-overflow:clip; line-height:1.35;">{{EXTRA_STRIP_VAL}}</div>
       </div>
 
       <!-- BOTTOM SPLIT -->
@@ -1109,10 +1109,12 @@ def build_flagship_payload(
     if rev_yi is not None and thr is not None and thr > 0:
         rev_pct = int(round(rev_yi / thr * 100))
         # 壓縮空白，避免一行被截斷
+        # 對齊 mock 一行：月營收 / 門檻億 (％)；興櫃不加「年底」以免裁％
+        thr_s = _fmt_yi(thr) if thr < 100 else _fmt_num(thr, 0)
         if emerging:
-            rev_line = f"{month_lab} {_fmt_yi(rev_yi)}億 / 年底 {_fmt_yi(thr)}億 ({rev_pct}%)"
+            rev_line = f"{month_lab} {_fmt_yi(rev_yi)} / {thr_s}億 ({rev_pct}%)"
         else:
-            rev_line = f"{month_lab} {_fmt_yi(rev_yi)} / 需{_fmt_yi(thr)}億 ({rev_pct}%)"
+            rev_line = f"{month_lab} {_fmt_yi(rev_yi)} / 需{thr_s}億 ({rev_pct}%)"
     elif rev_yi is not None:
         rev_pct = 0
         rev_line = f"{month_lab} {_fmt_yi(rev_yi)}億"
@@ -1342,10 +1344,10 @@ def build_flagship_payload(
         f_s = _lot(f10)
         t_s = _lot(t10)
         if m5 is None:
-            m_s = "融資近5日 —"
+            m_s = "融資5日 —"
         else:
             tag = "清洗" if m5 < 0 else "加碼"
-            m_s = f"融資近5日 {_lot(m5)}（{tag}）"
+            m_s = f"融資5日 {_lot(m5)}（{tag}）"
         extra_val = f"外資10日 {f_s}｜投信10日 {t_s}｜{m_s}"
 
     chg_cls = "chg-up" if (pct is not None and pct >= 0) else "chg-dn"
