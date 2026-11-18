@@ -250,7 +250,7 @@ def _build_card_html(s: dict) -> str:
             f'<span>投信</span><span class="sq-group">{t_sq}</span>'
             f"</div>"
         )
-        bl_title = "目標價（正常／保守）＋近5日"
+        bl_title = "目標價（今年合理／明年）＋近5日"
 
     pe_left = max(8, min(92, int(round(float(s.get("pe_dot_pct") or 50)))))
     rev_line = str(
@@ -280,7 +280,7 @@ def _build_card_html(s: dict) -> str:
         </div>
         <div class="d3-cell">
           <div class="cell-k">{bl_title}</div>
-          <div class="cell-v mono">正常 {html.escape(s['target_norm'])}｜保守 {html.escape(s['target_cons'])}</div>
+          <div class="cell-v mono">今年 {html.escape(s['target_cons'])}｜明年 {html.escape(s['target_norm'])}</div>
           {bl_bottom}
         </div>
         <div class="d3-cell">
