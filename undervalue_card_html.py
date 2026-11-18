@@ -40,10 +40,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     --bg-canvas: #0B1120;
     --bg-card: #111827;
     --bg-cell: #161F33;
-    --border-subtle: #1E293B;
+    --border-subtle: #334155;
     --text-primary: #F8FAFC;
-    --text-secondary: #94A3B8;
-    --text-muted: #64748B;
+    --text-secondary: #CBD5E1;
+    --text-muted: #94A3B8;
     --green: #34D399;
     --green-edge: #10B981;
     --cyan: #38BDF8;
@@ -64,106 +64,145 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   }
   .phone-frame {
     width: 1080px; height: 1920px; background: var(--bg-canvas);
-    padding: 140px 30px 180px 30px;
-    display: flex; flex-direction: column; gap: 14px; overflow: hidden;
+    padding: 140px 28px 180px 28px;
+    display: flex; flex-direction: column; gap: 12px; overflow: hidden;
   }
-  .page-header { text-align: center; padding: 0 4px 4px; }
-  .page-title { font-size: 36px; font-weight: 900; letter-spacing: 0.02em; }
-  .page-sub { margin-top: 8px; font-size: 22px; color: var(--text-muted); font-weight: 500; }
+  .page-header { text-align: center; padding: 0 4px 2px; flex-shrink: 0; }
+  .page-title { font-size: 34px; font-weight: 900; letter-spacing: 0.02em; }
+  .page-sub { margin-top: 6px; font-size: 22px; color: var(--text-secondary); font-weight: 600; }
   .page-meta {
-    display: inline-block; margin-top: 10px; font-size: 18px; font-weight: 700;
+    display: inline-block; margin-top: 10px; font-size: 20px; font-weight: 700;
     color: var(--cyan); background: rgba(56,189,248,0.12);
     border: 1px solid rgba(56,189,248,0.3); padding: 4px 14px; border-radius: 999px;
   }
-  .cards-stack { display: flex; flex-direction: column; gap: 14px; flex: 1; justify-content: flex-start; }
+  .cards-stack { display: flex; flex-direction: column; gap: 12px; flex: 1; min-height: 0; }
   .stock-card {
-    background: var(--bg-card); border: 2.5px solid var(--border-subtle);
+    background: var(--bg-card); border: 3px solid var(--border-subtle);
     border-radius: 18px; overflow: hidden; display: flex; flex-direction: column;
-    flex: 1; min-height: 0;
+    flex: 1 1 0; min-height: 0;
   }
-  .stock-card.status-buy { border-color: rgba(52, 211, 153, 0.55); }
-  .stock-card.status-wait { border-color: rgba(251, 191, 36, 0.5); }
-  .stock-card.status-risk { border-color: rgba(167, 139, 250, 0.55); }
+  .stock-card.status-buy { border-color: rgba(52, 211, 153, 0.65); }
+  .stock-card.status-wait { border-color: rgba(251, 191, 36, 0.6); }
+  .stock-card.status-risk { border-color: rgba(167, 139, 250, 0.65); }
   .card-head {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 14px 18px; min-height: 76px;
+    padding: 10px 14px; min-height: 64px; flex-shrink: 0;
   }
   .stock-card.status-buy .card-head { background: #063528; }
   .stock-card.status-wait .card-head { background: #3a2a0c; }
   .stock-card.status-risk .card-head { background: #2a1e42; }
   .head-left {
     display: flex; align-items: center; gap: 0; flex-wrap: nowrap;
-    font-size: 30px; font-weight: 800; white-space: nowrap; overflow: hidden;
+    font-size: 28px; font-weight: 800; white-space: nowrap; overflow: hidden;
   }
-  .head-left .sep { color: #6b7c78; padding: 0 8px; font-weight: 500; }
+  .head-left .sep { color: #7B8A86; padding: 0 7px; font-weight: 500; }
   .head-accent { color: var(--green); }
   .stock-card.status-wait .head-accent { color: var(--amber); }
   .stock-card.status-risk .head-accent { color: var(--purple); }
   .head-main { color: var(--text-primary); }
   .flow-pill {
-    flex-shrink: 0; font-size: 20px; font-weight: 800;
-    padding: 8px 16px; border-radius: 12px; margin-left: 12px;
+    flex-shrink: 0; font-size: 22px; font-weight: 800;
+    padding: 8px 14px; border-radius: 12px; margin-left: 10px;
   }
   .flow-buy { background: #e8a04a; color: #140c04; }
   .flow-sell { background: #b03038; color: #ffecec; }
   .flow-warn { background: #c88c38; color: #180e04; }
   .flow-purple { background: #7864b4; color: #120a1c; }
   .d3-grid {
-    display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
+    display: grid; grid-template-columns: 1fr 1fr;
+    grid-template-rows: minmax(0, 1.05fr) minmax(0, 0.95fr);
     flex: 1; min-height: 0; border-top: 1px solid var(--border-subtle);
   }
   .d3-cell {
-    padding: 14px 16px; display: flex; flex-direction: column; gap: 6px;
-    justify-content: flex-start; min-height: 0;
+    padding: 10px 14px 12px; display: flex; flex-direction: column; gap: 6px;
+    justify-content: flex-start; min-height: 0; background: var(--bg-cell);
+    overflow: hidden;
   }
   .d3-cell.tl, .d3-cell.bl { border-right: 1px solid var(--border-subtle); }
   .d3-cell.tl, .d3-cell.tr { border-bottom: 1px solid var(--border-subtle); }
-  .cell-title { font-size: 26px; font-weight: 900; color: var(--text-primary); }
-  .cell-main { font-size: 32px; font-weight: 800; line-height: 1.2; }
-  .cell-sub { font-size: 26px; font-weight: 700; line-height: 1.25; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .muted { color: var(--text-muted); font-size: 20px; font-weight: 600; }
+  .d3-cell.tr { padding-bottom: 8px; gap: 4px; }
+  .d3-cell.tr .cell-top { gap: 2px; }
+  .d3-cell.tr .cell-main { font-size: 32px; }
+  .d3-cell.tr .cell-sub { font-size: 24px; line-height: 1.15; }
+  .d3-cell.tr .pe-gauge { margin-top: auto; flex-shrink: 0; min-height: 48px; }
+  .d3-cell.bl, .d3-cell.br { padding-bottom: 10px; }
+  .d3-cell.br .sr-line { margin-top: auto; }
+  .cell-top { display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; }
+  .cell-title { font-size: 28px; font-weight: 900; color: var(--text-primary); letter-spacing: 0.01em; }
+  .cell-main { font-size: 36px; font-weight: 800; line-height: 1.15; color: var(--text-primary); }
+  .cell-sub {
+    font-size: 28px; font-weight: 700; line-height: 1.25; color: var(--text-primary);
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  }
+  .muted { color: #CBD5E1; font-size: 26px; font-weight: 700; }
   .up { color: var(--green); }
   .cyan { color: var(--cyan); }
   .red { color: var(--red); }
   .amber { color: var(--amber); }
   .pct-pill {
     display: inline-flex; align-items: center; justify-content: center;
-    font-size: 18px; font-weight: 800; color: #0c1210;
-    background: var(--green); padding: 4px 12px; border-radius: 999px; min-width: 52px;
+    font-size: 22px; font-weight: 900; color: #0c1210;
+    background: var(--green); padding: 5px 14px; border-radius: 999px; min-width: 58px;
   }
   .stock-card.status-risk .pct-pill { background: var(--purple); color: #120a1c; }
-  .row-bar { display: flex; align-items: center; gap: 10px; width: 100%; }
-  .row-bar .lab { flex: 1; min-width: 0; }
+  .row-bar { display: flex; align-items: center; gap: 12px; width: 100%; }
+  .row-bar .lab { flex: 1; min-width: 0; font-size: 28px; font-weight: 800; }
   .mini-track {
-    position: relative; width: 110px; height: 16px; flex-shrink: 0;
-    background: #0F172A; border-radius: 999px; overflow: hidden;
+    position: relative; width: 120px; height: 18px; flex-shrink: 0;
+    background: #0B1220; border: 1px solid #334155; border-radius: 999px; overflow: hidden;
   }
   .mini-fill {
     height: 100%; border-radius: 999px;
     background: linear-gradient(90deg, #10B981, #34D399);
   }
   .stock-card.status-risk .mini-fill { background: linear-gradient(90deg, #7C3AED, #A78BFA); }
-  .pe-track {
-    position: relative; height: 6px; background: #0F172A; border-radius: 999px;
-    margin-top: 12px; width: 100%;
+  /* 本益比尺：軸＋刻度＋合理帶＋現況點＋三標（老花要看得見；不准跨格） */
+  .pe-gauge { width: 100%; padding-top: 2px; }
+  /* 三標在尺上方：Telegram 安全區壓縮高度時，下方標籤會被裁 */
+  .pe-labels {
+    display: flex; justify-content: space-between; margin-bottom: 4px;
+    font-size: 22px; font-weight: 900; color: #E2E8F0; line-height: 1.1;
+  }
+  .pe-labels .fair { color: #7DD3FC; }
+  .pe-rail {
+    position: relative; height: 24px; width: 100%;
+    display: flex; align-items: center;
+  }
+  .pe-axis {
+    position: absolute; left: 0; right: 0; top: 50%; height: 5px;
+    transform: translateY(-50%); background: #64748B; border-radius: 999px;
+  }
+  .pe-fair {
+    position: absolute; top: 50%; height: 16px; transform: translateY(-50%);
+    background: rgba(56, 189, 248, 0.5); border: 2px solid rgba(125, 211, 252, 0.95);
+    border-radius: 8px; z-index: 1;
+  }
+  .pe-ticks { position: absolute; inset: 0; z-index: 1; }
+  .pe-tick {
+    position: absolute; top: 50%; width: 11px; height: 11px;
+    transform: translate(-50%, -50%); border-radius: 50%; background: #E2E8F0;
+    border: 1px solid #0B1120;
   }
   .pe-thumb {
     position: absolute; top: 50%; transform: translate(-50%, -50%);
-    width: 14px; height: 14px; border-radius: 50%;
-    background: var(--green-edge); border: 2px solid #ECFDF5;
-    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.28);
+    width: 22px; height: 22px; border-radius: 50%;
+    background: #34D399; border: 3px solid #ECFDF5;
+    box-shadow: 0 0 0 4px rgba(52, 211, 153, 0.4);
+    z-index: 2;
   }
-  .sr-line { display: flex; align-items: center; gap: 10px; font-size: 26px; font-weight: 800; }
+  .pe-thumb.warn { background: #FBBF24; box-shadow: 0 0 0 4px rgba(251, 191, 36, 0.4); }
+  .pe-thumb.hot { background: #F87171; box-shadow: 0 0 0 4px rgba(248, 113, 113, 0.4); }
+  .sr-line { display: flex; align-items: center; gap: 10px; font-size: 30px; font-weight: 800; }
   .sr-support { color: var(--green); }
   .sr-resist { color: #F87171; }
   .footer-legend {
-    text-align: center; font-size: 18px; color: var(--text-muted); padding-top: 2px;
+    text-align: center; font-size: 20px; color: var(--text-secondary); padding-top: 2px; flex-shrink: 0;
   }
   .empty-wrap {
     flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
   }
-  .empty-title { font-size: 34px; font-weight: 900; }
-  .empty-sub { font-size: 22px; color: var(--text-muted); }
+  .empty-title { font-size: 36px; font-weight: 900; }
+  .empty-sub { font-size: 24px; color: var(--text-muted); }
 </style>
 </head>
 <body>
@@ -348,13 +387,47 @@ def _build_card(row: Dict[str, Any]) -> str:
     emerging = status == "status-risk"
     if (not emerging) and fair_lo is not None and fair_hi is not None:
         band = f'<span class="muted">(合理 {fair_lo:.0f}-{fair_hi:.0f}x)</span>'
-    # pe dot position 0-4
-    pe_pct = 28
-    if pe_now is not None and fair_lo is not None and fair_hi is not None:
-        span_lo = min(pe_now, fair_lo, fair_hi) * 0.85
-        span_hi = max(pe_now, fair_lo, fair_hi) * 1.15
-        den = max(span_hi - span_lo, 1e-9)
-        pe_pct = int(round(max(6.0, min(94.0, (pe_now - span_lo) / den * 100.0))))
+
+    # 本益比尺：同一刻度算現況點與合理帶
+    scale_vals = [v for v in (pe_now, pe_fwd, fair_lo, fair_hi) if v is not None and v > 0]
+    if not scale_vals and pe_now is not None:
+        scale_vals = [pe_now]
+    span_lo = min(scale_vals) * 0.85 if scale_vals else 10.0
+    span_hi = max(scale_vals) * 1.15 if scale_vals else 40.0
+    den = max(span_hi - span_lo, 1e-9)
+
+    def _pe_pct(v: Optional[float], *, lo: float = 4.0, hi: float = 96.0) -> float:
+        if v is None:
+            return 50.0
+        return max(lo, min(hi, (float(v) - span_lo) / den * 100.0))
+
+    pe_marker = pe_now if pe_now is not None else pe_fwd
+    pe_pct = _pe_pct(pe_marker)
+    fair_left = _pe_pct(fair_lo, lo=2.0, hi=90.0) if fair_lo is not None else 35.0
+    fair_right = _pe_pct(fair_hi, lo=10.0, hi=98.0) if fair_hi is not None else 65.0
+    if fair_right < fair_left:
+        fair_left, fair_right = fair_right, fair_left
+    fair_width = max(8.0, fair_right - fair_left)
+    thumb_cls = "pe-thumb"
+    if fair_lo is not None and fair_hi is not None and pe_marker is not None:
+        if pe_marker > fair_hi * 1.05:
+            thumb_cls = "pe-thumb hot"
+        elif pe_marker >= fair_lo:
+            thumb_cls = "pe-thumb warn"
+    ticks_html = "".join(
+        f'<span class="pe-tick" style="left: {(i + 0.5) / 5 * 100:.1f}%;"></span>'
+        for i in range(5)
+    )
+    pe_gauge = f"""
+          <div class="pe-gauge">
+            <div class="pe-labels"><span>偏低</span><span class="fair">合理帶</span><span>偏貴</span></div>
+            <div class="pe-rail">
+              <div class="pe-axis"></div>
+              <div class="pe-fair" style="left:{fair_left:.1f}%;width:{fair_width:.1f}%;"></div>
+              <div class="pe-ticks">{ticks_html}</div>
+              <div class="{thumb_cls}" style="left:{pe_pct:.1f}%;"></div>
+            </div>
+          </div>"""
 
     fair = _finite(row.get("fair_year"))
     tgt = _finite(row.get("target_next"))
@@ -421,23 +494,29 @@ def _build_card(row: Dict[str, Any]) -> str:
       </div>
       <div class="d3-grid">
         <div class="d3-cell tl">
-          <div class="cell-title">【EPS爬坡】</div>
-          <div class="cell-main mono">已賺 {_fmt_eps(eps_e)} {earned_extra}</div>
+          <div class="cell-top">
+            <div class="cell-title">【EPS爬坡】</div>
+            <div class="cell-main mono">已賺 {_fmt_eps(eps_e)} {earned_extra}</div>
+          </div>
           <div class="cell-sub mono">今年 {html.escape(y_s)} | {html.escape(n_lab)} {html.escape(n_s)} {climb_html}</div>
         </div>
         <div class="d3-cell tr">
-          <div class="cell-title">【本益比位階】</div>
-          <div class="cell-main mono">今年 {html.escape(pe_s)}x</div>
-          <div class="cell-sub mono">前瞻 {html.escape(fwd_s)}x {band}</div>
-          <div class="pe-track"><div class="pe-thumb" style="left: {pe_pct}%;"></div></div>
+          <div class="cell-top">
+            <div class="cell-title">【本益比位階】</div>
+            <div class="cell-main mono">今年 {html.escape(pe_s)}x</div>
+            <div class="cell-sub mono">前瞻 {html.escape(fwd_s)}x {band}</div>
+          </div>
+          {pe_gauge}
         </div>
         <div class="d3-cell bl">
           <div class="cell-title">【目標空間】</div>
-          {''.join(tgt_rows) if tgt_rows else '<div class="cell-sub muted">—</div>'}
+          <div>{''.join(tgt_rows) if tgt_rows else '<div class="cell-sub muted">—</div>'}</div>
         </div>
         <div class="d3-cell br">
-          <div class="cell-title">{br_title}</div>
-          <div class="cell-sub mono">{thr_line}</div>
+          <div class="cell-top">
+            <div class="cell-title">{br_title}</div>
+            <div class="cell-sub mono">{thr_line}</div>
+          </div>
           {sr_html}
         </div>
       </div>
