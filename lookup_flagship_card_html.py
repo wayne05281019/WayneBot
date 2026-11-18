@@ -15,8 +15,6 @@ import sqlite3
 from datetime import date
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from playwright.sync_api import sync_playwright
-
 VIEW_W = 430
 VIEW_H = 932
 DPR = 3
@@ -1331,6 +1329,8 @@ def render_flagship_png(
     as_of: Optional[str] = None,
     payload: Optional[Dict[str, Any]] = None,
 ) -> str:
+    from playwright.sync_api import sync_playwright
+
     path = db_path or os.environ.get("WAYNE_DB_PATH") or "data/wayne_market.db"
     data = payload or build_flagship_payload(path, stock_id, as_of=as_of)
     page_html = render_flagship_html(data)
