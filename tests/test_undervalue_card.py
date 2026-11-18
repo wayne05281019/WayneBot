@@ -156,6 +156,8 @@ def test_d3_header_mark_and_chip_split():
     assert g == "★" and lab == "可買"
     g2, _, _, lab2 = _mark_glyph("emerging")
     assert g2 == "⚠" and lab2 == "量小"
-    assert _split_chip_pills("投信連買・外資調節") == ["投信連買", "外資調節"]
+    # 範本：中點・＝同一膠囊，不准拆兩顆
+    assert _split_chip_pills("投信連買・外資調節") == ["投信連買・外資調節"]
+    assert _split_chip_pills("投信連買、外資調節") == ["投信連買", "外資調節"]
     assert _fmt_eps(5.99) == "5.99"
     assert _fmt_eps(52.0) in ("52", "52.0")

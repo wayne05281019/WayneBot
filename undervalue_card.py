@@ -249,8 +249,12 @@ def _fmt_price(v: Any) -> str:
     x = _finite(v)
     if x is None:
         return "—"
+    # 範本 481.5 元：有小數就留一位，不准四捨成 482
+    has_dec = abs(x - round(x)) > 1e-6
     if abs(x) >= 1000:
-        return f"{x:,.0f}"
+        return f"{x:,.1f}".rstrip("0").rstrip(".") if has_dec else f"{x:,.0f}"
+    if has_dec:
+        return f"{x:.1f}"
     if abs(x) >= 100:
         return f"{x:.0f}"
     return f"{x:.1f}".rstrip("0").rstrip(".")
@@ -307,10 +311,12 @@ def _mark_glyph(mark: str) -> Tuple[str, Tuple[int, int, int], Tuple[int, int, i
 
 
 def _split_chip_pills(chip: str) -> List[str]:
+    """籌碼膠囊。範本『投信連買・外資調節』＝一顆橘膠囊，不准拆兩顆。"""
     s = str(chip or "").strip()
     if not s:
         return []
-    for sep in ("・", "、", "/", "|"):
+    # 中點・保留在同一膠囊（對齊範本）；只允許頓號／斜線拆
+    for sep in ("、", "/", "|"):
         if sep in s:
             parts = [p.strip() for p in s.split(sep) if p.strip()]
             if len(parts) >= 2:
@@ -319,7 +325,11 @@ def _split_chip_pills(chip: str) -> List[str]:
 
 
 def _order_rows(rows: Optional[Sequence[Dict[str, Any]]]) -> List[Dict[str, Any]]:
-    def key(r: Dict[str, Any]) -> Tuple[int, float, str]:
+    """★→☆→⚠；同階維持輸入順序（對齊範本 Top4 列序，不准同階再按空間重排）。"""
+    tagged = list(enumerate(rows or []))
+
+    def key(item: Tuple[int, Dict[str, Any]]) -> Tuple[int, int]:
+        i, r = item
         m = str(r.get("mark") or "").lower()
         if m in ("star", "true", "★", "*"):
             tier = 0
@@ -327,10 +337,9 @@ def _order_rows(rows: Optional[Sequence[Dict[str, Any]]]) -> List[Dict[str, Any]
             tier = 2
         else:
             tier = 1
-        ups = _finite(r.get("ups_tgt_pct"))
-        return (tier, -(ups if ups is not None else 0.0), str(r.get("stock_id") or ""))
+        return (tier, i)
 
-    return sorted(list(rows or []), key=key)
+    return [r for _, r in sorted(tagged, key=key)]
 
 
 def _sanitize_paint_rows(
@@ -437,12 +446,15 @@ def _has_growth_fields(rows: Sequence[Dict[str, Any]]) -> bool:
 
 
 def _chip_colors(chip: str) -> Tuple[Tuple[int, int, int], Tuple[int, int, int]]:
-    """膠囊底／字色。範本：外投同買橘底深字、投信連買紅底、興櫃紫。"""
+    """膠囊底／字色。範本：外投同買橘底深字、投信連買紅底、興櫃紫、投信＋調節橘。"""
     s = str(chip or "")
     if "同賣" in s:
         return (120, 40, 48), (20, 8, 8)
     if "同買" in s:
         return (232, 160, 72), (20, 12, 4)  # 外投同買：橘底深字
+    # 範本：投信連買・外資調節 → 單顆橘膠囊深字
+    if "調節" in s and ("投信" in s or "外資" in s):
+        return (220, 150, 60), (24, 14, 4)
     if "投信連買" in s or (s.startswith("投信") and "買" in s):
         return (176, 48, 56), (255, 236, 236)
     if "外資連買" in s or (s.startswith("外資") and "買" in s):
@@ -474,18 +486,20 @@ def _pe_dot_ruler(
     *,
     accent: Tuple[int, int, int],
 ) -> None:
-    """本益比點列尺：暗點＋現在位置亮點（對齊範本）。"""
+    """本益比尺：底軌＋暗點＋現在亮點（對齊範本發光點）。"""
     lo = _finite(fair_lo)
     hi = _finite(fair_hi)
     now = _finite(pe_now)
     vals = [v for v in (lo, hi, now) if v is not None and v > 0]
-    n_dots = 6
+    n_dots = 5
     span = max(x1 - x0, 1.0)
-    cy = y + _px(4)
+    cy = y
+    # 底軌
+    dr.line([(x0, cy), (x1, cy)], fill=(55, 68, 86), width=max(2, _px(3)))
     for i in range(n_dots):
         cx = x0 + (i + 0.5) / n_dots * span
-        r = _px(2)
-        dr.ellipse((cx - r, cy - r, cx + r, cy + r), fill=(60, 72, 90))
+        r = _px(5)
+        dr.ellipse((cx - r, cy - r, cx + r, cy + r), fill=(78, 92, 112))
     if len(vals) < 1 or now is None:
         return
     span_lo = min(vals) * 0.85
@@ -493,8 +507,13 @@ def _pe_dot_ruler(
     den = max(span_hi - span_lo, 1e-9)
     frac = max(0.0, min(1.0, (float(now) - span_lo) / den))
     cx = x0 + frac * span
-    r = _px(5)
+    r = _px(10)
     dr.ellipse((cx - r, cy - r, cx + r, cy + r), fill=accent)
+    dr.ellipse(
+        (cx - r - 2, cy - r - 2, cx + r + 2, cy + r + 2),
+        outline=accent,
+        width=max(2, _px(2)),
+    )
 
 
 def _inline_bar(
@@ -506,25 +525,27 @@ def _inline_bar(
     *,
     fill,
 ) -> None:
-    """目標空間右側短進度條（與文字同行）。"""
-    bar_h = _px(12)
+    """目標空間右側粗進度條（範本密度）。"""
+    bar_h = _px(26)
     yy0 = y_mid - bar_h / 2.0
     yy1 = yy0 + bar_h
-    if x1 - x0 < _px(24):
+    if x1 - x0 < _px(28):
         return
-    dr.rounded_rectangle((x0, yy0, x1, yy1), radius=_px(6), fill=(30, 41, 59))
+    rad = _px(10)
+    dr.rounded_rectangle((x0, yy0, x1, yy1), radius=rad, fill=(30, 41, 59))
     f = max(0.0, min(1.0, float(frac)))
     if f <= 0:
         return
     dr.rounded_rectangle(
-        (x0, yy0, x0 + max(_px(6), (x1 - x0) * f), yy1),
-        radius=_px(6),
+        (x0, yy0, x0 + max(_px(10), (x1 - x0) * f), yy1),
+        radius=rad,
         fill=fill,
     )
 
 
-def _eps_ratio_pill(
+def _eps_ratio_bar(
     dr: ImageDraw.ImageDraw,
+    x0: float,
     x1: float,
     y0: float,
     y1: float,
@@ -532,20 +553,24 @@ def _eps_ratio_pill(
     *,
     fill,
     font: ImageFont.ImageFont,
-) -> float:
-    """EPS 今年／明年進度膠囊；回傳膠囊左緣 x（供左文字避讓）。"""
-    if pct is None:
-        return x1
-    lab = f"{int(round(pct))}%"
-    tw = font.getlength(lab)
-    pw = tw + _px(18)
-    ph = min(_px(22), max(_px(16), y1 - y0 - _px(2)))
-    px1 = x1
-    px0 = px1 - pw
+) -> None:
+    """EPS 進度＝粗條＋％寫在填色裡（對齊範本，不是右飄空膠囊）。"""
+    if pct is None or x1 - x0 < _px(36):
+        return
+    ph = min(_px(30), max(_px(22), y1 - y0 - _px(4)))
     cy0 = (y0 + y1 - ph) / 2.0
-    dr.rounded_rectangle((px0, cy0, px1, cy0 + ph), radius=_px(8), fill=fill)
-    _text_center_mid(dr, (px0, cy0, px1, cy0 + ph), lab, font, TEXT)
-    return px0 - _px(6)
+    cy1 = cy0 + ph
+    rad = _px(10)
+    dr.rounded_rectangle((x0, cy0, x1, cy1), radius=rad, fill=(30, 41, 59))
+    f = max(0.0, min(1.0, float(pct) / 100.0))
+    fill_w = max(_px(18), (x1 - x0) * f)
+    dr.rounded_rectangle((x0, cy0, x0 + fill_w, cy1), radius=rad, fill=fill)
+    lab = f"{int(round(pct))}%"
+    # ％寫進填色段；太窄就寫在整條中央
+    if fill_w >= font.getlength(lab) + _px(8):
+        _text_center_mid(dr, (x0, cy0, x0 + fill_w, cy1), lab, font, TEXT)
+    else:
+        _text_center_mid(dr, (x0, cy0, x1, cy1), lab, font, TEXT)
 
 
 def _draw_d3_card(
@@ -553,27 +578,30 @@ def _draw_d3_card(
     box: Tuple[float, float, float, float],
     row: Dict[str, Any],
 ) -> None:
-    """對齊範本：單行表頭｜分隔＋右膠囊；體內 2×2；撐綠壓紅。"""
+    """對齊範本密度：大字粗條、表頭色段、2×2 等比填滿、撐青壓紅。"""
     x0, y0, x1, y1 = box
     glyph, gfill, edge, glabel = _mark_glyph(row.get("mark"))
     emerging = _is_emerging(row.get("mark"))
-    dr.rounded_rectangle(box, radius=_px(14), fill=CARD, outline=edge, width=_px(2))
+    star = _is_star(row.get("mark"))
+    dr.rounded_rectangle(box, radius=_px(16), fill=CARD, outline=edge, width=_px(3))
 
-    head_f = _font(18, bold=True)
-    cell_title_f = _font(15, bold=True)
-    cell_f = _font(16)
-    cell_b = _font(17, bold=True)
-    small_f = _font(14)
-    micro_f = _font(13)
+    # 字級對齊範本縮到 1080：表頭帶≈78、體內主數 ≈30
+    head_f = _font(28, bold=True)
+    cell_title_f = _font(24, bold=True)
+    cell_f = _font(26)
+    cell_b = _font(30, bold=True)
+    small_f = _font(22, bold=True)
+    micro_f = _font(20)
+    pill_f = _font(22, bold=True)
     pad = _px(12)
-    head_h = _px(44)
-    hx0, hy0 = x0 + pad, y0 + _px(6)
+    head_h = _px(78)
+    hx0, hy0 = x0 + pad, y0 + _px(4)
     hx1, hy1 = x1 - pad, y0 + head_h
 
     # 表頭底色（可買綠／等止穩琥珀／量小紫）
     dr.rounded_rectangle(
-        (x0 + _px(2), y0 + _px(2), x1 - _px(2), y0 + head_h + _px(2)),
-        radius=_px(12),
+        (x0 + _px(3), y0 + _px(3), x1 - _px(3), y0 + head_h + _px(1)),
+        radius=_px(13),
         fill=_header_fill(row.get("mark")),
     )
 
@@ -584,74 +612,76 @@ def _draw_d3_card(
     yoy = _fmt_pct(row.get("yoy_pct"))
     pills = _split_chip_pills(str(row.get("chip_note") or ""))
 
-    # 右膠囊（可多顆）由右往左排
-    pill_gap = _px(6)
+    # 右膠囊（可多顆）由右往左排 — 範本粗膠囊
+    pill_gap = _px(8)
     cursor_r = hx1
-    pill_h = _px(24)
+    pill_h = _px(42)
     for chip in reversed(pills):
         cbg, cfg = _chip_colors(chip)
-        pw = min(_px(168), small_f.getlength(chip) + _px(22))
-        cx1 = cursor_r
-        cx0 = cx1 - pw
+        pw = min(_px(210), pill_f.getlength(chip) + _px(28))
+        cx1p = cursor_r
+        cx0p = cx1p - pw
         cy0 = (hy0 + hy1 - pill_h) / 2.0
         cy1 = cy0 + pill_h
-        dr.rounded_rectangle((cx0, cy0, cx1, cy1), radius=_px(12), fill=cbg)
-        _text_center_mid(dr, (cx0, cy0, cx1, cy1), chip, small_f, cfg)
-        cursor_r = cx0 - pill_gap
-    left_max = cursor_r - _px(8) if pills else hx1
+        dr.rounded_rectangle((cx0p, cy0, cx1p, cy1), radius=_px(14), fill=cbg)
+        _text_center_mid(dr, (cx0p, cy0, cx1p, cy1), chip, pill_f, cfg)
+        cursor_r = cx0p - pill_gap
+    left_max = cursor_r - _px(10) if pills else hx1
 
-    # 單行表頭：底色上白字為主
-    status = f"{glyph} {glabel}"
+    # 單行表頭色段：狀態／毛利／年增跟邊框色；其餘白
+    accent_h = gfill
+    pipe = (148, 168, 158) if star else MUTED
     name_bit = f"{sid} {name}".strip() if name else sid
-    pipe = (170, 200, 185) if _is_star(row.get("mark")) else MUTED
     segs: List[Tuple[str, Tuple[int, int, int]]] = [
-        (status, TEXT),
+        (f"{glyph} {glabel}", accent_h),
         (" | ", pipe),
         (name_bit, TEXT),
         (" | ", pipe),
         (f"{close_s}元", TEXT),
     ]
     if gm != "—":
-        segs += [(" | ", pipe), (f"毛利{gm}%", TEXT)]
+        segs += [(" | ", pipe), (f"毛利{gm}%", accent_h if star else TEXT)]
     if yoy != "—":
-        segs += [(" | ", pipe), (f"年增{yoy}", TEXT)]
-    # 量寬截斷
+        segs += [(" | ", pipe), (f"年增{yoy}", accent_h if star else TEXT)]
+    # 量寬截斷（先丟年增／毛利）
+    while len(segs) > 5 and head_f.getlength("".join(s for s, _ in segs)) > left_max - hx0:
+        segs.pop()
+        if segs and segs[-1][0].strip() == "|":
+            segs.pop()
     full = "".join(s for s, _ in segs)
     if head_f.getlength(full) > left_max - hx0:
-        while len(segs) > 5 and head_f.getlength("".join(s for s, _ in segs)) > left_max - hx0:
-            segs.pop()
-            if segs and segs[-1][0].strip() == "|":
-                segs.pop()
-        full = "".join(s for s, _ in segs)
-        if head_f.getlength(full) > left_max - hx0:
-            _text_left_mid(
-                dr, (hx0, hy0, left_max, hy1),
-                _truncate(head_f, full, left_max - hx0), head_f, TEXT,
-            )
-            segs = []
-    if segs:
+        _text_left_mid(
+            dr, (hx0, hy0, left_max, hy1),
+            _truncate(head_f, full, left_max - hx0), head_f, TEXT,
+        )
+    else:
         tx = hx0
-        ty0, ty1 = hy0, hy1
         for s, col in segs:
             if not s:
                 continue
-            _text_left_mid(dr, (tx, ty0, left_max, ty1), s, head_f, col)
+            _text_left_mid(dr, (tx, hy0, left_max, hy1), s, head_f, col)
             tx += head_f.getlength(s)
 
-    # 2×2 格
-    grid_top = y0 + head_h + _px(2)
-    grid_bot = y1 - _px(6)
+    # 2×2 格 — 等比填滿卡身，不准底部空一截
+    grid_top = y0 + head_h + _px(4)
+    grid_bot = y1 - _px(8)
     mid_x = (x0 + x1) / 2.0
     mid_y = (grid_top + grid_bot) / 2.0
-    div = (55, 68, 88)
-    dr.line([(mid_x, grid_top + _px(4)), (mid_x, grid_bot - _px(4))], fill=div, width=max(1, _px(1)))
-    dr.line([(x0 + pad, mid_y), (x1 - pad, mid_y)], fill=div, width=max(1, _px(1)))
+    div = (70, 86, 108)
+    dr.line(
+        [(mid_x, grid_top + _px(6)), (mid_x, grid_bot - _px(6))],
+        fill=div, width=max(2, _px(2)),
+    )
+    dr.line(
+        [(x0 + pad, mid_y), (x1 - pad, mid_y)],
+        fill=div, width=max(2, _px(2)),
+    )
 
     cells = [
-        (x0 + pad, grid_top, mid_x - _px(8), mid_y - _px(4), "tl"),
-        (mid_x + _px(8), grid_top, x1 - pad, mid_y - _px(4), "tr"),
-        (x0 + pad, mid_y + _px(4), mid_x - _px(8), grid_bot, "bl"),
-        (mid_x + _px(8), mid_y + _px(4), x1 - pad, grid_bot, "br"),
+        (x0 + pad, grid_top, mid_x - _px(10), mid_y - _px(6), "tl"),
+        (mid_x + _px(10), grid_top, x1 - pad, mid_y - _px(6), "tr"),
+        (x0 + pad, mid_y + _px(6), mid_x - _px(10), grid_bot, "bl"),
+        (mid_x + _px(10), mid_y + _px(6), x1 - pad, grid_bot, "br"),
     ]
 
     eps_e = _finite(row.get("eps_earned"))
@@ -673,9 +703,9 @@ def _draw_d3_card(
         "破撐" in str(row.get("tech_status") or "") or "破撐" in str(row.get("reason") or "")
     )
     accent = PURPLE if emerging else CYAN
-    pill_fill = (88, 60, 160) if emerging else GREEN_EDGE
+    pill_fill = (120, 80, 200) if emerging else GREEN_EDGE
+    support_col = PURPLE if emerging else CYAN  # 範本：撐＝青／興櫃紫
 
-    # EPS 已賺佔明年％、今年／明年進度％（對齊範本算法）
     earned_pct = None
     if eps_e is not None and eps_n is not None and eps_n > 0:
         earned_pct = max(0.0, min(999.0, eps_e / eps_n * 100.0))
@@ -684,26 +714,26 @@ def _draw_d3_card(
         climb_pct = max(0.0, min(100.0, eps_y / eps_n * 100.0))
 
     for cx0, cy0, cx1, cy1, kind in cells:
+        ch = max(1.0, cy1 - cy0)
+        # 範本密度：兩主行填滿（標題＋主數同行；次行＋條／點）
+        r1a, r1b = cy0 + ch * 0.06, cy0 + ch * 0.42
+        r2a, r2b = cy0 + ch * 0.46, cy0 + ch * 0.96
+
         if kind == "tl":
-            _text_left_mid(dr, (cx0, cy0, cx1, cy0 + _px(20)), "【EPS爬坡】", cell_title_f, TEXT)
-            # 行1：已賺 X + 灰％
-            r1y0, r1y1 = cy0 + _px(22), cy0 + _px(46)
+            title = "【EPS爬坡】"
             e_s = f"已賺 {_fmt_eps(eps_e)}"
-            _text_left_mid(dr, (cx0, r1y0, cx1, r1y1), e_s, cell_b, TEXT)
+            # 同行：標題左、已賺右
+            _text_left_mid(dr, (cx0, r1a, cx1, r1b), title, cell_title_f, TEXT)
+            tw = cell_title_f.getlength(title) + _px(10)
+            _text_left_mid(dr, (cx0 + tw, r1a, cx1, r1b), e_s, cell_b, TEXT)
             if earned_pct is not None:
-                ex = cx0 + cell_b.getlength(e_s) + _px(8)
+                ex = cx0 + tw + cell_b.getlength(e_s) + _px(8)
                 _text_left_mid(
-                    dr, (ex, r1y0, cx1, r1y1),
+                    dr, (ex, r1a, cx1, r1b),
                     f"{int(round(earned_pct))}%", micro_f, MUTED,
                 )
-            # 行2：今年｜明年 + 進度膠囊（膠囊必須留在左格內）
-            r2y0, r2y1 = cy0 + _px(48), cy0 + _px(74)
-            pill_left = _eps_ratio_pill(
-                dr, cx1 - _px(2), r2y0, r2y1, climb_pct, fill=pill_fill, font=micro_f,
-            )
             n_raw = row.get("eps_2027_label")
             n_s = str(n_raw) if n_raw else _fmt_eps(eps_n)
-            # 範本常留一位小數：52.0｜68.0
             y_s = _fmt_eps(eps_y)
             if eps_y is not None and abs(eps_y - round(eps_y)) < 1e-9 and abs(eps_y) < 100:
                 y_s = f"{eps_y:.1f}"
@@ -711,12 +741,16 @@ def _draw_d3_card(
                 n_s = f"{eps_n:.1f}"
             n_lab = "明" if (n_raw or (eps_n is not None and eps_n >= 100)) else "明年"
             line2 = f"今年 {y_s} | {n_lab} {n_s}"
-            _text_left_mid(
-                dr, (cx0, r2y0, pill_left, r2y1),
-                _truncate(cell_f, line2, max(0.0, pill_left - cx0)), cell_f, TEXT,
+            # 範本：％條緊貼「明年」後方，不是右緣空飄
+            max_txt = max(0.0, (cx1 - cx0) - _px(108))
+            line2s = _truncate(cell_f, line2, max_txt)
+            _text_left_mid(dr, (cx0, r2a, cx1, r2b), line2s, cell_f, TEXT)
+            bar_x0 = cx0 + cell_f.getlength(line2s) + _px(10)
+            bar_x1 = min(cx1, bar_x0 + _px(98))
+            _eps_ratio_bar(
+                dr, bar_x0, bar_x1, r2a, r2b, climb_pct, fill=pill_fill, font=small_f,
             )
         elif kind == "tr":
-            _text_left_mid(dr, (cx0, cy0, cx1, cy0 + _px(20)), "【本益比位階】", cell_title_f, TEXT)
             fair_lo = pe_next if pe_next is not None else pe_year
             fair_hi = pe_year if pe_year is not None else pe_next
             if fair_lo is not None and fair_hi is not None and fair_lo > fair_hi:
@@ -724,34 +758,33 @@ def _draw_d3_card(
             pe_s = _fmt_num(pe_now, 1)
             if pe_s != "—" and pe_now is not None and abs(pe_now - round(pe_now)) < 0.05:
                 pe_s = f"{pe_now:.0f}"
-            _text_left_mid(
-                dr, (cx0, cy0 + _px(22), cx1, cy0 + _px(46)),
-                f"今 {pe_s}x" if pe_s != "—" else "今 —",
-                cell_b, TEXT,
-            )
+            title = "【本益比位階】"
+            pe_bit = f"今年 {pe_s}x" if pe_s != "—" else "今年 —"
+            _text_left_mid(dr, (cx0, r1a, cx1, r1b), title, cell_title_f, TEXT)
+            tw = cell_title_f.getlength(title) + _px(8)
+            _text_left_mid(dr, (cx0 + tw, r1a, cx1, r1b), pe_bit, cell_b, TEXT)
             fwd_s = _fmt_num(pe_fwd, 1)
             if fwd_s != "—" and pe_fwd is not None and abs(pe_fwd - round(pe_fwd)) < 0.05:
                 fwd_s = f"{pe_fwd:.0f}"
             band = "—"
-            # 興櫃／量小範本不印合理區間（本益常遠高於帶）
             if (not emerging) and fair_lo is not None and fair_hi is not None:
                 band = f"{fair_lo:.0f}-{fair_hi:.0f}x"
-            r2y0, r2y1 = cy0 + _px(46), cy0 + _px(70)
             fwd_bit = f"前瞻 {fwd_s}x" if fwd_s != "—" else "前瞻 —"
-            _text_left_mid(dr, (cx0, r2y0, cx1, r2y1), fwd_bit, cell_f, TEXT)
+            # 次行文字上半、點列貼底
+            r2_text_b = cy0 + ch * 0.78
+            _text_left_mid(dr, (cx0, r2a, cx1, r2_text_b), fwd_bit, cell_f, TEXT)
             if band != "—":
-                bx = cx0 + cell_f.getlength(fwd_bit) + _px(6)
+                bx = cx0 + cell_f.getlength(fwd_bit) + _px(8)
                 _text_left_mid(
-                    dr, (bx, r2y0, cx1, r2y1),
+                    dr, (bx, r2a, cx1, r2_text_b),
                     f"(合理 {band})", micro_f, MUTED,
                 )
             _pe_dot_ruler(
-                dr, cx0, cx1, cy0 + _px(74), pe_now, fair_lo, fair_hi, accent=accent,
+                dr, cx0, cx1, cy0 + ch * 0.90, pe_now, fair_lo, fair_hi, accent=accent,
             )
         elif kind == "bl":
-            _text_left_mid(dr, (cx0, cy0, cx1, cy0 + _px(20)), "【目標空間】", cell_title_f, TEXT)
-            bar_w = _px(72)
-            # (label, show_pct, ups, bar_col)
+            title = "【目標空間】"
+            bar_w = _px(120)
             rows_tgt: List[Tuple[str, bool, Optional[float], Tuple[int, int, int]]] = []
             if emerging and fair is not None and tgt is not None:
                 rows_tgt.append(
@@ -762,81 +795,93 @@ def _draw_d3_card(
                     rows_tgt.append((f"今年看 {_fmt_price(fair)}", True, ups_f, CYAN))
                 if tgt is not None:
                     rows_tgt.append((f"明年看 {_fmt_price(tgt)}", True, ups_t, accent))
-            base_y = cy0 + _px(24)
-            line_h = _px(28)
+            t_bot = cy0 + ch * 0.28
+            _text_left_mid(dr, (cx0, cy0 + ch * 0.04, cx1, t_bot), title, cell_title_f, TEXT)
+            body_top = t_bot
+            body_bot = cy1 - ch * 0.02
+            n_lines = max(1, len(rows_tgt[:2]))
+            line_h = (body_bot - body_top) / n_lines
             for i, (lab, show_pct, ups, bar_col) in enumerate(rows_tgt[:2]):
-                ly0 = base_y + i * line_h
-                ly1 = ly0 + line_h - _px(2)
+                ly0 = body_top + i * line_h
+                ly1 = ly0 + line_h
                 bar_x0 = cx1 - bar_w
-                text_right = bar_x0 - _px(6)
+                text_right = bar_x0 - _px(8)
                 _text_left_mid(dr, (cx0, ly0, text_right, ly1), lab, cell_f, TEXT)
                 tw = cell_f.getlength(lab)
                 if show_pct and ups is not None:
                     _text_left_mid(
-                        dr, (cx0 + tw + _px(2), ly0, text_right, ly1),
+                        dr, (cx0 + tw + _px(4), ly0, text_right, ly1),
                         f"({_fmt_pct(ups)})", small_f, GREEN if not emerging else PURPLE,
                     )
                 frac = max(0.0, min(1.0, float(ups) / 100.0)) if ups is not None else 0.0
                 _inline_bar(dr, bar_x0, cx1, (ly0 + ly1) / 2.0, frac, fill=bar_col)
         else:  # br
             if emerging:
-                _text_left_mid(
-                    dr, (cx0, cy0, cx1, cy0 + _px(20)),
-                    "【對帳防線】", cell_title_f, TEXT,
-                )
+                title = "【對帳防線】"
                 thr_line = f"明年門檻 {_fmt_num(thr, 2 if (thr is not None and thr < 10) else 1)}億/月"
+                t_bot = cy0 + ch * 0.28
+                _text_left_mid(dr, (cx0, cy0 + ch * 0.04, cx1, t_bot), title, cell_title_f, TEXT)
+                mid_a, mid_b = t_bot, cy0 + ch * 0.62
                 _text_left_mid(
-                    dr, (cx0, cy0 + _px(24), cx1, cy0 + _px(48)),
+                    dr, (cx0, mid_a, cx1, mid_b),
                     _truncate(cell_b, thr_line, cx1 - cx0), cell_b, TEXT,
                 )
-                sr_y0, sr_y1 = cy0 + _px(50), cy0 + _px(74)
-                # 撐｜壓 淡紫
+                sr_a, sr_b = cy0 + ch * 0.64, cy1 - ch * 0.04
                 s_bit = f"撐 {_fmt_price(support)}"
-                _text_left_mid(dr, (cx0, sr_y0, cx1, sr_y1), s_bit, cell_f, PURPLE)
-                mid = cx0 + cell_f.getlength(s_bit)
-                _text_left_mid(dr, (mid, sr_y0, cx1, sr_y1), " | ", cell_f, MUTED)
-                mid2 = mid + cell_f.getlength(" | ")
+                _text_left_mid(dr, (cx0, sr_a, cx1, sr_b), s_bit, cell_b, support_col)
+                mid = cx0 + cell_b.getlength(s_bit)
+                _text_left_mid(dr, (mid, sr_a, cx1, sr_b), " | ", cell_b, MUTED)
+                mid2 = mid + cell_b.getlength(" | ")
                 _text_left_mid(
-                    dr, (mid2, sr_y0, cx1, sr_y1),
-                    f"壓 {_fmt_price(resist)}", cell_f, PURPLE,
+                    dr, (mid2, sr_a, cx1, sr_b),
+                    f"壓 {_fmt_price(resist)}", cell_b, PURPLE,
                 )
             else:
-                _text_left_mid(
-                    dr, (cx0, cy0, cx1, cy0 + _px(20)),
-                    "【對帳與撐壓】", cell_title_f, TEXT,
-                )
+                title = "【對帳與撐壓】"
                 thr_main = f"月門檻 {_fmt_num(thr, 1)}億"
-                _text_left_mid(
-                    dr, (cx0, cy0 + _px(22), cx1, cy0 + _px(46)),
-                    thr_main, cell_b, TEXT,
-                )
-                if oct_r is not None:
-                    ox = cx0 + cell_b.getlength(thr_main) + _px(6)
-                    mon = str(row.get("rev_month_label") or "最新").strip() or "最新"
-                    _text_left_mid(
-                        dr, (ox, cy0 + _px(22), cx1, cy0 + _px(46)),
-                        f"({mon}{_fmt_num(oct_r, 1)})", micro_f, MUTED,
-                    )
-                sr_y0, sr_y1 = cy0 + _px(50), cy0 + _px(74)
+                _text_left_mid(dr, (cx0, r1a, cx1, r1b), title, cell_title_f, TEXT)
+                tw = cell_title_f.getlength(title) + _px(8)
+                # 同行塞得下就跟標題同行；否則次行
+                room = cx1 - (cx0 + tw)
+                if cell_b.getlength(thr_main) + _px(40) <= room:
+                    _text_left_mid(dr, (cx0 + tw, r1a, cx1, r1b), thr_main, cell_b, TEXT)
+                    cursor = cx0 + tw + cell_b.getlength(thr_main)
+                    if oct_r is not None:
+                        mon = str(row.get("rev_month_label") or "最新").strip() or "最新"
+                        _text_left_mid(
+                            dr, (cursor + _px(6), r1a, cx1, r1b),
+                            f"({mon}{_fmt_num(oct_r, 1)})", micro_f, MUTED,
+                        )
+                    sr_a, sr_b = r2a, r2b
+                else:
+                    _text_left_mid(dr, (cx0, r2a, cx1, cy0 + ch * 0.72), thr_main, cell_b, TEXT)
+                    if oct_r is not None:
+                        ox = cx0 + cell_b.getlength(thr_main) + _px(8)
+                        mon = str(row.get("rev_month_label") or "最新").strip() or "最新"
+                        _text_left_mid(
+                            dr, (ox, r2a, cx1, cy0 + ch * 0.72),
+                            f"({mon}{_fmt_num(oct_r, 1)})", micro_f, MUTED,
+                        )
+                    sr_a, sr_b = cy0 + ch * 0.72, r2b
                 if broken and support is not None:
-                    warn = f"⚠破撐 {_fmt_price(support)}"
-                    _text_left_mid(dr, (cx0, sr_y0, cx1, sr_y1), warn, cell_f, ORANGE)
-                    mid = cx0 + cell_f.getlength(warn)
-                    _text_left_mid(dr, (mid, sr_y0, cx1, sr_y1), " | ", cell_f, MUTED)
-                    mid2 = mid + cell_f.getlength(" | ")
+                    warn = f"▲破撐 {_fmt_price(support)}"
+                    _text_left_mid(dr, (cx0, sr_a, cx1, sr_b), warn, cell_b, ORANGE)
+                    mid = cx0 + cell_b.getlength(warn)
+                    _text_left_mid(dr, (mid, sr_a, cx1, sr_b), " | ", cell_b, MUTED)
+                    mid2 = mid + cell_b.getlength(" | ")
                     _text_left_mid(
-                        dr, (mid2, sr_y0, cx1, sr_y1),
-                        f"壓 {_fmt_price(resist)}", cell_f, RED_CHIP,
+                        dr, (mid2, sr_a, cx1, sr_b),
+                        f"壓 {_fmt_price(resist)}", cell_b, RED_CHIP,
                     )
                 else:
                     s_bit = f"撐 {_fmt_price(support)}"
-                    _text_left_mid(dr, (cx0, sr_y0, cx1, sr_y1), s_bit, cell_f, GREEN)
-                    mid = cx0 + cell_f.getlength(s_bit)
-                    _text_left_mid(dr, (mid, sr_y0, cx1, sr_y1), " | ", cell_f, MUTED)
-                    mid2 = mid + cell_f.getlength(" | ")
+                    _text_left_mid(dr, (cx0, sr_a, cx1, sr_b), s_bit, cell_b, support_col)
+                    mid = cx0 + cell_b.getlength(s_bit)
+                    _text_left_mid(dr, (mid, sr_a, cx1, sr_b), " | ", cell_b, MUTED)
+                    mid2 = mid + cell_b.getlength(" | ")
                     _text_left_mid(
-                        dr, (mid2, sr_y0, cx1, sr_y1),
-                        f"壓 {_fmt_price(resist)}", cell_f, RED_CHIP,
+                        dr, (mid2, sr_a, cx1, sr_b),
+                        f"壓 {_fmt_price(resist)}", cell_b, RED_CHIP,
                     )
 
 
@@ -862,34 +907,40 @@ def _render_d3_page(
     im = Image.new("RGB", (W, H), BG)
     dr = ImageDraw.Draw(im)
 
-    content_l = _px(PAD_X)
-    content_r = W - _px(PAD_X)
+    # 範本左右邊距更緊，字才撐滿
+    content_l = _px(24)
+    content_r = W - _px(24)
     top = _px(SAFE_TOP)
     bot = H - _px(SAFE_BOTTOM)
 
-    title_f = _font(28, bold=True)
-    sub_f = _font(18)
-    empty_f = _font(32, bold=True)
+    title_f = _font(36, bold=True)
+    sub_f = _font(22)
+    page_f = _font(18)
+    empty_f = _font(34, bold=True)
     empty_sub_f = _font(22)
-    foot_f = _font(16)
+    foot_f = _font(18)
 
     y = top
-    page_bit = f"第 {page_i + 1}/{max(1, page_n)} 頁"
     head = f"{title}（Top {CARDS_PER_PAGE}）"
-    _text_left_mid(dr, (content_l, y, content_r - _px(160), y + _px(34)), head, title_f, TEXT)
-    _text_right_mid(dr, (content_l, y, content_r, y + _px(34)), page_bit, title_f, HEAD)
-    y += _px(36)
+    # 標題置中（對齊範本）；頁碼改副標右側小字，不准搶主標
+    _text_center_mid(dr, (content_l, y, content_r, y + _px(40)), head, title_f, TEXT)
+    y += _px(42)
     date_s = _as_of_close_label(as_of)
-    # 對齊範本副標；估值≠買訊改腳注，不准拿示意數冒充收盤
     sub = "已整合外資／投信連買賣與大量區撐壓"
     if date_s:
         sub = f"{date_s}｜{sub}"
-    _text_left_mid(dr, (content_l, y, content_r, y + _px(24)), _truncate(sub_f, sub, content_r - content_l), sub_f, MUTED)
-    y += _px(30)
+    page_bit = f"第{page_i + 1}/{max(1, page_n)}頁"
+    _text_center_mid(
+        dr, (content_l, y, content_r, y + _px(26)),
+        _truncate(sub_f, sub, content_r - content_l - _px(100)), sub_f, MUTED,
+    )
+    if page_n > 1:
+        _text_right_mid(dr, (content_l, y, content_r, y + _px(26)), page_bit, page_f, MUTED)
+    y += _px(32)
 
-    foot_reserve = _px(28)
+    foot_reserve = _px(30)
     avail = bot - y - foot_reserve
-    gap = _px(12)
+    gap = _px(10)
     if not rows:
         mid_y = y + avail // 2
         _text_center_mid(
@@ -903,13 +954,14 @@ def _render_d3_page(
     else:
         n = len(rows)
         card_h = int((avail - gap * max(0, n - 1)) / max(1, n))
-        card_h = max(_px(280), min(card_h, _px(360)))
+        # 填滿可用高度；下限防塌，不設人工上限把字壓小
+        card_h = max(_px(300), card_h)
         for i, row in enumerate(rows):
             top_c = y + i * (card_h + gap)
             _draw_d3_card(dr, (content_l, top_c, content_r, top_c + card_h), row)
 
     fy = bot - foot_reserve
-    _text_left_mid(
+    _text_center_mid(
         dr, (content_l, fy, content_r, fy + foot_reserve),
         "估值≠買訊｜★可買仍須對齊黃金買點才切入", foot_f, MUTED,
     )
