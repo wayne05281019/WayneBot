@@ -296,3 +296,21 @@ def test_scan_rejects_cyclical_seed(tmp_path, monkeypatch):
     assert row.get("fair_year") is not None
     assert row.get("target_next") is not None
     assert float(row["peer_pe_median"]) <= 35.0
+
+
+def test_eps_year_uses_ytd_cum_not_q3_times_three():
+    """全年估＝前三季官方累計＋Q4；世芯 11/18 曾誤成 Q3×3＋Q4＝155。"""
+    from undervalue_growth import estimate_eps_year_next
+
+    out = estimate_eps_year_next(
+        eps_ytd_cum=75.94,
+        eps_q3_single=38.37,
+        ytd_rev=1_000_000.0,
+        last_rev=100_000.0,
+        moms=[0.0, 0.0, 0.0],
+        m_last=10,
+        yoy_pct=20.0,
+    )
+    assert out["ok"]
+    assert abs(out["eps_2026"] - (75.94 + 38.37)) < 0.01
+    assert out["eps_2026"] < 75.94 + 38.37 * 1.2

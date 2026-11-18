@@ -342,16 +342,19 @@ def estimate_eps_year_next(
         return {"ok": False, "note": est_rev.get("note") or "缺營收"}
     year_rev = float(est_rev["est_year_rev"])
     q3 = _finite(eps_q3_single)
+    cum = _finite(eps_ytd_cum)
     if q3 is None or q3 <= 0:
-        cum = _finite(eps_ytd_cum)
         if cum is None or cum <= 0:
             return {"ok": False, "note": "缺EPS"}
         q3 = cum / 3.0
     g, _ = clamp_mom_g(moms, unit="pct")
     q4 = float(q3) * (1.0 + g * 0.5)
-    # 若 eps_q3_single 真單季：全年≈Q1+Q2+Q3+Q4；缺單季 map 時用 3×q3+q4
+    # 全年＝Q1～Q3 官方累計（已賺）＋Q4 推估；不准拿 Q3×3 冒充前三季
     eps_map_sum = None
-    eps_2026 = float(q3) * 3.0 + float(q4)
+    if cum is not None and cum > 0:
+        eps_2026 = float(cum) + float(q4)
+    else:
+        eps_2026 = float(q3) * 3.0 + float(q4)
     yoy = _finite(yoy_pct)
     growth = 0.10
     if yoy is not None:
