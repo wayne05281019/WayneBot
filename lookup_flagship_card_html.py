@@ -43,8 +43,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     --bg-cell: rgba(21, 30, 50, 0.88);
     --border-subtle: #1E293B;
     --text-primary: #F8FAFC;
-    --text-secondary: #94A3B8;
-    --text-muted: #64748B;
+    --text-secondary: #CBD5E1;
+    --text-muted: #94A3B8;
     --tw-up: #F87171;
     --tw-down: #34D399;
     --cyan: #38BDF8;
@@ -61,15 +61,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   /* 430x932 @3x = 1290x2796，預留上 144px / 下 180px Telegram 安全邊距 */
   .phone-frame {
     width: 430px; height: 932px; background: var(--bg-canvas);
-    padding: 48px 14px 60px 14px;
+    padding: 44px 10px 56px 10px;
     display: flex; flex-direction: column; justify-content: space-between; gap: 8px; overflow: hidden;
   }
   .mono { font-family: 'JetBrains Mono', 'Noto Sans TC', monospace; font-variant-numeric: tabular-nums; }
 
   .outer-card {
     background: var(--bg-card); border: 1px solid rgba(56, 189, 248, 0.35);
-    border-radius: 16px; padding: 14px 12px; display: flex; flex-direction: column;
-    justify-content: space-between; flex: 1; gap: 8px;
+    border-radius: 16px; padding: 14px 13px; display: flex; flex-direction: column; justify-content: space-between; flex: 1; gap: 8px;
   }
   .outer-card.is-wait { border-color: rgba(251, 191, 36, 0.45); }
   .outer-card.is-risk { border-color: rgba(167, 139, 250, 0.5); }
@@ -103,9 +102,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     background: var(--bg-cell); border: 1px solid #1E293B; border-radius: 10px;
     padding: 8px 10px; display: flex; flex-direction: column; justify-content: space-between; gap: 4px;
   }
-  .cell-k { font-size: 10px; color: var(--text-secondary); }
-  .cell-v { font-size: 13px; font-weight: 700; color: var(--text-primary); line-height: 1.25; }
-  .cell-sub { font-size: 10px; color: var(--text-muted); line-height: 1.3; }
+  .cell-k { font-size: 11px; font-weight: 700; color: #94A3B8; letter-spacing: 0.2px; }
+  .cell-v { font-size: 13.5px; font-weight: 800; color: #FFFFFF; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cell-sub { font-size: 10.5px; color: var(--text-secondary); line-height: 1.35; }
 
   .prog-track { height: 5px; background: #0B1120; border-radius: 999px; overflow: hidden; }
   .prog-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #10B981, #38BDF8); }
@@ -159,8 +158,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
   /* Bottom Split (固定緊湊高度，不留大塊黑底) */
   .bottom-split { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
-  .peer-row { display: flex; justify-content: space-between; font-size: 10.5px; padding: 2px 0; }
-  .moat-text { font-size: 10.5px; color: var(--text-secondary); line-height: 1.4; }
+  .peer-row { display: flex; justify-content: space-between; font-size: 12px; font-weight: 700; padding: 3px 0; }
+  .moat-text { font-size: 11.5px; color: var(--text-secondary); line-height: 1.45; }
   .moat-text strong { color: var(--text-primary); }
 
   .footer-legend { text-align: center; font-size: 9.5px; color: var(--text-muted); padding-top: 2px; }
