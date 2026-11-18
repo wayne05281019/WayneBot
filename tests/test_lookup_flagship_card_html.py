@@ -48,6 +48,8 @@ def test_flagship_2383_listed_shape():
     assert "川寶" not in html
     # 模板不再重複加「需」
     assert " / 需 需" not in html
+    assert "今年合理" in html and "明年" in html
+    assert "正常" not in html and "保守" not in html
     assert "融資・10日籌碼與關鍵日" in html
     assert "外資10日" in html
     # 事件日：官方未來法說，否則法定財報期限（不准發明日期）
@@ -160,6 +162,8 @@ def test_flagship_3595_emerging_platform_break():
     if expect_broke:
         assert "▲破撐" in html
     assert "需 需" not in html
+    assert "今年合理" in html and "明年" in html
+    assert "正常" not in html and "保守" not in html
     assert "已出Q3" in p["eps_k"]
     assert "台光電" not in html  # 同族不串錯
     assert "興櫃量能與進度" in html

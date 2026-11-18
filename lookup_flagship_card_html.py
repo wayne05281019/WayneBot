@@ -6,7 +6,8 @@
 #    截圖輸出 1290x2796 滿版 PNG 後，透過 Telegram sendPhoto 發送。
 # 3. 本檔已修正「尺規數字重疊下面 4 格」與「底部卡片過度拉長空白」問題，
 #    切勿自行改寫 CSS 結構；只需將即時數據填入 render_single_card() 即可。
-# 4. 數據防呆：務必確保「正常目標價 >= 保守目標價」，且區分「累計EPS」與「最新單季EPS」。
+# 4. 數據防呆：務必確保「明年目標 >= 今年合理」，且區分「累計EPS」與「最新單季EPS」。
+#    標籤不准寫假「正常／保守」（對齊低估卡：今年合理／明年）。
 # 5. 查股相簿多一張旗艦卡（插第一張）；不准改既有五張圖。低估按鍵走 undervalue D3，不是這張。
 # ==============================================================================
 """
@@ -243,7 +244,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         <div class="d3-cell">
           <div class="cell-k">{{BL_TITLE}}</div>
-          <div class="cell-v mono">正常 {{TARGET_NORM}}｜保守 {{TARGET_CONS}}</div>
+          <div class="cell-v mono">今年合理 {{TARGET_CONS}}｜明年 {{TARGET_NORM}}</div>
           {{BL_BOTTOM_HTML}}
         </div>
 
@@ -1317,7 +1318,7 @@ def build_flagship_payload(
         else f"撐 {_fmt_price(support)}｜壓 {_fmt_price(resist)}"
     )
 
-    # 正常＝較高目標、保守＝較低（對齊 mock）
+    # 明年＝較高目標、今年合理＝較低（對齊低估卡；不准假正常／保守）
     tgt_vals = [v for v in (tgt, fair) if v is not None]
     if len(tgt_vals) >= 2:
         tgt_hi, tgt_lo = max(tgt_vals), min(tgt_vals)
@@ -1445,7 +1446,7 @@ def build_flagship_payload(
             ("殖利率", yield_s, yield_tone),
             ("溫度計", temp, temp_tone),
         ]
-        bl_k = "目標價（正常／保守）＋近5日"
+        bl_k = "目標價（今年合理／明年）＋近5日"
         bl_bottom = (
             f'<div class="chips">'
             f'<div class="chip-row"><span>外資</span><span class="sqs">{_sq(chip_f)}</span></div>'
@@ -1923,7 +1924,7 @@ def fill_flagship_html(d: Dict[str, Any]) -> str:
         footer = "★可買 ☆等止穩 ⚠️興櫃量小｜興櫃不適用法人與融資指標｜估值≠買訊"
         ruler_title = "興櫃防線與流動性警示"
     else:
-        bl_title = "目標價 (正常／保守) ＋近5日"
+        bl_title = "目標價（今年合理／明年）＋近5日"
         f_sq = _render_5day_squares(d.get("foreign_5d", ["N"] * 5))
         t_sq = _render_5day_squares(d.get("trust_5d", ["N"] * 5))
         bl_bottom = (
