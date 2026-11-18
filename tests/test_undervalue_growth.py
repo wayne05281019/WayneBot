@@ -305,6 +305,7 @@ def test_eps_year_uses_ytd_cum_not_q3_times_three():
     out = estimate_eps_year_next(
         eps_ytd_cum=75.94,
         eps_q3_single=38.37,
+        last_season=3,
         ytd_rev=1_000_000.0,
         last_rev=100_000.0,
         moms=[0.0, 0.0, 0.0],
@@ -314,3 +315,44 @@ def test_eps_year_uses_ytd_cum_not_q3_times_three():
     assert out["ok"]
     assert abs(out["eps_2026"] - (75.94 + 38.37)) < 0.01
     assert out["eps_2026"] < 75.94 + 38.37 * 1.2
+    assert "Q1–Q3" in out["method"]
+
+
+def test_eps_year_projects_remaining_quarters_from_q2():
+    """只公布到 Q2：累計＋Q3＋Q4（末季×(1+g/2) 兩步），一月前也能估。"""
+    from undervalue_growth import estimate_eps_year_next
+
+    out = estimate_eps_year_next(
+        eps_ytd_cum=10.0,
+        eps_q_last_single=4.0,
+        last_season=2,
+        ytd_rev=600_000.0,
+        last_rev=100_000.0,
+        moms=[0.0, 0.0, 0.0],
+        m_last=6,
+        yoy_pct=10.0,
+    )
+    assert out["ok"]
+    # g=0 → Q3=4、Q4=4；全年=10+4+4=18
+    assert abs(out["eps_2026"] - 18.0) < 0.01
+    assert "剩餘2季" in out["method"]
+
+
+def test_eps_year_before_q1_uses_prior_year():
+    """尚無今年季報（一月）：去年全年×YoY夾限；月營收仍停在去年。"""
+    from undervalue_growth import estimate_eps_year_next
+
+    out = estimate_eps_year_next(
+        eps_ytd_cum=None,
+        last_season=0,
+        prior_year_eps=20.0,
+        ytd_rev=1_200_000.0,
+        last_rev=100_000.0,
+        moms=[0.0, 0.0, 0.0],
+        m_last=12,
+        yoy_pct=10.0,
+        rev_year_matches=False,
+    )
+    assert out["ok"]
+    assert abs(out["eps_2026"] - 22.0) < 0.01
+    assert "去年全年" in out["method"]

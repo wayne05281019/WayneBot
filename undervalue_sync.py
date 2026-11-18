@@ -18,7 +18,7 @@ logger = logging.getLogger("wayne.undervalue")
 TAIPEI = ZoneInfo("Asia/Taipei")
 PIPELINE_PREFIX = "undervalue-"
 # 全年 EPS＝前三季累計＋Q4（2026-11-18）。舊 success 列沒這標＝舊公式，話筒要重掃。
-EPS_CALC_TAG = "eps_cum_q4"
+EPS_CALC_TAG = "eps_rest_q_v2"
 
 
 def run_is_current(run: Optional[Dict[str, Any]]) -> bool:
