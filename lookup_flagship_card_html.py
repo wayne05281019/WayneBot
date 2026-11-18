@@ -116,15 +116,31 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   .cell-v { font-size: 13.5px; font-weight: 800; color: #FFFFFF; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .cell-sub { font-size: 11.5px; color: #E2E8F0; line-height: 1.35; }
 
-  .prog-track { height: 5px; background: #0B1120; border-radius: 999px; overflow: hidden; }
-  .prog-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #10B981, #38BDF8); }
-  .prog-fill-amber { background: linear-gradient(90deg, #F59E0B, #FBBF24); }
+  /* 空軌要看得見：淺灰底＋白細框，填色帶微光 */
+  .prog-track {
+    height: 8px; border-radius: 999px; overflow: hidden;
+    background: rgba(148, 163, 184, 0.22); border: 1px solid rgba(226, 232, 240, 0.28);
+  }
+  .prog-fill {
+    height: 100%; border-radius: 999px; background: linear-gradient(90deg, #22D3EE, #38BDF8);
+    box-shadow: 0 0 8px rgba(56, 189, 248, 0.75);
+  }
+  .prog-fill-amber { background: linear-gradient(90deg, #F59E0B, #FCD34D); box-shadow: 0 0 8px rgba(251, 191, 36, 0.75); }
 
-  .ruler-track { position: relative; height: 4px; background: #0B1120; border-radius: 999px; margin: 4px 0 2px 0; }
+  /* 本益比刻度尺：中線＋小刻度＋左中右大刻度，點不再孤零零 */
+  .ruler-track {
+    position: relative; height: 14px; margin: 5px 4px 1px 4px;
+    background:
+      linear-gradient(#E2E8F0, #E2E8F0) left center / 2px 14px no-repeat,
+      linear-gradient(#E2E8F0, #E2E8F0) center center / 2px 14px no-repeat,
+      linear-gradient(#E2E8F0, #E2E8F0) right center / 2px 14px no-repeat,
+      repeating-linear-gradient(90deg, rgba(203, 213, 225, 0.6) 0 1.5px, transparent 1.5px 8.333%) center / 100% 7px no-repeat,
+      linear-gradient(rgba(203, 213, 225, 0.45), rgba(203, 213, 225, 0.45)) center / 100% 2px no-repeat;
+  }
   .ruler-dot {
     position: absolute; top: 50%; transform: translate(-50%, -50%);
-    width: 9px; height: 9px; border-radius: 50%; background: #38BDF8;
-    border: 1.5px solid #FFF; box-shadow: 0 0 6px rgba(56, 189, 248, 0.85);
+    width: 13px; height: 13px; border-radius: 50%; background: #38BDF8;
+    border: 2px solid #FFF; box-shadow: 0 0 10px 3px rgba(56, 189, 248, 0.85);
   }
   .ruler-labels { display: flex; justify-content: space-between; font-size: 11px; color: #CBD5E1; }
 
