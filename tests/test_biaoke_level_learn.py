@@ -4770,6 +4770,22 @@ def test_teach_trio_pipeline_table_locked():
     assert "ensure_teach_tip_preflight" in pipe_src
     assert "_force_refill_twii_daily_to_target" in pipe_src
     assert "_ensure_teach_minute_legs" in pipe_src
+    # 01 target 必須用已收開市日，開盤前不准把今天當缺柱去狂 force
+    assert "_settled_open_ymd_for_tip_gate" in pipe_src
+
+
+def test_settled_open_ymd_preopen_uses_prev_day():
+    """開市日開盤前：target 退昨收，避免 pipeline 01 對今天狂 force。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_level_learn import _settled_open_ymd_for_tip_gate
+
+    taipei = ZoneInfo("Asia/Taipei")
+    # 2026-11-19（三）開市日、04:53 尚未開盤
+    wall = datetime(2026, 11, 19, 4, 53, tzinfo=taipei)
+    got = _settled_open_ymd_for_tip_gate(wall, tip0={"tw_asof": "20261118"})
+    assert got == "20261118"
 
 
 def test_ensure_teach_minute_legs_fetches_twii_0050_sox(monkeypatch):
