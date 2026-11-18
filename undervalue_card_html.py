@@ -347,14 +347,32 @@ def send_telegram_photo(
 # --- WayneBot 接線：把既有低估列填進上面模板欄位（不改 HTML/CSS）---
 
 
+_PLAYWRIGHT_OK: Optional[bool] = None
+
+
 def playwright_available() -> bool:
+    """套件在、但 CI 未 `playwright install` 時仍算不可用（避免 launch 炸掉整段 smoke）。"""
+    global _PLAYWRIGHT_OK
+    if _PLAYWRIGHT_OK is not None:
+        return _PLAYWRIGHT_OK
     if os.environ.get("WAYNE_UV_HTML", "1").strip() in ("0", "false", "no"):
+        _PLAYWRIGHT_OK = False
         return False
     try:
-        from playwright.sync_api import sync_playwright as _sp  # noqa: F401
+        from playwright.sync_api import sync_playwright
 
+        with sync_playwright() as p:
+            exe = getattr(p.chromium, "executable_path", None) or ""
+            if not exe or not os.path.isfile(exe):
+                _PLAYWRIGHT_OK = False
+                return False
+            # headless shell 路徑也可能缺；試一下極短 launch
+            browser = p.chromium.launch(headless=True)
+            browser.close()
+        _PLAYWRIGHT_OK = True
         return True
     except Exception:
+        _PLAYWRIGHT_OK = False
         return False
 
 
