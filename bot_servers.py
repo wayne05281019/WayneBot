@@ -4209,7 +4209,8 @@ class WayneTelegramBot:
             if has_cache:
                 progress_phase["name"] = "cache"
             # light 快取應秒級；給短預算即可（舊 25s 全量展望會在鎖庫時把 loop 拖死）。
-            cache_budget = 6.0 if has_cache else 4.0
+            # ready 誤判／鎖庫時多給一點，避免直接開全掃再乾等 180s。
+            cache_budget = 6.0 if has_cache else 8.0
             cached = await _try_cache(min(cache_budget, screen_timeout_s))
             if cached:
                 stop.set()
@@ -4392,6 +4393,7 @@ class WayneTelegramBot:
 
             # 不准 _track_actor_bg：換下一顆鈕不准取消快取建檔，否則永遠要再按一次。
             # 前端等待用「自 t0 起算」的剩餘秒數，並與 deadline_hit 競速。
+            # 建檔期間也重試快取：ready 誤判／鎖庫解除後快取已在，不准乾等全掃到 180s。
             remain = screen_timeout_s - (time.monotonic() - t0)
             if remain <= 0 or deadline_hit.is_set():
                 elapsed = time.monotonic() - t0
@@ -4405,16 +4407,30 @@ class WayneTelegramBot:
                     delivered = True
                     hold_gate = False
                 return
+
+            async def _poll_cache_during_build():
+                while not deadline_hit.is_set():
+                    again = await _try_cache(2.0)
+                    if again:
+                        return again
+                    try:
+                        await asyncio.wait_for(deadline_hit.wait(), timeout=0.5)
+                        break
+                    except asyncio.TimeoutError:
+                        continue
+                return None
+
             # shield 回 Future，直接丟進 wait；不准 create_task(shield(...))。
             build_wait = asyncio.shield(build_task)
             deadline_wait = asyncio.create_task(deadline_hit.wait())
+            cache_poll = asyncio.create_task(_poll_cache_during_build())
             try:
                 done, pending = await asyncio.wait(
-                    {build_wait, deadline_wait},
+                    {build_wait, deadline_wait, cache_poll},
                     return_when=asyncio.FIRST_COMPLETED,
                 )
             except asyncio.CancelledError:
-                for p in (build_wait, deadline_wait):
+                for p in (build_wait, deadline_wait, cache_poll):
                     p.cancel()
                 cancelled = True
                 return
@@ -4424,6 +4440,22 @@ class WayneTelegramBot:
                     await p
                 except (asyncio.CancelledError, Exception):
                     pass
+            if cache_poll in done and not cache_poll.cancelled():
+                try:
+                    cached_mid = cache_poll.result()
+                except (asyncio.CancelledError, Exception):
+                    cached_mid = None
+                if cached_mid:
+                    stop.set()
+                    if not self._actor_op_alive(actor, op_kind, gen):
+                        cancelled = True
+                        return
+                    await self._deliver_manual_screening_result(
+                        message, cached_mid, hub=hub, status=status
+                    )
+                    delivered = True
+                    # 建檔 thread 可能還在跑：不准清 latch，否則第二次按會再開一輪
+                    return
             if build_wait in done and not build_wait.cancelled():
                 try:
                     result = build_wait.result()
