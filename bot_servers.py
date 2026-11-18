@@ -9894,6 +9894,7 @@ class WayneTelegramBot:
                     as_of=as_of or None,
                     empty_note=note if not picks else None,
                     prefix="uv",
+                    db_path=self.db_path,
                 )
 
             paths = await asyncio.to_thread(_paint)
@@ -9962,7 +9963,11 @@ class WayneTelegramBot:
 
             def _paint() -> list:
                 return render_undervalue_pages(
-                    picks, out_dir, as_of=as_of or None, prefix="uv"
+                    picks,
+                    out_dir,
+                    as_of=as_of or None,
+                    prefix="uv",
+                    db_path=self.db_path,
                 )
 
             paths = await asyncio.to_thread(_paint)

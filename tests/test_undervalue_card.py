@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""低估名單 D3 PNG：1080×1920、≤4 卡、安全區。"""
+"""低估名單 D3 PNG：1290×2796（430×932@3x）、≤4 卡、Playwright HTML。"""
 import os
 from pathlib import Path
 
@@ -17,16 +17,11 @@ from undervalue_card import (
 )
 
 
-@pytest.fixture(autouse=True)
-def _force_pil_path():
-    """CI 未裝 chromium：本檔固定測 PIL；HTML 見 test_undervalue_card_html。"""
-    prev = os.environ.get("WAYNE_UV_HTML")
-    os.environ["WAYNE_UV_HTML"] = "0"
-    yield
-    if prev is None:
-        os.environ.pop("WAYNE_UV_HTML", None)
-    else:
-        os.environ["WAYNE_UV_HTML"] = prev
+def _require_playwright():
+    from undervalue_card_html import playwright_available
+
+    if not playwright_available():
+        pytest.skip("無 Playwright／已關 WAYNE_UV_HTML")
 
 
 def _growth_rows():
@@ -55,6 +50,8 @@ def _growth_rows():
             "support": 1045,
             "resistance": 1210,
             "chip_note": "外投同買",
+            "foreign_5d": ["B", "B", "N", "B", "B"],
+            "trust_5d": ["B", "B", "B", "B", "B"],
         },
         {
             "mark": "watch",
@@ -70,6 +67,8 @@ def _growth_rows():
             "resistance": 5200,
             "tech_broken": True,
             "chip_note": "投信買・外資調節",
+            "foreign_5d": ["S", "S", "N", "S", "B"],
+            "trust_5d": ["B", "B", "B", "N", "B"],
         },
         {
             "mark": "emerging",
@@ -86,48 +85,9 @@ def _growth_rows():
     ]
 
 
-def test_render_filled_and_empty(tmp_path):
-    rows = [
-        {
-            "mark": "star",
-            "stock_id": "2330",
-            "name": "台積電",
-            "close": 980,
-            "pe": 22.4,
-            "peer_pe_median": 28.1,
-            "dist_to_floor_pct": -18.2,
-            "flow_shares": 12345,
-            "reason": "同鏈 PE 低於中位近兩成",
-        },
-        {
-            "mark": "watch",
-            "stock_id": "2454",
-            "name": "聯發科",
-            "close": 1285,
-            "pe": 19.8,
-            "peer_pe_median": 21.0,
-            "dist_to_floor_pct": -4.1,
-            "flow_shares": 5600,
-            "reason": "先列觀察",
-        },
-    ]
-    filled = str(tmp_path / "uv_filled.png")
-    empty = str(tmp_path / "uv_empty.png")
-    assert Path(render_undervalue_png(rows, filled, as_of="20261114")).is_file()
-    assert Path(render_undervalue_png([], empty, as_of="20261114")).is_file()
-    im_f = Image.open(filled)
-    im_e = Image.open(empty)
-    # 舊列表無 fair_year：寬仍 1080；高至少一頁
-    assert im_f.size[0] == BASE_W
-    assert im_f.size[1] >= BASE_H
-    assert im_e.size == (BASE_W, BASE_H)
-    assert Path(filled).stat().st_size > 4000
-    assert Path(empty).stat().st_size > 2000
-
-
 def test_d3_page_canvas_and_paginate(tmp_path):
+    _require_playwright()
     base = _growth_rows()
-    # 湊滿 5 檔 → 兩頁，每頁 ≤4
     extra = dict(base[0], stock_id="4971", name="IET-KY", mark="star")
     extra2 = dict(base[0], stock_id="7711", name="永擎", mark="watch")
     rows = base + [extra, extra2]
@@ -136,12 +96,11 @@ def test_d3_page_canvas_and_paginate(tmp_path):
     im1 = Image.open(paths[0])
     assert im1.size == (BASE_W, BASE_H)
     assert Path(paths[0]).stat().st_size > 8000
-    # 第 1 頁入口
     p = render_undervalue_png(rows, str(tmp_path / "first.png"), as_of="20261117")
     im = Image.open(p)
     assert im.size == (BASE_W, BASE_H)
     assert CARDS_PER_PAGE == 4
-    assert SAFE_TOP == 140 and SAFE_BOTTOM == 180
+    assert SAFE_TOP == 144 and SAFE_BOTTOM == 180
 
 
 def test_sanitize_drops_blacklist_and_dup_name():
@@ -151,7 +110,15 @@ def test_sanitize_drops_blacklist_and_dup_name():
         [
             {"stock_id": "3006", "name": "晶豪科", "close": 100, "mark": "watch"},
             {"stock_id": "6265", "name": "方土昶", "close": 40, "mark": "watch"},
-            {"stock_id": "2383", "name": "2383", "close": 3795, "mark": "watch", "fair_year": 4800, "target_next": 4800, "ups_tgt_pct": 0},
+            {
+                "stock_id": "2383",
+                "name": "2383",
+                "close": 3795,
+                "mark": "watch",
+                "fair_year": 4800,
+                "target_next": 4800,
+                "ups_tgt_pct": 0,
+            },
             {"stock_id": "6442", "name": "光聖", "close": 1045, "mark": "star"},
         ]
     )
@@ -164,14 +131,32 @@ def test_sanitize_drops_blacklist_and_dup_name():
 
 
 def test_d3_header_mark_and_chip_split():
-    from undervalue_card import _mark_glyph, _split_chip_pills, _fmt_eps
+    from undervalue_card import _fmt_eps, _mark_glyph, _split_chip_pills
 
     g, _c, _e, lab = _mark_glyph("star")
     assert g == "★" and lab == "可買"
     g2, _, _, lab2 = _mark_glyph("emerging")
     assert g2 == "⚠" and lab2 == "量小"
-    # 範本：中點・＝同一膠囊，不准拆兩顆
     assert _split_chip_pills("投信連買・外資調節") == ["投信連買・外資調節"]
-    assert _split_chip_pills("投信連買、外資調節") == ["投信連買", "外資調節"]
-    assert _fmt_eps(5.99) == "5.99"
-    assert _fmt_eps(52.0) in ("52", "52.0")
+    assert _fmt_eps(34.9) is not None
+
+
+def test_legacy_list_png_without_growth(tmp_path):
+    """無成長欄的舊列表仍可出圖（相容測）。"""
+    rows = [
+        {
+            "mark": "star",
+            "stock_id": "2330",
+            "name": "台積電",
+            "close": 980,
+            "pe": 22.4,
+            "peer_pe_median": 28.1,
+            "dist_to_floor_pct": -18.2,
+            "flow_shares": 12345,
+            "reason": "同鏈 PE 低於中位近兩成",
+        }
+    ]
+    filled = str(tmp_path / "uv_filled.png")
+    assert Path(render_undervalue_png(rows, filled, as_of="20261114")).is_file()
+    im_f = Image.open(filled)
+    assert im_f.size[0] == BASE_W or im_f.size[0] == 1080

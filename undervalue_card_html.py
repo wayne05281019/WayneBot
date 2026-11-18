@@ -1,230 +1,332 @@
 # -*- coding: utf-8 -*-
-"""低估 D3 HTML／CSS 渲圖（Playwright 截圖）。
+# ==============================================================================
+# 【給 AI 開發者的強制施工規範（必讀）】
+# 1. 嚴禁使用 Pillow (PIL) 或 matplotlib 畫圖！
+# 2. 必須直接使用本檔內建的 HTML_TEMPLATE + Playwright (viewport 430x932, DPR=3)
+#    截圖輸出 1290x2796 滿版 PNG 後，透過 Telegram sendPhoto 發送。
+# 3. 只需將即時股價、EPS、營收、外資投信近 5 日買賣超與台幣匯率填入
+#    render_screener_pages()，切勿自行改寫或破壞 HTML/CSS 排版結構。
+# ==============================================================================
+"""
+WayneBot「低估名單」Version D3 終極整合檔（純實戰訊號版）
+特性：
+- 玻璃擬態深色卡片 + 白話標籤（無艱澀縮寫）
+- 內建未來 12 個月滾動 EPS / 本益比實數刻度尺（跨年不跳號）
+- 內建動態匯率與外資資金水位橫幅
+- 左下角精準渲染「外資 / 投信近 5 日買賣方塊」（固定 5 格，左舊→右新：紅買、綠賣）
+- 興櫃標的自動切換為「現增暫定價＋流動性警示」
+- 每頁最多 4 檔，iPhone 18 Pro Max @3x (1290x2796) 滿版含 Telegram 上下安全邊距
 
-視覺參考使用者提供的 Noto Sans TC + JetBrains Mono 手機框樣式；
-內容仍是既有四格：EPS爬坡／本益比位階／目標空間／對帳與撐壓。
-無 Playwright 時由 undervalue_card PIL 路徑接手。
+安裝需求：
+    pip install playwright requests
+    playwright install chromium
 """
 from __future__ import annotations
 
 import html
 import math
 import os
-import tempfile
+from datetime import date
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
-BASE_W = 1080
-BASE_H = 1920
-SAFE_TOP = 140
-SAFE_BOTTOM = 180
-CARDS_PER_PAGE = 4
+import requests
+from playwright.sync_api import sync_playwright
+
+MAX_PER_PAGE = 4
+VIEW_W = 430
+VIEW_H = 932
+DPR = 3
+OUT_W = VIEW_W * DPR  # 1290
+OUT_H = VIEW_H * DPR  # 2796
 
 HTML_TEMPLATE = """<!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
 <meta charset="UTF-8">
 <style>
-  @font-face {
-    font-family: 'NotoSansTC';
-    src: local('Noto Sans CJK TC'), local('Noto Sans CJK TC Bold'),
-         local('Noto Sans TC'), local('NotoSansCJKtc-Regular');
-    font-weight: 400 900;
-  }
-  @font-face {
-    font-family: 'JetBrainsMono';
-    src: local('JetBrains Mono'), local('JetBrains Mono Bold'),
-         local('Noto Sans Mono CJK TC');
-    font-weight: 500 700;
-  }
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=JetBrains+Mono:wght@500;700&display=swap');
   :root {
     --bg-canvas: #0B1120;
-    --bg-card: #111827;
-    --bg-cell: #161F33;
-    --border-subtle: #334155;
+    --bg-card: linear-gradient(180deg, rgba(19, 28, 49, 0.96) 0%, rgba(15, 23, 42, 0.98) 100%);
+    --bg-cell: rgba(21, 30, 50, 0.85);
+    --border-subtle: #1E293B;
     --text-primary: #F8FAFC;
-    --text-secondary: #CBD5E1;
-    --text-muted: #94A3B8;
-    --green: #34D399;
-    --green-edge: #10B981;
+    --text-secondary: #94A3B8;
+    --text-muted: #64748B;
+    --tw-up: #F87171;
+    --tw-down: #34D399;
     --cyan: #38BDF8;
     --amber: #FBBF24;
     --purple: #A78BFA;
-    --red: #F87171;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
     background: var(--bg-canvas);
-    font-family: 'NotoSansTC', 'Noto Sans CJK TC', 'PingFang TC', sans-serif;
+    font-family: 'Noto Sans TC', -apple-system, BlinkMacSystemFont, 'PingFang TC', sans-serif;
     color: var(--text-primary);
     -webkit-font-smoothing: antialiased;
   }
-  .mono {
-    font-family: 'JetBrainsMono', 'Noto Sans Mono CJK TC', monospace;
-    font-variant-numeric: tabular-nums;
-  }
   .phone-frame {
-    width: 1080px; height: 1920px; background: var(--bg-canvas);
-    padding: 140px 28px 180px 28px;
-    display: flex; flex-direction: column; gap: 12px; overflow: hidden;
+    width: 430px; height: 932px; background: var(--bg-canvas);
+    padding: 48px 14px 60px 14px; /* 上 144px / 下 180px Telegram 安全邊距 */
+    display: flex; flex-direction: column; gap: 7px; overflow: hidden;
   }
-  .page-header { text-align: center; padding: 0 4px 2px; flex-shrink: 0; }
-  .page-title { font-size: 34px; font-weight: 900; letter-spacing: 0.02em; }
-  .page-sub { margin-top: 6px; font-size: 22px; color: var(--text-secondary); font-weight: 600; }
+  .mono { font-family: 'JetBrains Mono', 'Noto Sans TC', monospace; font-variant-numeric: tabular-nums; }
+  .page-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 2px 2px 4px 2px;
+  }
+  .page-title { font-size: 16px; font-weight: 900; color: var(--text-primary); letter-spacing: -0.2px; }
   .page-meta {
-    display: inline-block; margin-top: 10px; font-size: 20px; font-weight: 700;
-    color: var(--cyan); background: rgba(56,189,248,0.12);
-    border: 1px solid rgba(56,189,248,0.3); padding: 4px 14px; border-radius: 999px;
+    font-size: 10.5px; font-weight: 700; color: #E2E8F0;
+    background: rgba(30, 41, 59, 0.85); border: 1px solid #334155;
+    padding: 2px 9px; border-radius: 999px;
   }
-  .cards-stack { display: flex; flex-direction: column; gap: 12px; flex: 1; min-height: 0; }
+  .regime-banner {
+    font-size: 10.5px; font-weight: 700; padding: 5px 10px; border-radius: 8px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .regime-normal { background: rgba(52, 211, 153, 0.12); border: 1px solid rgba(52, 211, 153, 0.35); color: #A7F3D0; }
+  .regime-fx { background: rgba(245, 158, 11, 0.14); border: 1px solid rgba(245, 158, 11, 0.42); color: #FDE68A; }
+  .regime-bear { background: rgba(248, 113, 113, 0.12); border: 1px solid rgba(248, 113, 113, 0.42); color: #FECACA; }
+
+  .cards-stack { display: flex; flex-direction: column; gap: 7px; flex: 1; }
   .stock-card {
-    background: var(--bg-card); border: 3px solid var(--border-subtle);
-    border-radius: 18px; overflow: hidden; display: flex; flex-direction: column;
-    flex: 1 1 0; min-height: 0;
+    background: var(--bg-card); border: 1px solid var(--border-subtle);
+    border-radius: 13px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px;
   }
-  .stock-card.status-buy { border-color: rgba(52, 211, 153, 0.65); }
-  .stock-card.status-wait { border-color: rgba(251, 191, 36, 0.6); }
-  .stock-card.status-risk { border-color: rgba(167, 139, 250, 0.65); }
-  .card-head {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 10px 14px; min-height: 64px; flex-shrink: 0;
-  }
-  .stock-card.status-buy .card-head { background: #063528; }
-  .stock-card.status-wait .card-head { background: #3a2a0c; }
-  .stock-card.status-risk .card-head { background: #2a1e42; }
-  .head-left {
-    display: flex; align-items: center; gap: 0; flex-wrap: nowrap;
-    font-size: 28px; font-weight: 800; white-space: nowrap; overflow: hidden;
-  }
-  .head-left .sep { color: #7B8A86; padding: 0 7px; font-weight: 500; }
-  .head-accent { color: var(--green); }
-  .stock-card.status-wait .head-accent { color: var(--amber); }
-  .stock-card.status-risk .head-accent { color: var(--purple); }
-  .head-main { color: var(--text-primary); }
+  .stock-card.status-buy { border-color: rgba(52, 211, 153, 0.5); box-shadow: 0 0 12px rgba(52, 211, 153, 0.08); }
+  .stock-card.status-wait { border-color: rgba(251, 191, 36, 0.45); box-shadow: 0 0 12px rgba(251, 191, 36, 0.06); }
+  .stock-card.status-risk { border-color: rgba(167, 139, 250, 0.5); box-shadow: 0 0 12px rgba(167, 139, 250, 0.08); }
+
+  .card-top { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+  .card-head-text { font-size: 12.5px; font-weight: 800; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .flow-pill {
-    flex-shrink: 0; font-size: 22px; font-weight: 800;
-    padding: 8px 14px; border-radius: 12px; margin-left: 10px;
+    font-size: 9.5px; font-weight: 700; padding: 2px 7px; border-radius: 999px; white-space: nowrap; flex-shrink: 0;
   }
-  .flow-buy { background: #e8a04a; color: #140c04; }
-  .flow-sell { background: #b03038; color: #ffecec; }
-  .flow-warn { background: #c88c38; color: #180e04; }
-  .flow-purple { background: #7864b4; color: #120a1c; }
-  .d3-grid {
-    display: grid; grid-template-columns: 1fr 1fr;
-    grid-template-rows: minmax(0, 1.05fr) minmax(0, 0.95fr);
-    flex: 1; min-height: 0; border-top: 1px solid var(--border-subtle);
-  }
+  .flow-buy { background: rgba(248, 113, 113, 0.16); color: var(--tw-up); border: 1px solid rgba(248, 113, 113, 0.3); }
+  .flow-sell { background: rgba(52, 211, 153, 0.15); color: var(--tw-down); border: 1px solid rgba(52, 211, 153, 0.3); }
+  .flow-warn { background: rgba(167, 139, 250, 0.18); color: var(--purple); border: 1px solid rgba(167, 139, 250, 0.35); }
+
+  .d3-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
   .d3-cell {
-    padding: 10px 14px 12px; display: flex; flex-direction: column; gap: 6px;
-    justify-content: flex-start; min-height: 0; background: var(--bg-cell);
-    overflow: hidden;
+    background: var(--bg-cell); border: 1px solid #1E293B; border-radius: 8px;
+    padding: 5px 8px; display: flex; flex-direction: column; justify-content: space-between; gap: 3px;
   }
-  .d3-cell.tl, .d3-cell.bl { border-right: 1px solid var(--border-subtle); }
-  .d3-cell.tl, .d3-cell.tr { border-bottom: 1px solid var(--border-subtle); }
-  .d3-cell.tr { padding-bottom: 8px; gap: 4px; }
-  .d3-cell.tr .cell-top { gap: 2px; }
-  .d3-cell.tr .cell-main { font-size: 32px; }
-  .d3-cell.tr .cell-sub { font-size: 24px; line-height: 1.15; }
-  .d3-cell.tr .pe-gauge { margin-top: auto; flex-shrink: 0; min-height: 48px; }
-  .d3-cell.bl, .d3-cell.br { padding-bottom: 10px; }
-  .d3-cell.br .sr-line { margin-top: auto; }
-  .cell-top { display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; }
-  .cell-title { font-size: 28px; font-weight: 900; color: var(--text-primary); letter-spacing: 0.01em; }
-  .cell-main { font-size: 36px; font-weight: 800; line-height: 1.15; color: var(--text-primary); }
-  .cell-sub {
-    font-size: 28px; font-weight: 700; line-height: 1.25; color: var(--text-primary);
-    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-  }
-  .muted { color: #CBD5E1; font-size: 26px; font-weight: 700; }
-  .up { color: var(--green); }
-  .cyan { color: var(--cyan); }
-  .red { color: var(--red); }
-  .amber { color: var(--amber); }
-  .pct-pill {
-    display: inline-flex; align-items: center; justify-content: center;
-    font-size: 22px; font-weight: 900; color: #0c1210;
-    background: var(--green); padding: 5px 14px; border-radius: 999px; min-width: 58px;
-  }
-  .stock-card.status-risk .pct-pill { background: var(--purple); color: #120a1c; }
-  .row-bar { display: flex; align-items: center; gap: 12px; width: 100%; }
-  .row-bar .lab { flex: 1; min-width: 0; font-size: 28px; font-weight: 800; }
-  .mini-track {
-    position: relative; width: 120px; height: 18px; flex-shrink: 0;
-    background: #0B1220; border: 1px solid #334155; border-radius: 999px; overflow: hidden;
-  }
-  .mini-fill {
-    height: 100%; border-radius: 999px;
-    background: linear-gradient(90deg, #10B981, #34D399);
-  }
-  .stock-card.status-risk .mini-fill { background: linear-gradient(90deg, #7C3AED, #A78BFA); }
-  /* 本益比尺：軸＋刻度＋合理帶＋現況點＋三標（老花要看得見；不准跨格） */
-  .pe-gauge { width: 100%; padding-top: 2px; }
-  /* 三標在尺上方：Telegram 安全區壓縮高度時，下方標籤會被裁 */
-  .pe-labels {
-    display: flex; justify-content: space-between; margin-bottom: 4px;
-    font-size: 22px; font-weight: 900; color: #E2E8F0; line-height: 1.1;
-  }
-  .pe-labels .fair { color: #7DD3FC; }
-  .pe-rail {
-    position: relative; height: 24px; width: 100%;
-    display: flex; align-items: center;
-  }
-  .pe-axis {
-    position: absolute; left: 0; right: 0; top: 50%; height: 5px;
-    transform: translateY(-50%); background: #64748B; border-radius: 999px;
-  }
-  .pe-fair {
-    position: absolute; top: 50%; height: 16px; transform: translateY(-50%);
-    background: rgba(56, 189, 248, 0.5); border: 2px solid rgba(125, 211, 252, 0.95);
-    border-radius: 8px; z-index: 1;
-  }
-  .pe-ticks { position: absolute; inset: 0; z-index: 1; }
-  .pe-tick {
-    position: absolute; top: 50%; width: 11px; height: 11px;
-    transform: translate(-50%, -50%); border-radius: 50%; background: #E2E8F0;
-    border: 1px solid #0B1120;
-  }
-  .pe-thumb {
+  .cell-k { font-size: 9.5px; color: var(--text-secondary); }
+  .cell-v { font-size: 11px; font-weight: 700; color: var(--text-primary); line-height: 1.25; }
+  .cell-sub { font-size: 9.5px; color: var(--text-muted); }
+
+  .up { color: var(--tw-up); } .down { color: var(--tw-down); }
+  .cyan { color: var(--cyan); } .amber { color: var(--amber); }
+
+  /* 進度條 */
+  .prog-track { height: 4px; background: #0B1120; border-radius: 999px; overflow: hidden; }
+  .prog-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #10B981, #38BDF8); }
+  .prog-fill-amber { background: linear-gradient(90deg, #F59E0B, #FBBF24); }
+
+  /* 本益比實數刻度尺 */
+  .ruler-wrap { display: flex; flex-direction: column; gap: 2px; }
+  .ruler-track { position: relative; height: 4px; background: #0B1120; border-radius: 999px; margin-top: 2px; }
+  .ruler-dot {
     position: absolute; top: 50%; transform: translate(-50%, -50%);
-    width: 22px; height: 22px; border-radius: 50%;
-    background: #34D399; border: 3px solid #ECFDF5;
-    box-shadow: 0 0 0 4px rgba(52, 211, 153, 0.4);
-    z-index: 2;
+    width: 8px; height: 8px; border-radius: 50%; background: #38BDF8;
+    border: 1.5px solid #FFF; box-shadow: 0 0 6px rgba(56, 189, 248, 0.8);
   }
-  .pe-thumb.warn { background: #FBBF24; box-shadow: 0 0 0 4px rgba(251, 191, 36, 0.4); }
-  .pe-thumb.hot { background: #F87171; box-shadow: 0 0 0 4px rgba(248, 113, 113, 0.4); }
-  .sr-line { display: flex; align-items: center; gap: 10px; font-size: 30px; font-weight: 800; }
-  .sr-support { color: var(--green); }
-  .sr-resist { color: #F87171; }
-  .footer-legend {
-    text-align: center; font-size: 20px; color: var(--text-secondary); padding-top: 2px; flex-shrink: 0;
-  }
-  .empty-wrap {
-    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
-  }
-  .empty-title { font-size: 36px; font-weight: 900; }
-  .empty-sub { font-size: 24px; color: var(--text-muted); }
+  .ruler-labels { display: flex; justify-content: space-between; font-size: 9px; color: var(--text-muted); }
+
+  /* 精準 5 日籌碼紅綠方塊 */
+  .flow-blocks-row { display: flex; align-items: center; gap: 6px; font-size: 9.5px; color: var(--text-secondary); }
+  .sq-group { display: inline-flex; gap: 2.5px; align-items: center; }
+  .sq { width: 7px; height: 7px; border-radius: 1.5px; display: inline-block; }
+  .sq-b { background: #EF4444; } /* 買超: 紅 */
+  .sq-s { background: #10B981; } /* 賣超: 綠 */
+  .sq-n { background: #475569; } /* 持平: 灰 */
+
+  .footer-legend { text-align: center; font-size: 9px; color: var(--text-muted); padding-top: 1px; }
 </style>
 </head>
 <body>
   <div class="phone-frame">
     <div class="page-header">
-      <div class="page-title">{{TITLE}}</div>
-      <div class="page-sub">{{SUB}}</div>
-      {{PAGE_META}}
+      <div class="page-title">真成長低估掃描</div>
+      <div class="page-meta mono">{{DATE_STR}}・第 {{PAGE_NO}}/{{TOTAL_PAGES}} 頁</div>
     </div>
-    <div class="cards-stack">{{CARDS}}</div>
-    <div class="footer-legend">估值≠買訊｜★可買仍須對齊黃金買點才切入</div>
+    <div class="regime-banner {{REGIME_CLASS}}">
+      <span>{{REGIME_TEXT}}</span>
+      <span class="mono">{{FX_TEXT}}</span>
+    </div>
+    <div class="cards-stack">{{STOCK_CARDS_HTML}}</div>
+    <div class="footer-legend">★可買 ☆等止穩 ⚠️興櫃量小｜5日籌碼(左→右)：🟥買 🟩賣｜估值≠買訊</div>
   </div>
 </body>
 </html>
 """
 
 
+def calc_forward_12m_eps(
+    eps_this_year: float, eps_next_year: float, ref_date: date | None = None
+) -> float:
+    """未來 12 個月平滑滾動 EPS：隨月份推進調整權重，跨年不跳號。"""
+    d = ref_date or date.today()
+    months_left = max(0, 12 - d.month + 1)
+    w_this = months_left / 12.0
+    return round(eps_this_year * w_this + eps_next_year * (1.0 - w_this), 2)
+
+
+def detect_market_regime(
+    usd_twd: float, foreign_sell_days: int, market_above_ma20: bool
+) -> dict:
+    """依台幣匯率與外資/大盤水位動態切換模式。"""
+    if usd_twd >= 32.8 and foreign_sell_days >= 2 and not market_above_ma20:
+        return {
+            "class": "regime-fx",
+            "text": "⚠️ 台幣急貶外資提款盤・非基本面轉壞",
+            "fx_text": f"USD/TWD {usd_twd:.2f}",
+        }
+    if not market_above_ma20 and foreign_sell_days >= 3:
+        return {
+            "class": "regime-bear",
+            "text": "🔴 系統性修正盤・嚴守站回支撐再買",
+            "fx_text": f"USD/TWD {usd_twd:.2f}",
+        }
+    return {
+        "class": "regime-normal",
+        "text": "🟢 資金常態盤・依區間與黃金買點操作",
+        "fx_text": f"USD/TWD {usd_twd:.2f}",
+    }
+
+
+def _render_5day_squares(flags: list[str]) -> str:
+    """精準產生 5 格籌碼燈號（'B'=紅買, 'S'=綠賣, 'N'=灰平），固定 5 格不會錯位。"""
+    padded = (flags + ["N"] * 5)[:5]
+    cls_map = {"B": "sq-b", "S": "sq-s", "N": "sq-n"}
+    return "".join(f'<span class="sq {cls_map.get(x, "sq-n")}"></span>' for x in padded)
+
+
+def _build_card_html(s: dict) -> str:
+    status_cls = {"buy": "status-buy", "wait": "status-wait", "risk": "status-risk"}.get(
+        s.get("status", "wait"), "status-wait"
+    )
+    flow_cls = {"buy": "flow-buy", "sell": "flow-sell", "warn": "flow-warn"}.get(
+        s.get("flow_type", "buy"), "flow-buy"
+    )
+    support_cls = "down" if s.get("support_ok") else "amber"
+    bar_cls = "prog-fill-amber" if s.get("status") == "risk" else ""
+
+    if s.get("is_emerging"):
+        bl_bottom = (
+            f'<div class="cell-sub amber">'
+            f'{html.escape(s.get("emerging_note", "興櫃量小注意流動性"))}</div>'
+        )
+        bl_title = "目標價與現增防線"
+    else:
+        f_sq = _render_5day_squares(s.get("foreign_5d", ["N"] * 5))
+        t_sq = _render_5day_squares(s.get("trust_5d", ["N"] * 5))
+        bl_bottom = (
+            f'<div class="flow-blocks-row">'
+            f'<span>外資</span><span class="sq-group">{f_sq}</span>'
+            f'<span>投信</span><span class="sq-group">{t_sq}</span>'
+            f"</div>"
+        )
+        bl_title = "目標價與近5日籌碼"
+
+    return f"""
+    <div class="stock-card {status_cls}">
+      <div class="card-top">
+        <div class="card-head-text">{html.escape(s['icon'])} {html.escape(s['status_label'])}｜{html.escape(s['ticker'])} {html.escape(s['name'])}｜{html.escape(s['price'])}元｜毛利{html.escape(s['gm_q3'])}</div>
+        <span class="flow-pill {flow_cls}">{html.escape(s['flow_pill'])}</span>
+      </div>
+      <div class="d3-grid">
+        <div class="d3-cell">
+          <div class="cell-k">今年賺錢進度</div>
+          <div class="cell-v mono">已賺 {html.escape(s['eps_ytd'])} / 估 {html.escape(s['eps_est_yr'])} ({int(s['eps_pct'])}%)</div>
+          <div class="prog-track"><div class="prog-fill {bar_cls}" style="width: {min(100, int(s['eps_pct']))}%;"></div></div>
+          <div class="cell-sub">{html.escape(s['q4_progress'])}</div>
+        </div>
+        <div class="d3-cell">
+          <div class="cell-k">滾動本益比</div>
+          <div class="cell-v mono cyan">{html.escape(s['pe_fwd12m'])}倍 <span class="cell-sub">({html.escape(s['pe_note'])})</span></div>
+          <div class="ruler-wrap">
+            <div class="ruler-track"><div class="ruler-dot" style="left: {int(s['pe_dot_pct'])}%;"></div></div>
+            <div class="ruler-labels mono"><span>{html.escape(s['pe_min'])}</span><span>{html.escape(s['pe_mid'])}</span><span>{html.escape(s['pe_max'])}</span></div>
+          </div>
+        </div>
+        <div class="d3-cell">
+          <div class="cell-k">{bl_title}</div>
+          <div class="cell-v mono">正常 {html.escape(s['target_norm'])}｜保守 {html.escape(s['target_cons'])}</div>
+          {bl_bottom}
+        </div>
+        <div class="d3-cell">
+          <div class="cell-k">營收達標與撐壓</div>
+          <div class="cell-v mono">{html.escape(s['rev_now'])} / 需 {html.escape(s['rev_gate'])} ({int(s['rev_pct'])}%)</div>
+          <div class="prog-track"><div class="prog-fill {bar_cls}" style="width: {min(100, int(s['rev_pct']))}%;"></div></div>
+          <div class="cell-sub mono"><span class="{support_cls}">{html.escape(s['support_text'])}</span></div>
+        </div>
+      </div>
+    </div>
+    """
+
+
+def render_screener_pages(
+    stocks: list[dict], date_str: str, regime: dict, out_dir: str = "."
+) -> list[str]:
+    out_paths = []
+    total_pages = max(1, math.ceil(len(stocks) / MAX_PER_PAGE)) if stocks else 1
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(
+            args=["--disable-dev-shm-usage", "--no-sandbox", "--disable-gpu"]
+        )
+        page = browser.new_page(
+            viewport={"width": VIEW_W, "height": VIEW_H},
+            device_scale_factor=DPR,
+        )
+
+        for page_idx in range(total_pages):
+            chunk = stocks[page_idx * MAX_PER_PAGE : (page_idx + 1) * MAX_PER_PAGE]
+            cards_html = "\n".join(_build_card_html(s) for s in chunk) if chunk else ""
+            page_html = (
+                HTML_TEMPLATE.replace("{{DATE_STR}}", date_str)
+                .replace("{{PAGE_NO}}", str(page_idx + 1))
+                .replace("{{TOTAL_PAGES}}", str(total_pages))
+                .replace("{{REGIME_CLASS}}", regime["class"])
+                .replace("{{REGIME_TEXT}}", regime["text"])
+                .replace("{{FX_TEXT}}", regime["fx_text"])
+                .replace("{{STOCK_CARDS_HTML}}", cards_html)
+            )
+            page.set_content(page_html, wait_until="networkidle")
+            out_file = str(Path(out_dir) / f"screener_d3_p{page_idx + 1}.png")
+            page.screenshot(path=out_file, full_page=False)
+            out_paths.append(out_file)
+
+        browser.close()
+    return out_paths
+
+
+def send_telegram_photo(
+    bot_token: str, chat_id: str, png_path: str, caption: str = ""
+) -> dict:
+    url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
+    with open(png_path, "rb") as f:
+        resp = requests.post(
+            url,
+            data={"chat_id": chat_id, "caption": caption},
+            files={"photo": f},
+            timeout=20,
+        )
+    return resp.json()
+
+
+# --- WayneBot 接線：把既有低估列填進上面模板欄位（不改 HTML/CSS）---
+
+
 def playwright_available() -> bool:
     if os.environ.get("WAYNE_UV_HTML", "1").strip() in ("0", "false", "no"):
         return False
     try:
-        from playwright.sync_api import sync_playwright  # noqa: F401
+        from playwright.sync_api import sync_playwright as _sp  # noqa: F401
 
         return True
     except Exception:
@@ -243,285 +345,342 @@ def _finite(v: Any) -> Optional[float]:
         return None
 
 
-def _fmt_price(v: Any) -> str:
-    x = _finite(v)
-    if x is None:
-        return "—"
-    has_dec = abs(x - round(x)) > 1e-6
-    if abs(x) >= 1000:
-        return f"{x:,.1f}".rstrip("0").rstrip(".") if has_dec else f"{x:,.0f}"
-    if has_dec:
-        return f"{x:.1f}"
-    if abs(x) >= 100:
-        return f"{x:.0f}"
-    return f"{x:.1f}".rstrip("0").rstrip(".")
-
-
-def _fmt_eps(v: Any) -> str:
-    x = _finite(v)
-    if x is None:
-        return "—"
-    if abs(x) >= 100:
-        return f"{x:.0f}"
-    if abs(x) >= 10:
-        return f"{x:.1f}" if abs(x - round(x)) > 1e-6 else f"{x:.0f}"
-    return f"{x:.2f}".rstrip("0").rstrip(".") or "0"
-
-
-def _fmt_pct(v: Any) -> str:
-    x = _finite(v)
-    if x is None:
-        return "—"
-    return f"{x:+.0f}%" if abs(x) >= 10 else f"{x:+.1f}%"
-
-
 def _fmt_num(v: Any, digits: int = 1) -> str:
     x = _finite(v)
     if x is None:
         return "—"
-    return f"{x:.{digits}f}"
+    if digits == 0:
+        return f"{x:.0f}"
+    s = f"{x:.{digits}f}"
+    return s.rstrip("0").rstrip(".") if "." in s else s
 
 
-def _status_class(mark: Any) -> str:
-    m = str(mark or "").lower()
-    if m in ("star", "true", "★", "*"):
-        return "status-buy"
-    if m in ("emerging", "emerge", "⚠️", "warn"):
-        return "status-risk"
-    return "status-wait"
+def _fmt_price(v: Any) -> str:
+    x = _finite(v)
+    if x is None:
+        return "—"
+    if abs(x) >= 1000:
+        return f"{x:,.0f}" if abs(x - round(x)) < 1e-6 else f"{x:,.1f}"
+    if abs(x - round(x)) < 1e-6 and abs(x) >= 100:
+        return f"{x:.0f}"
+    return _fmt_num(x, 1)
 
 
-def _mark_bits(mark: Any) -> tuple[str, str]:
-    m = str(mark or "").lower()
-    if m in ("star", "true", "★", "*"):
-        return "★", "可買"
-    if m in ("emerging", "emerge", "⚠️", "warn"):
-        return "⚠", "量小"
-    return "☆", "等止穩"
+def _net_to_flag(v: float) -> str:
+    if v > 0:
+        return "B"
+    if v < 0:
+        return "S"
+    return "N"
 
 
-def _flow_class(chip: str) -> str:
-    s = chip or ""
-    if "興櫃" in s:
-        return "flow-purple"
-    if "同賣" in s or ("調節" in s and "投信" not in s):
-        return "flow-warn"
-    if "同買" in s or "連買" in s:
-        return "flow-buy"
-    if "調節" in s:
-        return "flow-warn"
-    return "flow-buy"
+def _normalize_5d_flags(raw: Any) -> list[str]:
+    if isinstance(raw, (list, tuple)) and raw:
+        out = []
+        for x in raw[:5]:
+            s = str(x or "N").upper()[:1]
+            out.append(s if s in ("B", "S", "N") else "N")
+        return (out + ["N"] * 5)[:5]
+    return ["N"] * 5
 
 
-def _build_card(row: Dict[str, Any]) -> str:
-    status = _status_class(row.get("mark"))
-    glyph, glabel = _mark_bits(row.get("mark"))
-    sid = html.escape(str(row.get("stock_id") or "—"))
-    name = html.escape(str(row.get("name") or "").strip())
-    close_s = html.escape(_fmt_price(row.get("close")))
-    gm = _fmt_num(row.get("gross_margin"), 1)
-    yoy = _fmt_pct(row.get("yoy_pct"))
+def _as_of_date(as_of: Optional[str]) -> date:
+    s = str(as_of or "").replace("-", "")[:8]
+    if len(s) == 8 and s.isdigit():
+        try:
+            return date(int(s[:4]), int(s[4:6]), int(s[6:8]))
+        except ValueError:
+            pass
+    return date.today()
+
+
+def _date_str(as_of: Optional[str]) -> str:
+    d = _as_of_date(as_of)
+    return d.strftime("%m/%d")
+
+
+def pick_row_to_screener_stock(row: Dict[str, Any], *, as_of: Optional[str] = None) -> dict:
+    """把融合庫低估列填進模板欄位；不准改 HTML 結構。"""
+    mark = str(row.get("mark") or "").lower()
+    emerging = mark in ("emerging", "emerge") or bool(row.get("emerging"))
+    broken = bool(row.get("tech_broken")) or (
+        "破撐" in str(row.get("tech_status") or "") or "破撐" in str(row.get("reason") or "")
+    )
+    if emerging:
+        status, icon, status_label = "risk", "⚠️", "興櫃量小"
+    elif mark in ("star", "true", "★", "*") and not broken:
+        status, icon, status_label = "buy", "★", "可買"
+    else:
+        status, icon, status_label = "wait", "☆", "等止穩"
+
     chip = str(row.get("chip_note") or "").strip()
-    chip_html = ""
-    if chip:
-        chip_html = (
-            f'<span class="flow-pill {_flow_class(chip)}">{html.escape(chip)}</span>'
-        )
+    if emerging or "興櫃" in chip:
+        flow_type, flow_pill = "warn", chip or "興櫃無法人"
+    elif "同賣" in chip or ("調節" in chip and "投信" in chip):
+        flow_type, flow_pill = "sell", chip or "籌碼調節"
+    elif "同買" in chip or "連買" in chip:
+        flow_type, flow_pill = "buy", chip or "籌碼偏多"
+    else:
+        flow_type, flow_pill = "buy", chip or "—"
 
-    head_bits = [
-        f'<span class="head-accent">{html.escape(glyph)} {html.escape(glabel)}</span>',
-        f'<span class="sep">|</span><span class="head-main">{sid}{" " + name if name else ""}</span>',
-        f'<span class="sep">|</span><span class="head-main">{close_s}元</span>',
-    ]
-    if gm != "—":
-        head_bits.append(
-            f'<span class="sep">|</span><span class="head-accent">毛利{html.escape(gm)}%</span>'
-        )
-    if yoy != "—":
-        head_bits.append(
-            f'<span class="sep">|</span><span class="head-accent">年增{html.escape(yoy)}</span>'
-        )
-
-    eps_e = _finite(row.get("eps_earned"))
+    close = _finite(row.get("close"))
     eps_y = _finite(row.get("eps_2026"))
     eps_n = _finite(row.get("eps_2027"))
-    earned_pct = None
-    climb_pct = None
-    if eps_e is not None and eps_n is not None and eps_n > 0:
-        earned_pct = max(0.0, min(999.0, eps_e / eps_n * 100.0))
-    if eps_y is not None and eps_n is not None and eps_n > 0:
-        climb_pct = max(0.0, min(100.0, eps_y / eps_n * 100.0))
+    eps_e = _finite(row.get("eps_earned"))
+    ref_d = _as_of_date(as_of)
+    fwd_eps = None
+    if eps_y is not None and eps_n is not None:
+        fwd_eps = calc_forward_12m_eps(eps_y, eps_n, ref_d)
+    elif eps_n is not None:
+        fwd_eps = eps_n
+    elif eps_y is not None:
+        fwd_eps = eps_y
 
-    n_raw = row.get("eps_2027_label")
-    n_s = str(n_raw) if n_raw else _fmt_eps(eps_n)
-    y_s = _fmt_eps(eps_y)
-    if eps_y is not None and abs(eps_y - round(eps_y)) < 1e-9 and abs(eps_y) < 100:
-        y_s = f"{eps_y:.1f}"
-    if not n_raw and eps_n is not None and abs(eps_n - round(eps_n)) < 1e-9 and abs(eps_n) < 100:
-        n_s = f"{eps_n:.1f}"
-    n_lab = "明" if (n_raw or (eps_n is not None and eps_n >= 100)) else "明年"
-    climb_html = ""
-    if climb_pct is not None:
-        climb_html = f'<span class="pct-pill mono">{int(round(climb_pct))}%</span>'
-    earned_extra = (
-        f'<span class="muted mono">{int(round(earned_pct))}%</span>'
-        if earned_pct is not None
-        else ""
-    )
+    pe_fwd12 = None
+    if close is not None and fwd_eps is not None and fwd_eps > 0:
+        pe_fwd12 = close / fwd_eps
 
-    pe_now = _finite(row.get("pe"))
-    pe_fwd = _finite(row.get("pe_fwd"))
     pe_year = _finite(row.get("pe_year"))
     pe_next = _finite(row.get("pe_next"))
     fair_lo = pe_next if pe_next is not None else pe_year
     fair_hi = pe_year if pe_year is not None else pe_next
     if fair_lo is not None and fair_hi is not None and fair_lo > fair_hi:
         fair_lo, fair_hi = fair_hi, fair_lo
-    pe_s = _fmt_num(pe_now, 1)
-    if pe_s != "—" and pe_now is not None and abs(pe_now - round(pe_now)) < 0.05:
-        pe_s = f"{pe_now:.0f}"
-    fwd_s = _fmt_num(pe_fwd, 1)
-    if fwd_s != "—" and pe_fwd is not None and abs(pe_fwd - round(pe_fwd)) < 0.05:
-        fwd_s = f"{pe_fwd:.0f}"
-    band = ""
-    emerging = status == "status-risk"
-    if (not emerging) and fair_lo is not None and fair_hi is not None:
-        band = f'<span class="muted">(合理 {fair_lo:.0f}-{fair_hi:.0f}x)</span>'
 
-    # 本益比尺：同一刻度算現況點與合理帶
-    scale_vals = [v for v in (pe_now, pe_fwd, fair_lo, fair_hi) if v is not None and v > 0]
-    if not scale_vals and pe_now is not None:
-        scale_vals = [pe_now]
-    span_lo = min(scale_vals) * 0.85 if scale_vals else 10.0
-    span_hi = max(scale_vals) * 1.15 if scale_vals else 40.0
+    scale_vals = [v for v in (pe_fwd12, fair_lo, fair_hi, _finite(row.get("pe"))) if v is not None and v > 0]
+    if not scale_vals:
+        scale_vals = [15.0, 25.0]
+    span_lo = min(scale_vals) * 0.85
+    span_hi = max(scale_vals) * 1.15
     den = max(span_hi - span_lo, 1e-9)
+    pe_dot = 50.0
+    if pe_fwd12 is not None:
+        pe_dot = max(4.0, min(96.0, (pe_fwd12 - span_lo) / den * 100.0))
 
-    def _pe_pct(v: Optional[float], *, lo: float = 4.0, hi: float = 96.0) -> float:
-        if v is None:
-            return 50.0
-        return max(lo, min(hi, (float(v) - span_lo) / den * 100.0))
-
-    pe_marker = pe_now if pe_now is not None else pe_fwd
-    pe_pct = _pe_pct(pe_marker)
-    fair_left = _pe_pct(fair_lo, lo=2.0, hi=90.0) if fair_lo is not None else 35.0
-    fair_right = _pe_pct(fair_hi, lo=10.0, hi=98.0) if fair_hi is not None else 65.0
-    if fair_right < fair_left:
-        fair_left, fair_right = fair_right, fair_left
-    fair_width = max(8.0, fair_right - fair_left)
-    thumb_cls = "pe-thumb"
-    if fair_lo is not None and fair_hi is not None and pe_marker is not None:
-        if pe_marker > fair_hi * 1.05:
-            thumb_cls = "pe-thumb hot"
-        elif pe_marker >= fair_lo:
-            thumb_cls = "pe-thumb warn"
-    ticks_html = "".join(
-        f'<span class="pe-tick" style="left: {(i + 0.5) / 5 * 100:.1f}%;"></span>'
-        for i in range(5)
+    pe_min = _fmt_num(span_lo, 0)
+    pe_mid = (
+        f"{fair_lo:.0f}-{fair_hi:.0f}"
+        if fair_lo is not None and fair_hi is not None
+        else _fmt_num((span_lo + span_hi) / 2, 0)
     )
-    pe_gauge = f"""
-          <div class="pe-gauge">
-            <div class="pe-labels"><span>偏低</span><span class="fair">合理帶</span><span>偏貴</span></div>
-            <div class="pe-rail">
-              <div class="pe-axis"></div>
-              <div class="pe-fair" style="left:{fair_left:.1f}%;width:{fair_width:.1f}%;"></div>
-              <div class="pe-ticks">{ticks_html}</div>
-              <div class="{thumb_cls}" style="left:{pe_pct:.1f}%;"></div>
-            </div>
-          </div>"""
-
-    fair = _finite(row.get("fair_year"))
-    tgt = _finite(row.get("target_next"))
-    ups_f = _finite(row.get("ups_fair_pct"))
-    ups_t = _finite(row.get("ups_tgt_pct"))
-    tgt_rows = []
-    if emerging and fair is not None and tgt is not None:
-        frac = max(0, min(100, int(round(ups_t or 0))))
-        tgt_rows.append(
-            f'<div class="row-bar"><div class="lab cell-sub mono">明年看 {_fmt_price(fair)}-{_fmt_price(tgt)}</div>'
-            f'<div class="mini-track"><div class="mini-fill" style="width:{frac}%"></div></div></div>'
-        )
+    pe_max = _fmt_num(span_hi, 0)
+    if pe_fwd12 is not None and fair_lo is not None and fair_hi is not None:
+        if pe_fwd12 < fair_lo:
+            pe_note = "偏低"
+        elif pe_fwd12 > fair_hi:
+            pe_note = "偏貴"
+        else:
+            pe_note = "合理帶"
     else:
-        if fair is not None:
-            frac = max(0, min(100, int(round(ups_f or 0))))
-            ups = f'<span class="up mono">({_fmt_pct(ups_f)})</span>' if ups_f is not None else ""
-            tgt_rows.append(
-                f'<div class="row-bar"><div class="lab cell-sub mono">今年看 {_fmt_price(fair)} {ups}</div>'
-                f'<div class="mini-track"><div class="mini-fill" style="width:{frac}%"></div></div></div>'
-            )
-        if tgt is not None:
-            frac = max(0, min(100, int(round(ups_t or 0))))
-            ups = f'<span class="up mono">({_fmt_pct(ups_t)})</span>' if ups_t is not None else ""
-            tgt_rows.append(
-                f'<div class="row-bar"><div class="lab cell-sub mono">明年看 {_fmt_price(tgt)} {ups}</div>'
-                f'<div class="mini-track"><div class="mini-fill" style="width:{frac}%"></div></div></div>'
-            )
+        pe_note = "滾動"
+
+    eps_pct = 0
+    if eps_e is not None and eps_y is not None and eps_y > 0:
+        eps_pct = max(0, min(999, int(round(eps_e / eps_y * 100.0))))
 
     thr = _finite(row.get("rev_threshold_yi"))
     oct_r = _finite(row.get("rev_oct_yi"))
+    rev_pct = 0
+    if thr is not None and thr > 0 and oct_r is not None:
+        rev_pct = max(0, min(999, int(round(oct_r / thr * 100.0))))
+
     support = _finite(row.get("support"))
     resist = _finite(row.get("resistance"))
-    broken = bool(row.get("tech_broken")) or (
-        "破撐" in str(row.get("tech_status") or "") or "破撐" in str(row.get("reason") or "")
-    )
-    if emerging:
-        br_title = "【對帳防線】"
-        thr_line = f'明年門檻 {_fmt_num(thr, 2 if (thr is not None and thr < 10) else 1)}億/月'
+    support_ok = not broken
+    if broken and support is not None:
+        support_text = f"▲破撐 {_fmt_price(support)}｜壓 {_fmt_price(resist)}"
     else:
-        br_title = "【對帳與撐壓】"
-        thr_line = f'月門檻 {_fmt_num(thr, 1)}億'
-        if oct_r is not None:
-            mon = str(row.get("rev_month_label") or "最新").strip() or "最新"
-            thr_line += f' <span class="muted">({html.escape(mon)}{_fmt_num(oct_r, 1)})</span>'
-    if broken and support is not None and not emerging:
-        sr_html = (
-            f'<div class="sr-line amber mono">▲破撐 {_fmt_price(support)}'
-            f'<span class="muted"> | </span>'
-            f'<span class="sr-resist">壓 {_fmt_price(resist)}</span></div>'
-        )
-    else:
-        sr_html = (
-            f'<div class="sr-line mono">'
-            f'<span class="sr-support">撐 {_fmt_price(support)}</span>'
-            f'<span class="muted"> | </span>'
-            f'<span class="sr-resist">壓 {_fmt_price(resist)}</span></div>'
-        )
+        support_text = f"撐 {_fmt_price(support)}｜壓 {_fmt_price(resist)}"
 
-    return f"""
-    <div class="stock-card {status}">
-      <div class="card-head">
-        <div class="head-left">{''.join(head_bits)}</div>
-        {chip_html}
-      </div>
-      <div class="d3-grid">
-        <div class="d3-cell tl">
-          <div class="cell-top">
-            <div class="cell-title">【EPS爬坡】</div>
-            <div class="cell-main mono">已賺 {_fmt_eps(eps_e)} {earned_extra}</div>
-          </div>
-          <div class="cell-sub mono">今年 {html.escape(y_s)} | {html.escape(n_lab)} {html.escape(n_s)} {climb_html}</div>
-        </div>
-        <div class="d3-cell tr">
-          <div class="cell-top">
-            <div class="cell-title">【本益比位階】</div>
-            <div class="cell-main mono">今年 {html.escape(pe_s)}x</div>
-            <div class="cell-sub mono">前瞻 {html.escape(fwd_s)}x {band}</div>
-          </div>
-          {pe_gauge}
-        </div>
-        <div class="d3-cell bl">
-          <div class="cell-title">【目標空間】</div>
-          <div>{''.join(tgt_rows) if tgt_rows else '<div class="cell-sub muted">—</div>'}</div>
-        </div>
-        <div class="d3-cell br">
-          <div class="cell-top">
-            <div class="cell-title">{br_title}</div>
-            <div class="cell-sub mono">{thr_line}</div>
-          </div>
-          {sr_html}
-        </div>
-      </div>
-    </div>
-    """
+    fair = _finite(row.get("fair_year"))
+    tgt = _finite(row.get("target_next"))
+    # 正常＝明年目標；保守＝今年合理（對齊模板「正常｜保守」）
+    target_norm = _fmt_price(tgt if tgt is not None else fair)
+    target_cons = _fmt_price(fair if fair is not None else tgt)
+
+    gm = _finite(row.get("gross_margin"))
+    gm_s = f"{gm:.1f}%" if gm is not None else "—"
+
+    q4 = ""
+    if eps_e is not None and eps_y is not None:
+        left = max(0.0, eps_y - eps_e)
+        q4 = f"Q4 還需約 {_fmt_num(left, 1)} 元"
+
+    return {
+        "status": status,
+        "icon": icon,
+        "status_label": status_label,
+        "ticker": str(row.get("stock_id") or "—"),
+        "name": str(row.get("name") or "").strip(),
+        "price": _fmt_price(close),
+        "gm_q3": gm_s,
+        "flow_type": flow_type,
+        "flow_pill": flow_pill,
+        "eps_ytd": _fmt_num(eps_e, 2 if (eps_e is not None and abs(eps_e) < 10) else 1),
+        "eps_est_yr": _fmt_num(eps_y, 1),
+        "eps_pct": eps_pct,
+        "q4_progress": q4 or "—",
+        "pe_fwd12m": _fmt_num(pe_fwd12, 1),
+        "pe_note": pe_note,
+        "pe_dot_pct": pe_dot,
+        "pe_min": pe_min,
+        "pe_mid": pe_mid,
+        "pe_max": pe_max,
+        "target_norm": target_norm,
+        "target_cons": target_cons,
+        "foreign_5d": _normalize_5d_flags(row.get("foreign_5d")),
+        "trust_5d": _normalize_5d_flags(row.get("trust_5d")),
+        "is_emerging": emerging,
+        "emerging_note": str(row.get("tech_status") or "興櫃量小注意流動性"),
+        "rev_now": f"{_fmt_num(oct_r, 1)}億" if oct_r is not None else "—",
+        "rev_gate": f"{_fmt_num(thr, 1)}億" if thr is not None else "—",
+        "rev_pct": rev_pct,
+        "support_ok": support_ok,
+        "support_text": support_text,
+    }
+
+
+def resolve_regime(
+    *,
+    usd_twd: Optional[float] = None,
+    foreign_sell_days: int = 0,
+    market_above_ma20: bool = True,
+    empty_note: Optional[str] = None,
+) -> dict:
+    fx = _finite(usd_twd)
+    if fx is None:
+        fx = 31.50
+    regime = detect_market_regime(float(fx), int(foreign_sell_days or 0), bool(market_above_ma20))
+    if empty_note:
+        regime = dict(regime)
+        regime["text"] = str(empty_note)[:48]
+    return regime
+
+
+def load_usd_twd_hint(db_path: Optional[str] = None) -> Optional[float]:
+    """盡量讀庫內已有匯率；沒有就 None（不准假造）。"""
+    path = db_path or os.environ.get("WAYNE_DB_PATH") or ""
+    if not path or not os.path.isfile(path):
+        return None
+    try:
+        import sqlite3
+
+        con = sqlite3.connect(path)
+        try:
+            for sql in (
+                "SELECT value FROM market_snapshots WHERE key IN ('usd_twd','USDTWD','USD/TWD') ORDER BY as_of DESC LIMIT 1",
+                "SELECT close FROM daily_quotes WHERE stock_id IN ('USDTWD','USD/TWD','TWD=X') ORDER BY date DESC LIMIT 1",
+            ):
+                try:
+                    row = con.execute(sql).fetchone()
+                except Exception:
+                    row = None
+                if row and _finite(row[0]) is not None:
+                    return float(row[0])
+        finally:
+            con.close()
+    except Exception:
+        return None
+    return None
+
+
+def enrich_chip_5d_on_rows(
+    rows: Sequence[Dict[str, Any]],
+    *,
+    db_path: Optional[str] = None,
+    as_of: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """若列上尚無 foreign_5d／trust_5d，從 daily_quotes 近 5 日淨額填入（左舊→右新）。"""
+    path = db_path or os.environ.get("WAYNE_DB_PATH") or ""
+    day = str(as_of or "").replace("-", "")[:8]
+    out: List[Dict[str, Any]] = []
+    con = None
+    if path and os.path.isfile(path) and len(day) == 8:
+        try:
+            import sqlite3
+
+            con = sqlite3.connect(path)
+        except Exception:
+            con = None
+    try:
+        for raw in rows:
+            row = dict(raw)
+            if row.get("foreign_5d") and row.get("trust_5d"):
+                out.append(row)
+                continue
+            sid = str(row.get("stock_id") or "").strip()
+            if con is None or not sid:
+                row.setdefault("foreign_5d", ["N"] * 5)
+                row.setdefault("trust_5d", ["N"] * 5)
+                out.append(row)
+                continue
+            try:
+                nets = con.execute(
+                    """
+                    SELECT COALESCE(foreign_net, 0), COALESCE(trust_net, 0)
+                    FROM daily_quotes
+                    WHERE stock_id=? AND REPLACE(CAST(date AS TEXT),'-','')<=?
+                    ORDER BY date DESC LIMIT 5
+                    """,
+                    (sid, day),
+                ).fetchall()
+            except Exception:
+                nets = []
+            # DB 新→舊；畫面左舊→右新
+            nets_old_first = list(reversed(nets))
+            while len(nets_old_first) < 5:
+                nets_old_first.insert(0, (0, 0))
+            row["foreign_5d"] = [_net_to_flag(float(n[0])) for n in nets_old_first[-5:]]
+            row["trust_5d"] = [_net_to_flag(float(n[1])) for n in nets_old_first[-5:]]
+            out.append(row)
+    finally:
+        if con is not None:
+            try:
+                con.close()
+            except Exception:
+                pass
+    return out
+
+
+def render_html_pages(
+    picks: Sequence[Dict[str, Any]],
+    out_dir: str,
+    *,
+    as_of: Optional[str] = None,
+    title: str = "",
+    empty_note: Optional[str] = None,
+    prefix: str = "uv_d3",
+    regime: Optional[dict] = None,
+    db_path: Optional[str] = None,
+) -> List[str]:
+    """產品入口：填資料 → 原模板 Playwright 截 1290×2796。"""
+    _ = title
+    from undervalue_card import _order_rows, _sanitize_paint_rows
+
+    rows = _order_rows(_sanitize_paint_rows(picks))
+    rows = enrich_chip_5d_on_rows(rows, db_path=db_path, as_of=as_of)
+    stocks = [pick_row_to_screener_stock(r, as_of=as_of) for r in rows]
+    os.makedirs(out_dir or ".", exist_ok=True)
+    fx = load_usd_twd_hint(db_path)
+    reg = regime or resolve_regime(
+        usd_twd=fx,
+        empty_note=empty_note if not stocks else None,
+    )
+    date_s = _date_str(as_of)
+    paths = render_screener_pages(stocks, date_s, reg, out_dir=out_dir)
+    # 產品檔名 uv_d3_pN.png
+    renamed: List[str] = []
+    for i, p in enumerate(paths):
+        dest = os.path.join(out_dir, f"{prefix}_p{i + 1}.png")
+        if os.path.abspath(p) != os.path.abspath(dest):
+            try:
+                if os.path.exists(dest):
+                    os.remove(dest)
+                os.replace(p, dest)
+            except Exception:
+                dest = p
+        renamed.append(dest)
+    return renamed
 
 
 def render_html_page(
@@ -531,109 +690,17 @@ def render_html_page(
     as_of: Optional[str] = None,
     page_i: int = 0,
     page_n: int = 1,
-    title: str = "版本 D3 終極版｜2×2 矩陣 · 籌碼撐壓整合",
+    title: str = "",
     empty_note: Optional[str] = None,
 ) -> str:
-    from undervalue_card import _as_of_close_label
-
-    date_s = _as_of_close_label(as_of) if as_of else ""
-    sub = "已整合外資／投信連買賣與大量區撐壓"
-    if date_s:
-        sub = f"{date_s}｜{sub}"
-    page_meta = ""
-    if page_n > 1:
-        page_meta = (
-            f'<div class="page-meta mono">第{page_i + 1}/{max(1, page_n)}頁</div>'
-        )
-    if not rows:
-        cards = (
-            '<div class="empty-wrap">'
-            '<div class="empty-title">無真成長低估名單</div>'
-            f'<div class="empty-sub">{html.escape(str(empty_note or "已剔除假低估陷阱；有資料再顯示"))}</div>'
-            "</div>"
-        )
-    else:
-        cards = "\n".join(_build_card(dict(r)) for r in rows)
-
-    page_html = (
-        HTML_TEMPLATE.replace("{{TITLE}}", html.escape(f"{title}（Top {CARDS_PER_PAGE}）"))
-        .replace("{{SUB}}", html.escape(sub))
-        .replace("{{PAGE_META}}", page_meta)
-        .replace("{{CARDS}}", cards)
+    _ = (page_i, page_n, title)
+    out_dir = os.path.dirname(save_path) or "."
+    paths = render_html_pages(
+        rows, out_dir, as_of=as_of, empty_note=empty_note, prefix="_uv_tmp"
     )
-
-    from playwright.sync_api import sync_playwright
-
-    os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
-    with sync_playwright() as p:
-        browser = p.chromium.launch(
-            args=[
-                "--font-render-hinting=none",
-                "--disable-dev-shm-usage",
-                "--no-sandbox",
-                "--disable-gpu",
-            ]
-        )
-        page = browser.new_page(
-            viewport={"width": BASE_W, "height": BASE_H},
-            device_scale_factor=1,
-        )
-        # file:// 較穩：字型 local() 可吃系統 Noto
-        with tempfile.NamedTemporaryFile("w", suffix=".html", delete=False, encoding="utf-8") as fh:
-            fh.write(page_html)
-            tmp = fh.name
-        try:
-            page.goto(f"file://{tmp}", wait_until="load", timeout=20000)
-            page.wait_for_timeout(80)
-            page.screenshot(path=save_path, full_page=False, type="png")
-        finally:
-            browser.close()
-            try:
-                os.unlink(tmp)
-            except Exception:
-                pass
+    src = paths[0]
+    if os.path.abspath(src) != os.path.abspath(save_path):
+        if os.path.exists(save_path):
+            os.remove(save_path)
+        os.replace(src, save_path)
     return save_path
-
-
-def render_html_pages(
-    picks: Sequence[Dict[str, Any]],
-    out_dir: str,
-    *,
-    as_of: Optional[str] = None,
-    title: str = "版本 D3 終極版｜2×2 矩陣 · 籌碼撐壓整合",
-    empty_note: Optional[str] = None,
-    prefix: str = "uv_d3",
-) -> List[str]:
-    from undervalue_card import (
-        _order_rows,
-        _page_count,
-        _sanitize_paint_rows,
-    )
-
-    rows = _order_rows(_sanitize_paint_rows(picks))
-    os.makedirs(out_dir or ".", exist_ok=True)
-    n_pages = _page_count(len(rows)) if rows else 1
-    paths: List[str] = []
-    if not rows:
-        p = os.path.join(out_dir, f"{prefix}_p1.png")
-        paths.append(
-            render_html_page(
-                [], p, as_of=as_of, page_i=0, page_n=1, title=title, empty_note=empty_note
-            )
-        )
-        return paths
-    for i in range(n_pages):
-        chunk = rows[i * CARDS_PER_PAGE : (i + 1) * CARDS_PER_PAGE]
-        p = os.path.join(out_dir, f"{prefix}_p{i + 1}.png")
-        paths.append(
-            render_html_page(
-                chunk,
-                p,
-                as_of=as_of,
-                page_i=i,
-                page_n=n_pages,
-                title=title,
-                empty_note=empty_note,
-            )
-        )
-    return paths

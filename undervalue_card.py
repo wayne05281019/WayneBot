@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """低估名單 D3 PNG（話筒出圖）。只排版，不重算選股／買訊。
 
-畫布固定 1080×1920（9:16）；頂安全 140／底安全 180；每頁最多 4 卡。
+D3 出圖強制 HTML_TEMPLATE＋Playwright（430×932 @3x → 1290×2796），禁 PIL／matplotlib 畫圖。
 排序 ★可買 → ☆等止穩 → ⚠️量小／興櫃。估值≠買訊。
 """
 from __future__ import annotations
@@ -13,12 +13,12 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from PIL import Image, ImageDraw, ImageFont
 
-# --- 畫布（Telegram 面向 1080×1920）---
-BASE_W = 1080
-BASE_H = 1920
+# --- 輸出尺寸（Playwright 430×932 × DPR3）---
+BASE_W = 1290
+BASE_H = 2796
 SCALE = 1
-SAFE_TOP = 140
-SAFE_BOTTOM = 180
+SAFE_TOP = 144  # 模板 padding-top 48 × 3
+SAFE_BOTTOM = 180  # 模板 padding-bottom 60 × 3
 CARDS_PER_PAGE = 4
 
 BG = (11, 17, 32)  # #0B1120
@@ -988,56 +988,6 @@ def _render_d3_page(
     return save_path
 
 
-def _try_html_pages(
-    picks: Sequence[Dict[str, Any]],
-    out_dir: str,
-    *,
-    as_of: Optional[str] = None,
-    title: str = "版本 D3 終極版｜2×2 矩陣 · 籌碼撐壓整合",
-    empty_note: Optional[str] = None,
-    prefix: str = "uv_d3",
-) -> Optional[List[str]]:
-    """優先 HTML／CSS＋Playwright；缺套件或失敗回 None → PIL。"""
-    try:
-        from undervalue_card_html import playwright_available, render_html_pages
-
-        if not playwright_available():
-            return None
-        return render_html_pages(
-            picks, out_dir, as_of=as_of, title=title, empty_note=empty_note, prefix=prefix
-        )
-    except Exception:
-        return None
-
-
-def _try_html_page(
-    rows: Sequence[Dict[str, Any]],
-    save_path: str,
-    *,
-    as_of: Optional[str] = None,
-    page_i: int = 0,
-    page_n: int = 1,
-    title: str = "版本 D3 終極版｜2×2 矩陣 · 籌碼撐壓整合",
-    empty_note: Optional[str] = None,
-) -> Optional[str]:
-    try:
-        from undervalue_card_html import playwright_available, render_html_page
-
-        if not playwright_available():
-            return None
-        return render_html_page(
-            rows,
-            save_path,
-            as_of=as_of,
-            page_i=page_i,
-            page_n=page_n,
-            title=title,
-            empty_note=empty_note,
-        )
-    except Exception:
-        return None
-
-
 def render_undervalue_pages(
     picks: Sequence[Dict[str, Any]],
     out_dir: str,
@@ -1046,40 +996,22 @@ def render_undervalue_pages(
     title: str = "版本 D3 終極版｜2×2 矩陣 · 籌碼撐壓整合",
     empty_note: Optional[str] = None,
     prefix: str = "uv_d3",
+    db_path: Optional[str] = None,
 ) -> List[str]:
-    """渲全部頁面；每頁最多 4 卡。回傳 PNG 路徑列表（至少 1）。"""
-    html_paths = _try_html_pages(
-        picks, out_dir, as_of=as_of, title=title, empty_note=empty_note, prefix=prefix
+    """渲全部頁面；每頁最多 4 卡。強制 HTML＋Playwright（禁 PIL 畫 D3）。"""
+    from undervalue_card_html import playwright_available, render_html_pages
+
+    if not playwright_available():
+        raise RuntimeError("低估 D3 必須 Playwright HTML 渲圖（禁 Pillow／matplotlib）")
+    return render_html_pages(
+        picks,
+        out_dir,
+        as_of=as_of,
+        title=title,
+        empty_note=empty_note,
+        prefix=prefix,
+        db_path=db_path or os.environ.get("WAYNE_DB_PATH"),
     )
-    if html_paths:
-        return html_paths
-    rows = _order_rows(_sanitize_paint_rows(picks))
-    os.makedirs(out_dir or ".", exist_ok=True)
-    n_pages = _page_count(len(rows)) if rows else 1
-    paths: List[str] = []
-    if not rows:
-        p = os.path.join(out_dir, f"{prefix}_p1.png")
-        paths.append(
-            _render_d3_page(
-                [], p, as_of=as_of, page_i=0, page_n=1, title=title, empty_note=empty_note
-            )
-        )
-        return paths
-    for i in range(n_pages):
-        chunk = rows[i * CARDS_PER_PAGE : (i + 1) * CARDS_PER_PAGE]
-        p = os.path.join(out_dir, f"{prefix}_p{i + 1}.png")
-        paths.append(
-            _render_d3_page(
-                chunk,
-                p,
-                as_of=as_of,
-                page_i=i,
-                page_n=n_pages,
-                title=title,
-                empty_note=empty_note,
-            )
-        )
-    return paths
 
 
 def render_undervalue_png(
@@ -1090,33 +1022,29 @@ def render_undervalue_png(
     title: str = "版本 D3 終極版｜2×2 矩陣 · 籌碼撐壓整合",
     pe_label: str = "PE",
     empty_note: Optional[str] = None,
+    db_path: Optional[str] = None,
 ) -> str:
-    """相容入口：有成長欄→D3 第 1 頁；否則舊列表（測試／舊快取）。"""
+    """相容入口：有成長欄→D3 第 1 頁（HTML）；否則舊列表（測試／舊快取仍可 PIL）。"""
     _ = pe_label
     rows_l = _sanitize_paint_rows(rows)
     if not rows_l or _has_growth_fields(rows_l):
         ordered = _order_rows(rows_l)
-        page_n = _page_count(len(ordered)) if ordered else 1
-        html_path = _try_html_page(
+        out_dir = os.path.dirname(save_path) or "."
+        paths = render_undervalue_pages(
             ordered[:CARDS_PER_PAGE],
-            save_path,
+            out_dir,
             as_of=as_of,
-            page_i=0,
-            page_n=page_n,
             title=title,
             empty_note=empty_note,
+            prefix="_uv_one",
+            db_path=db_path,
         )
-        if html_path:
-            return html_path
-        return _render_d3_page(
-            ordered[:CARDS_PER_PAGE],
-            save_path,
-            as_of=as_of,
-            page_i=0,
-            page_n=page_n,
-            title=title,
-            empty_note=empty_note,
-        )
+        src = paths[0]
+        if os.path.abspath(src) != os.path.abspath(save_path):
+            if os.path.exists(save_path):
+                os.remove(save_path)
+            os.replace(src, save_path)
+        return save_path
     # --- 舊列表相容（無 fair_year 的單元測試／舊庫）---
     rows_l = _order_rows(rows_l)
     W = _px(BASE_W)
