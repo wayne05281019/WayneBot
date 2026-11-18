@@ -49,7 +49,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   :root {
     --bg-canvas: #0B1120;
     --bg-card: linear-gradient(180deg, rgba(19, 28, 49, 0.96) 0%, rgba(15, 23, 42, 0.98) 100%);
-    --bg-cell: rgba(21, 30, 50, 0.85);
+    --bg-cell: #151E32;
     --border-subtle: #1E293B;
     --text-primary: #F8FAFC;
     --text-secondary: #94A3B8;
@@ -70,51 +70,62 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   .phone-frame {
     width: 430px; height: 932px; background: var(--bg-canvas);
     padding: 48px 14px 60px 14px; /* 上 144px / 下 180px Telegram 安全邊距 */
-    display: flex; flex-direction: column; gap: 7px; overflow: hidden;
+    display: flex; flex-direction: column; gap: 6px; overflow: hidden;
   }
   .mono { font-family: 'JetBrains Mono', 'Noto Sans TC', monospace; font-variant-numeric: tabular-nums; }
   .page-header {
-    display: flex; justify-content: space-between; align-items: center;
-    padding: 2px 2px 4px 2px;
+    display: flex; align-items: center; padding: 2px 2px 2px 2px; flex-shrink: 0;
   }
-  .page-title { font-size: 16px; font-weight: 900; color: var(--text-primary); letter-spacing: -0.2px; }
-  .page-meta {
-    font-size: 10.5px; font-weight: 700; color: #E2E8F0;
-    background: rgba(30, 41, 59, 0.85); border: 1px solid #334155;
-    padding: 2px 9px; border-radius: 999px;
+  .page-title {
+    font-size: 14.5px; font-weight: 900; color: var(--text-primary); letter-spacing: -0.2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%;
   }
   .regime-banner {
     font-size: 10.5px; font-weight: 700; padding: 5px 10px; border-radius: 8px;
-    display: flex; justify-content: space-between; align-items: center;
+    display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; gap: 8px;
   }
   .regime-normal { background: rgba(52, 211, 153, 0.12); border: 1px solid rgba(52, 211, 153, 0.35); color: #A7F3D0; }
   .regime-fx { background: rgba(245, 158, 11, 0.14); border: 1px solid rgba(245, 158, 11, 0.42); color: #FDE68A; }
   .regime-bear { background: rgba(248, 113, 113, 0.12); border: 1px solid rgba(248, 113, 113, 0.42); color: #FECACA; }
 
-  .cards-stack { display: flex; flex-direction: column; gap: 7px; flex: 1; }
+  .cards-stack {
+    display: flex; flex-direction: column; gap: 6px; flex: 1 1 0; min-height: 0; overflow: hidden;
+  }
   .stock-card {
     background: var(--bg-card); border: 1px solid var(--border-subtle);
-    border-radius: 13px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px;
+    border-radius: 13px; padding: 7px 9px; display: flex; flex-direction: column; gap: 5px;
+    flex: 1 1 0; min-height: 0; overflow: hidden;
   }
   .stock-card.status-buy { border-color: rgba(52, 211, 153, 0.5); box-shadow: 0 0 12px rgba(52, 211, 153, 0.08); }
   .stock-card.status-wait { border-color: rgba(251, 191, 36, 0.45); box-shadow: 0 0 12px rgba(251, 191, 36, 0.06); }
   .stock-card.status-risk { border-color: rgba(167, 139, 250, 0.5); box-shadow: 0 0 12px rgba(167, 139, 250, 0.08); }
 
-  .card-top { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
-  .card-head-text { font-size: 12.5px; font-weight: 800; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card-top {
+    display: flex; justify-content: space-between; align-items: center; gap: 8px;
+    min-width: 0; flex-shrink: 0;
+  }
+  .card-head-text {
+    font-size: 12px; font-weight: 800; color: var(--text-primary);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    min-width: 0; flex: 1 1 auto;
+  }
   .flow-pill {
-    font-size: 9.5px; font-weight: 700; padding: 2px 7px; border-radius: 999px; white-space: nowrap; flex-shrink: 0;
+    font-size: 9.5px; font-weight: 700; padding: 2px 7px; border-radius: 999px;
+    white-space: nowrap; flex: 0 0 auto; max-width: 42%; overflow: hidden; text-overflow: ellipsis;
   }
   .flow-buy { background: rgba(248, 113, 113, 0.16); color: var(--tw-up); border: 1px solid rgba(248, 113, 113, 0.3); }
   .flow-sell { background: rgba(52, 211, 153, 0.15); color: var(--tw-down); border: 1px solid rgba(52, 211, 153, 0.3); }
   .flow-warn { background: rgba(167, 139, 250, 0.18); color: var(--purple); border: 1px solid rgba(167, 139, 250, 0.35); }
 
-  .d3-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
-  .d3-cell {
-    background: var(--bg-cell); border: 1px solid #1E293B; border-radius: 8px;
-    padding: 5px 8px; display: flex; flex-direction: column; justify-content: space-between; gap: 3px;
+  .d3-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 5px; flex: 1 1 0; min-height: 0;
   }
-  .cell-k { font-size: 9.5px; color: var(--text-secondary); }
+  .d3-cell {
+    background: #151E32; border: 1px solid #1E293B; border-radius: 8px;
+    padding: 5px 7px; display: flex; flex-direction: column; justify-content: space-between; gap: 2px;
+    min-height: 0; overflow: hidden;
+  }
+  .cell-k { font-size: 9.5px; color: var(--text-secondary); font-weight: 700; }
   .cell-v { font-size: 11px; font-weight: 700; color: var(--text-primary); line-height: 1.25; }
   .cell-sub { font-size: 9.5px; color: var(--text-muted); }
 
@@ -122,36 +133,43 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   .cyan { color: var(--cyan); } .amber { color: var(--amber); }
 
   /* 進度條 */
-  .prog-track { height: 4px; background: #0B1120; border-radius: 999px; overflow: hidden; }
+  .prog-track { height: 4px; background: #0B1120; border: 1px solid #334155; border-radius: 999px; overflow: hidden; }
   .prog-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #10B981, #38BDF8); }
   .prog-fill-amber { background: linear-gradient(90deg, #F59E0B, #FBBF24); }
 
-  /* 本益比實數刻度尺 */
-  .ruler-wrap { display: flex; flex-direction: column; gap: 2px; }
-  .ruler-track { position: relative; height: 4px; background: #0B1120; border-radius: 999px; margin-top: 2px; }
+  /* 本益比實數刻度尺：軌道＋15x/20x/25x，圓點限 5%～95% */
+  .ruler-wrap { display: flex; flex-direction: column; gap: 2px; margin-top: 1px; }
+  .ruler-track {
+    position: relative; height: 6px; background: #0B1120;
+    border: 1px solid #64748B; border-radius: 999px; margin: 3px 6px 0 6px;
+  }
   .ruler-dot {
     position: absolute; top: 50%; transform: translate(-50%, -50%);
-    width: 8px; height: 8px; border-radius: 50%; background: #38BDF8;
-    border: 1.5px solid #FFF; box-shadow: 0 0 6px rgba(56, 189, 248, 0.8);
+    width: 9px; height: 9px; border-radius: 50%; background: #38BDF8;
+    border: 1.5px solid #FFF; box-shadow: 0 0 6px rgba(56, 189, 248, 0.85);
   }
-  .ruler-labels { display: flex; justify-content: space-between; font-size: 9px; color: var(--text-muted); }
+  .ruler-labels {
+    display: flex; justify-content: space-between; font-size: 9px;
+    color: var(--text-secondary); font-weight: 700; padding: 0 4px;
+  }
 
   /* 精準 5 日籌碼紅綠方塊 */
-  .flow-blocks-row { display: flex; align-items: center; gap: 6px; font-size: 9.5px; color: var(--text-secondary); }
+  .flow-blocks-row { display: flex; align-items: center; gap: 5px; font-size: 9.5px; color: var(--text-secondary); flex-wrap: nowrap; }
   .sq-group { display: inline-flex; gap: 2.5px; align-items: center; }
-  .sq { width: 7px; height: 7px; border-radius: 1.5px; display: inline-block; }
+  .sq { width: 7px; height: 7px; border-radius: 1.5px; display: inline-block; flex-shrink: 0; }
   .sq-b { background: #EF4444; } /* 買超: 紅 */
   .sq-s { background: #10B981; } /* 賣超: 綠 */
   .sq-n { background: #475569; } /* 持平: 灰 */
 
-  .footer-legend { text-align: center; font-size: 9px; color: var(--text-muted); padding-top: 1px; }
+  .footer-legend {
+    text-align: center; font-size: 9px; color: var(--text-muted); padding-top: 1px; flex-shrink: 0;
+  }
 </style>
 </head>
 <body>
   <div class="phone-frame">
     <div class="page-header">
-      <div class="page-title">真成長低估掃描</div>
-      <div class="page-meta mono">{{DATE_STR}}・第 {{PAGE_NO}}/{{TOTAL_PAGES}} 頁</div>
+      <div class="page-title">真成長低估掃描｜{{DATE_STR}}・第 {{PAGE_NO}}/{{TOTAL_PAGES}} 頁</div>
     </div>
     <div class="regime-banner {{REGIME_CLASS}}">
       <span>{{REGIME_TEXT}}</span>
@@ -220,7 +238,7 @@ def _build_card_html(s: dict) -> str:
             f'<div class="cell-sub amber">'
             f'{html.escape(s.get("emerging_note", "興櫃量小注意流動性"))}</div>'
         )
-        bl_title = "目標價與現增防線"
+        bl_title = "目標價（現增暫定價）"
     else:
         f_sq = _render_5day_squares(s.get("foreign_5d", ["N"] * 5))
         t_sq = _render_5day_squares(s.get("trust_5d", ["N"] * 5))
@@ -230,8 +248,9 @@ def _build_card_html(s: dict) -> str:
             f'<span>投信</span><span class="sq-group">{t_sq}</span>'
             f"</div>"
         )
-        bl_title = "目標價與近5日籌碼"
+        bl_title = "目標價（正常／保守）＋近5日"
 
+    pe_left = max(8, min(92, int(round(float(s.get("pe_dot_pct") or 50)))))
     return f"""
     <div class="stock-card {status_cls}">
       <div class="card-top">
@@ -246,11 +265,11 @@ def _build_card_html(s: dict) -> str:
           <div class="cell-sub">{html.escape(s['q4_progress'])}</div>
         </div>
         <div class="d3-cell">
-          <div class="cell-k">滾動本益比</div>
+          <div class="cell-k">未來 12 個月滾動本益比</div>
           <div class="cell-v mono cyan">{html.escape(s['pe_fwd12m'])}倍 <span class="cell-sub">({html.escape(s['pe_note'])})</span></div>
           <div class="ruler-wrap">
-            <div class="ruler-track"><div class="ruler-dot" style="left: {int(s['pe_dot_pct'])}%;"></div></div>
-            <div class="ruler-labels mono"><span>{html.escape(s['pe_min'])}</span><span>{html.escape(s['pe_mid'])}</span><span>{html.escape(s['pe_max'])}</span></div>
+            <div class="ruler-track"><div class="ruler-dot" style="left: {pe_left}%;"></div></div>
+            <div class="ruler-labels mono"><span>15x</span><span>20x</span><span>25x</span></div>
           </div>
         </div>
         <div class="d3-cell">
@@ -259,7 +278,7 @@ def _build_card_html(s: dict) -> str:
           {bl_bottom}
         </div>
         <div class="d3-cell">
-          <div class="cell-k">營收達標與撐壓</div>
+          <div class="cell-k">營收達標進度＋撐壓</div>
           <div class="cell-v mono">{html.escape(s['rev_now'])} / 需 {html.escape(s['rev_gate'])} ({int(s['rev_pct'])}%)</div>
           <div class="prog-track"><div class="prog-fill {bar_cls}" style="width: {min(100, int(s['rev_pct']))}%;"></div></div>
           <div class="cell-sub mono"><span class="{support_cls}">{html.escape(s['support_text'])}</span></div>
@@ -414,14 +433,23 @@ def pick_row_to_screener_stock(row: Dict[str, Any], *, as_of: Optional[str] = No
         status, icon, status_label = "wait", "☆", "等止穩"
 
     chip = str(row.get("chip_note") or "").strip()
+    # 膠囊精簡：右邊單留籌碼，避免蓋住左側「毛利%」
     if emerging or "興櫃" in chip:
-        flow_type, flow_pill = "warn", chip or "興櫃無法人"
-    elif "同賣" in chip or ("調節" in chip and "投信" in chip):
-        flow_type, flow_pill = "sell", chip or "籌碼調節"
-    elif "同買" in chip or "連買" in chip:
-        flow_type, flow_pill = "buy", chip or "籌碼偏多"
+        flow_type, flow_pill = "warn", "興櫃無法人"
+    elif "同賣" in chip:
+        flow_type, flow_pill = "sell", "外投同賣"
+    elif "投信" in chip and ("調節" in chip or "賣" in chip):
+        flow_type, flow_pill = "sell", "投信護盤・外資賣"
+    elif "同買" in chip:
+        flow_type, flow_pill = "buy", "外投同買"
+    elif "投信連買" in chip:
+        flow_type, flow_pill = "buy", chip.replace("投信連買", "投信連買")[:10]
+    elif "外資連買" in chip:
+        flow_type, flow_pill = "buy", chip[:10]
+    elif chip:
+        flow_type, flow_pill = "buy", chip[:10]
     else:
-        flow_type, flow_pill = "buy", chip or "—"
+        flow_type, flow_pill = "buy", "—"
 
     close = _finite(row.get("close"))
     eps_y = _finite(row.get("eps_2026"))
@@ -440,34 +468,30 @@ def pick_row_to_screener_stock(row: Dict[str, Any], *, as_of: Optional[str] = No
     if close is not None and fwd_eps is not None and fwd_eps > 0:
         pe_fwd12 = close / fwd_eps
 
+    # 固定軌道 15x～25x；圓點座標限 5%～95%
+    pe_lo, pe_hi = 15.0, 25.0
+    pe_dot = 50.0
+    if pe_fwd12 is not None:
+        pe_dot = (float(pe_fwd12) - pe_lo) / (pe_hi - pe_lo) * 100.0
+        pe_dot = max(8.0, min(92.0, pe_dot))
+
     pe_year = _finite(row.get("pe_year"))
     pe_next = _finite(row.get("pe_next"))
     fair_lo = pe_next if pe_next is not None else pe_year
     fair_hi = pe_year if pe_year is not None else pe_next
     if fair_lo is not None and fair_hi is not None and fair_lo > fair_hi:
         fair_lo, fair_hi = fair_hi, fair_lo
-
-    scale_vals = [v for v in (pe_fwd12, fair_lo, fair_hi, _finite(row.get("pe"))) if v is not None and v > 0]
-    if not scale_vals:
-        scale_vals = [15.0, 25.0]
-    span_lo = min(scale_vals) * 0.85
-    span_hi = max(scale_vals) * 1.15
-    den = max(span_hi - span_lo, 1e-9)
-    pe_dot = 50.0
-    if pe_fwd12 is not None:
-        pe_dot = max(4.0, min(96.0, (pe_fwd12 - span_lo) / den * 100.0))
-
-    pe_min = _fmt_num(span_lo, 0)
-    pe_mid = (
-        f"{fair_lo:.0f}-{fair_hi:.0f}"
-        if fair_lo is not None and fair_hi is not None
-        else _fmt_num((span_lo + span_hi) / 2, 0)
-    )
-    pe_max = _fmt_num(span_hi, 0)
     if pe_fwd12 is not None and fair_lo is not None and fair_hi is not None:
         if pe_fwd12 < fair_lo:
             pe_note = "偏低"
         elif pe_fwd12 > fair_hi:
+            pe_note = "偏貴"
+        else:
+            pe_note = "合理帶"
+    elif pe_fwd12 is not None:
+        if pe_fwd12 < 18:
+            pe_note = "偏低"
+        elif pe_fwd12 > 22:
             pe_note = "偏貴"
         else:
             pe_note = "合理帶"
@@ -494,17 +518,29 @@ def pick_row_to_screener_stock(row: Dict[str, Any], *, as_of: Optional[str] = No
 
     fair = _finite(row.get("fair_year"))
     tgt = _finite(row.get("target_next"))
-    # 正常＝明年目標；保守＝今年合理（對齊模板「正常｜保守」）
     target_norm = _fmt_price(tgt if tgt is not None else fair)
     target_cons = _fmt_price(fair if fair is not None else tgt)
 
     gm = _finite(row.get("gross_margin"))
     gm_s = f"{gm:.1f}%" if gm is not None else "—"
 
-    q4 = ""
-    if eps_e is not None and eps_y is not None:
-        left = max(0.0, eps_y - eps_e)
-        q4 = f"Q4 還需約 {_fmt_num(left, 1)} 元"
+    # Q4: 10月✓・11·12待補（依 as_of 月份）
+    m = ref_d.month
+    if m <= 9:
+        q4 = "Q4: 10·11·12待補"
+    elif m == 10:
+        q4 = "Q4: 10月✓・11·12待補"
+    elif m == 11:
+        q4 = "Q4: 10月✓・11月✓・12待補"
+    else:
+        q4 = "Q4: 10·11·12月✓"
+
+    emerging_note = "現增暫定價＋量小警示"
+    tech = str(row.get("tech_status") or "").strip()
+    if tech and "現增" not in tech:
+        emerging_note = f"現增暫定價＋{tech}"[:28]
+    elif tech:
+        emerging_note = tech[:28]
 
     return {
         "status": status,
@@ -519,19 +555,19 @@ def pick_row_to_screener_stock(row: Dict[str, Any], *, as_of: Optional[str] = No
         "eps_ytd": _fmt_num(eps_e, 2 if (eps_e is not None and abs(eps_e) < 10) else 1),
         "eps_est_yr": _fmt_num(eps_y, 1),
         "eps_pct": eps_pct,
-        "q4_progress": q4 or "—",
+        "q4_progress": q4,
         "pe_fwd12m": _fmt_num(pe_fwd12, 1),
         "pe_note": pe_note,
         "pe_dot_pct": pe_dot,
-        "pe_min": pe_min,
-        "pe_mid": pe_mid,
-        "pe_max": pe_max,
+        "pe_min": "15x",
+        "pe_mid": "20x",
+        "pe_max": "25x",
         "target_norm": target_norm,
         "target_cons": target_cons,
         "foreign_5d": _normalize_5d_flags(row.get("foreign_5d")),
         "trust_5d": _normalize_5d_flags(row.get("trust_5d")),
         "is_emerging": emerging,
-        "emerging_note": str(row.get("tech_status") or "興櫃量小注意流動性"),
+        "emerging_note": emerging_note,
         "rev_now": f"{_fmt_num(oct_r, 1)}億" if oct_r is not None else "—",
         "rev_gate": f"{_fmt_num(thr, 1)}億" if thr is not None else "—",
         "rev_pct": rev_pct,
