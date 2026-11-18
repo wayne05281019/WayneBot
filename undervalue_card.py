@@ -586,14 +586,15 @@ def _draw_d3_card(
     # 美編字級：表頭主 34–36／次 26–28；格標題 28；主數 48–52；次行 30–32
     head_f = _font(34, bold=True)
     head_sub_f = _font(26, bold=True)
-    cell_title_f = _font(28, bold=True)
-    cell_f = _font(30)
-    cell_b = _font(48, bold=True)
-    small_f = _font(24, bold=True)
-    micro_f = _font(24)
-    pill_f = _font(22, bold=True)
-    pad = _px(28)
-    head_h = _px(100)
+    cell_title_f = _font(26, bold=True)
+    cell_f = _font(28)
+    # 格高有限：主數 36 才不疊行（美編理想 48 要更高卡才塞得下）
+    cell_b = _font(36, bold=True)
+    small_f = _font(22, bold=True)
+    micro_f = _font(22)
+    pill_f = _font(20, bold=True)
+    pad = _px(24)
+    head_h = _px(88)
     hx0, hy0 = x0 + pad, y0 + _px(18)
     hx1, hy1 = x1 - _px(20), y0 + head_h - _px(14)
 
@@ -734,7 +735,7 @@ def _draw_d3_card(
     pill_fill = (150, 120, 210) if emerging else GREEN
     support_col = PURPLE if emerging else SUPPORT_COL
     resist_col = PURPLE if emerging else RESIST_COL
-    sr_f = _font(36, bold=True)  # 撐壓不過吼（美編 ≤ 主數字）
+    sr_f = _font(30, bold=True)  # 撐壓不過吼（≤ 主數字）
 
     earned_pct = None
     if eps_e is not None and eps_n is not None and eps_n > 0:
