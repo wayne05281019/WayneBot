@@ -9,8 +9,11 @@ services:
       sizeGB: 15
     # 裝完整鎖檔，否則傳遞相依會浮動，部署到的版本跟測過的不是同一份。
     # ffmpeg：黃培碩影音抽影格（看畫面）；yt-dlp／gdown 在 requirements.lock。
-    # playwright chromium：低估 D3 HTML 渲圖；無 chromium 會退回 PIL。
-    buildCommand: apt-get update -qq && apt-get install -y --no-install-recommends ffmpeg && pip install -r requirements.lock && python -m playwright install --with-deps chromium
+    # 原生 runtime 沒 root：apt-get／--with-deps 不能用。下面這行對齊 Dashboard 實際建置指令。
+    # playwright chromium：低估 D3 HTML 渲圖。要裝完整 chromium（playwright_available 查 executable_path），
+    # 放在 PLAYWRIGHT_BROWSERS_PATH（專案目錄內才會帶到執行期）。
+    # 系統無中文字型：.fonts.conf 讓 fontconfig 讀 repo fonts/（FONTCONFIG_FILE 指向它）。
+    buildCommand: pip install -r requirements.lock && python -m playwright install chromium && printf '<fontconfig><include ignore_missing="yes">/etc/fonts/fonts.conf</include><dir>/opt/render/project/src/fonts</dir><cachedir>/tmp/fc-cache</cachedir></fontconfig>' > /opt/render/project/src/.fonts.conf
     startCommand: python main.py
     # /health 只反映「行程能不能服務」；資料過期不會讓它變紅，
     # 因為重啟修不了資料管線，只會把互動 bot 一起弄掉。
@@ -27,6 +30,10 @@ services:
         value: "0"
       - key: WAYNE_UV_HTML
         value: "1"
+      - key: PLAYWRIGHT_BROWSERS_PATH
+        value: /opt/render/project/src/.pw-browsers
+      - key: FONTCONFIG_FILE
+        value: /opt/render/project/src/.fonts.conf
       # 每個排程只能有一個擁有者。06:30 海選推播歸本服務（有效 token＋白名單兩人）。
       # GHA morning_screen 只算名單、蓋行情 zip，不寄。12:45 尾盤仍只在這裡。
       - key: WAYNE_SCHEDULER_ROLE
