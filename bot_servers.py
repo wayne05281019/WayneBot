@@ -9834,6 +9834,7 @@ class WayneTelegramBot:
             load_picks,
             load_run,
             resolve_button_as_of,
+            run_is_current,
             run_undervalue_sync,
         )
 
@@ -9855,11 +9856,7 @@ class WayneTelegramBot:
                 await asyncio.to_thread(load_run, self.db_path, as_of) if as_of else None
             )
             # 最新日缺 success／缺列 → 補掃一次（融合後漏掃的根因）
-            if as_of and (
-                not picks
-                or not run
-                or str((run or {}).get("status") or "") != "success"
-            ):
+            if as_of and (not picks or not run_is_current(run)):
                 try:
                     await asyncio.to_thread(
                         run_undervalue_sync,

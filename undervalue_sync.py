@@ -17,6 +17,15 @@ logger = logging.getLogger("wayne.undervalue")
 
 TAIPEI = ZoneInfo("Asia/Taipei")
 PIPELINE_PREFIX = "undervalue-"
+# 全年 EPS＝前三季累計＋Q4（2026-11-18）。舊 success 列沒這標＝舊公式，話筒要重掃。
+EPS_CALC_TAG = "eps_cum_q4"
+
+
+def run_is_current(run: Optional[Dict[str, Any]]) -> bool:
+    """success 且 note 帶現行 EPS 算法標，才可直接給話筒。"""
+    if not run or str(run.get("status") or "") != "success":
+        return False
+    return EPS_CALC_TAG in str(run.get("note") or "")
 
 
 def pipeline_key(ymd: str) -> str:
@@ -353,7 +362,7 @@ def run_undervalue_sync(
     n_star = sum(1 for r in rows if str(r.get("mark") or "") == "star")
     n_watch = sum(1 for r in rows if str(r.get("mark") or "") == "watch")
     n_emerging = sum(1 for r in rows if str(r.get("mark") or "") == "emerging")
-    note = str(scanned.get("note") or "")[:200]
+    note = f"{EPS_CALC_TAG} {str(scanned.get('note') or '')}"[:200]
     finished = _stamp()
     conn = sqlite3.connect(path, timeout=30.0)
     try:
