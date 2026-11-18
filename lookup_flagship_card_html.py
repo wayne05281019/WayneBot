@@ -68,7 +68,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
   .outer-card {
     background: var(--bg-card); border: 1px solid rgba(56, 189, 248, 0.35);
-    border-radius: 16px; padding: 14px 13px; display: flex; flex-direction: column; justify-content: space-between; flex: 1; gap: 8px;
+    border-radius: 16px; padding: 11px 12px; display: flex; flex-direction: column; justify-content: space-between; flex: 1; gap: 6px;
   }
   .outer-card.is-wait { border-color: rgba(251, 191, 36, 0.45); }
   .outer-card.is-risk { border-color: rgba(167, 139, 250, 0.5); }
@@ -97,13 +97,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   }
 
   /* 2x2 Core Matrix */
-  .d3-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+  .d3-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 7px; }
   .d3-cell {
     background: var(--bg-cell); border: 1px solid #1E293B; border-radius: 10px;
-    padding: 8px 10px; display: flex; flex-direction: column; justify-content: space-between; gap: 4px;
+    min-width: 0; padding: 8px 9px; display: flex; flex-direction: column; justify-content: flex-start; gap: 5px;
   }
   .cell-k { font-size: 11px; font-weight: 700; color: #94A3B8; letter-spacing: 0.2px; }
-  .cell-v { font-size: 13.5px; font-weight: 800; color: #FFFFFF; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cell-v { font-size: 11.5px; font-weight: 800; color: #FFFFFF; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .cell-sub { font-size: 10.5px; color: var(--text-secondary); line-height: 1.35; }
 
   .prog-track { height: 5px; background: #0B1120; border-radius: 999px; overflow: hidden; }
@@ -157,7 +157,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   .m4-v { font-size: 11px; font-weight: 700; color: var(--text-primary); }
 
   /* Bottom Split (固定緊湊高度，不留大塊黑底) */
-  .bottom-split { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+  .bottom-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 7px; }
   .peer-row { display: flex; justify-content: space-between; font-size: 12px; font-weight: 700; padding: 3px 0; }
   .moat-text { font-size: 11.5px; color: var(--text-secondary); line-height: 1.45; }
   .moat-text strong { color: var(--text-primary); }
@@ -233,6 +233,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </div>
       </div>
 
+      <!-- EXTRA DEPTH STRIP (利用統整後的空間補上融資/10日累計/關鍵事件) -->
+      <div class="d3-cell" style="padding: 6px 9px;">
+        <div class="cell-k">{{EXTRA_STRIP_TITLE}}</div>
+        <div class="cell-v mono" style="font-size: 11.5px;">{{EXTRA_STRIP_VAL}}</div>
+      </div>
+
       <!-- BOTTOM SPLIT -->
       <div class="bottom-split">
         <div class="d3-cell">
@@ -277,8 +283,9 @@ def _fmt_price(v: Any) -> str:
     x = _finite(v)
     if x is None:
         return "—"
+    # 千元以上一律整數，避免格內「正常 4,088.9｜…」被裁掉％與保守價
     if abs(x) >= 1000:
-        return f"{x:,.0f}" if abs(x - round(x)) < 1e-6 else f"{x:,.1f}"
+        return f"{round(x):,}"
     if abs(x - round(x)) < 1e-9:
         return f"{x:.0f}"
     if abs(x) >= 100:
@@ -376,6 +383,12 @@ _FLAGSHIP_FUND_OVERLAY: Dict[str, Dict[str, Any]] = {
         "dilute_yi": 4.68,
         "place_shares": 610.0,
         "listing_note": "2027/01 預計上櫃",
+        "moat_text": "先進封裝高毛利（77.4%）",
+        "risk_text": "營收趨緩、量小折價",
+    },
+    "2383": {
+        "moat_text": "AI基板市占 &gt; 70%、M9量產",
+        "risk_text": "外資調節、無高息底",
     },
 }
 
@@ -1248,7 +1261,13 @@ def build_flagship_payload(
     if len(peer_lines) <= 1 and not peers_raw:
         peer_lines = ['<div class="peer">同族群對照待補</div>']
 
-    if not moat_html:
+    ov_moat = _FLAGSHIP_FUND_OVERLAY.get(sid) or {}
+    if ov_moat.get("moat_text") and ov_moat.get("risk_text"):
+        moat_html = (
+            f"{ov_moat['moat_text']}｜"
+            f"<span class=\"risk\">風險：{ov_moat['risk_text']}</span>"
+        )
+    elif not moat_html:
         if emerging:
             gm_s = f"{gm:.1f}%" if gm is not None else "—"
             moat_html = (
@@ -1260,6 +1279,74 @@ def build_flagship_payload(
                 f"<b>{html.escape(short_ind or industry or '本業')}</b>"
                 f"｜<span class=\"risk\">風險：景氣／客戶集中與估值波動</span>"
             )
+
+    # EXTRA 條：上市＝10日籌碼＋融資；興櫃＝量能／現增／上櫃
+    if emerging:
+        extra_title = "興櫃量能與進度"
+        qty_note = (
+            "60日均量偏低"
+            if (qty60 is None or float(qty60) < 400)
+            else f"60日均量 {float(qty60):.0f}張"
+        )
+        shares_note = (
+            f"上櫃現增 {place_shares:.0f}萬股"
+            if place_shares is not None
+            else "上櫃現增 —"
+        )
+        list_note = listing_note if listing_note and listing_note != "預計上櫃 —" else "預計上櫃 —"
+        extra_val = f"{qty_note}｜{shares_note}｜{list_note}"
+    else:
+        extra_title = "融資與10日籌碼・關鍵日"
+        f10 = t10 = None
+        m5 = None
+        try:
+            con_x = sqlite3.connect(db_path)
+            try:
+                rows10 = con_x.execute(
+                    """
+                    SELECT foreign_net, trust_net FROM daily_quotes
+                    WHERE stock_id=? AND REPLACE(CAST(date AS TEXT),'-','')<=?
+                      AND (foreign_net IS NOT NULL OR trust_net IS NOT NULL)
+                      AND NOT (IFNULL(foreign_net,0)=0 AND IFNULL(trust_net,0)=0)
+                    ORDER BY date DESC LIMIT 10
+                    """,
+                    (sid, day),
+                ).fetchall()
+                if rows10:
+                    f10 = sum(float(r[0] or 0) for r in rows10)
+                    t10 = sum(float(r[1] or 0) for r in rows10)
+                mrows = con_x.execute(
+                    """
+                    SELECT margin_bal FROM daily_margin
+                    WHERE stock_id=? AND REPLACE(CAST(date AS TEXT),'-','')<=?
+                      AND margin_bal IS NOT NULL
+                    ORDER BY date DESC LIMIT 6
+                    """,
+                    (sid, day),
+                ).fetchall()
+                if len(mrows) >= 2:
+                    newest = float(mrows[0][0])
+                    older = float(mrows[min(5, len(mrows) - 1)][0])
+                    m5 = newest - older
+            finally:
+                con_x.close()
+        except Exception:
+            pass
+
+        def _lot(v: Optional[float]) -> str:
+            if v is None:
+                return "—"
+            # daily_quotes foreign_net 多為張
+            return f"{v:+,.0f}張"
+
+        f_s = _lot(f10)
+        t_s = _lot(t10)
+        if m5 is None:
+            m_s = "融資近5日 —"
+        else:
+            tag = "清洗" if m5 < 0 else "加碼"
+            m_s = f"融資近5日 {_lot(m5)}（{tag}）"
+        extra_val = f"外資10日 {f_s}｜投信10日 {t_s}｜{m_s}"
 
     chg_cls = "chg-up" if (pct is not None and pct >= 0) else "chg-dn"
     if pct is None:
@@ -1328,6 +1415,8 @@ def build_flagship_payload(
         "moat_html": moat_html,
         "foot": foot,
         "bar_amber": emerging or broke,
+        "extra_title": extra_title,
+        "extra_val": extra_val,
     }
 
 
@@ -1529,7 +1618,11 @@ def payload_to_card(p: Dict[str, Any]) -> Dict[str, Any]:
         "regime_right": str((p.get("regime") or {}).get("right") or ""),
         "eps_k": str(p.get("eps_k") or "今年賺錢進度"),
         "eps_ytd": _fmt_num(p.get("eps_e"), 2 if (_finite(p.get("eps_e")) or 99) < 10 else 1),
-        "eps_est_yr": _fmt_num(p.get("eps_y"), 1),
+        # 百元以上估 EPS 用整數，避免「已賺…／估… (xx%)」一行被 ellipsis 吃掉％
+        "eps_est_yr": _fmt_num(
+            p.get("eps_y"),
+            0 if (_finite(p.get("eps_y")) or 0) >= 100 else 1,
+        ),
         "eps_pct": int(p.get("eps_pct") or 0),
         "q4_progress": q4,
         "eps_latest_q": eps_latest,
@@ -1556,6 +1649,11 @@ def payload_to_card(p: Dict[str, Any]) -> Dict[str, Any]:
         "peers": peers[:3],
         "moat_text": moat_text,
         "risk_text": risk_text,
+        "extra_title": str(
+            p.get("extra_title")
+            or ("興櫃量能與進度" if emerging else "融資與10日籌碼・關鍵日")
+        ),
+        "extra_val": str(p.get("extra_val") or "—"),
     }
 
 
@@ -1641,6 +1739,9 @@ def fill_flagship_html(d: Dict[str, Any]) -> str:
         "PEERS_HTML": peers_html,
         "MOAT_TEXT": d["moat_text"],
         "RISK_TEXT": d["risk_text"],
+        "EXTRA_STRIP_TITLE": d.get("extra_title")
+        or ("興櫃量能與進度" if is_em else "融資與10日籌碼・關鍵日"),
+        "EXTRA_STRIP_VAL": d.get("extra_val") or "—",
         "FOOTER_TEXT": footer,
     }
     page_html = HTML_TEMPLATE

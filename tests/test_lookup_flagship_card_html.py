@@ -48,6 +48,8 @@ def test_flagship_2383_listed_shape():
     assert "川寶" not in html
     # 模板不再重複加「需」
     assert " / 需 需" not in html
+    assert "融資與10日籌碼" in html
+    assert "外資10日" in html
 
 
 @pytest.mark.skipif(not os.path.exists(DB), reason="no local wayne_market.db")
@@ -85,3 +87,5 @@ def test_flagship_3595_emerging_platform_break():
     assert "需 需" not in html
     assert "已出Q3" in html or "已出 Q3" in html
     assert "台光電" not in html  # 同族不串錯
+    assert "興櫃量能與進度" in html
+    assert "現增" in html
