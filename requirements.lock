@@ -34,6 +34,7 @@ propcache==0.5.2
 pyee==13.0.1
 pyparsing==3.3.2
 pypinyin==0.55.0
+pypdf==5.1.0
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.3
 python-telegram-bot==21.11.1

@@ -1670,6 +1670,10 @@ class MainRunner:
 
                 ev = sync_company_events(self.db_path)
                 logger.info("股東會／法說日期建檔：%s", ev)
+                from company_guidance import collect_due_ir_pdfs
+
+                ir = collect_due_ir_pdfs(self.db_path, limit=10)
+                logger.info("法說書面PDF：%s", {k: ir.get(k) for k in ("ok", "n", "as_of")})
             except Exception as e_ev:
                 logger.warning("公司行事建檔略過：%s", e_ev)
         except Exception as e:
@@ -3089,6 +3093,10 @@ class MainRunner:
 
                 ev = sync_company_events(self.db_path)
                 logger.info("今早股東會／法說：%s", ev)
+                from company_guidance import collect_due_ir_pdfs
+
+                ir = collect_due_ir_pdfs(self.db_path, limit=8)
+                logger.info("今早法說書面PDF：%s", {k: ir.get(k) for k in ("ok", "n", "as_of")})
             except Exception as e:
                 logger.warning("今早公司行事略過：%s", e)
             try:

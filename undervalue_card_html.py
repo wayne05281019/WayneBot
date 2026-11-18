@@ -94,7 +94,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   .stock-card {
     background: var(--bg-card); border: 1px solid var(--border-subtle);
     border-radius: 13px; padding: 7px 9px; display: flex; flex-direction: column; gap: 5px;
-    flex: 1 1 0; min-height: 0; overflow: hidden;
+    flex: 0 0 calc((100% - 18px) / 4); min-height: 0; overflow: hidden;
   }
   .stock-card.status-buy { border-color: rgba(52, 211, 153, 0.5); box-shadow: 0 0 12px rgba(52, 211, 153, 0.08); }
   .stock-card.status-wait { border-color: rgba(251, 191, 36, 0.45); box-shadow: 0 0 12px rgba(251, 191, 36, 0.06); }
@@ -208,12 +208,12 @@ def detect_market_regime(
     if not market_above_ma20 and foreign_sell_days >= 3:
         return {
             "class": "regime-bear",
-            "text": "🔴 系統性修正盤・嚴守站回支撐再買",
+            "text": "● 系統性修正盤・嚴守站回支撐再買",
             "fx_text": f"USD/TWD {usd_twd:.2f}",
         }
     return {
         "class": "regime-normal",
-        "text": "🟢 資金常態盤・依區間與黃金買點操作",
+        "text": "● 資金常態盤・依區間與黃金買點操作",
         "fx_text": f"USD/TWD {usd_twd:.2f}",
     }
 
@@ -250,12 +250,18 @@ def _build_card_html(s: dict) -> str:
             f'<span>投信</span><span class="sq-group">{t_sq}</span>'
             f"</div>"
         )
-        bl_title = "目標價（正常／保守）＋近5日"
+        bl_title = "目標價（今年合理／明年）＋近5日"
 
     pe_left = max(8, min(92, int(round(float(s.get("pe_dot_pct") or 50)))))
     rev_line = str(
         s.get("rev_line")
         or f"{s.get('rev_now') or '—'} / 需{s.get('rev_gate') or '—'} ({int(s.get('rev_pct') or 0)}%)"
+    )
+    g_note = str(s.get("guidance_note") or "").strip()
+    g_html = (
+        f'<div class="cell-sub" style="margin-top:3px;">備註 {html.escape(g_note[:72])}</div>'
+        if g_note
+        else ""
     )
     return f"""
     <div class="stock-card {status_cls}">
@@ -280,7 +286,7 @@ def _build_card_html(s: dict) -> str:
         </div>
         <div class="d3-cell">
           <div class="cell-k">{bl_title}</div>
-          <div class="cell-v mono">正常 {html.escape(s['target_norm'])}｜保守 {html.escape(s['target_cons'])}</div>
+          <div class="cell-v mono">今年 {html.escape(s['target_cons'])}｜明年 {html.escape(s['target_norm'])}</div>
           {bl_bottom}
         </div>
         <div class="d3-cell">
@@ -290,6 +296,7 @@ def _build_card_html(s: dict) -> str:
           <div class="cell-sub mono"><span class="{support_cls}">{html.escape(s['support_text'])}</span></div>
         </div>
       </div>
+      {g_html}
     </div>
     """
 
@@ -712,6 +719,7 @@ def pick_row_to_screener_stock(row: Dict[str, Any], *, as_of: Optional[str] = No
         "rev_pct": rev_pct,
         "support_ok": support_ok,
         "support_text": support_text,
+        "guidance_note": str(row.get("guidance_note") or "").strip()[:80],
     }
 
 
@@ -728,13 +736,13 @@ def resolve_regime(
         if not market_above_ma20 and int(foreign_sell_days or 0) >= 3:
             regime = {
                 "class": "regime-bear",
-                "text": "🔴 系統性修正盤・嚴守站回支撐再買",
+                "text": "● 系統性修正盤・嚴守站回支撐再買",
                 "fx_text": "USD/TWD —",
             }
         else:
             regime = {
                 "class": "regime-normal",
-                "text": "🟢 資金常態盤・依區間與黃金買點操作",
+                "text": "● 資金常態盤・依區間與黃金買點操作",
                 "fx_text": "USD/TWD —",
             }
     else:

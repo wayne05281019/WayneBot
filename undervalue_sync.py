@@ -17,6 +17,15 @@ logger = logging.getLogger("wayne.undervalue")
 
 TAIPEI = ZoneInfo("Asia/Taipei")
 PIPELINE_PREFIX = "undervalue-"
+# 全年 EPS＝前三季累計＋Q4（2026-11-18）。舊 success 列沒這標＝舊公式，話筒要重掃。
+EPS_CALC_TAG = "eps_rest_q_v2"
+
+
+def run_is_current(run: Optional[Dict[str, Any]]) -> bool:
+    """success 且 note 帶現行 EPS 算法標，才可直接給話筒。"""
+    if not run or str(run.get("status") or "") != "success":
+        return False
+    return EPS_CALC_TAG in str(run.get("note") or "")
 
 
 def pipeline_key(ymd: str) -> str:
@@ -318,6 +327,22 @@ def run_undervalue_sync(
         out["note"] = "已 success 略過"
         return out
     ensure_tables(path)
+    # 法說書面／隔日廣編備註：失敗不准擋低估掃描
+    try:
+        from company_guidance import (
+            collect_due_ir_pdfs,
+            collect_post_ir_news_notes,
+            sync_material_guidance,
+        )
+
+        sync_material_guidance(path)
+        ir = collect_due_ir_pdfs(path, as_of=as_of, limit=8)
+        for one in ir.get("results") or []:
+            sid = str(one.get("stock_id") or "")
+            if sid:
+                collect_post_ir_news_notes(path, sid, ir_ymd=str(as_of or ""))
+    except Exception:
+        logger.exception("法說書面／廣編收集略過")
     started = _stamp()
     conn = sqlite3.connect(path, timeout=30.0)
     try:
@@ -353,7 +378,7 @@ def run_undervalue_sync(
     n_star = sum(1 for r in rows if str(r.get("mark") or "") == "star")
     n_watch = sum(1 for r in rows if str(r.get("mark") or "") == "watch")
     n_emerging = sum(1 for r in rows if str(r.get("mark") or "") == "emerging")
-    note = str(scanned.get("note") or "")[:200]
+    note = f"{EPS_CALC_TAG} {str(scanned.get('note') or '')}"[:200]
     finished = _stamp()
     conn = sqlite3.connect(path, timeout=30.0)
     try:
@@ -387,6 +412,8 @@ def run_undervalue_sync(
                     "tech_broken",
                     "chip_note",
                     "chip_kind",
+                    "guidance_note",
+                    "eps_method",
                 )
                 if r.get(k) is not None
             }

@@ -317,60 +317,126 @@ def load_recent_moms(
     return moms, last_rev, ytd, m_last
 
 
+def _yoy_growth_frac(yoy_pct: Optional[float], *, default: float = 0.10) -> float:
+    """營收 YoY％→成長小數；夾在 −5%～+25%。缺 YoY 用 default（不是假獲利）。"""
+    yoy = _finite(yoy_pct)
+    if yoy is None:
+        return float(default)
+    return max(-0.05, min(0.25, yoy / 100.0))
+
+
 def estimate_eps_year_next(
     *,
     eps_ytd_cum: Optional[float],
-    eps_q3_single: Optional[float],
+    eps_q3_single: Optional[float] = None,
+    eps_q_last_single: Optional[float] = None,
+    last_season: int = 3,
+    prior_year_eps: Optional[float] = None,
     ytd_rev: Optional[float],
     last_rev: Optional[float],
     moms: Sequence[Optional[float]],
     m_last: int,
     yoy_pct: Optional[float],
+    rev_year_matches: bool = True,
+    guidance_g: Optional[float] = None,
+    guidance_eps_abs: Optional[float] = None,
+    guidance_note: str = "",
 ) -> Dict[str, Any]:
-    """2026 全年／2027 預估 EPS（營收外推×動能）。缺官方數→ok False。"""
+    """今年／明年預估 EPS。未公布季＝末季單季×(1+g/2) 逐季遞推；不准 Q×3 冒充。
+
+    路徑（有官方才走；缺→ok False）：
+    1) 公司公告全年 EPS 絕對值（重大訊息可量化句）→ 直接用。
+    2) 已公布累計季＋剩餘季遞推；步進 g 優先用公告 QoQ％，否則近三月 MoM 夾限。
+    3) 尚無今年季報：去年全年 EPS×YoY 夾限（一月～Q1 公布前）。
+    """
     from undervalue_scan import clamp_mom_g, estimate_year_revenue
 
-    est_rev = estimate_year_revenue(
-        float(ytd_rev or 0),
-        float(last_rev or 0),
-        moms,
-        m_last=m_last,
-        mom_unit="pct",
-        yoy_pct=yoy_pct,
-    )
-    if not est_rev.get("ok"):
+    growth = _yoy_growth_frac(yoy_pct)
+    g_mom, _ = clamp_mom_g(moms, unit="pct")
+    g_guide = _finite(guidance_g)
+    g = float(g_guide) if g_guide is not None else float(g_mom)
+    g_source = "公告QoQ" if g_guide is not None else "MoM"
+    last_q = _finite(eps_q_last_single)
+    if last_q is None:
+        last_q = _finite(eps_q3_single)
+    cum = _finite(eps_ytd_cum)
+    try:
+        ls = int(last_season or 0)
+    except (TypeError, ValueError):
+        ls = 0
+
+    est_rev: Dict[str, Any] = {"ok": False}
+    year_rev = None
+    if rev_year_matches:
+        est_rev = estimate_year_revenue(
+            float(ytd_rev or 0),
+            float(last_rev or 0),
+            moms,
+            m_last=m_last,
+            mom_unit="pct",
+            yoy_pct=yoy_pct,
+        )
+        if est_rev.get("ok"):
+            year_rev = float(est_rev["est_year_rev"])
+
+    method = ""
+    eps_this = None
+    abs_eps = _finite(guidance_eps_abs)
+    if abs_eps is not None and abs_eps > 0:
+        eps_this = float(abs_eps)
+        method = "公司公告全年EPS絕對值"
+        if year_rev is None and rev_year_matches and est_rev.get("ok"):
+            year_rev = float(est_rev["est_year_rev"])
+        elif year_rev is None and _finite(ytd_rev) and float(ytd_rev or 0) > 0:
+            year_rev = float(ytd_rev) * (1.0 + growth)
+            est_rev = {"ok": True, "est_year_rev": year_rev, "label": "營收備援", "note": method}
+
+    if eps_this is None and ls in (1, 2, 3, 4) and cum is not None and cum > 0:
+        if last_q is None or last_q <= 0:
+            last_q = float(cum) / float(ls)
+        rem_n = max(0, 4 - ls)
+        rem = 0.0
+        cur = float(last_q)
+        for _ in range(rem_n):
+            cur = cur * (1.0 + g * 0.5)
+            rem += cur
+        eps_this = float(cum) + rem
+        method = f"Q1–Q{ls}累計＋剩餘{rem_n}季(末季×(1+{g_source}/2))"
+    elif eps_this is None:
+        prior = _finite(prior_year_eps)
+        if prior is None or prior <= 0:
+            return {"ok": False, "note": "缺今年季報與去年全年EPS"}
+        eps_this = float(prior) * (1.0 + growth)
+        method = "尚無今年季報；去年全年×YoY夾限"
+        if year_rev is None and _finite(ytd_rev) and float(ytd_rev or 0) > 0 and not rev_year_matches:
+            # 月營收還停在去年：用去年 YTD（≈全年）×成長當今年營收推估
+            year_rev = float(ytd_rev) * (1.0 + growth)
+            est_rev = {"ok": True, "est_year_rev": year_rev, "label": "去年營收×YoY", "note": method}
+
+    if year_rev is None or not est_rev.get("ok"):
         return {"ok": False, "note": est_rev.get("note") or "缺營收"}
-    year_rev = float(est_rev["est_year_rev"])
-    q3 = _finite(eps_q3_single)
-    if q3 is None or q3 <= 0:
-        cum = _finite(eps_ytd_cum)
-        if cum is None or cum <= 0:
-            return {"ok": False, "note": "缺EPS"}
-        q3 = cum / 3.0
-    g, _ = clamp_mom_g(moms, unit="pct")
-    q4 = float(q3) * (1.0 + g * 0.5)
-    # 若 eps_q3_single 真單季：全年≈Q1+Q2+Q3+Q4；缺單季 map 時用 3×q3+q4
-    eps_map_sum = None
-    eps_2026 = float(q3) * 3.0 + float(q4)
-    yoy = _finite(yoy_pct)
-    growth = 0.10
-    if yoy is not None:
-        growth = max(-0.05, min(0.25, yoy / 100.0))
-    eps_2027 = eps_2026 * (1.0 + growth)
-    next_rev = year_rev * (1.0 + growth)
+    if eps_this is None or eps_this <= 0:
+        return {"ok": False, "note": "缺EPS"}
+
+    eps_next = float(eps_this) * (1.0 + growth)
+    next_rev = float(year_rev) * (1.0 + growth)
     thr_yi = next_rev / 12.0 / 100000.0  # 千元→億
     oct_yi = float(last_rev or 0) / 100000.0
     return {
         "ok": True,
-        "eps_2026": eps_2026,
-        "eps_2027": eps_2027,
-        "year_rev": year_rev,
+        "eps_2026": float(eps_this),
+        "eps_2027": float(eps_next),
+        "year_rev": float(year_rev),
         "rev_threshold_yi": thr_yi,
         "rev_oct_yi": oct_yi,
         "g": g,
         "growth": growth,
         "est_rev": est_rev,
-        "eps_map_sum": eps_map_sum,
+        "eps_map_sum": None,
+        "last_season": ls,
+        "method": method,
+        "g_source": g_source,
+        "guidance_note": str(guidance_note or "")[:120],
     }
 
 
@@ -656,11 +722,31 @@ def enrich_growth_row(
     name_s = resolve_stock_name(conn, sid_s, name)
     chain, tags = load_chain_blob(conn, sid_s)
     bucket = industry_bucket(chain, tags, name_s)
-    fund = load_quarter_fundamentals(conn, sid_s, year=2026, season=3)
+    try:
+        fy = int(str(as_of or "").replace("-", "")[:4])
+    except ValueError:
+        fy = 2026
+    # 先讀全年季次，取最新已公布季（不准寫死 season=3）
+    fund_probe = load_quarter_fundamentals(conn, sid_s, year=fy, season=3)
+    by_s = fund_probe.get("by_season") or {}
+    last_s = max(int(k) for k in by_s) if by_s else 0
+    fund = (
+        load_quarter_fundamentals(conn, sid_s, year=fy, season=last_s)
+        if last_s
+        else fund_probe
+    )
+    prior_fund = load_quarter_fundamentals(conn, sid_s, year=fy - 1, season=4)
+    prior_eps = _finite(prior_fund.get("eps"))
     gm = fund.get("gross_margin_pct")
     gm_prev = fund.get("gross_margin_prev")
     op = fund.get("operating_income")
     net = fund.get("net_income")
+    # 尚無今年季報：毛利鐵律改看去年 Q4（有官方才過閘；不准空白過）
+    if last_s <= 0:
+        gm = prior_fund.get("gross_margin_pct")
+        gm_prev = prior_fund.get("gross_margin_prev")
+        op = prior_fund.get("operating_income")
+        net = prior_fund.get("net_income")
     ok, why = growth_gate(
         chain=chain,
         tags=tags,
@@ -681,14 +767,58 @@ def enrich_growth_row(
     use_pe_year, use_pe_next, _peer_disp = select_fair_pe_pair(peer_med_raw, bucket)
 
     moms, last_rev, ytd_rev, m_last = load_recent_moms(conn, sid_s, n=3)
+    # 月營收 yyyymm 年份須對得上估的會計年；一月常還停在去年 12 月
+    rev_year_matches = True
+    try:
+        # load_recent_moms 只回 m_last；用 last 列的 ytd 年份需再查
+        row_ym = conn.execute(
+            "SELECT yyyymm FROM monthly_revenue WHERE stock_id=? "
+            "AND revenue IS NOT NULL AND revenue>0 ORDER BY yyyymm DESC LIMIT 1",
+            (sid_s,),
+        ).fetchone()
+        ym = str(row_ym[0] if row_ym else "")
+        if len(ym) >= 6 and int(ym[:4]) != fy:
+            rev_year_matches = False
+    except Exception:
+        rev_year_matches = True
+    guide: Dict[str, Any] = {}
+    g_note = ""
+    g_step = None
+    g_abs = None
+    try:
+        from company_guidance import (
+            format_guidance_note,
+            guidance_step_g,
+            load_latest_guidance,
+        )
+
+        db_path = ""
+        for _row in conn.execute("PRAGMA database_list"):
+            if str(_row[1]) == "main":
+                db_path = str(_row[2] or "")
+                break
+        if db_path:
+            guide = load_latest_guidance(db_path, sid_s)
+            g_note = format_guidance_note(guide)
+            g_step = guidance_step_g(guide)
+            if str(guide.get("kind") or "") == "eps_year_abs":
+                g_abs = _finite(guide.get("value"))
+    except Exception:
+        guide = {}
     eps_est = estimate_eps_year_next(
-        eps_ytd_cum=fund.get("eps"),
-        eps_q3_single=fund.get("eps_single"),
+        eps_ytd_cum=fund.get("eps") if last_s else None,
+        eps_q_last_single=fund.get("eps_single") if last_s else None,
+        last_season=last_s,
+        prior_year_eps=prior_eps,
         ytd_rev=ytd_rev,
         last_rev=last_rev,
         moms=moms,
         m_last=m_last or 10,
         yoy_pct=yoy_pct,
+        rev_year_matches=rev_year_matches,
+        guidance_g=g_step,
+        guidance_eps_abs=g_abs,
+        guidance_note=g_note,
     )
     if not eps_est.get("ok"):
         return None
@@ -764,6 +894,8 @@ def enrich_growth_row(
         "tech_broken": broken,
         "chip_note": chip,
         "chip_kind": chip_info.get("chip_kind") or "",
+        "guidance_note": str(eps_est.get("guidance_note") or g_note or "")[:120],
+        "eps_method": str(eps_est.get("method") or "")[:80],
         "emerging": emerging,
         "prefer_watch": broken or both_sell or foreign_sell or not d3_star,
         "d3_star_ok": d3_star,
