@@ -145,3 +145,13 @@ def test_ai_desk_type_alias_still_routes():
     assert '"AI倉"' in src
     assert "模擬倉" in src
     assert "_send_ai_desk_view" in src
+
+
+def test_run_is_current_requires_eps_calc_tag():
+    """舊公式（Q3×3）寫的 success 列沒標記 → 話筒必須重掃。"""
+    from undervalue_sync import EPS_CALC_TAG, run_is_current
+
+    assert not run_is_current(None)
+    assert not run_is_current({"status": "success", "note": "uv_growth_fair_v1 star=6"})
+    assert not run_is_current({"status": "running", "note": EPS_CALC_TAG})
+    assert run_is_current({"status": "success", "note": f"{EPS_CALC_TAG} uv_growth_fair_v1"})
