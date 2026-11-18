@@ -22422,7 +22422,11 @@ def maybe_push_level_teach_update(
         f"{html_escape(when)}（{html_escape(str(row.get('kind') or 'post'))}）\n"
         f"點位：{html_escape('／'.join(lv_bits) if lv_bits else '—')}\n"
         f"{html_escape(snip)}\n"
-        "<i>已重畫遠／近／超近教具。不是買訊。</i>"
+        + (
+            "<i>已重畫遠／近／超近教具。不是買訊。</i>"
+            if stats["painted"]
+            else "<i>這次重畫沒成功，附最近一次已畫好的教具；可按「波浪位階」重畫。不是買訊。</i>"
+        )
     )
     # 第一人已 claim；其餘人用同 key 再 claim
     sent = 0
