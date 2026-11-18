@@ -620,8 +620,10 @@ def _soft_growth(
             season_used = season
             break
     ov = _FLAGSHIP_FUND_OVERLAY.get(sid) or {}
-    # 庫內還沒有更新季時，用已核定 overlay（例如 3595 Q3）
-    if ov and (season_used is None or int(season_used) < int(ov.get("season") or 0)):
+    from_overlay = False
+    # 庫內還沒有更新季時，用已核定 overlay（例如 3595 Q3）；官方季報一入庫就自動改用庫
+    if ov and ov.get("season") and (season_used is None or int(season_used) < int(ov["season"])):
+        from_overlay = True
         fund = {
             "eps": ov.get("eps_e"),
             "eps_single": ov.get("eps_q"),
@@ -668,13 +670,12 @@ def _soft_growth(
         )
         out["fair"] = _finite(tg.get("fair_year"))
         out["tgt"] = _finite(tg.get("target_next"))
-    # overlay 核定值蓋過軟估缺／偏低（季報尚未入庫時）
-    if ov and (season_used is None or int(season_used or 0) >= int(ov.get("season") or 0)):
+    # overlay 只在「庫缺那一季」時整組帶入；庫有官方季報就全部用滾動估算
+    if from_overlay:
         for k in ("eps_e", "eps_q", "gm", "eps_y", "eps_n", "thr", "fair", "tgt", "pe_y", "pe_n"):
             if ov.get(k) is not None:
                 out[k] = _finite(ov.get(k))
-        if ov.get("season") is not None:
-            out["season"] = int(ov["season"])
+        out["season"] = int(ov["season"])
     return out
 
 
@@ -824,6 +825,7 @@ def _strategy_tip(
     thr: Optional[float],
     chip_f: Sequence[str],
     rev_ym: Optional[str] = None,
+    buy_sig: Optional[str] = None,
 ) -> str:
     if emerging:
         if thr is None:
@@ -837,6 +839,13 @@ def _strategy_tip(
             span = "月"
         return f"興櫃量小價差大，緊盯 {span}營收過 {_fmt_yi(thr)} 億門檻"
     foreign_selling = sum(1 for x in list(chip_f)[-5:] if x == "S") >= 3
+    if buy_sig:
+        why = "高低卡剛離零" if buy_sig == "leave_zero" else "紅箭頭過 ma60 確認"
+        if support is not None and broke:
+            return f"{why}，買點成立；仍在大量撐 {_fmt_price(support)} 下，分批別重壓"
+        if support is not None:
+            return f"{why}，買點成立；跌破大量撐 {_fmt_price(support)} 先停看"
+        return f"{why}，買點成立"
     if support is None:
         return "撐壓待補，先看高低卡買點再動"
     s = _fmt_price(support)
@@ -845,6 +854,49 @@ def _strategy_tip(
             return f"等站回大量撐 {s} 或外資賣壓縮手再出手"
         return f"等站回大量撐 {s} 再出手"
     return f"守住大量撐 {s} 再看高低卡買點，跌破先停看"
+
+
+def _buy_signal(db_path: str, sid: str, day: str) -> Optional[str]:
+    """只認已量化過關的買訊：高低卡剛離零（leave_zero）或 ma60_lower 確認紅箭頭。"""
+    try:
+        import pandas as pd
+
+        from decision_card_signals import leave_zero_from_quote_df
+        from red_arrow_quant import nav_low_ma60_lower_mask
+
+        con = sqlite3.connect(db_path)
+        try:
+            rows = con.execute(
+                """
+                SELECT stock_id, REPLACE(CAST(date AS TEXT),'-','') AS d, open, high, low, close, volume
+                FROM daily_quotes
+                WHERE stock_id=? AND REPLACE(CAST(date AS TEXT),'-','')<=? AND close>0
+                ORDER BY d DESC LIMIT 200
+                """,
+                (sid, day),
+            ).fetchall()
+        finally:
+            con.close()
+        if len(rows) < 61:
+            return None
+        df = pd.DataFrame(
+            list(reversed(rows)),
+            columns=["stock_id", "date", "open", "high", "low", "close", "volume"],
+        )
+        try:
+            from wayne_navigator import frame_for_cal60_profit
+
+            profit_df = frame_for_cal60_profit(df, db_path)
+        except Exception:
+            profit_df = df
+        if leave_zero_from_quote_df(profit_df):
+            return "leave_zero"
+        mask = nav_low_ma60_lower_mask(df)
+        if len(mask) and bool(mask.iloc[-1]):
+            return "red_arrow"
+    except Exception:
+        return None
+    return None
 
 
 def build_flagship_payload(
@@ -1148,7 +1200,7 @@ def build_flagship_payload(
                     dilute_yi = float(ov["dilute_yi"])
                 if place_shares is None and ov.get("place_shares") is not None:
                     place_shares = float(ov["place_shares"])
-                if ov.get("listing_note"):
+                if ov.get("listing_note") and listing_note == "預計上櫃 —":
                     listing_note = str(ov["listing_note"])
                     regime["right"] = listing_note
         finally:
@@ -1169,12 +1221,15 @@ def build_flagship_payload(
         if vols:
             qty60 = sum(vols) / len(vols) / 1000.0
 
+    buy_sig = None if emerging else _buy_signal(db_path, sid, day)
     if emerging:
         status, icon, status_label = "risk", "⚠️", "興櫃量小"
+    elif buy_sig:
+        status, icon, status_label = "buy", "★", "可買"
     elif broke:
         status, icon, status_label = "wait", "☆", "等止穩"
     else:
-        status, icon, status_label = "buy", "★", "可買"
+        status, icon, status_label = "wait", "☆", "等買點"
 
     # pills：市場短標 + 籌碼／興櫃警示（可多顆）
     short_ind = _short_industry(sid, industry, emerging)
@@ -1412,17 +1467,17 @@ def build_flagship_payload(
         peer_lines = ['<div class="peer">同族群對照待補</div>']
 
     ov_moat = _FLAGSHIP_FUND_OVERLAY.get(sid) or {}
-    if ov_moat.get("moat_text") and ov_moat.get("risk_text"):
+    if not moat_html and ov_moat.get("moat_text") and ov_moat.get("risk_text"):
         moat_html = (
             f"{ov_moat['moat_text']}｜"
             f"<span class=\"risk\">風險：{ov_moat['risk_text']}</span>"
         )
     elif not moat_html:
         if emerging:
-            gm_s = f"{gm:.1f}%" if gm is not None else "—"
+            gm_s = f"毛利 {gm:.1f}%" if gm is not None else "毛利待補"
             moat_html = (
-                f"先進封裝高毛利<span>（毛利 {html.escape(gm_s)}）</span>"
-                f"｜<span class=\"risk\">風險：營收趨緩、量小折價</span>"
+                f"{html.escape(short_ind or industry or '本業')}<span>（{html.escape(gm_s)}）</span>"
+                f"｜<span class=\"risk\">風險：興櫃量小折價、價差大</span>"
             )
         else:
             moat_html = (
@@ -1503,6 +1558,7 @@ def build_flagship_payload(
     tip = _strategy_tip(
         emerging=emerging,
         broke=broke,
+        buy_sig=buy_sig,
         support=support,
         thr=thr,
         chip_f=chip_f,
@@ -1593,12 +1649,25 @@ def _render_5day_squares(flags: Sequence[str]) -> str:
 def _build_ruler_markers(markers: Sequence[dict]) -> str:
     """自動防止相鄰標記重疊（最小間距 18%），確保數字不撞車。"""
     sorted_m = sorted(markers, key=lambda x: float(x["pct"]))
-    placed: List[dict] = []
+    merged: List[dict] = []
     for m in sorted_m:
+        if merged and str(merged[-1]["val"]) == str(m["val"]):
+            if merged[-1].get("is_now"):
+                continue
+            if m.get("is_now"):
+                merged[-1] = dict(m)
+            continue
+        merged.append(dict(m))
+    gap = 18.0 if len(merged) <= 5 else 88.0 / max(1, len(merged) - 1)
+    placed: List[dict] = []
+    for m in merged:
         pct = max(6.0, min(94.0, float(m["pct"])))
-        if placed and pct - placed[-1]["pct"] < 18:
-            pct = min(94.0, placed[-1]["pct"] + 18)
+        if placed and pct - placed[-1]["pct"] < gap:
+            pct = placed[-1]["pct"] + gap
         placed.append({**m, "pct": pct})
+    for i in range(len(placed) - 1, -1, -1):
+        cap = 94.0 if i == len(placed) - 1 else placed[i + 1]["pct"] - gap
+        placed[i]["pct"] = min(placed[i]["pct"], cap)
 
     out = []
     for m in placed:

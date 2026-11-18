@@ -80,6 +80,28 @@ def test_next_event_label_falls_back_to_report_deadline(tmp_path):
     assert _next_event_label(db, "9999", "20260601") == "Q2財報期限 2026/08/14"
 
 
+def test_strategy_tip_buy_only_from_quantified_signal():
+    from lookup_flagship_card_html import _strategy_tip
+
+    base = dict(emerging=False, support=3690.0, thr=None, chip_f=["N"] * 5)
+    assert "買點成立" in _strategy_tip(broke=False, buy_sig="leave_zero", **base)
+    assert "買點成立" in _strategy_tip(broke=False, buy_sig="red_arrow", **base)
+    no_sig = _strategy_tip(broke=False, buy_sig=None, **base)
+    assert "買點成立" not in no_sig and "高低卡買點" in no_sig
+
+
+@pytest.mark.skipif(not os.path.exists(DB), reason="no local wayne_market.db")
+def test_star_buy_requires_signal_not_just_above_support(monkeypatch):
+    import lookup_flagship_card_html as m
+
+    monkeypatch.setattr(m, "_buy_signal", lambda *a, **k: None)
+    p = m.build_flagship_payload(DB, "2317", as_of="20261118")
+    assert p["status_label"] != "可買" and p["icon"] != "★"
+    monkeypatch.setattr(m, "_buy_signal", lambda *a, **k: "leave_zero")
+    p = m.build_flagship_payload(DB, "2317", as_of="20261118")
+    assert p["status_label"] == "可買" and "買點成立" in p["tip"]
+
+
 @pytest.mark.skipif(not os.path.exists(DB), reason="no local wayne_market.db")
 def test_flagship_3595_emerging_platform_break():
     p = build_flagship_payload(DB, "3595", as_of="20261118")
