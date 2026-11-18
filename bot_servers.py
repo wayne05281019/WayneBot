@@ -37,6 +37,22 @@ _CARD_BUILD_TIMEOUT = float(os.getenv("WAYNE_CARD_BUILD_TIMEOUT", "90"))
 _CHART_RENDER_TIMEOUT = float(os.getenv("WAYNE_CHART_RENDER_TIMEOUT", "120"))
 # 介紹圖／決策卡／產業圖與導航圖同一逾時。醒機時 matplotlib 冷啟，60s 會只送到介紹圖。
 _LOOKUP_PNG_TIMEOUT = float(os.getenv("WAYNE_LOOKUP_PNG_TIMEOUT", str(_CHART_RENDER_TIMEOUT)))
+# 旗艦卡（chromium）逾時就略過、照常出高低卡；不准拖住第 2 張起。
+_LOOKUP_FLAGSHIP_TIMEOUT = float(os.getenv("WAYNE_LOOKUP_FLAGSHIP_TIMEOUT", "30"))
+
+
+def _lookup_flagship_enabled(code: str) -> bool:
+    if str(os.getenv("WAYNE_LOOKUP_FLAGSHIP", "1")).strip().lower() in ("0", "false", "off", "no"):
+        return False
+    c = str(code or "").strip()
+    if not c or c.startswith("00"):
+        return False
+    try:
+        import importlib.util
+
+        return importlib.util.find_spec("playwright") is not None
+    except Exception:
+        return False
 # 單一 paint worker：排隊時間不准算進逾時（否則高低卡一慢，介紹／後張 wait_for 先爆，話筒缺 1／2／5）。
 _LOOKUP_PAINT_POLL_S = 0.02
 _LOOKUP_PAINT_SALVAGE_GRACE_S = 1.25
@@ -4545,6 +4561,7 @@ class WayneTelegramBot:
     ) -> str:
         """查股進度：跟實際階段同步，不要只停在 0 秒。"""
         labels = {
+            "flagship": "旗艦卡",
             "glance": "介紹圖",
             "card": "高低溫度卡",
             "struct": "結構圖",
@@ -11394,7 +11411,7 @@ class WayneTelegramBot:
             # 高低卡不需 tape：卡建完立刻開渲，跟抓 tape 重疊。
             # 介紹圖在高低卡已 submit 後排隊：卡一畫完 worker 馬上接介紹，與送高低卡重疊。
             # 官方量窗 ensure：進查股就與 MIS／建卡並行（見上方 ensure_task）；結構 prepare 在 paint 外。
-            # 順序鎖死：高低溫度卡 → 介紹圖 → 結構圖 → 大量撐壓圖 → 當天走勢。一次一張、好了就送。
+            # 順序鎖死：旗艦卡 → 高低溫度卡 → 介紹圖 → 結構圖 → 大量撐壓圖 → 當天走勢。一次一張、好了就送。
             # 完整圖下鈕只掛第 5 張當天走勢；第 2／3／4 張不附鍵盤。
             card_queued = asyncio.Event()
             glance_queued = asyncio.Event()
@@ -11674,6 +11691,41 @@ class WayneTelegramBot:
                 )
                 return ("intraday", png, cap, None)
 
+            flag_path_f = self._scratch_chart_path(self.charts_dir, code, "flagship", uid_key)
+
+            async def _flagship_item():
+                """第 1 張旗艦卡：chromium 渲，不佔 mpl paint worker；失敗／逾時略過不擋後面。"""
+                from lookup_flagship_card_html import render_flagship_png
+
+                c = card if isinstance(card, dict) else {}
+                asof = str(c.get("latest_date") or c.get("as_of") or "").replace("-", "")[:8]
+                t0f = time.monotonic()
+                try:
+                    path = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            render_flagship_png,
+                            code,
+                            flag_path_f,
+                            db_path=self.db_path,
+                            as_of=asof or None,
+                            live_close=c.get("close"),
+                            live_pct=c.get("change_pct"),
+                        ),
+                        timeout=_LOOKUP_FLAGSHIP_TIMEOUT,
+                    )
+                except Exception as exc:
+                    logger.warning("查股旗艦卡略過 code=%s err=%r", code, exc)
+                    return None
+                logger.info("查股旗艦卡 %.1fs code=%s", time.monotonic() - t0f, code)
+                if not self._png_looks_ok(path):
+                    return None
+                return ("flagship", path, "", None)
+
+            flag_task = (
+                asyncio.create_task(_flagship_item())
+                if _lookup_flagship_enabled(code)
+                else None
+            )
             card_render_task = asyncio.create_task(_card_item())
             try:
                 tape = await tape_task
@@ -11741,6 +11793,12 @@ class WayneTelegramBot:
                     return True
                 return False
 
+            if flag_task is not None:
+                await _bump_progress("flagship")
+                flag_item = await flag_task
+                if flag_item:
+                    await _send_kind_item(flag_item, retry_label="旗艦卡")
+                await _bump_progress("card")
             card_item = await card_render_task
             if not card_item:
                 # 逾時後 worker 可能已寫完；先救檔，再降載重渲（不准 silently 沒第 1 張）

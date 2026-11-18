@@ -23,6 +23,7 @@ import math
 import os
 import re
 import sqlite3
+import threading
 from datetime import date
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -905,7 +906,10 @@ def build_flagship_payload(
     stock_id: str,
     *,
     as_of: Optional[str] = None,
+    live_close: Optional[float] = None,
+    live_pct: Optional[float] = None,
 ) -> Dict[str, Any]:
+    """live_close／live_pct 只換顯示現價（與高低卡同一價）；買點、撐壓仍只吃官方已收柱。"""
     sid = str(stock_id or "").strip()
     day = str(as_of or "").replace("-", "")[:8]
     if len(day) != 8:
@@ -1004,6 +1008,10 @@ def build_flagship_payload(
                 high60 = max(highs[-60:] if len(highs) >= 60 else highs)
             if lows:
                 half_low = min(lows[-126:] if len(lows) >= 126 else lows)
+
+        if _finite(live_close) is not None and float(live_close) > 0:
+            close = float(live_close)
+            pct = _finite(live_pct)
 
         # 興櫃：前波平台／前高壓取上一根官方柱；上市：大量區
         if emerging:
@@ -2037,19 +2045,25 @@ def render_single_card(d: Dict[str, Any], output_png: str) -> str:
     os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
     from playwright.sync_api import sync_playwright
 
-    with sync_playwright() as p:
+    # 2GB 機：兩人同時查股也只准一顆 chromium
+    with _CHROMIUM_LOCK, sync_playwright() as p:
         browser = p.chromium.launch(
             args=["--disable-dev-shm-usage", "--no-sandbox", "--disable-gpu"]
         )
-        page = browser.new_page(
-            viewport={"width": VIEW_W, "height": VIEW_H},
-            device_scale_factor=DPR,
-        )
-        page.set_content(page_html, wait_until="networkidle")
-        page.evaluate(_AUTOFIT_JS)
-        page.screenshot(path=out, full_page=False)
-        browser.close()
+        try:
+            page = browser.new_page(
+                viewport={"width": VIEW_W, "height": VIEW_H},
+                device_scale_factor=DPR,
+            )
+            page.set_content(page_html, wait_until="networkidle", timeout=15000)
+            page.evaluate(_AUTOFIT_JS)
+            page.screenshot(path=out, full_page=False)
+        finally:
+            browser.close()
     return out
+
+
+_CHROMIUM_LOCK = threading.Lock()
 
 
 def render_flagship_png(
@@ -2059,9 +2073,13 @@ def render_flagship_png(
     db_path: Optional[str] = None,
     as_of: Optional[str] = None,
     payload: Optional[Dict[str, Any]] = None,
+    live_close: Optional[float] = None,
+    live_pct: Optional[float] = None,
 ) -> str:
     path = db_path or os.environ.get("WAYNE_DB_PATH") or "data/wayne_market.db"
-    data = payload or build_flagship_payload(path, stock_id, as_of=as_of)
+    data = payload or build_flagship_payload(
+        path, stock_id, as_of=as_of, live_close=live_close, live_pct=live_pct
+    )
     return render_single_card(payload_to_card(data), save_path)
 
 
