@@ -1,0 +1,170 @@
+# -*- coding: utf-8 -*-
+"""查股旗艦卡：上市／興櫃雙模式對齊 mock 結構（真庫數字）。"""
+from __future__ import annotations
+
+import os
+
+import pytest
+
+from lookup_flagship_card_html import build_flagship_payload, payload_to_card, render_flagship_html
+
+
+DB = os.environ.get("WAYNE_DB_PATH") or "data/wayne_market.db"
+
+
+@pytest.mark.skipif(not os.path.exists(DB), reason="no local wayne_market.db")
+def test_flagship_2383_listed_shape():
+    p = build_flagship_payload(DB, "2383", as_of="20261118")
+    assert not p["emerging"]
+    assert p["close"] and p["close"] > 0
+    assert any(t == "上市" for _, t in p["pills"])
+    assert any("CCL" in t for _, t in p["pills"])
+    assert "需" in p["rev_line"] and "(" in p["rev_line"]
+    # 不准「需 需」；門檻應蓋住近月營收溫和成長（≥約 265 億帶）
+    assert "需需" not in p["rev_line"]
+    assert "需 需" not in render_flagship_html(p)
+    rev_gate = p["rev_line"].split(" / ", 1)[1].split("(")[0]
+    assert "需" in rev_gate
+    # 抽出門檻數字
+    import re
+
+    m = re.search(r"([\d.]+)\s*億", rev_gate)
+    assert m and float(m.group(1)) >= 260.0
+    assert p["tgt_n"] != "—" and p["tgt_c"] != "—"
+
+    def _num(s: str) -> float:
+        return float(str(s).replace(",", ""))
+
+    assert _num(p["tgt_n"]) >= _num(p["tgt_c"])
+    labels = [m["label"] for m in p["marks"]]
+    assert "半年低" in labels
+    assert "川寶" not in str(p.get("peers_raw"))
+    assert "殖利率" in p["stat4"][2][0]
+    assert p["stat4"][2][1] != "—（無底）"  # 官方有殖利率就應顯示
+    html = render_flagship_html(p)
+    assert "台光電" in html
+    assert "未來 12 個月滾動本益比" in html
+    assert "股價位置與防線" in html
+    assert "川寶" not in html
+    # 模板不再重複加「需」
+    assert " / 需 需" not in html
+    assert "融資・10日籌碼與關鍵日" in html
+    assert "外資10日" in html
+    # 事件日：官方未來法說，否則法定財報期限（不准發明日期）
+    assert re.search(r"｜(法說 |股東會 |財報 |Q\d財報 )\d{4}/\d{2}/\d{2}", p["extra_val"])
+    assert "💡 策略提示：" in html
+    assert "大量撐" in p["tip"]
+    # 4 格微光膠囊：回檔為負 → 綠（跌）色塊
+    assert p["stat4"][0][2] == "dn"
+    assert 'class="m4-box tint-green"' in html
+    card = payload_to_card(p)
+    assert card["action_callout"] == p["tip"]
+    assert len(card["m4_tints"]) == 4 and card["m4_tints"][0] == "tint-green"
+
+
+def test_next_event_label_falls_back_to_report_deadline(tmp_path):
+    import sqlite3
+
+    from lookup_flagship_card_html import _next_event_label
+
+    db = str(tmp_path / "e.db")
+    con = sqlite3.connect(db)
+    con.execute(
+        "CREATE TABLE company_events (stock_id TEXT, event_date TEXT, kind TEXT, title TEXT, source TEXT)"
+    )
+    con.execute("INSERT INTO company_events VALUES ('2383','20261103','法說','','')")
+    con.commit()
+    con.close()
+    assert _next_event_label(db, "2383", "20261118") == "年報期限 2027/03/31"
+    assert _next_event_label(db, "2383", "20261101") == "法說 2026/11/03"
+    assert _next_event_label(db, "9999", "20260601") == "Q2財報期限 2026/08/14"
+
+
+def test_strategy_tip_buy_only_from_quantified_signal():
+    from lookup_flagship_card_html import _strategy_tip
+
+    base = dict(emerging=False, support=3690.0, thr=None, chip_f=["N"] * 5)
+    assert "買點成立" in _strategy_tip(broke=False, buy_sig="leave_zero", **base)
+    assert "買點成立" in _strategy_tip(broke=False, buy_sig="red_arrow", **base)
+    no_sig = _strategy_tip(broke=False, buy_sig=None, **base)
+    assert "買點成立" not in no_sig and "高低卡買點" in no_sig
+
+
+@pytest.mark.skipif(not os.path.exists(DB), reason="no local wayne_market.db")
+def test_star_buy_requires_signal_not_just_above_support(monkeypatch):
+    import lookup_flagship_card_html as m
+
+    monkeypatch.setattr(m, "_buy_signal", lambda *a, **k: None)
+    p = m.build_flagship_payload(DB, "2317", as_of="20261118")
+    assert p["status_label"] != "可買" and p["icon"] != "★"
+    monkeypatch.setattr(m, "_buy_signal", lambda *a, **k: "leave_zero")
+    p = m.build_flagship_payload(DB, "2317", as_of="20261118")
+    assert p["status_label"] == "可買" and "買點成立" in p["tip"]
+
+
+@pytest.mark.skipif(not os.path.exists(DB), reason="no local wayne_market.db")
+def test_flagship_3595_emerging_platform_break():
+    import sqlite3
+
+    from lookup_flagship_card_html import _prior_platform
+
+    as_of = "20261118"
+    p = build_flagship_payload(DB, "3595", as_of=as_of)
+    assert p["emerging"]
+    assert p["close"] and p["close"] > 0
+    # 前波平台／前高壓＝as_of 當下上一根官方柱低／高（庫會往後補柱，不准寫死舊日）
+    con = sqlite3.connect(DB)
+    try:
+        bars = con.execute(
+            """
+            SELECT date, high, low, close, volume FROM emerging_quotes
+            WHERE stock_id=? AND REPLACE(CAST(date AS TEXT),'-','')<=?
+              AND close>0 ORDER BY date ASC
+            """,
+            ("3595", as_of),
+        ).fetchall()
+    finally:
+        con.close()
+    plat_lo, plat_hi = _prior_platform(bars)
+    assert plat_lo is not None and plat_hi is not None
+    marks = {m["label"]: m["value"] for m in p["marks"]}
+    assert marks.get("前波平台") == pytest.approx(plat_lo)
+    assert marks.get("前高壓") == pytest.approx(plat_hi)
+    assert marks.get("現增暫定") == pytest.approx(400.0)
+    expect_broke = float(p["close"]) < float(plat_lo)
+    assert p["broke"] is expect_broke
+    if expect_broke:
+        assert "破撐" in p["sr_text"]
+    else:
+        assert "破撐" not in p["sr_text"]
+    assert any("興櫃" in t for _, t in p["pills"])
+    assert "先進封裝" in p["peer_k"] or any("先進封裝" in t for _, t in p["pills"])
+    assert "一元" not in p["bl_bottom"]
+    assert "現增暫定 400" in p["bl_bottom"] or "現增暫定 400.0" in p["bl_bottom"]
+    assert "4.68" in p["bl_bottom"]
+    assert p["eps_e"] == pytest.approx(5.99)
+    assert "Q3" in (p.get("eps_q_line") or "") or "2.97" in (p.get("eps_q_line") or "")
+    assert "2027/01" in str((p.get("regime") or {}).get("right") or "")
+    # 年底門檻約 1.05 億帶
+    assert "1.05" in p["rev_line"] or "1.0" in p["rev_line"]
+    assert p["pe_line"] != "—倍"
+    def _num(s: str) -> float:
+        return float(str(s).replace(",", ""))
+
+    assert _num(p["tgt_n"]) >= _num(p["tgt_c"])
+    # 已核定 overlay 目標約 570；不准再掉回舊 bug 176 或純滾動估的偏低假目標
+    assert _num(p["tgt_n"]) >= 500
+    html = render_flagship_html(p)
+    assert "山太士" in html
+    assert "興櫃防線與流動性警示" in html
+    if expect_broke:
+        assert "▲破撐" in html
+    assert "需 需" not in html
+    assert "已出Q3" in p["eps_k"]
+    assert "台光電" not in html  # 同族不串錯
+    assert "興櫃量能與進度" in html
+    assert "現增" in html
+    assert p["extra_val"].endswith("｜預計上櫃 2027/01")
+    assert p["tip"] == "興櫃量小價差大，緊盯 11–12 月營收過 1.05 億門檻"
+    assert 'class="callout-bar is-em"' in html
+    assert payload_to_card(p)["m4_tints"][3] == "tint-amber"

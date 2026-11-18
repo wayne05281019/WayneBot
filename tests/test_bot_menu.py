@@ -119,6 +119,8 @@ def test_image_surfaces_wait_vanishes_after_photo():
     assert "第" in album and "張" in album
     assert "_send_market_teach_one" in album
     teach = inspect.getsource(WayneTelegramBot._send_biaoke_teach_charts)
+    assert "_biaoke_far_paint_shared" in teach
+    teach += inspect.getsource(WayneTelegramBot._biaoke_far_paint_shared)
     assert "force=True" in teach
     assert "paint_open_day_hypothesis" in teach
     assert "panels=\"far\"" in teach or "panels='far'" in teach

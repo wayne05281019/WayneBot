@@ -21,7 +21,7 @@ def _png(td: str, name: str) -> str:
 
 
 class LookupHubLastCardOnlyTests(TestCase):
-    def test_hub_markup_only_on_intraday_photo(self):
+    def _run_lookup(self, *, flagship_png: bool = False, env: dict | None = None):
         td = tempfile.mkdtemp()
         bot = WayneTelegramBot.__new__(WayneTelegramBot)
         bot.db_path = os.path.join(td, "x.db")
@@ -59,6 +59,11 @@ class LookupHubLastCardOnlyTests(TestCase):
         async def _capture_photo(msg, path, *, caption="", markup=None, kind="", **_k):
             send_markups.append((kind, markup))
             return True
+
+        def _flag(*_a, **_k):
+            if not flagship_png:
+                raise RuntimeError("no chromium")
+            return _png(td, "f.png")
 
         async def _run():
             with patch("wayne_navigator.NavigatorEngine", _Engine), patch(
@@ -122,7 +127,14 @@ class LookupHubLastCardOnlyTests(TestCase):
                     [{"stock_id": "2330", "close": 100}],
                 )
 
-        asyncio.run(_run())
+        with patch.dict(os.environ, env or {}), patch(
+            "lookup_flagship_card_html.render_flagship_png", side_effect=_flag
+        ):
+            asyncio.run(_run())
+        return send_markups, hub
+
+    def test_hub_markup_only_on_intraday_photo(self):
+        send_markups, hub = self._run_lookup()
         kinds = [k for k, _ in send_markups]
         self.assertEqual(kinds, ["card", "glance", "struct", "vol", "intraday"])
         by_kind = {k: mk for k, mk in send_markups}
@@ -131,6 +143,20 @@ class LookupHubLastCardOnlyTests(TestCase):
         self.assertIsNone(by_kind["struct"])
         self.assertIsNone(by_kind["vol"])
         self.assertIs(by_kind["intraday"], hub)
+
+    def test_flagship_sent_first_then_normal_order(self):
+        send_markups, hub = self._run_lookup(flagship_png=True)
+        kinds = [k for k, _ in send_markups]
+        self.assertEqual(kinds, ["flagship", "card", "glance", "struct", "vol", "intraday"])
+        self.assertIsNone(dict(send_markups)["flagship"])
+
+    def test_flagship_env_off_keeps_five(self):
+        send_markups, _hub = self._run_lookup(
+            flagship_png=True, env={"WAYNE_LOOKUP_FLAGSHIP": "0"}
+        )
+        self.assertEqual(
+            [k for k, _ in send_markups], ["card", "glance", "struct", "vol", "intraday"]
+        )
 
     def test_source_does_not_reattach_hub_on_mid_cards(self):
         import inspect

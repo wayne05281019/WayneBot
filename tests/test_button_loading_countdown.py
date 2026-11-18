@@ -1683,6 +1683,21 @@ def test_second_screen_press_joins_inflight_loading(monkeypatch):
         assert "LOADING" in first2
         assert "逾時" not in first2
         assert "已超過 3 分鐘" not in first2
+        # LOADING 後再等第二次挂上同一 latch，才放行第一輪（避免空窗另開建檔）
+        latch = getattr(bot, "_screening_build_task", None)
+        for _ in range(500):
+            task = getattr(bot, "_screening_build_task", None)
+            if (
+                n["build"] == 1
+                and isinstance(task, asyncio.Task)
+                and not task.done()
+                and task is latch
+            ):
+                await asyncio.sleep(0.05)
+                if n["build"] == 1 and getattr(bot, "_screening_build_task", None) is task:
+                    break
+            await asyncio.sleep(0.01)
+        assert n["build"] == 1
         release.set()
         await asyncio.wait_for(t1, timeout=8.0)
         await asyncio.wait_for(t2, timeout=8.0)
