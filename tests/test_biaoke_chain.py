@@ -333,6 +333,41 @@ def test_tape_does_not_repeat_hold_or_field():
     assert "半山腰" in mh["text"] or "整理末端" in mh["text"] or "不是 4/16" in mh["text"]
 
 
+def test_think_pins_nasdaq_fee_and_916_after_clip():
+    """巢穴 nest_bit 220 字裁切後，think 仍必須留那指／費半／9/16（CI #948 紅因）。"""
+    from biaoke_chain import _think
+
+    nest = (
+        "官方收已低於他自己點的 9/3 低 45839。"
+        "他自己最新：" + ("甲" * 90) + "。"
+        "夜盤高還沒過他自己點的 46506。"
+        "還沒過他自己點的前波高 47578。"
+        "台積電官方日K 20261117 收 980 爆量日高 1000＝壓、低 900＝撐。"
+        "費半隔夜官方 20261117 -1.2%；沒費半 15 分不數段、先行不是保證。"
+        "那指隔夜官方 20261117 -0.8%；沒那指 15 分不數段、先行不是保證。"
+        "他自己點的 9/16 Fed 已過。升息有沒有這顆庫沒這列，不准編新聞。"
+    )
+    hold = "勿輕易調節。" + ("長抱 overlay。" * 40)
+    doubt = (
+        "五件交叉：這檔強勢整理＝拉回淺等時間。"
+        + ("交叉細節。" * 50)
+        + " 自問：他沒疊滿從不言重。"
+    )
+    steps = [
+        {"id": "nest", "ok": True, "text": nest},
+        {"id": "field", "ok": True, "text": "產業材料"},
+        {"id": "leader", "ok": True, "text": "自己就是這族龍頭，不另對"},
+        {"id": "tape", "ok": True, "text": "收 3795 高 4000＝壓 低 3600＝撐"},
+        {"id": "hold", "ok": True, "text": hold},
+        {"id": "doubt", "ok": True, "text": doubt},
+    ]
+    think = _think(steps, "2383", "台光電")
+    assert "那指" in think
+    assert "費半" in think
+    assert "9/16" in think
+    assert len(think) <= 900
+
+
 def test_think_chains_45839_and_self_leader():
     """推論句要串巢穴官方 45839 和自己就是龍頭，不是只寫點位有了。"""
     from tests.conftest import require_production_db
