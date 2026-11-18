@@ -6,7 +6,7 @@ import os
 
 import pytest
 
-from lookup_flagship_card_html import build_flagship_payload, render_flagship_html
+from lookup_flagship_card_html import build_flagship_payload, payload_to_card, render_flagship_html
 
 
 DB = os.environ.get("WAYNE_DB_PATH") or "data/wayne_market.db"
@@ -48,8 +48,36 @@ def test_flagship_2383_listed_shape():
     assert "川寶" not in html
     # 模板不再重複加「需」
     assert " / 需 需" not in html
-    assert "融資與10日籌碼" in html
+    assert "融資・10日籌碼與關鍵日" in html
     assert "外資10日" in html
+    # 事件日：官方未來法說，否則法定財報期限（不准發明日期）
+    assert re.search(r"｜(法說 |股東會 |財報 |Q\d財報 )\d{4}/\d{2}/\d{2}", p["extra_val"])
+    assert "💡 策略提示：" in html
+    assert "大量撐" in p["tip"]
+    # 4 格微光膠囊：回檔為負 → 綠（跌）色塊
+    assert p["stat4"][0][2] == "dn"
+    assert 'class="m4-box tint-green"' in html
+    card = payload_to_card(p)
+    assert card["action_callout"] == p["tip"]
+    assert len(card["m4_tints"]) == 4 and card["m4_tints"][0] == "tint-green"
+
+
+def test_next_event_label_falls_back_to_report_deadline(tmp_path):
+    import sqlite3
+
+    from lookup_flagship_card_html import _next_event_label
+
+    db = str(tmp_path / "e.db")
+    con = sqlite3.connect(db)
+    con.execute(
+        "CREATE TABLE company_events (stock_id TEXT, event_date TEXT, kind TEXT, title TEXT, source TEXT)"
+    )
+    con.execute("INSERT INTO company_events VALUES ('2383','20261103','法說','','')")
+    con.commit()
+    con.close()
+    assert _next_event_label(db, "2383", "20261118") == "年報期限 2027/03/31"
+    assert _next_event_label(db, "2383", "20261101") == "法說 2026/11/03"
+    assert _next_event_label(db, "9999", "20260601") == "Q2財報期限 2026/08/14"
 
 
 @pytest.mark.skipif(not os.path.exists(DB), reason="no local wayne_market.db")
@@ -85,7 +113,11 @@ def test_flagship_3595_emerging_platform_break():
     assert "興櫃防線與流動性警示" in html
     assert "▲破撐" in html
     assert "需 需" not in html
-    assert "已出Q3" in html or "已出 Q3" in html
+    assert "已出Q3" in p["eps_k"]
     assert "台光電" not in html  # 同族不串錯
     assert "興櫃量能與進度" in html
     assert "現增" in html
+    assert p["extra_val"].endswith("｜預計上櫃 2027/01")
+    assert p["tip"] == "興櫃量小價差大，緊盯 11–12 月營收過 1.05 億門檻"
+    assert 'class="callout-bar is-em"' in html
+    assert payload_to_card(p)["m4_tints"][3] == "tint-amber"

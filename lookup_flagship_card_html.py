@@ -61,14 +61,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   /* 430x932 @3x = 1290x2796，預留上 144px / 下 180px Telegram 安全邊距 */
   .phone-frame {
     width: 430px; height: 932px; background: var(--bg-canvas);
-    padding: 44px 10px 56px 10px;
+    padding: 28px 6px 38px 6px;
     display: flex; flex-direction: column; justify-content: space-between; gap: 8px; overflow: hidden;
   }
   .mono { font-family: 'JetBrains Mono', 'Noto Sans TC', monospace; font-variant-numeric: tabular-nums; }
 
   .outer-card {
     background: var(--bg-card); border: 1px solid rgba(56, 189, 248, 0.35);
-    border-radius: 16px; padding: 11px 12px; display: flex; flex-direction: column; justify-content: space-between; flex: 1; gap: 6px;
+    border-radius: 16px; padding: 10px 10px; display: flex; flex-direction: column; justify-content: space-between; flex: 1; gap: 5px;
   }
   .outer-card.is-wait { border-color: rgba(251, 191, 36, 0.45); }
   .outer-card.is-risk { border-color: rgba(167, 139, 250, 0.5); }
@@ -76,8 +76,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
   /* Header */
   .header-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
-  .stock-title { font-size: 20px; font-weight: 900; line-height: 1.15; }
-  .stock-sub { font-size: 11px; color: var(--text-secondary); margin-top: 3px; }
+  .stock-title { font-size: 21px; font-weight: 900; line-height: 1.15; }
+  .stock-sub { font-size: 12px; color: #CBD5E1; margin-top: 3px; }
   .header-right { text-align: right; flex-shrink: 0; }
   .price-main { font-size: 19px; font-weight: 800; line-height: 1.1; }
   .price-chg { font-size: 11.5px; font-weight: 700; margin-top: 2px; }
@@ -91,9 +91,19 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
   /* Regime Strip */
   .regime-banner {
-    font-size: 10.5px; font-weight: 700; padding: 6px 10px; border-radius: 9px;
+    font-size: 12px; font-weight: 700; padding: 6px 10px; border-radius: 9px;
     display: flex; justify-content: space-between; align-items: center;
     background: rgba(245, 158, 11, 0.13); border: 1px solid rgba(245, 158, 11, 0.4); color: #FDE68A;
+  }
+
+
+  /* Action Callout Bar */
+  .callout-bar {
+    font-size: 11.5px; font-weight: 700; padding: 6px 10px; border-radius: 9px;
+    background: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.4); color: #E0F2FE;
+  }
+  .callout-bar.is-em {
+    background: rgba(167, 139, 250, 0.13); border-color: rgba(167, 139, 250, 0.42); color: #EDE9FE;
   }
 
   /* 2x2 Core Matrix */
@@ -102,9 +112,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     background: var(--bg-cell); border: 1px solid #1E293B; border-radius: 10px;
     min-width: 0; padding: 8px 9px; display: flex; flex-direction: column; justify-content: flex-start; gap: 5px;
   }
-  .cell-k { font-size: 11px; font-weight: 700; color: #94A3B8; letter-spacing: 0.2px; }
-  .cell-v { font-size: 11.5px; font-weight: 800; color: #FFFFFF; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .cell-sub { font-size: 10.5px; color: var(--text-secondary); line-height: 1.35; }
+  .cell-k { font-size: 12px; font-weight: 700; color: #CBD5E1; letter-spacing: 0.2px; }
+  .cell-v { font-size: 13.5px; font-weight: 800; color: #FFFFFF; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cell-sub { font-size: 11.5px; color: #E2E8F0; line-height: 1.35; }
 
   .prog-track { height: 5px; background: #0B1120; border-radius: 999px; overflow: hidden; }
   .prog-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #10B981, #38BDF8); }
@@ -116,11 +126,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     width: 9px; height: 9px; border-radius: 50%; background: #38BDF8;
     border: 1.5px solid #FFF; box-shadow: 0 0 6px rgba(56, 189, 248, 0.85);
   }
-  .ruler-labels { display: flex; justify-content: space-between; font-size: 9.5px; color: var(--text-muted); }
+  .ruler-labels { display: flex; justify-content: space-between; font-size: 11px; color: #CBD5E1; }
 
-  .flow-blocks-row { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--text-secondary); }
+  .flow-blocks-row { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: #E2E8F0; }
   .sq-group { display: inline-flex; gap: 2.5px; align-items: center; }
-  .sq { width: 7.5px; height: 7.5px; border-radius: 1.5px; display: inline-block; }
+  .sq { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
   .sq-b { background: #EF4444; } .sq-s { background: #10B981; } .sq-n { background: #475569; }
 
   /* Price Ruler Section (固定高度，絕對不會壓到下面4格) */
@@ -144,25 +154,32 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     width: 11px; height: 11px; border-radius: 50%; background: #38BDF8;
     border: 2px solid #FFF; box-shadow: 0 0 8px rgba(56, 189, 248, 0.9);
   }
-  .pm-top { position: absolute; bottom: 13px; white-space: nowrap; font-size: 9.5px; color: var(--text-secondary); }
-  .pm-bot { position: absolute; top: 12px; white-space: nowrap; font-size: 10px; font-weight: 700; color: var(--text-primary); }
+  .pm-top { position: absolute; bottom: 13px; white-space: nowrap; font-size: 11px; color: #E2E8F0; }
+  .pm-bot { position: absolute; top: 12px; white-space: nowrap; font-size: 11.5px; font-weight: 700; color: #FFFFFF; }
 
   .metrics-4 {
-    display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;
-    border-top: 1px solid #1E293B; padding-top: 8px; text-align: center;
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px;
+    padding-top: 2px; text-align: center;
   }
-  .m4-box { display: flex; flex-direction: column; gap: 2px; border-right: 1px solid #1E293B; }
-  .m4-box:last-child { border-right: none; }
-  .m4-k { font-size: 9.5px; color: var(--text-muted); }
-  .m4-v { font-size: 11px; font-weight: 700; color: var(--text-primary); }
+  .m4-box {
+    display: flex; flex-direction: column; justify-content: center; gap: 2px;
+    padding: 6px 4px; border-radius: 8px;
+    background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(148, 163, 184, 0.2);
+  }
+  .m4-box.tint-green { background: rgba(16, 185, 129, 0.14); border-color: rgba(52, 211, 153, 0.35); }
+  .m4-box.tint-blue  { background: rgba(56, 189, 248, 0.14); border-color: rgba(56, 189, 248, 0.38); }
+  .m4-box.tint-amber { background: rgba(245, 158, 11, 0.14); border-color: rgba(251, 191, 36, 0.38); }
+  .m4-box.tint-red   { background: rgba(239, 68, 68, 0.14); border-color: rgba(248, 113, 113, 0.38); }
+  .m4-k { font-size: 11px; color: #CBD5E1; }
+  .m4-v { font-size: 13px; font-weight: 800; color: #FFFFFF; }
 
   /* Bottom Split (固定緊湊高度，不留大塊黑底) */
   .bottom-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 7px; }
-  .peer-row { display: flex; justify-content: space-between; font-size: 12px; font-weight: 700; padding: 3px 0; }
-  .moat-text { font-size: 11.5px; color: var(--text-secondary); line-height: 1.45; }
+  .peer-row { display: flex; justify-content: space-between; font-size: 13px; font-weight: 700; padding: 3px 0; }
+  .moat-text { font-size: 12.5px; color: #E2E8F0; line-height: 1.45; }
   .moat-text strong { color: var(--text-primary); }
 
-  .footer-legend { text-align: center; font-size: 9.5px; color: var(--text-muted); padding-top: 2px; }
+  .footer-legend { text-align: center; font-size: 10.5px; color: #CBD5E1; padding-top: 2px; }
 </style>
 </head>
 <body>
@@ -187,10 +204,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <span class="mono">{{REGIME_RIGHT}}</span>
       </div>
 
+      <!-- ACTION CALLOUT -->
+      <div class="callout-bar {{CALLOUT_CLS}}">💡 策略提示：{{ACTION_CALLOUT}}</div>
+
       <!-- 2x2 CORE MATRIX -->
       <div class="d3-grid">
         <div class="d3-cell">
-          <div class="cell-k">{{EPS_K}}</div>
+          <div class="cell-k">今年賺錢進度</div>
           <div class="cell-v mono">已賺 {{EPS_YTD}} / 估 {{EPS_EST_YR}} ({{EPS_PCT}}%)</div>
           <div class="prog-track"><div class="prog-fill {{BAR_CLS}}" style="width: {{EPS_PCT_CLAMP}}%;"></div></div>
           <div class="cell-sub">{{Q4_PROGRESS}}｜最新單季 {{EPS_LATEST_Q}}</div>
@@ -211,7 +231,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         <div class="d3-cell">
           <div class="cell-k">營收達標進度＋撐壓</div>
-          <div class="cell-v mono" style="font-size:10.5px;">{{REV_NOW}} / {{REV_GATE}} ({{REV_PCT}}%)</div>
+          <div class="cell-v mono">{{REV_NOW}} / {{REV_GATE}} ({{REV_PCT}}%)</div>
           <div class="prog-track"><div class="prog-fill {{BAR_CLS}}" style="width: {{REV_PCT_CLAMP}}%;"></div></div>
           <div class="cell-sub mono {{SUPPORT_CLASS}}">{{SUPPORT_TEXT}}</div>
         </div>
@@ -226,17 +246,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           </div>
         </div>
         <div class="metrics-4">
-          <div class="m4-box"><span class="m4-k">{{M1_K}}</span><span class="m4-v mono">{{M1_V}}</span></div>
-          <div class="m4-box"><span class="m4-k">{{M2_K}}</span><span class="m4-v mono">{{M2_V}}</span></div>
-          <div class="m4-box"><span class="m4-k">{{M3_K}}</span><span class="m4-v mono">{{M3_V}}</span></div>
-          <div class="m4-box"><span class="m4-k">{{M4_K}}</span><span class="m4-v mono">{{M4_V}}</span></div>
+          <div class="m4-box {{M1_TINT}}"><span class="m4-k">{{M1_K}}</span><span class="m4-v mono">{{M1_V}}</span></div>
+          <div class="m4-box {{M2_TINT}}"><span class="m4-k">{{M2_K}}</span><span class="m4-v mono">{{M2_V}}</span></div>
+          <div class="m4-box {{M3_TINT}}"><span class="m4-k">{{M3_K}}</span><span class="m4-v mono">{{M3_V}}</span></div>
+          <div class="m4-box {{M4_TINT}}"><span class="m4-k">{{M4_K}}</span><span class="m4-v mono">{{M4_V}}</span></div>
         </div>
       </div>
 
       <!-- EXTRA DEPTH STRIP (利用統整後的空間補上融資/10日累計/關鍵事件) -->
       <div class="d3-cell" style="padding: 6px 9px;">
         <div class="cell-k">{{EXTRA_STRIP_TITLE}}</div>
-        <div class="cell-v mono" style="font-size:10.5px; white-space:normal; overflow:visible; text-overflow:clip; line-height:1.35;">{{EXTRA_STRIP_VAL}}</div>
+        <div class="cell-v mono" style="font-size: 11.5px;">{{EXTRA_STRIP_VAL}}</div>
       </div>
 
       <!-- BOTTOM SPLIT -->
@@ -731,6 +751,86 @@ def _load_peers(
     return out
 
 
+_TONE_TINT: Dict[str, str] = {
+    "dn": "tint-green",
+    "good": "tint-green",
+    "up": "tint-red",
+    "hot": "tint-red",
+    "cold": "tint-blue",
+    "warn": "tint-amber",
+}
+
+
+# 上市櫃一般業財報法定公告期限（月, 日, 標籤）；官方行事曆沒有未來法說時才用
+_REPORT_DEADLINES: Tuple[Tuple[int, int, str], ...] = (
+    (3, 31, "年報期限"),
+    (5, 15, "Q1財報期限"),
+    (8, 14, "Q2財報期限"),
+    (11, 14, "Q3財報期限"),
+)
+
+
+def _next_event_label(db_path: str, sid: str, day: str) -> str:
+    """官方 company_events 有未來法說／股東會就用；否則給下一個法定財報期限。"""
+    try:
+        con = sqlite3.connect(db_path)
+        try:
+            row = con.execute(
+                """
+                SELECT event_date, kind FROM company_events
+                WHERE stock_id=? AND event_date>? AND kind IN ('法說','常會','臨時會')
+                ORDER BY event_date ASC LIMIT 1
+                """,
+                (sid, day),
+            ).fetchone()
+        finally:
+            con.close()
+    except Exception:
+        row = None
+    if row:
+        ymd, kind = str(row[0]), str(row[1])
+        lab = "法說" if kind == "法說" else "股東會"
+        return f"{lab} {ymd[:4]}/{ymd[4:6]}/{ymd[6:8]}"
+    y = int(day[:4])
+    md = int(day[4:8])
+    for yy in (y, y + 1):
+        for mm, dd, lab in _REPORT_DEADLINES:
+            if yy > y or mm * 100 + dd > md:
+                return f"{lab} {yy}/{mm:02d}/{dd:02d}"
+    return "財報期限 —"
+
+
+def _strategy_tip(
+    *,
+    emerging: bool,
+    broke: bool,
+    support: Optional[float],
+    thr: Optional[float],
+    chip_f: Sequence[str],
+    rev_ym: Optional[str] = None,
+) -> str:
+    if emerging:
+        if thr is None:
+            return "興櫃量小價差大，量縮別追高"
+        mm = int(rev_ym[4:6]) if rev_ym and len(rev_ym) == 6 else 0
+        if mm == 10:
+            span = "11–12 月"
+        elif 1 <= mm <= 11:
+            span = f"{mm + 1} 月"
+        else:
+            span = "月"
+        return f"興櫃量小價差大，緊盯 {span}營收過 {_fmt_yi(thr)} 億門檻"
+    foreign_selling = sum(1 for x in list(chip_f)[-5:] if x == "S") >= 3
+    if support is None:
+        return "撐壓待補，先看高低卡買點再動"
+    s = _fmt_price(support)
+    if broke:
+        if foreign_selling:
+            return f"等站回大量撐 {s} 或外資賣壓縮手再出手"
+        return f"等站回大量撐 {s} 再出手"
+    return f"守住大量撐 {s} 再看高低卡買點，跌破先停看"
+
+
 def build_flagship_payload(
     db_path: str,
     stock_id: str,
@@ -747,7 +847,7 @@ def build_flagship_payload(
     emerging = False
     close = pct = None
     bars: List[tuple] = []
-    support = resist = half_low = high60 = ma60 = None
+    support = resist = half_low = high60 = ma60 = ma20 = None
     rev_yi = rev_ym = mom_pct = None
     chip_f = ["N"] * 5
     chip_t = ["N"] * 5
@@ -828,6 +928,9 @@ def build_flagship_payload(
             win = closes[-60:] if len(closes) >= 60 else closes
             if win:
                 ma60 = sum(win) / len(win)
+            win20 = closes[-20:]
+            if len(win20) >= 20:
+                ma20 = sum(win20) / 20.0
             if highs:
                 high60 = max(highs[-60:] if len(highs) >= 60 else highs)
             if lows:
@@ -1152,14 +1255,19 @@ def build_flagship_payload(
             marks.append({"label": "前高壓", "value": resist, "kind": "up"})
         elif high60 is not None:
             marks.append({"label": "前高壓", "value": high60, "kind": "up"})
-        mom_s = f"{month_lab} MoM {mom_pct:+.1f}% 緩" if mom_pct is not None else "近月 MoM —"
-        shares_s = f"現增 {place_shares:.0f}萬股" if place_shares is not None else "現增 —"
+        if mom_pct is None:
+            mom_s, mom_tone = "—", ""
+        else:
+            mom_tag = "強" if mom_pct >= 10 else ("緩" if mom_pct >= 0 else "減")
+            mom_s = f"{mom_pct:+.1f}%{mom_tag}"
+            mom_tone = "up" if mom_pct >= 10 else ("dn" if mom_pct < 0 else "warn")
+        shares_s = f"{place_shares:.0f}萬股" if place_shares is not None else "—"
         gm_lab = f"Q{season_used or 3}毛利"
         stat4 = [
-            ("現增股數", shares_s, ""),
-            (gm_lab, f"{gm:.1f}%" if gm is not None else "—", ""),
-            ("營收月增", mom_s, ""),
-            ("流動性", "⚠️ 價差大難出脫", "warn"),
+            ("現增股數", shares_s, "cold" if place_shares is not None else ""),
+            (gm_lab, f"{gm:.1f}%" if gm is not None else "—", "good" if (gm or 0) >= 40 else ""),
+            (f"{month_lab or '近月'}MoM", mom_s, mom_tone),
+            ("⚠️ 價差大", "難出脫", "warn"),
         ]
         bl_k = "目標價與現增防線"
         if placement is None and dilute_yi is None:
@@ -1192,14 +1300,27 @@ def build_flagship_payload(
             if close is not None and high60 not in (None, 0)
             else None
         )
+        # 月線＝20 日均
         bias = (
-            (close - ma60) / ma60 * 100.0
-            if close is not None and ma60 not in (None, 0)
+            (close - ma20) / ma20 * 100.0
+            if close is not None and ma20 not in (None, 0)
             else None
         )
         temp = "—"
+        temp_tone = ""
         if close is not None and half_low is not None and high60 is not None and high60 > half_low:
-            temp = f"{(close - half_low) / (high60 - half_low) * 100:.0f}°C"
+            deg = (close - half_low) / (high60 - half_low) * 100
+            if deg < 15:
+                temp_tag, temp_tone = "極冷", "cold"
+            elif deg < 35:
+                temp_tag, temp_tone = "偏冷", "cold"
+            elif deg <= 65:
+                temp_tag = "中性"
+            elif deg <= 85:
+                temp_tag, temp_tone = "偏熱", "hot"
+            else:
+                temp_tag, temp_tone = "過熱", "hot"
+            temp = f"{deg:.0f}°C（{temp_tag}）"
         # 官方殖利率（daily_valuation）；沒有就標無底，不准假造
         dy = None
         try:
@@ -1220,12 +1341,23 @@ def build_flagship_payload(
                 con_dy.close()
         except Exception:
             dy = None
-        yield_s = f"{dy:.1f}%（無底）" if dy is not None else "—（無底）"
+        if dy is None:
+            yield_s, yield_tone = "—（無底）", ""
+        elif dy >= 4.0:
+            yield_s, yield_tone = f"{dy:.1f}%（息撐）", "warn"
+        else:
+            yield_s, yield_tone = f"{dy:.1f}%（無底）", ""
+
+        def _signed_tone(v: Optional[float]) -> str:
+            if v is None or abs(v) < 0.05:
+                return ""
+            return "up" if v > 0 else "dn"
+
         stat4 = [
-            ("60日回檔", f"{pull:+.1f}%" if pull is not None else "—", ""),
-            ("月線乖離", f"{bias:+.1f}%" if bias is not None else "—", ""),
-            ("殖利率", yield_s, ""),
-            ("溫度計", temp, ""),
+            ("60日回檔", f"{pull:+.1f}%" if pull is not None else "—", _signed_tone(pull)),
+            ("月線乖離", f"{bias:+.1f}%" if bias is not None else "—", _signed_tone(bias)),
+            ("殖利率", yield_s, yield_tone),
+            ("溫度計", temp, temp_tone),
         ]
         bl_k = "目標價（正常／保守）＋近5日"
         bl_bottom = (
@@ -1295,10 +1427,13 @@ def build_flagship_payload(
             if place_shares is not None
             else "上櫃現增 —"
         )
-        list_note = listing_note if listing_note and listing_note != "預計上櫃 —" else "預計上櫃 —"
+        m_list = re.search(r"(\d{4})/(\d{1,2})", listing_note or "")
+        list_note = (
+            f"預計上櫃 {m_list.group(1)}/{int(m_list.group(2)):02d}" if m_list else "預計上櫃 —"
+        )
         extra_val = f"{qty_note}｜{shares_note}｜{list_note}"
     else:
-        extra_title = "融資與10日籌碼・關鍵日"
+        extra_title = "融資・10日籌碼與關鍵日"
         f10 = t10 = None
         m5 = None
         try:
@@ -1343,12 +1478,20 @@ def build_flagship_payload(
 
         f_s = _lot(f10)
         t_s = _lot(t10)
-        if m5 is None:
-            m_s = "融資5日 —"
-        else:
-            tag = "清洗" if m5 < 0 else "加碼"
-            m_s = f"融資5日 {_lot(m5)}（{tag}）"
-        extra_val = f"外資10日 {f_s}｜投信10日 {t_s}｜{m_s}"
+        m_s = "融資 —" if m5 is None else f"融資 {_lot(m5)}"
+        ev = _next_event_label(db_path, sid, day)
+        # 法定期限是「最晚」日，不是公司公告日，標「前」
+        ev = re.sub(r"^(年報|Q\d財報)期限 (\S+)$", lambda m: f"{'財報' if m.group(1) == '年報' else m.group(1)} {m.group(2)}前", ev)
+        extra_val = f"外資10日 {f_s}｜投信 {t_s}｜{m_s}｜{ev}"
+
+    tip = _strategy_tip(
+        emerging=emerging,
+        broke=broke,
+        support=support,
+        thr=thr,
+        chip_f=chip_f,
+        rev_ym=rev_ym,
+    )
 
     chg_cls = "chg-up" if (pct is not None and pct >= 0) else "chg-dn"
     if pct is None:
@@ -1419,6 +1562,7 @@ def build_flagship_payload(
         "bar_amber": emerging or broke,
         "extra_title": extra_title,
         "extra_val": extra_val,
+        "tip": tip,
     }
 
 
@@ -1487,9 +1631,11 @@ def payload_to_card(p: Dict[str, Any]) -> Dict[str, Any]:
     m4 = []
     for row in (p.get("stat4") or [])[:4]:
         if isinstance(row, (list, tuple)) and len(row) >= 2:
-            m4.append((str(row[0]), str(row[1])))
+            val = re.sub(r"（([^）]*)）$", r"(\1)", str(row[1]))
+            tone = str(row[2]) if len(row) >= 3 and row[2] else ""
+            m4.append((str(row[0]), val, _TONE_TINT.get(tone, "")))
     while len(m4) < 4:
-        m4.append(("—", "—"))
+        m4.append(("—", "—", ""))
 
     # peers for card（自己一律第一列；上市不准「收 xx」）
     peers = []
@@ -1540,6 +1686,7 @@ def payload_to_card(p: Dict[str, Any]) -> Dict[str, Any]:
             rev_gate = right.split("(")[0].strip()
         else:
             rev_gate = right.strip()
+        rev_gate = rev_gate.lstrip("需").strip()
 
     # moat / risk
     moat_html = str(p.get("moat_html") or "")
@@ -1597,6 +1744,10 @@ def payload_to_card(p: Dict[str, Any]) -> Dict[str, Any]:
     eps_latest = eps_q
     if ":" in eps_q:
         eps_latest = eps_q.split(":", 1)[1].strip()
+    # 格寬只夠一行數字，「創高」標記不上卡
+    eps_latest = eps_latest.replace("（創高）", "")
+    # 模板後面固定接「｜最新單季 xx元」，Q4 前綴省掉才放得下一行
+    q4 = q4.replace("Q4: ", "").replace("・", " ")
 
     # peer_chain short
     peer_chain = str(p.get("peer_k") or "")
@@ -1656,6 +1807,8 @@ def payload_to_card(p: Dict[str, Any]) -> Dict[str, Any]:
             or ("興櫃量能與進度" if emerging else "融資與10日籌碼・關鍵日")
         ),
         "extra_val": str(p.get("extra_val") or "—"),
+        "action_callout": str(p.get("tip") or "先看高低卡買點再動"),
+        "m4_tints": [m[2] for m in m4[:4]],
     }
 
 
@@ -1687,6 +1840,7 @@ def fill_flagship_html(d: Dict[str, Any]) -> str:
         f'<span class="mono">{html.escape(p["val"])}</span></div>'
         for p in (d.get("peers") or [])[:3]
     )
+    tints = (list(d.get("m4_tints") or []) + [""] * 4)[:4]
 
     rep = {
         "CARD_STATUS_CLS": {"buy": "is-buy", "wait": "is-wait", "risk": "is-risk"}.get(
@@ -1737,6 +1891,14 @@ def fill_flagship_html(d: Dict[str, Any]) -> str:
         "M3_V": d["m4"][2][1],
         "M4_K": d["m4"][3][0],
         "M4_V": d["m4"][3][1],
+        "M1_TINT": tints[0],
+        "M2_TINT": tints[1],
+        "M3_TINT": tints[2],
+        "M4_TINT": tints[3],
+        "CALLOUT_CLS": "is-em" if is_em else "",
+        "ACTION_CALLOUT": html.escape(
+            str(d.get("action_callout") or ("興櫃量小價差大，緊盯月營收門檻" if is_em else "等待站回大量支撐或外資賣壓縮手"))
+        ),
         "PEER_CHAIN": d["peer_chain"],
         "PEERS_HTML": peers_html,
         "MOAT_TEXT": d["moat_text"],
@@ -1757,6 +1919,32 @@ def render_flagship_html(p: Dict[str, Any]) -> str:
     return fill_flagship_html(payload_to_card(p))
 
 
+# 模板字級不動；只有真的溢出（數字／％會被 ellipsis 吃掉）的那一行才逐 0.5px 縮，下限 9.5px
+_AUTOFIT_JS = """async () => {
+  await document.fonts.ready;
+  // 籌碼列：一行放不下時改兩列「外資 ■■■■■／投信 ■■■■■」，標籤不跟方塊拆開
+  for (const row of document.querySelectorAll('.flow-blocks-row')) {
+    for (const s of row.children) s.style.whiteSpace = 'nowrap';
+    if (row.scrollWidth > row.clientWidth + 0.5 || row.offsetHeight > 20) {
+      row.style.display = 'grid';
+      row.style.gridTemplateColumns = 'auto 1fr';
+      row.style.rowGap = '3px';
+    }
+  }
+  // 2×2 格的副行是單行資訊，不准把「元」「億」擠成孤字行
+  for (const el of document.querySelectorAll('.d3-grid .cell-sub')) {
+    el.style.whiteSpace = 'nowrap';
+  }
+  for (const el of document.querySelectorAll('.cell-v, .cell-sub, .m4-v, .callout-bar')) {
+    let fs = parseFloat(getComputedStyle(el).fontSize);
+    while (el.scrollWidth > el.clientWidth + 0.5 && fs > 9.5) {
+      fs -= 0.5;
+      el.style.fontSize = fs + 'px';
+    }
+  }
+}"""
+
+
 def render_single_card(d: Dict[str, Any], output_png: str) -> str:
     page_html = fill_flagship_html(d)
     out = str(output_png)
@@ -1772,6 +1960,7 @@ def render_single_card(d: Dict[str, Any], output_png: str) -> str:
             device_scale_factor=DPR,
         )
         page.set_content(page_html, wait_until="networkidle")
+        page.evaluate(_AUTOFIT_JS)
         page.screenshot(path=out, full_page=False)
         browser.close()
     return out
