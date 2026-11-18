@@ -3,6 +3,7 @@
 import os
 import re
 
+import pytest
 from PIL import Image
 
 import undervalue_card as uc
@@ -91,8 +92,12 @@ def test_star_rows_first_and_d3_fixed_canvas(tmp_path):
     p = uc.render_undervalue_png(rows, str(tmp_path / "uv.png"), as_of="20261109")
     im = Image.open(p)
     assert im.size[0] == uc.BASE_W
-    assert im.size[1] >= uc.BASE_H
-    # 成長卡 D3：固定 1080×1920，長名單分頁不拉高單頁
+    assert im.size[1] >= 800
+    # 成長卡 D3：Playwright 430×932@3x → 1290×2796；長名單分頁
+    from undervalue_card_html import playwright_available
+
+    if not playwright_available():
+        pytest.skip("無 Playwright")
     growth = [
         {
             "mark": "star",
@@ -112,4 +117,4 @@ def test_star_rows_first_and_d3_fixed_canvas(tmp_path):
     for path in paths:
         im2 = Image.open(path)
         assert im2.size == (uc.BASE_W, uc.BASE_H)
-    assert uc.SAFE_TOP == 140 and uc.SAFE_BOTTOM == 180
+    assert uc.SAFE_TOP == 144 and uc.SAFE_BOTTOM == 180

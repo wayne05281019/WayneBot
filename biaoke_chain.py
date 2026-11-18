@@ -1650,6 +1650,9 @@ def _think(steps: List[Dict[str, Any]], sid: str, name: str) -> str:
             nest_bit += "；那指這路缺官方"
         elif "那指隔夜官方" in nest_t:
             nest_bit += "；那指隔夜有官方"
+        elif "那指" in nest_t:
+            # 巢穴有那指句但未命中缺／隔夜關鍵字 → 仍留那指標記，不准被裁掉
+            nest_bit += "；那指有材料"
         if "46767" in nest_t:
             nest_bit += "；周四／周五夜盤反彈至少 46767，不是官方收"
         if "43500 非常難" in nest_t:
@@ -1696,7 +1699,28 @@ def _think(steps: List[Dict[str, Any]], sid: str, name: str) -> str:
             parts.append(_clip(verdict[verdict.find("自問") :], 220))
         else:
             parts.append("沒疊滿就不講死。")
-        return _clip("".join(parts), 900)
+        # 五件／長抱 overlay 變長時，末段 clip 會吃掉費半／那指／9/16；釘回尾巴（對齊巢穴 must）。
+        body = "".join(parts)
+        if "費半" not in body:
+            if "費半這路先當缺" in nest_t or "四路先缺這路" in nest_t:
+                body = _pin_tail(body, "費半這路缺官方。", 900)
+            elif "費半隔夜官方" in nest_t or "費半" in nest_t:
+                body = _pin_tail(body, "費半隔夜有官方。", 900)
+            else:
+                body = _pin_tail(body, "費半這路缺官方。", 900)
+        if "那指" not in body:
+            if "那指這路先當缺" in nest_t or "那指官方這顆庫" in nest_t:
+                body = _pin_tail(body, "那指這路缺官方。", 900)
+            elif "那指隔夜官方" in nest_t or "那指" in nest_t:
+                body = _pin_tail(body, "那指隔夜有官方。", 900)
+            else:
+                body = _pin_tail(body, "那指這路缺官方。", 900)
+        if "9/16" not in body:
+            if "還在等 9/16" in nest_t:
+                body = _pin_tail(body, "還在等他自己點的 9/16 Fed。", 900)
+            elif "9/16 Fed 已過" in nest_t or "9/16" in nest_t:
+                body = _pin_tail(body, "他自己點的 9/16 已過，升息結果不准編。", 900)
+        return _clip(body, 900)
     nest_t = str(nest.get("text") or "")
     parts = ["這句沒點檔：先把大盤巢穴走完。"]
     if "現在位階" in nest_t:
