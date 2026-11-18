@@ -495,10 +495,10 @@ def _pe_dot_ruler(
     span = max(x1 - x0, 1.0)
     cy = y
     # 底軌
-    dr.line([(x0, cy), (x1, cy)], fill=(55, 68, 86), width=max(2, _px(3)))
+    dr.line([(x0, cy), (x1, cy)], fill=(55, 68, 86), width=max(3, _px(4)))
     for i in range(n_dots):
         cx = x0 + (i + 0.5) / n_dots * span
-        r = _px(5)
+        r = _px(6)
         dr.ellipse((cx - r, cy - r, cx + r, cy + r), fill=(78, 92, 112))
     if len(vals) < 1 or now is None:
         return
@@ -507,12 +507,12 @@ def _pe_dot_ruler(
     den = max(span_hi - span_lo, 1e-9)
     frac = max(0.0, min(1.0, (float(now) - span_lo) / den))
     cx = x0 + frac * span
-    r = _px(10)
+    r = _px(12)
     dr.ellipse((cx - r, cy - r, cx + r, cy + r), fill=accent)
     dr.ellipse(
         (cx - r - 2, cy - r - 2, cx + r + 2, cy + r + 2),
         outline=accent,
-        width=max(2, _px(2)),
+        width=max(2, _px(3)),
     )
 
 
@@ -526,12 +526,12 @@ def _inline_bar(
     fill,
 ) -> None:
     """目標空間右側粗進度條（範本密度）。"""
-    bar_h = _px(26)
+    bar_h = _px(34)
     yy0 = y_mid - bar_h / 2.0
     yy1 = yy0 + bar_h
     if x1 - x0 < _px(28):
         return
-    rad = _px(10)
+    rad = _px(12)
     dr.rounded_rectangle((x0, yy0, x1, yy1), radius=rad, fill=(30, 41, 59))
     f = max(0.0, min(1.0, float(frac)))
     if f <= 0:
@@ -557,10 +557,10 @@ def _eps_ratio_bar(
     """EPS 進度＝粗條＋％寫在填色裡（對齊範本，不是右飄空膠囊）。"""
     if pct is None or x1 - x0 < _px(36):
         return
-    ph = min(_px(30), max(_px(22), y1 - y0 - _px(4)))
+    ph = min(_px(40), max(_px(30), y1 - y0 - _px(4)))
     cy0 = (y0 + y1 - ph) / 2.0
     cy1 = cy0 + ph
-    rad = _px(10)
+    rad = _px(12)
     dr.rounded_rectangle((x0, cy0, x1, cy1), radius=rad, fill=(30, 41, 59))
     f = max(0.0, min(1.0, float(pct) / 100.0))
     fill_w = max(_px(18), (x1 - x0) * f)
@@ -583,25 +583,25 @@ def _draw_d3_card(
     glyph, gfill, edge, glabel = _mark_glyph(row.get("mark"))
     emerging = _is_emerging(row.get("mark"))
     star = _is_star(row.get("mark"))
-    dr.rounded_rectangle(box, radius=_px(16), fill=CARD, outline=edge, width=_px(3))
+    dr.rounded_rectangle(box, radius=_px(18), fill=CARD, outline=edge, width=_px(4))
 
-    # 字級對齊範本縮到 1080：表頭帶≈78、體內主數 ≈30
-    head_f = _font(28, bold=True)
-    cell_title_f = _font(24, bold=True)
-    cell_f = _font(26)
-    cell_b = _font(30, bold=True)
-    small_f = _font(22, bold=True)
-    micro_f = _font(20)
-    pill_f = _font(22, bold=True)
-    pad = _px(12)
-    head_h = _px(78)
+    # 對齊範本縮 1080 實測：表頭字高≈38、體內主數≈40
+    head_f = _font(38, bold=True)
+    cell_title_f = _font(30, bold=True)
+    cell_f = _font(34)
+    cell_b = _font(42, bold=True)
+    small_f = _font(26, bold=True)
+    micro_f = _font(24)
+    pill_f = _font(26, bold=True)
+    pad = _px(10)
+    head_h = _px(96)
     hx0, hy0 = x0 + pad, y0 + _px(4)
     hx1, hy1 = x1 - pad, y0 + head_h
 
     # 表頭底色（可買綠／等止穩琥珀／量小紫）
     dr.rounded_rectangle(
         (x0 + _px(3), y0 + _px(3), x1 - _px(3), y0 + head_h + _px(1)),
-        radius=_px(13),
+        radius=_px(14),
         fill=_header_fill(row.get("mark")),
     )
 
@@ -615,10 +615,10 @@ def _draw_d3_card(
     # 右膠囊（可多顆）由右往左排 — 範本粗膠囊
     pill_gap = _px(8)
     cursor_r = hx1
-    pill_h = _px(42)
+    pill_h = _px(52)
     for chip in reversed(pills):
         cbg, cfg = _chip_colors(chip)
-        pw = min(_px(210), pill_f.getlength(chip) + _px(28))
+        pw = min(_px(260), pill_f.getlength(chip) + _px(32))
         cx1p = cursor_r
         cx0p = cx1p - pw
         cy0 = (hy0 + hy1 - pill_h) / 2.0
@@ -742,11 +742,11 @@ def _draw_d3_card(
             n_lab = "明" if (n_raw or (eps_n is not None and eps_n >= 100)) else "明年"
             line2 = f"今年 {y_s} | {n_lab} {n_s}"
             # 範本：％條緊貼「明年」後方，不是右緣空飄
-            max_txt = max(0.0, (cx1 - cx0) - _px(108))
+            max_txt = max(0.0, (cx1 - cx0) - _px(130))
             line2s = _truncate(cell_f, line2, max_txt)
             _text_left_mid(dr, (cx0, r2a, cx1, r2b), line2s, cell_f, TEXT)
             bar_x0 = cx0 + cell_f.getlength(line2s) + _px(10)
-            bar_x1 = min(cx1, bar_x0 + _px(98))
+            bar_x1 = min(cx1, bar_x0 + _px(120))
             _eps_ratio_bar(
                 dr, bar_x0, bar_x1, r2a, r2b, climb_pct, fill=pill_fill, font=small_f,
             )
@@ -784,7 +784,7 @@ def _draw_d3_card(
             )
         elif kind == "bl":
             title = "【目標空間】"
-            bar_w = _px(120)
+            bar_w = _px(140)
             rows_tgt: List[Tuple[str, bool, Optional[float], Tuple[int, int, int]]] = []
             if emerging and fair is not None and tgt is not None:
                 rows_tgt.append(
@@ -913,34 +913,34 @@ def _render_d3_page(
     top = _px(SAFE_TOP)
     bot = H - _px(SAFE_BOTTOM)
 
-    title_f = _font(36, bold=True)
-    sub_f = _font(22)
-    page_f = _font(18)
-    empty_f = _font(34, bold=True)
-    empty_sub_f = _font(22)
-    foot_f = _font(18)
+    title_f = _font(40, bold=True)
+    sub_f = _font(24)
+    page_f = _font(20)
+    empty_f = _font(36, bold=True)
+    empty_sub_f = _font(24)
+    foot_f = _font(20)
 
     y = top
     head = f"{title}（Top {CARDS_PER_PAGE}）"
     # 標題置中（對齊範本）；頁碼改副標右側小字，不准搶主標
-    _text_center_mid(dr, (content_l, y, content_r, y + _px(40)), head, title_f, TEXT)
-    y += _px(42)
+    _text_center_mid(dr, (content_l, y, content_r, y + _px(44)), head, title_f, TEXT)
+    y += _px(46)
     date_s = _as_of_close_label(as_of)
     sub = "已整合外資／投信連買賣與大量區撐壓"
     if date_s:
         sub = f"{date_s}｜{sub}"
     page_bit = f"第{page_i + 1}/{max(1, page_n)}頁"
     _text_center_mid(
-        dr, (content_l, y, content_r, y + _px(26)),
+        dr, (content_l, y, content_r, y + _px(28)),
         _truncate(sub_f, sub, content_r - content_l - _px(100)), sub_f, MUTED,
     )
     if page_n > 1:
-        _text_right_mid(dr, (content_l, y, content_r, y + _px(26)), page_bit, page_f, MUTED)
-    y += _px(32)
+        _text_right_mid(dr, (content_l, y, content_r, y + _px(28)), page_bit, page_f, MUTED)
+    y += _px(28)
 
-    foot_reserve = _px(30)
+    foot_reserve = _px(28)
     avail = bot - y - foot_reserve
-    gap = _px(10)
+    gap = _px(8)
     if not rows:
         mid_y = y + avail // 2
         _text_center_mid(
