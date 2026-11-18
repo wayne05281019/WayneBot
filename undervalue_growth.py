@@ -338,18 +338,24 @@ def estimate_eps_year_next(
     m_last: int,
     yoy_pct: Optional[float],
     rev_year_matches: bool = True,
+    guidance_g: Optional[float] = None,
+    guidance_eps_abs: Optional[float] = None,
+    guidance_note: str = "",
 ) -> Dict[str, Any]:
     """今年／明年預估 EPS。未公布季＝末季單季×(1+g/2) 逐季遞推；不准 Q×3 冒充。
 
     路徑（有官方才走；缺→ok False）：
-    1) 已公布累計季（last_season∈1..4）＋剩餘季遞推；營收用當月 YTD＋剩餘月（與營收估同套 g）。
-    2) 尚無今年季報：去年全年 EPS×YoY 夾限成長（一月～Q1 公布前）。
-    g＝近三月 MoM 夾限（與 estimate_year_revenue 同源）。
+    1) 公司公告全年 EPS 絕對值（重大訊息可量化句）→ 直接用。
+    2) 已公布累計季＋剩餘季遞推；步進 g 優先用公告 QoQ％，否則近三月 MoM 夾限。
+    3) 尚無今年季報：去年全年 EPS×YoY 夾限（一月～Q1 公布前）。
     """
     from undervalue_scan import clamp_mom_g, estimate_year_revenue
 
     growth = _yoy_growth_frac(yoy_pct)
-    g, _ = clamp_mom_g(moms, unit="pct")
+    g_mom, _ = clamp_mom_g(moms, unit="pct")
+    g_guide = _finite(guidance_g)
+    g = float(g_guide) if g_guide is not None else float(g_mom)
+    g_source = "公告QoQ" if g_guide is not None else "MoM"
     last_q = _finite(eps_q_last_single)
     if last_q is None:
         last_q = _finite(eps_q3_single)
@@ -375,7 +381,17 @@ def estimate_eps_year_next(
 
     method = ""
     eps_this = None
-    if ls in (1, 2, 3, 4) and cum is not None and cum > 0:
+    abs_eps = _finite(guidance_eps_abs)
+    if abs_eps is not None and abs_eps > 0:
+        eps_this = float(abs_eps)
+        method = "公司公告全年EPS絕對值"
+        if year_rev is None and rev_year_matches and est_rev.get("ok"):
+            year_rev = float(est_rev["est_year_rev"])
+        elif year_rev is None and _finite(ytd_rev) and float(ytd_rev or 0) > 0:
+            year_rev = float(ytd_rev) * (1.0 + growth)
+            est_rev = {"ok": True, "est_year_rev": year_rev, "label": "營收備援", "note": method}
+
+    if eps_this is None and ls in (1, 2, 3, 4) and cum is not None and cum > 0:
         if last_q is None or last_q <= 0:
             last_q = float(cum) / float(ls)
         rem_n = max(0, 4 - ls)
@@ -385,8 +401,8 @@ def estimate_eps_year_next(
             cur = cur * (1.0 + g * 0.5)
             rem += cur
         eps_this = float(cum) + rem
-        method = f"Q1–Q{ls}累計＋剩餘{rem_n}季(末季×(1+g/2))"
-    else:
+        method = f"Q1–Q{ls}累計＋剩餘{rem_n}季(末季×(1+{g_source}/2))"
+    elif eps_this is None:
         prior = _finite(prior_year_eps)
         if prior is None or prior <= 0:
             return {"ok": False, "note": "缺今年季報與去年全年EPS"}
@@ -419,6 +435,8 @@ def estimate_eps_year_next(
         "eps_map_sum": None,
         "last_season": ls,
         "method": method,
+        "g_source": g_source,
+        "guidance_note": str(guidance_note or "")[:120],
     }
 
 
@@ -763,6 +781,30 @@ def enrich_growth_row(
             rev_year_matches = False
     except Exception:
         rev_year_matches = True
+    guide: Dict[str, Any] = {}
+    g_note = ""
+    g_step = None
+    g_abs = None
+    try:
+        from company_guidance import (
+            format_guidance_note,
+            guidance_step_g,
+            load_latest_guidance,
+        )
+
+        db_path = ""
+        for _row in conn.execute("PRAGMA database_list"):
+            if str(_row[1]) == "main":
+                db_path = str(_row[2] or "")
+                break
+        if db_path:
+            guide = load_latest_guidance(db_path, sid_s)
+            g_note = format_guidance_note(guide)
+            g_step = guidance_step_g(guide)
+            if str(guide.get("kind") or "") == "eps_year_abs":
+                g_abs = _finite(guide.get("value"))
+    except Exception:
+        guide = {}
     eps_est = estimate_eps_year_next(
         eps_ytd_cum=fund.get("eps") if last_s else None,
         eps_q_last_single=fund.get("eps_single") if last_s else None,
@@ -774,6 +816,9 @@ def enrich_growth_row(
         m_last=m_last or 10,
         yoy_pct=yoy_pct,
         rev_year_matches=rev_year_matches,
+        guidance_g=g_step,
+        guidance_eps_abs=g_abs,
+        guidance_note=g_note,
     )
     if not eps_est.get("ok"):
         return None
@@ -849,6 +894,8 @@ def enrich_growth_row(
         "tech_broken": broken,
         "chip_note": chip,
         "chip_kind": chip_info.get("chip_kind") or "",
+        "guidance_note": str(eps_est.get("guidance_note") or g_note or "")[:120],
+        "eps_method": str(eps_est.get("method") or "")[:80],
         "emerging": emerging,
         "prefer_watch": broken or both_sell or foreign_sell or not d3_star,
         "d3_star_ok": d3_star,

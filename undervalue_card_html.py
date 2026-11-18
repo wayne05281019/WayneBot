@@ -257,6 +257,12 @@ def _build_card_html(s: dict) -> str:
         s.get("rev_line")
         or f"{s.get('rev_now') or '—'} / 需{s.get('rev_gate') or '—'} ({int(s.get('rev_pct') or 0)}%)"
     )
+    g_note = str(s.get("guidance_note") or "").strip()
+    g_html = (
+        f'<div class="cell-sub" style="margin-top:3px;">備註 {html.escape(g_note[:72])}</div>'
+        if g_note
+        else ""
+    )
     return f"""
     <div class="stock-card {status_cls}">
       <div class="card-top">
@@ -290,6 +296,7 @@ def _build_card_html(s: dict) -> str:
           <div class="cell-sub mono"><span class="{support_cls}">{html.escape(s['support_text'])}</span></div>
         </div>
       </div>
+      {g_html}
     </div>
     """
 
@@ -712,6 +719,7 @@ def pick_row_to_screener_stock(row: Dict[str, Any], *, as_of: Optional[str] = No
         "rev_pct": rev_pct,
         "support_ok": support_ok,
         "support_text": support_text,
+        "guidance_note": str(row.get("guidance_note") or "").strip()[:80],
     }
 
 

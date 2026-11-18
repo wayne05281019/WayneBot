@@ -327,6 +327,22 @@ def run_undervalue_sync(
         out["note"] = "已 success 略過"
         return out
     ensure_tables(path)
+    # 法說書面／隔日廣編備註：失敗不准擋低估掃描
+    try:
+        from company_guidance import (
+            collect_due_ir_pdfs,
+            collect_post_ir_news_notes,
+            sync_material_guidance,
+        )
+
+        sync_material_guidance(path)
+        ir = collect_due_ir_pdfs(path, as_of=as_of, limit=8)
+        for one in ir.get("results") or []:
+            sid = str(one.get("stock_id") or "")
+            if sid:
+                collect_post_ir_news_notes(path, sid, ir_ymd=str(as_of or ""))
+    except Exception:
+        logger.exception("法說書面／廣編收集略過")
     started = _stamp()
     conn = sqlite3.connect(path, timeout=30.0)
     try:
@@ -396,6 +412,8 @@ def run_undervalue_sync(
                     "tech_broken",
                     "chip_note",
                     "chip_kind",
+                    "guidance_note",
+                    "eps_method",
                 )
                 if r.get(k) is not None
             }
