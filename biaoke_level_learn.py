@@ -21117,14 +21117,18 @@ def run_teach_trio_preflight_pipeline(
     # —— 01 加權日K（含落後愈合）——
     # 順序：先看 tip → 落後立刻官方 force（MI5／OpenAPI）→ 再 Yahoo／60 分
     # 不准先空等 Yahoo 60 分把官方快路徑拖死。
+    # target 用「已收」開市日：開盤前 last_open(今天)=今天會誤判昨收落後，狂 force 拖十幾秒。
     tw_asof = ""
     force: Dict[str, Any] = {}
     try:
-        from trading_calendar import last_open_calendar_day_on_or_before
-
-        target = last_open_calendar_day_on_or_before(dt.strftime("%Y%m%d"))
+        target = _settled_open_ymd_for_tip_gate(dt, tip0={"tw_asof": _twii_chart_as_of(db_path)})
     except Exception:
-        target = ""
+        try:
+            from trading_calendar import last_open_calendar_day_on_or_before
+
+            target = last_open_calendar_day_on_or_before(dt.strftime("%Y%m%d"))
+        except Exception:
+            target = ""
     try:
         tw_asof = _twii_chart_as_of(db_path)
         need_force = bool(
