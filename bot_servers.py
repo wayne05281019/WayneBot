@@ -4145,6 +4145,19 @@ class WayneTelegramBot:
             pass
         build_task = None
         timeout_spoken = False
+        # 第二次按：在讀快取之前就挂上進行中 latch。
+        # 否則 CI 負載下「LOADING → 探測快取 → claim」空窗期，第一輪放行後會誤開第二輪建檔。
+        claim = getattr(self, "_screening_build_claim", None)
+        if not isinstance(claim, asyncio.Lock):
+            with _SCREENING_CLAIM_INIT:
+                claim = getattr(self, "_screening_build_claim", None)
+                if not isinstance(claim, asyncio.Lock):
+                    self._screening_build_claim = asyncio.Lock()
+                    claim = self._screening_build_claim
+        async with claim:
+            inflight = getattr(self, "_screening_build_task", None)
+            if isinstance(inflight, asyncio.Task) and not inflight.done():
+                build_task = inflight
         try:
             await self._dismiss_menu_transients(actor)
             self._register_actor_wait(
@@ -4288,6 +4301,7 @@ class WayneTelegramBot:
                 return build_and_cache_full_screening(self.db_path)
 
             # 讀快取 await 後兩邊可能同時到這裡；認領必須原子，否則 CI 會建兩輪。
+            # 開頭若已挂上進行中 latch 就沿用，不准另開。
             # 補 Lock 用 thread 鎖；已有鎖不准換新一把（雙按各拿一把＝雙建）。
             claim = getattr(self, "_screening_build_claim", None)
             if not isinstance(claim, asyncio.Lock):
@@ -4297,12 +4311,17 @@ class WayneTelegramBot:
                         self._screening_build_claim = asyncio.Lock()
                         claim = self._screening_build_claim
             async with claim:
-                inflight = getattr(self, "_screening_build_task", None)
-                if isinstance(inflight, asyncio.Task) and not inflight.done():
-                    build_task = inflight
+                if isinstance(build_task, asyncio.Task) and not build_task.done():
+                    pass
                 else:
-                    build_task = asyncio.create_task(asyncio.to_thread(_build_and_cache))
-                    self._screening_build_task = build_task
+                    inflight = getattr(self, "_screening_build_task", None)
+                    if isinstance(inflight, asyncio.Task) and not inflight.done():
+                        build_task = inflight
+                    else:
+                        build_task = asyncio.create_task(
+                            asyncio.to_thread(_build_and_cache)
+                        )
+                        self._screening_build_task = build_task
 
             async def _late_deliver():
                 try:

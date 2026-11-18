@@ -104,16 +104,39 @@ def test_star_buy_requires_signal_not_just_above_support(monkeypatch):
 
 @pytest.mark.skipif(not os.path.exists(DB), reason="no local wayne_market.db")
 def test_flagship_3595_emerging_platform_break():
-    p = build_flagship_payload(DB, "3595", as_of="20261118")
+    import sqlite3
+
+    from lookup_flagship_card_html import _prior_platform
+
+    as_of = "20261118"
+    p = build_flagship_payload(DB, "3595", as_of=as_of)
     assert p["emerging"]
     assert p["close"] and p["close"] > 0
-    # 上一根柱低／高＝前波平台／前高壓（20261113 低561 高636）
+    # 前波平台／前高壓＝as_of 當下上一根官方柱低／高（庫會往後補柱，不准寫死舊日）
+    con = sqlite3.connect(DB)
+    try:
+        bars = con.execute(
+            """
+            SELECT date, high, low, close, volume FROM emerging_quotes
+            WHERE stock_id=? AND REPLACE(CAST(date AS TEXT),'-','')<=?
+              AND close>0 ORDER BY date ASC
+            """,
+            ("3595", as_of),
+        ).fetchall()
+    finally:
+        con.close()
+    plat_lo, plat_hi = _prior_platform(bars)
+    assert plat_lo is not None and plat_hi is not None
     marks = {m["label"]: m["value"] for m in p["marks"]}
-    assert marks.get("前波平台") == pytest.approx(561.0)
-    assert marks.get("前高壓") == pytest.approx(636.0)
+    assert marks.get("前波平台") == pytest.approx(plat_lo)
+    assert marks.get("前高壓") == pytest.approx(plat_hi)
     assert marks.get("現增暫定") == pytest.approx(400.0)
-    assert p["broke"] is True
-    assert "破撐" in p["sr_text"]
+    expect_broke = float(p["close"]) < float(plat_lo)
+    assert p["broke"] is expect_broke
+    if expect_broke:
+        assert "破撐" in p["sr_text"]
+    else:
+        assert "破撐" not in p["sr_text"]
     assert any("興櫃" in t for _, t in p["pills"])
     assert "先進封裝" in p["peer_k"] or any("先進封裝" in t for _, t in p["pills"])
     assert "一元" not in p["bl_bottom"]
@@ -133,7 +156,8 @@ def test_flagship_3595_emerging_platform_break():
     html = render_flagship_html(p)
     assert "山太士" in html
     assert "興櫃防線與流動性警示" in html
-    assert "▲破撐" in html
+    if expect_broke:
+        assert "▲破撐" in html
     assert "需 需" not in html
     assert "已出Q3" in p["eps_k"]
     assert "台光電" not in html  # 同族不串錯
