@@ -108,9 +108,14 @@ def test_chip_capsule_from_daily_quotes_nets():
 
 
 def test_growth_card_renders_zones(tmp_path):
+    import pytest
     from PIL import Image
 
     from undervalue_card import BASE_H, BASE_W, render_undervalue_png
+    from undervalue_card_html import playwright_available
+
+    if not playwright_available():
+        pytest.skip("無 Playwright")
 
     rows = [
         {

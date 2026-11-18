@@ -9,6 +9,7 @@ matplotlib==3.11.1
 nest-asyncio==1.6.0
 numpy==2.4.4
 pandas==3.0.5
+playwright==1.55.0
 pypinyin==0.55.0
 python-dotenv==1.2.3
 python-telegram-bot==21.11.1
