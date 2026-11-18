@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 """低估名單 D3 PNG：1080×1920、≤4 卡、安全區。"""
+import os
 from pathlib import Path
 
+import pytest
 from PIL import Image
 
 from undervalue_card import (
@@ -13,6 +15,18 @@ from undervalue_card import (
     render_undervalue_pages,
     render_undervalue_png,
 )
+
+
+@pytest.fixture(autouse=True)
+def _force_pil_path():
+    """CI 未裝 chromium：本檔固定測 PIL；HTML 見 test_undervalue_card_html。"""
+    prev = os.environ.get("WAYNE_UV_HTML")
+    os.environ["WAYNE_UV_HTML"] = "0"
+    yield
+    if prev is None:
+        os.environ.pop("WAYNE_UV_HTML", None)
+    else:
+        os.environ["WAYNE_UV_HTML"] = prev
 
 
 def _growth_rows():

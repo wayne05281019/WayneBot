@@ -988,6 +988,56 @@ def _render_d3_page(
     return save_path
 
 
+def _try_html_pages(
+    picks: Sequence[Dict[str, Any]],
+    out_dir: str,
+    *,
+    as_of: Optional[str] = None,
+    title: str = "版本 D3 終極版｜2×2 矩陣 · 籌碼撐壓整合",
+    empty_note: Optional[str] = None,
+    prefix: str = "uv_d3",
+) -> Optional[List[str]]:
+    """優先 HTML／CSS＋Playwright；缺套件或失敗回 None → PIL。"""
+    try:
+        from undervalue_card_html import playwright_available, render_html_pages
+
+        if not playwright_available():
+            return None
+        return render_html_pages(
+            picks, out_dir, as_of=as_of, title=title, empty_note=empty_note, prefix=prefix
+        )
+    except Exception:
+        return None
+
+
+def _try_html_page(
+    rows: Sequence[Dict[str, Any]],
+    save_path: str,
+    *,
+    as_of: Optional[str] = None,
+    page_i: int = 0,
+    page_n: int = 1,
+    title: str = "版本 D3 終極版｜2×2 矩陣 · 籌碼撐壓整合",
+    empty_note: Optional[str] = None,
+) -> Optional[str]:
+    try:
+        from undervalue_card_html import playwright_available, render_html_page
+
+        if not playwright_available():
+            return None
+        return render_html_page(
+            rows,
+            save_path,
+            as_of=as_of,
+            page_i=page_i,
+            page_n=page_n,
+            title=title,
+            empty_note=empty_note,
+        )
+    except Exception:
+        return None
+
+
 def render_undervalue_pages(
     picks: Sequence[Dict[str, Any]],
     out_dir: str,
@@ -998,6 +1048,11 @@ def render_undervalue_pages(
     prefix: str = "uv_d3",
 ) -> List[str]:
     """渲全部頁面；每頁最多 4 卡。回傳 PNG 路徑列表（至少 1）。"""
+    html_paths = _try_html_pages(
+        picks, out_dir, as_of=as_of, title=title, empty_note=empty_note, prefix=prefix
+    )
+    if html_paths:
+        return html_paths
     rows = _order_rows(_sanitize_paint_rows(picks))
     os.makedirs(out_dir or ".", exist_ok=True)
     n_pages = _page_count(len(rows)) if rows else 1
@@ -1042,6 +1097,17 @@ def render_undervalue_png(
     if not rows_l or _has_growth_fields(rows_l):
         ordered = _order_rows(rows_l)
         page_n = _page_count(len(ordered)) if ordered else 1
+        html_path = _try_html_page(
+            ordered[:CARDS_PER_PAGE],
+            save_path,
+            as_of=as_of,
+            page_i=0,
+            page_n=page_n,
+            title=title,
+            empty_note=empty_note,
+        )
+        if html_path:
+            return html_path
         return _render_d3_page(
             ordered[:CARDS_PER_PAGE],
             save_path,
