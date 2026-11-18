@@ -178,7 +178,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <span class="mono">{{FX_TEXT}}</span>
     </div>
     <div class="cards-stack">{{STOCK_CARDS_HTML}}</div>
-    <div class="footer-legend">★可買 ☆等止穩 ⚠️興櫃量小｜5日籌碼(左→右)：🟥買 🟩賣｜估值≠買訊</div>
+    <div class="footer-legend">★可買 ☆等止穩 ⚠️興櫃量小｜5日籌碼(左→右)：<span class="sq sq-b"></span>買 <span class="sq sq-s"></span>賣｜估值≠買訊</div>
   </div>
 </body>
 </html>

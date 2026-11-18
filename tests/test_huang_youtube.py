@@ -117,6 +117,7 @@ def test_parse_drive_name_and_known_ids():
     assert resolve_drive_file_id("20261112") == "12_RN9rsLBKjzbKNihFa5NceSGCJeWlm_"
     assert resolve_drive_file_id("20261116") == "1XR0XMswvMqEvro2cTHikMKKFCKDVQYAW"
     assert resolve_drive_file_id("20261117") == "1XDz4PwErKq5se_NtFJ12REb1eznJ16vS"
+    assert resolve_drive_file_id("20261118") == "11VxUW3rSDVGDdhgY0_nqtBM7drSA9dj-"
     assert HUANG_DRIVE_FOLDER_ID_DEFAULT.startswith("1")
     assert "37837" in extract_levels_from_text("低點 37837 與 42471")
 
