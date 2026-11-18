@@ -94,7 +94,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   .stock-card {
     background: var(--bg-card); border: 1px solid var(--border-subtle);
     border-radius: 13px; padding: 7px 9px; display: flex; flex-direction: column; gap: 5px;
-    flex: 1 1 0; min-height: 0; overflow: hidden;
+    flex: 0 0 calc((100% - 18px) / 4); min-height: 0; overflow: hidden;
   }
   .stock-card.status-buy { border-color: rgba(52, 211, 153, 0.5); box-shadow: 0 0 12px rgba(52, 211, 153, 0.08); }
   .stock-card.status-wait { border-color: rgba(251, 191, 36, 0.45); box-shadow: 0 0 12px rgba(251, 191, 36, 0.06); }
@@ -208,12 +208,12 @@ def detect_market_regime(
     if not market_above_ma20 and foreign_sell_days >= 3:
         return {
             "class": "regime-bear",
-            "text": "🔴 系統性修正盤・嚴守站回支撐再買",
+            "text": "● 系統性修正盤・嚴守站回支撐再買",
             "fx_text": f"USD/TWD {usd_twd:.2f}",
         }
     return {
         "class": "regime-normal",
-        "text": "🟢 資金常態盤・依區間與黃金買點操作",
+        "text": "● 資金常態盤・依區間與黃金買點操作",
         "fx_text": f"USD/TWD {usd_twd:.2f}",
     }
 
@@ -728,13 +728,13 @@ def resolve_regime(
         if not market_above_ma20 and int(foreign_sell_days or 0) >= 3:
             regime = {
                 "class": "regime-bear",
-                "text": "🔴 系統性修正盤・嚴守站回支撐再買",
+                "text": "● 系統性修正盤・嚴守站回支撐再買",
                 "fx_text": "USD/TWD —",
             }
         else:
             regime = {
                 "class": "regime-normal",
-                "text": "🟢 資金常態盤・依區間與黃金買點操作",
+                "text": "● 資金常態盤・依區間與黃金買點操作",
                 "fx_text": "USD/TWD —",
             }
     else:

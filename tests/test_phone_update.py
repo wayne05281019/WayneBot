@@ -100,11 +100,14 @@ def test_schedule_wait_note_and_so_on_windows():
         (6, 35, "勝率買點與大量圖"),
         (12, 45, "尾盤雙時段比價"),
         (16, 40, "盤後資料正在下載融合中"),
-        (20, 5, "晚間模擬倉"),
         (21, 10, "勝率買點名單"),
         (1, 5, "隔日盤後彙整"),
     )
     tz = ZoneInfo("Asia/Taipei")
+    # 模擬倉整包關閉：20:00 不准再說模擬倉更新
+    assert "模擬倉" not in (
+        phone_schedule_wait_note(now=datetime(2026, 11, 5, 20, 5, tzinfo=tz)) or ""
+    )
     for hour, minute, needle in cases:
         now = datetime(2026, 11, 5, hour, minute, tzinfo=tz)
         note = phone_schedule_wait_note(now=now)
