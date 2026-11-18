@@ -1815,6 +1815,71 @@ def test_timeout_retries_cache_before_speaking(monkeypatch):
     assert calls["n"] >= 2
 
 
+def test_build_wait_repolls_cache_before_deadline(monkeypatch):
+    """ready 誤判開了全掃時，建檔等待中快取一恢復就出卡，不准乾等前端 180s。"""
+    import threading
+    import time as _t
+
+    calls = {"n": 0}
+    release = threading.Event()
+    payload = {
+        "as_of": "20261002",
+        "from_cache": True,
+        "results": {"leave_zero": [{"stock_id": "2330", "stock_name": "台積電"}]},
+        "payload": [],
+    }
+
+    def _load(_db=None, **_k):
+        calls["n"] += 1
+        # 第一次（開掃前短試）落空；之後輪詢要立刻拿到快取
+        if calls["n"] == 1:
+            return None
+        return payload
+
+    monkeypatch.setattr("screening_engine.load_cached_full_screening", _load)
+    monkeypatch.setattr("screening_engine.screen_cache_ready", lambda *_a, **_k: False)
+
+    def _slow(_db=None):
+        # 卡住直到測完放行；不准用長 sleep 拖垮 asyncio.run 收尾
+        release.wait(timeout=5.0)
+        return {"as_of": "20261002", "results": {}, "payload": [], "from_cache": False}
+
+    monkeypatch.setattr("screening_engine.build_and_cache_full_screening", _slow)
+    bot = _bare_screen_bot()
+    bot._screen_timeout_s = 6.0
+    msg = MagicMock()
+    status = MagicMock()
+    status.edit_text = AsyncMock()
+    msg.reply_text = AsyncMock(return_value=status)
+
+    screen_done_at = {"t": None}
+
+    async def run():
+        t0 = _t.monotonic()
+        await bot._run_manual_screening(msg, "u1")
+        screen_done_at["t"] = _t.monotonic() - t0
+        release.set()
+        for t in (
+            getattr(bot, "_screening_late_task", None),
+            getattr(bot, "_screening_build_task", None),
+        ):
+            if isinstance(t, asyncio.Task) and not t.done():
+                t.cancel()
+                try:
+                    await t
+                except (asyncio.CancelledError, Exception):
+                    pass
+
+    asyncio.run(run())
+    elapsed = float(screen_done_at["t"] or 99.0)
+    assert elapsed < 4.0, f"應中途吃到快取，不該拖到逾時：{elapsed:.2f}s"
+    assert "已超過 3 分鐘" not in " ".join(
+        str(c.args[0]) for c in msg.reply_text.await_args_list if c.args
+    )
+    bot._reply_screening_payload.assert_awaited()
+    assert calls["n"] >= 2
+
+
 def test_timeout_speaks_even_if_cache_reload_hangs(monkeypatch):
     """逾時後讀快取若卡死，仍必須先停 ticker 改口，不准一直「掃描全市場」。"""
     import time as _t
