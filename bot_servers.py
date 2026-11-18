@@ -7444,7 +7444,11 @@ class WayneTelegramBot:
                     logger.exception("大盤近窗活畫略過")
                     near_painted = {}
                 near_path = str((near_painted or {}).get("near_path") or "")
-                if not self._market_teach_path_ok(near_path) and _stored_reuse_ok():
+                near_err = str((near_painted or {}).get("error") or "")
+                # stamp 不過＝官方柱戳日／價沒對上；不准默默改送舊圖充當現況
+                if near_err.startswith("stamp_preflight"):
+                    near_path = ""
+                elif not self._market_teach_path_ok(near_path) and _stored_reuse_ok():
                     near_path = str(stored.get("near_path") or "")
 
                 # 3) 開超近 paint，同時送近窗
@@ -7481,6 +7485,8 @@ class WayneTelegramBot:
                         sent += 1
                     else:
                         missing.append(label_by_key.get("near_path", "近窗"))
+                elif near_err.startswith("stamp_preflight"):
+                    missing.append("近窗（官方柱戳日／價沒對上）")
                 else:
                     missing.append(label_by_key.get("near_path", "近窗"))
 
@@ -7496,25 +7502,29 @@ class WayneTelegramBot:
                     logger.exception("大盤超近活畫略過")
                     micro_painted = {}
                 micro_path = str((micro_painted or {}).get("micro_path") or "")
-                if not self._market_teach_path_ok(micro_path) and _stored_reuse_ok():
+                micro_err = str((micro_painted or {}).get("error") or "")
+                if micro_err.startswith("stamp_preflight"):
+                    micro_path = ""
+                elif not self._market_teach_path_ok(micro_path) and _stored_reuse_ok():
                     micro_path = str(stored.get("micro_path") or "")
                 if not self._market_teach_path_ok(micro_path):
-                    # 超近單張重試一次（遠窗已有；超近常因 Yahoo 卡死回空）
-                    if wait_h and wait_h[0] is not None:
-                        await self._safe_edit_text(
-                            wait_h[0],
-                            self._wait_bubble(
-                                "大盤圖進行中",
-                                0,
-                                now="超近窗重畫",
-                                rest="",
-                                fill_sec=20.0,
-                            ),
-                            parse_mode="HTML",
-                        )
-                    retry_micro = await self._retry_market_micro_paint(pack=pack)
-                    if self._market_teach_path_ok(retry_micro):
-                        micro_path = retry_micro
+                    # stamp 不過不准重試舊 tip；其他失敗才單張重渲一次
+                    if not micro_err.startswith("stamp_preflight"):
+                        if wait_h and wait_h[0] is not None:
+                            await self._safe_edit_text(
+                                wait_h[0],
+                                self._wait_bubble(
+                                    "大盤圖進行中",
+                                    0,
+                                    now="超近窗重畫",
+                                    rest="",
+                                    fill_sec=20.0,
+                                ),
+                                parse_mode="HTML",
+                            )
+                        retry_micro = await self._retry_market_micro_paint(pack=pack)
+                        if self._market_teach_path_ok(retry_micro):
+                            micro_path = retry_micro
 
                 if self._market_teach_path_ok(micro_path):
                     micro_bits = [f"第3張・超近窗・細浪"]
@@ -7534,6 +7544,8 @@ class WayneTelegramBot:
                         sent += 1
                     else:
                         missing.append(label_by_key.get("micro_path", "超近窗"))
+                elif micro_err.startswith("stamp_preflight"):
+                    missing.append("超近窗（官方柱戳日／價沒對上）")
                 else:
                     missing.append(label_by_key.get("micro_path", "超近窗"))
 

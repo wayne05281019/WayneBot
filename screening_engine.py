@@ -2292,6 +2292,102 @@ def _chip_html(item: Dict[str, Any]) -> str:
     return html_escape(_chip_plain(item))
 
 
+def _item_has_chip_fields(item: Dict[str, Any]) -> bool:
+    """法人欄有寫進 item 才准畫；缺欄不准印成 +0張假數。"""
+    return any(k in (item or {}) for k in ("foreign_net", "trust_net", "dealer_net"))
+
+
+def hydrate_screen_results_quotes(
+    results: Dict[str, Any],
+    db_path: str,
+    as_of: str,
+) -> Dict[str, Any]:
+    """screen_sessions 只存價／進出場；出卡前補當日官方量／漲跌／金額／法人。
+
+    缺量不准印 0張；缺法人欄不准印 +0張。只補缺／None，不覆蓋已有真數。
+    """
+    ymd = str(as_of or "").replace("-", "")[:8]
+    path = str(db_path or "").strip()
+    if not results or not path or len(ymd) != 8:
+        return results
+    codes: List[str] = []
+    seen: set = set()
+    for rows in results.values():
+        if not isinstance(rows, list):
+            continue
+        for it in rows:
+            if not isinstance(it, dict):
+                continue
+            sid = str(it.get("stock_id") or it.get("code") or "").strip()
+            if not sid or sid in seen:
+                continue
+            seen.add(sid)
+            codes.append(sid)
+    if not codes:
+        return results
+    by_id: Dict[str, Dict[str, Any]] = {}
+    try:
+        conn = sqlite3.connect(path, timeout=30)
+        try:
+            placeholders = ",".join("?" * len(codes))
+            rows = conn.execute(
+                f"""
+                SELECT stock_id, volume, turnover_k, pct_change, avg_price,
+                       foreign_net, trust_net, dealer_net
+                FROM daily_quotes
+                WHERE date=? AND stock_id IN ({placeholders})
+                """,
+                [ymd] + codes,
+            ).fetchall()
+        finally:
+            conn.close()
+    except Exception:
+        logger = __import__("logging").getLogger(__name__)
+        logger.exception("海選出卡補日K失敗 as_of=%s", ymd)
+        return results
+    for row in rows:
+        sid = str(row[0] or "").strip()
+        if not sid:
+            continue
+        by_id[sid] = {
+            "volume": row[1],
+            "turnover_k": row[2],
+            "pct_change": row[3],
+            "avg_price": row[4],
+            "foreign_net": row[5],
+            "trust_net": row[6],
+            "dealer_net": row[7],
+        }
+    quote_keys = (
+        "volume",
+        "turnover_k",
+        "pct_change",
+        "avg_price",
+        "foreign_net",
+        "trust_net",
+        "dealer_net",
+    )
+    for rows in results.values():
+        if not isinstance(rows, list):
+            continue
+        for it in rows:
+            if not isinstance(it, dict):
+                continue
+            sid = str(it.get("stock_id") or it.get("code") or "").strip()
+            q = by_id.get(sid)
+            if not q:
+                continue
+            for key in quote_keys:
+                if it.get(key) is not None:
+                    continue
+                if q.get(key) is None:
+                    continue
+                it[key] = q[key]
+            if not str(it.get("quote_date") or "").strip():
+                it["quote_date"] = ymd
+    return results
+
+
 def _card_kv(label: str, value_html: str) -> str:
     """海選／興櫃卡兩字標籤欄固定寬，值從同一直欄起（單位跟在值後）。"""
     from tg_layout import pad_label
@@ -2430,7 +2526,15 @@ def _stock_card_html(
         str(item.get("entry_stage_label") or bucket_label or "").strip()
     ) or regime
     close_s = _px_str(item.get("close"))
-    vol = int(item.get("volume") or 0)
+    # 缺 volume／None＝尚未補日K，不准印 0張假數；有欄才格式化（含真 0）。
+    if "volume" not in item or item.get("volume") is None:
+        vol_html = "—"
+    else:
+        try:
+            vol = int(item.get("volume") or 0)
+        except (TypeError, ValueError):
+            vol = 0
+        vol_html = html_qty_tight(vol, signed=False)
     notices: List[str] = []
     if item.get("both_sessions"):
         notices.append(_hot("雙時段"))
@@ -2517,7 +2621,7 @@ def _stock_card_html(
             ),
             _card_kv(
                 "量能",
-                f"{html_qty_tight(vol, signed=False)}　量比　{_q_html(item.get('q60r'))}",
+                f"{vol_html}　量比　{_q_html(item.get('q60r'))}",
             ),
         ]
     )
@@ -2548,7 +2652,8 @@ def _stock_card_html(
         show_chips = not payload_is_emerging(item)
     except Exception:
         show_chips = True
-    if show_chips:
+    # 缺法人欄不准印 +0張；hydrate 後有欄才畫
+    if show_chips and _item_has_chip_fields(item):
         body.append(_card_kv("法人", f"{html_escape(chip_day)}　{_chip_html(item)}"))
     pat = str(item.get("pattern") or "")
     if pat:
@@ -3199,6 +3304,12 @@ def _assemble_screening_from_results(
     for key, rows in list(results.items()):
         if isinstance(rows, list) and not str(key).startswith("_"):
             results[key] = stamp_entry_stars(rows, key)
+    # sessions 瘦列無量／法人；出卡前補當日官方柱，不准印 0張／+0張假數
+    try:
+        results = hydrate_screen_results_quotes(results, path, as_of)
+    except Exception:
+        logger = __import__("logging").getLogger(__name__)
+        logger.exception("海選出卡補日K略過 as_of=%s", as_of)
     outlook = ""
     if not light:
         try:

@@ -3097,7 +3097,11 @@ def _quotes_have_chips(db_path: str, as_of: str) -> bool:
 
 
 def _quote_chip_totals(db_path: str, as_of: str) -> Optional[Dict[str, float]]:
-    """當日日 K 三大法人張數合計（T86／櫃買寫進 daily_quotes 的值）。沒有欄或沒有列則 None。"""
+    """當日日 K 三大法人張數合計（T86／櫃買寫進 daily_quotes 的值）。
+
+    沒有欄／沒有列／當日加總絕對值全 0（T86 未寫進）→ None。
+    不准把缺 T86 印成外資／投信／自營 +0張。
+    """
     ymd = _norm_ymd(as_of)
     if not ymd:
         return None
@@ -3133,6 +3137,9 @@ def _quote_chip_totals(db_path: str, as_of: str) -> Optional[Dict[str, float]]:
     foreign = float(row[0] or 0)
     trust = float(row[1] or 0)
     dealer = float(row[2] or 0)
+    # 日K在、T86 尚未寫＝全 0；當缺資料，不准當真 0 張上卡
+    if abs(foreign) + abs(trust) + abs(dealer) <= 0:
+        return None
     return {
         "foreign_net": foreign,
         "trust_net": trust,
