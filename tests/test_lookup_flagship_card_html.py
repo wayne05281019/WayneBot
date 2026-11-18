@@ -83,3 +83,5 @@ def test_flagship_3595_emerging_platform_break():
     assert "興櫃防線與流動性警示" in html
     assert "▲破撐" in html
     assert "需 需" not in html
+    assert "已出Q3" in html or "已出 Q3" in html
+    assert "台光電" not in html  # 同族不串錯

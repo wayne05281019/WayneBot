@@ -191,7 +191,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <!-- 2x2 CORE MATRIX -->
       <div class="d3-grid">
         <div class="d3-cell">
-          <div class="cell-k">今年賺錢進度</div>
+          <div class="cell-k">{{EPS_K}}</div>
           <div class="cell-v mono">已賺 {{EPS_YTD}} / 估 {{EPS_EST_YR}} ({{EPS_PCT}}%)</div>
           <div class="prog-track"><div class="prog-fill {{BAR_CLS}}" style="width: {{EPS_PCT_CLAMP}}%;"></div></div>
           <div class="cell-sub">{{Q4_PROGRESS}}｜最新單季 {{EPS_LATEST_Q}}</div>
@@ -1401,12 +1401,14 @@ def payload_to_card(p: Dict[str, Any]) -> Dict[str, Any]:
     while len(m4) < 4:
         m4.append(("—", "—"))
 
-    # peers for card（上市不准「收 xx」；興櫃第一列放自己）
+    # peers for card（自己一律第一列；上市不准「收 xx」）
     peers = []
     pe_fwd = p.get("pe_fwd")
-    if emerging:
-        self_pe = f"{_fmt_num(pe_fwd, 1)}x (興櫃)" if pe_fwd is not None else "— (興櫃)"
-        peers.append({"name": str(p.get("name") or ""), "val": self_pe})
+    if pe_fwd is not None:
+        self_pe = f"{_fmt_num(pe_fwd, 1)}x" + (" (興櫃)" if emerging else "")
+    else:
+        self_pe = "— (興櫃)" if emerging else "—"
+    peers.append({"name": str(p.get("name") or ""), "val": self_pe})
     for raw in p.get("peers_raw") or []:
         if raw.get("pe") is not None:
             val = f"{_fmt_num(raw.get('pe'), 1)}x"
@@ -1526,6 +1528,7 @@ def payload_to_card(p: Dict[str, Any]) -> Dict[str, Any]:
         "flow_pill": flow_pill,
         "regime_text": str((p.get("regime") or {}).get("text") or ""),
         "regime_right": str((p.get("regime") or {}).get("right") or ""),
+        "eps_k": str(p.get("eps_k") or "今年賺錢進度"),
         "eps_ytd": _fmt_num(p.get("eps_e"), 2 if (_finite(p.get("eps_e")) or 99) < 10 else 1),
         "eps_est_yr": _fmt_num(p.get("eps_y"), 1),
         "eps_pct": int(p.get("eps_pct") or 0),
@@ -1601,6 +1604,7 @@ def fill_flagship_html(d: Dict[str, Any]) -> str:
         "FLOW_PILL": d["flow_pill"],
         "REGIME_TEXT": d["regime_text"],
         "REGIME_RIGHT": d["regime_right"],
+        "EPS_K": d.get("eps_k") or "今年賺錢進度",
         "EPS_YTD": d["eps_ytd"],
         "EPS_EST_YR": d["eps_est_yr"],
         "EPS_PCT": str(int(d["eps_pct"])),
