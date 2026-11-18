@@ -152,7 +152,8 @@ def test_flagship_3595_emerging_platform_break():
         return float(str(s).replace(",", ""))
 
     assert _num(p["tgt_n"]) >= _num(p["tgt_c"])
-    assert _num(p["tgt_n"]) >= 500  # 不准再算出比現價低一大截的 176
+    # 已核定 overlay 目標約 570；不准再掉回舊 bug 176 或純滾動估的偏低假目標
+    assert _num(p["tgt_n"]) >= 500
     html = render_flagship_html(p)
     assert "山太士" in html
     assert "興櫃防線與流動性警示" in html

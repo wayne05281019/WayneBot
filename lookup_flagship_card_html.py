@@ -672,12 +672,18 @@ def _soft_growth(
         )
         out["fair"] = _finite(tg.get("fair_year"))
         out["tgt"] = _finite(tg.get("target_next"))
-    # overlay 只在「庫缺那一季」時整組帶入；庫有官方季報就全部用滾動估算
+    # 庫缺那一季：整組吃 overlay。
+    # 同季官方已入庫：EPS／毛利用庫；倍率／目標／門檻若有已核定 overlay 仍保留
+    # （興櫃缺 peer PE，純滾動估曾算出遠低於現價的假目標）。
     if from_overlay:
         for k in ("eps_e", "eps_q", "gm", "eps_y", "eps_n", "thr", "fair", "tgt", "pe_y", "pe_n"):
             if ov.get(k) is not None:
                 out[k] = _finite(ov.get(k))
         out["season"] = int(ov["season"])
+    elif ov and season_used is not None and int(ov.get("season") or 0) == int(season_used):
+        for k in ("eps_y", "eps_n", "thr", "fair", "tgt", "pe_y", "pe_n"):
+            if ov.get(k) is not None:
+                out[k] = _finite(ov.get(k))
     return out
 
 

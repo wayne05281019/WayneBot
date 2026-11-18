@@ -1798,7 +1798,12 @@ def ingest_public_posts(
             stats["official"] = refresh_published_official(dbp)
         except Exception:
             logger.exception("飆大官方收盤補寫失敗")
-        if uniq:
+        # 主文／回覆都沒 added／updated＝重抓同窗；不准再 walk／link。
+        # （舊回覆若沒進 corpus 記憶體會被再算成 replies，不准因此重走。）
+        material = int(added or 0) + int(updated or 0)
+        if material <= 0:
+            stats["skipped_walk"] = True
+        elif uniq:
             try:
                 from biaoke_digest import record_ingest_events
 
