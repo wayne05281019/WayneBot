@@ -526,7 +526,7 @@ def _inline_bar(
     fill,
 ) -> None:
     """目標空間右側粗進度條（範本密度）。"""
-    bar_h = _px(34)
+    bar_h = _px(28)
     yy0 = y_mid - bar_h / 2.0
     yy1 = yy0 + bar_h
     if x1 - x0 < _px(28):
@@ -586,15 +586,16 @@ def _draw_d3_card(
     dr.rounded_rectangle(box, radius=_px(18), fill=CARD, outline=edge, width=_px(4))
 
     # 對齊範本縮 1080 實測：表頭字高≈38、體內主數≈40
-    head_f = _font(38, bold=True)
+    # 表頭 36＋「 | 」可完整塞下年增；主數維持範本字高≈40
+    head_f = _font(36, bold=True)
     cell_title_f = _font(30, bold=True)
     cell_f = _font(34)
     cell_b = _font(42, bold=True)
     small_f = _font(26, bold=True)
     micro_f = _font(24)
     pill_f = _font(26, bold=True)
-    pad = _px(10)
-    head_h = _px(96)
+    pad = _px(8)
+    head_h = _px(92)
     hx0, hy0 = x0 + pad, y0 + _px(4)
     hx1, hy1 = x1 - pad, y0 + head_h
 
@@ -643,12 +644,30 @@ def _draw_d3_card(
         segs += [(" | ", pipe), (f"毛利{gm}%", accent_h if star else TEXT)]
     if yoy != "—":
         segs += [(" | ", pipe), (f"年增{yoy}", accent_h if star else TEXT)]
-    # 量寬截斷（先丟年增／毛利）
-    while len(segs) > 5 and head_f.getlength("".join(s for s, _ in segs)) > left_max - hx0:
-        segs.pop()
-        if segs and segs[-1][0].strip() == "|":
-            segs.pop()
-    full = "".join(s for s, _ in segs)
+    # 先縮 pipe 保住年增／毛利；都不夠才從尾端丟欄
+    def _with_pipe(pipe_s: str) -> List[Tuple[str, Tuple[int, int, int]]]:
+        out: List[Tuple[str, Tuple[int, int, int]]] = []
+        for s, col in segs:
+            if s.strip() == "|":
+                if pipe_s:
+                    out.append((pipe_s, col))
+            else:
+                out.append((s, col))
+        return out
+
+    trial: List[Tuple[str, Tuple[int, int, int]]] = []
+    for pipe_s in (" | ", " |", "|", ""):
+        cand = _with_pipe(pipe_s)
+        if head_f.getlength("".join(s for s, _ in cand)) <= left_max - hx0:
+            trial = cand
+            break
+    if not trial:
+        trial = _with_pipe("|")
+        while len(trial) > 5 and head_f.getlength("".join(s for s, _ in trial)) > left_max - hx0:
+            trial.pop()
+            if trial and trial[-1][0].strip() in ("|", ""):
+                trial.pop()
+    full = "".join(s for s, _ in trial)
     if head_f.getlength(full) > left_max - hx0:
         _text_left_mid(
             dr, (hx0, hy0, left_max, hy1),
@@ -656,7 +675,7 @@ def _draw_d3_card(
         )
     else:
         tx = hx0
-        for s, col in segs:
+        for s, col in trial:
             if not s:
                 continue
             _text_left_mid(dr, (tx, hy0, left_max, hy1), s, head_f, col)
@@ -907,9 +926,9 @@ def _render_d3_page(
     im = Image.new("RGB", (W, H), BG)
     dr = ImageDraw.Draw(im)
 
-    # 範本左右邊距更緊，字才撐滿
-    content_l = _px(24)
-    content_r = W - _px(24)
+    # 範本左右邊距更緊，表頭才塞得下年增
+    content_l = _px(16)
+    content_r = W - _px(16)
     top = _px(SAFE_TOP)
     bot = H - _px(SAFE_BOTTOM)
 
