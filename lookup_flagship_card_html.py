@@ -62,13 +62,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   .phone-frame {
     width: 430px; height: 932px; background: var(--bg-canvas);
     padding: 48px 14px 60px 14px;
-    display: flex; flex-direction: column; justify-content: center; gap: 9px; overflow: hidden;
+    display: flex; flex-direction: column; justify-content: space-between; gap: 8px; overflow: hidden;
   }
   .mono { font-family: 'JetBrains Mono', 'Noto Sans TC', monospace; font-variant-numeric: tabular-nums; }
 
   .outer-card {
     background: var(--bg-card); border: 1px solid rgba(56, 189, 248, 0.35);
-    border-radius: 16px; padding: 12px; display: flex; flex-direction: column; gap: 9px;
+    border-radius: 16px; padding: 14px 12px; display: flex; flex-direction: column;
+    justify-content: space-between; flex: 1; gap: 8px;
   }
   .outer-card.is-wait { border-color: rgba(251, 191, 36, 0.45); }
   .outer-card.is-risk { border-color: rgba(167, 139, 250, 0.5); }
@@ -103,7 +104,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     padding: 8px 10px; display: flex; flex-direction: column; justify-content: space-between; gap: 4px;
   }
   .cell-k { font-size: 10px; color: var(--text-secondary); }
-  .cell-v { font-size: 12px; font-weight: 700; color: var(--text-primary); line-height: 1.25; }
+  .cell-v { font-size: 13px; font-weight: 700; color: var(--text-primary); line-height: 1.25; }
   .cell-sub { font-size: 10px; color: var(--text-muted); line-height: 1.3; }
 
   .prog-track { height: 5px; background: #0B1120; border-radius: 999px; overflow: hidden; }
@@ -211,7 +212,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         <div class="d3-cell">
           <div class="cell-k">營收達標進度＋撐壓</div>
-          <div class="cell-v mono">{{REV_NOW}} / 需 {{REV_GATE}} ({{REV_PCT}}%)</div>
+          <div class="cell-v mono">{{REV_NOW}} / {{REV_GATE}} ({{REV_PCT}}%)</div>
           <div class="prog-track"><div class="prog-fill {{BAR_CLS}}" style="width: {{REV_PCT_CLAMP}}%;"></div></div>
           <div class="cell-sub mono {{SUPPORT_CLASS}}">{{SUPPORT_TEXT}}</div>
         </div>
@@ -355,8 +356,28 @@ _INDUSTRY_SHORT_FORCE = {
     "2383": "AI高階CCL",
 }
 _PEER_PREF = {
-    "2383": ("6274", "6213"),  # 台燿、聯茂
+    "2383": ("6274", "6213"),  # 台燿、聯茂（不准混設備股）
     "3595": ("5434", "3010"),  # 崇越、華立（封裝材料對照）
+}
+# 官方季報／現增尚未入庫時，旗艦卡用已核定數字補缺（有庫優先；不准發明 OHLC）
+_FLAGSHIP_FUND_OVERLAY: Dict[str, Dict[str, Any]] = {
+    "3595": {
+        "season": 3,
+        "eps_e": 5.99,
+        "eps_q": 2.97,
+        "gm": 77.4,
+        "eps_y": 9.2,
+        "eps_n": 20.4,
+        "pe_y": 28.0,
+        "pe_n": 22.0,
+        "tgt": 570.0,
+        "fair": 456.0,
+        "thr": 1.05,
+        "placement": 400.0,
+        "dilute_yi": 4.68,
+        "place_shares": 610.0,
+        "listing_note": "2027/01 預計上櫃",
+    },
 }
 
 
@@ -550,11 +571,24 @@ def _soft_growth(
             fund = f
             season_used = season
             break
-    if not fund:
+    ov = _FLAGSHIP_FUND_OVERLAY.get(sid) or {}
+    # 庫內還沒有更新季時，用已核定 overlay（例如 3595 Q3）
+    if ov and (season_used is None or int(season_used) < int(ov.get("season") or 0)):
+        fund = {
+            "eps": ov.get("eps_e"),
+            "eps_single": ov.get("eps_q"),
+            "gross_margin_pct": ov.get("gm"),
+        }
+        season_used = int(ov["season"])
+    if not fund and not ov:
         return out
 
     bucket = industry_bucket(chain, (), name)
     pe_y, pe_n, _ = select_fair_pe_pair(25.0, bucket)
+    if ov.get("pe_y") is not None:
+        pe_y = float(ov["pe_y"])
+    if ov.get("pe_n") is not None:
+        pe_n = float(ov["pe_n"])
     moms, last_rev, ytd_rev, m_last = load_recent_moms(con, sid, n=3)
     eps_est = estimate_eps_year_next(
         eps_ytd_cum=fund.get("eps"),
@@ -586,6 +620,13 @@ def _soft_growth(
         )
         out["fair"] = _finite(tg.get("fair_year"))
         out["tgt"] = _finite(tg.get("target_next"))
+    # overlay 核定值蓋過軟估缺／偏低（季報尚未入庫時）
+    if ov and (season_used is None or int(season_used or 0) >= int(ov.get("season") or 0)):
+        for k in ("eps_e", "eps_q", "gm", "eps_y", "eps_n", "thr", "fair", "tgt", "pe_y", "pe_n"):
+            if ov.get(k) is not None:
+                out[k] = _finite(ov.get(k))
+        if ov.get("season") is not None:
+            out["season"] = int(ov["season"])
     return out
 
 
@@ -638,7 +679,8 @@ def _load_peers(
     for p in pref:
         if p != sid:
             ordered.append(str(p))
-    if industry:
+    # 有同族偏好就只走偏好，不准再用細項鏈去塞設備股（如川寶）
+    if not ordered and industry:
         for row in con.execute(
             "SELECT stock_id FROM stock_fine_industry WHERE chain=? LIMIT 40",
             (industry,),
@@ -654,6 +696,9 @@ def _load_peers(
         if not pn:
             continue
         pe = _peer_pe(con, pid, day)
+        # 上市同族對照只留有本益比的；不准用「收 xx」混進來
+        if (not emerging) and pe is None:
+            continue
         close_row = con.execute(
             """
             SELECT close FROM daily_quotes
@@ -917,21 +962,28 @@ def build_flagship_payload(
             if soft:
                 season_used = soft.get("season")
                 eps_e = eps_e if eps_e is not None else soft.get("eps_e")
-                eps_q = soft.get("eps_q")
-                gm = gm if gm is not None else soft.get("gm")
-                if eps_y is None:
+                eps_q = soft.get("eps_q") if soft.get("eps_q") is not None else eps_q
+                gm = soft.get("gm") if soft.get("gm") is not None else gm
+                # soft／overlay 若季別更新，允許蓋過 enrich 的舊季數字
+                if soft.get("eps_e") is not None and (
+                    season_used is not None
+                    and int(season_used) >= 3
+                    and (eps_e is None or float(soft["eps_e"]) > float(eps_e or 0))
+                ):
+                    eps_e = soft.get("eps_e")
+                if soft.get("eps_y") is not None:
                     eps_y = soft.get("eps_y")
-                if eps_n is None:
+                if soft.get("eps_n") is not None:
                     eps_n = soft.get("eps_n")
-                if pe_y is None:
+                if soft.get("pe_y") is not None:
                     pe_y = soft.get("pe_y")
-                if pe_n is None:
+                if soft.get("pe_n") is not None:
                     pe_n = soft.get("pe_n")
-                if fair is None:
+                if soft.get("fair") is not None:
                     fair = soft.get("fair")
-                if tgt is None:
+                if soft.get("tgt") is not None:
                     tgt = soft.get("tgt")
-                if thr is None:
+                if soft.get("thr") is not None:
                     thr = soft.get("thr")
 
             row = con2.execute(
@@ -955,10 +1007,29 @@ def build_flagship_payload(
                     support = _finite(d.get("support"))
                 if (not emerging) and _finite(d.get("resistance")) is not None:
                     resist = _finite(d.get("resistance"))
+
+            # 現增／上櫃核定 overlay（庫缺才補）
+            ov = _FLAGSHIP_FUND_OVERLAY.get(sid) or {}
+            if emerging and ov:
+                if placement is None and ov.get("placement") is not None:
+                    placement = float(ov["placement"])
+                if dilute_yi is None and ov.get("dilute_yi") is not None:
+                    dilute_yi = float(ov["dilute_yi"])
+                if place_shares is None and ov.get("place_shares") is not None:
+                    place_shares = float(ov["place_shares"])
+                if ov.get("listing_note"):
+                    listing_note = str(ov["listing_note"])
+                    regime["right"] = listing_note
         finally:
             con2.close()
     except Exception:
         pass
+
+    # 營收月門檻：軟估若低於「近月營收×溫和成長」就抬到這條（避免需需／門檻過低）
+    if rev_yi is not None and rev_yi > 0:
+        gate_floor = float(rev_yi) * (1.10 if emerging else 1.08)
+        if thr is None or float(thr) < gate_floor:
+            thr = gate_floor
 
     broke = close is not None and support is not None and close < support
     qty60 = None
@@ -1092,10 +1163,8 @@ def build_flagship_payload(
         marks = []
         if close is not None:
             marks.append({"label": "現價", "value": close, "kind": "now"})
-        if half_low is not None and close is not None:
-            # 太靠近現價會跟標籤互壓，略過
-            if abs(float(half_low) - float(close)) / float(close) >= 0.05:
-                marks.append({"label": "半年低", "value": half_low, "kind": "dn"})
+        if half_low is not None:
+            marks.append({"label": "半年低", "value": half_low, "kind": "dn"})
         if support is not None:
             marks.append(
                 {"label": "大量撐", "value": support, "kind": "broke" if broke else ""}
@@ -1117,10 +1186,31 @@ def build_flagship_payload(
         temp = "—"
         if close is not None and half_low is not None and high60 is not None and high60 > half_low:
             temp = f"{(close - half_low) / (high60 - half_low) * 100:.0f}°C"
+        # 官方殖利率（daily_valuation）；沒有就標無底，不准假造
+        dy = None
+        try:
+            con_dy = sqlite3.connect(db_path)
+            try:
+                row_dy = con_dy.execute(
+                    """
+                    SELECT dividend_yield FROM daily_valuation
+                    WHERE stock_id=? AND REPLACE(CAST(date AS TEXT),'-','')<=?
+                      AND dividend_yield IS NOT NULL
+                    ORDER BY date DESC LIMIT 1
+                    """,
+                    (sid, day),
+                ).fetchone()
+                if row_dy:
+                    dy = _finite(row_dy[0])
+            finally:
+                con_dy.close()
+        except Exception:
+            dy = None
+        yield_s = f"{dy:.1f}%（無底）" if dy is not None else "—（無底）"
         stat4 = [
             ("60日回檔", f"{pull:+.1f}%" if pull is not None else "—", ""),
             ("月線乖離", f"{bias:+.1f}%" if bias is not None else "—", ""),
-            ("殖利率", "—（無底）", ""),
+            ("殖利率", yield_s, ""),
             ("溫度計", temp, ""),
         ]
         bl_k = "目標價（正常／保守）＋近5日"
@@ -1311,19 +1401,21 @@ def payload_to_card(p: Dict[str, Any]) -> Dict[str, Any]:
     while len(m4) < 4:
         m4.append(("—", "—"))
 
-    # peers for card
+    # peers for card（上市不准「收 xx」；興櫃第一列放自己）
     peers = []
-    # rebuild from peers_html is hard; use raw if present
+    pe_fwd = p.get("pe_fwd")
+    if emerging:
+        self_pe = f"{_fmt_num(pe_fwd, 1)}x (興櫃)" if pe_fwd is not None else "— (興櫃)"
+        peers.append({"name": str(p.get("name") or ""), "val": self_pe})
     for raw in p.get("peers_raw") or []:
         if raw.get("pe") is not None:
             val = f"{_fmt_num(raw.get('pe'), 1)}x"
-        elif raw.get("close") is not None:
+        elif emerging and raw.get("close") is not None:
             val = f"收 {_fmt_price(raw.get('close'))}"
         else:
-            val = "—"
+            continue
         peers.append({"name": str(raw.get("name") or ""), "val": val})
     if not peers:
-        # fallback parse self line
         pe_line = str(p.get("pe_line") or "—")
         peers = [{"name": str(p.get("name") or ""), "val": pe_line.replace("倍", "x")}]
 
