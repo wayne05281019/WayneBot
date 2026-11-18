@@ -1,15 +1,15 @@
 {
-  "as_of_taipei": "2026-11-17T16:56:05+0800",
-  "as_of_day": "20261117",
-  "infer_for": "20261118",
+  "as_of_taipei": "2026-11-18T16:58:50+0800",
+  "as_of_day": "20261118",
+  "infer_for": "20261119",
   "today_job": "post_close_next_session_infer",
   "phone_sync": "blocked",
   "buy_signal": false,
   "certainty": false,
   "segment_numbers": "REQUIRED",
-  "calendar_zh": "下一開市日＝11/18（若休市再順延）。",
-  "from_eod_zh": "11/17 TWII（60分補OHLC＋FMTQIK量）L39786.45／C40092.11：N1成立；W4/M2否決；M3升權維持、37837未測。",
-  "from_oral_zh": "11/16飆大：41800～42700＝波浪4帶；否決第二腳／38000；細微C・1 4重疊；非買訊。",
+  "calendar_zh": "下一開市日＝11/19（若休市再順延）。",
+  "from_eod_zh": "11/18 TWII（60分補OHLC＋FMTQIK量）L39260.99／C40194.91：N1成立再探；W4/M2否決；M3升權維持、37837未測。",
+  "from_oral_zh": "11/16飆大：41800～42700＝波浪4帶；否決第二腳／38000；非買訊。",
   "paths": [
     {
       "id": "M3_seek_37837_continue",
@@ -109,5 +109,5 @@
   },
   "not_buy_signal": true,
   "not_new_impulse1_zh": "帶下續弱／未測37837 ≠ 自動新五波升；不准標新①。",
-  "evidence_gate_zh": "S8：本窗 preferred＝升權測37837，憑據＝11/16失41760＋11/17 N1帶下續弱；無憑據不標新①。"
+  "evidence_gate_zh": "S8：本窗 preferred＝升權測37837，憑據＝11/16失41760＋11/17～11/18 N1帶下續弱再探；無憑據不標新①。"
 }
