@@ -117,6 +117,8 @@ def test_emerging_placement_price_in_note():
             "tech_status": "60日均量過小",
             "rev_yyyymm": "202610",
             "rev_oct_yi": 0.95,
+            "support": 561,
+            "resistance": 636,
             "eps_earned": 5.99,
             "eps_2026": 9.5,
             "eps_2027": 19.0,
@@ -128,6 +130,65 @@ def test_emerging_placement_price_in_note():
     assert "400" in s["emerging_note"]
     assert "60日均量過小" in s["emerging_note"]
     assert "0.95" in s["rev_now"] or "0.9" in s["rev_now"]
+    assert s["support_ok"] is True
+    assert s["support_text"].startswith("撐")
+
+
+def test_emerging_broke_support_amber():
+    s = pick_row_to_screener_stock(
+        {
+            "mark": "emerging",
+            "stock_id": "3595",
+            "name": "山太士",
+            "close": 506.7,
+            "support": 561,
+            "resistance": 636,
+            "placement_price": 400,
+            "tech_status": "60日均量過小",
+            "rev_yyyymm": "202610",
+            "rev_month_label": "10月",
+            "rev_oct_yi": 0.95,
+            "rev_threshold_yi": 1.5,
+            "eps_earned": 5.99,
+            "eps_2026": 9.5,
+            "eps_2027": 19.0,
+            "pe_year": 28,
+            "pe_next": 22,
+        },
+        as_of="20261118",
+    )
+    assert s["status"] == "risk"  # 興櫃燈號仍 ⚠️
+    assert s["support_ok"] is False
+    assert s["support_text"].startswith("▲破撐")
+    assert "561" in s["support_text"]
+    assert s["rev_line"] == "10月0.95 / 需1.5億 (63%)"
+
+
+def test_rev_line_one_row_format():
+    s = pick_row_to_screener_stock(
+        {
+            "mark": "star",
+            "stock_id": "6442",
+            "name": "光聖",
+            "close": 1045,
+            "support": 1000,
+            "resistance": 1210,
+            "rev_yyyymm": "202610",
+            "rev_month_label": "10月",
+            "rev_oct_yi": 18.4,
+            "rev_threshold_yi": 20.5,
+            "eps_earned": 34.9,
+            "eps_2026": 52,
+            "eps_2027": 68,
+            "pe_year": 28,
+            "pe_next": 22,
+            "foreign_5d": ["B"] * 5,
+            "trust_5d": ["B"] * 5,
+        },
+        as_of="20261118",
+    )
+    assert s["rev_line"] == "10月18.4 / 需20.5億 (90%)"
+    assert "億 /" not in s["rev_line"]
 
 
 def test_html_d3_page_canvas(tmp_path):

@@ -127,6 +127,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   }
   .cell-k { font-size: 9.5px; color: var(--text-secondary); font-weight: 700; }
   .cell-v { font-size: 11px; font-weight: 700; color: var(--text-primary); line-height: 1.25; }
+  /* 營收進度：微縮＋不換行，避免 (90%) 被擠到下一行 */
+  .cell-v.rev-line { font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .cell-sub { font-size: 9.5px; color: var(--text-muted); }
 
   .up { color: var(--tw-up); } .down { color: var(--tw-down); }
@@ -251,6 +253,10 @@ def _build_card_html(s: dict) -> str:
         bl_title = "目標價（正常／保守）＋近5日"
 
     pe_left = max(8, min(92, int(round(float(s.get("pe_dot_pct") or 50)))))
+    rev_line = str(
+        s.get("rev_line")
+        or f"{s.get('rev_now') or '—'} / 需{s.get('rev_gate') or '—'} ({int(s.get('rev_pct') or 0)}%)"
+    )
     return f"""
     <div class="stock-card {status_cls}">
       <div class="card-top">
@@ -279,7 +285,7 @@ def _build_card_html(s: dict) -> str:
         </div>
         <div class="d3-cell">
           <div class="cell-k">營收達標進度＋撐壓</div>
-          <div class="cell-v mono">{html.escape(s['rev_now'])} / 需 {html.escape(s['rev_gate'])} ({int(s['rev_pct'])}%)</div>
+          <div class="cell-v mono rev-line">{html.escape(rev_line)}</div>
           <div class="prog-track"><div class="prog-fill {bar_cls}" style="width: {min(100, int(s['rev_pct']))}%;"></div></div>
           <div class="cell-sub mono"><span class="{support_cls}">{html.escape(s['support_text'])}</span></div>
         </div>
@@ -530,13 +536,11 @@ def pick_row_to_screener_stock(row: Dict[str, Any], *, as_of: Optional[str] = No
     broken = bool(row.get("tech_broken")) or (
         "破撐" in str(row.get("tech_status") or "") or "破撐" in str(row.get("reason") or "")
     )
-    # 現價跌破大量支撐 → ★ 自動降 ☆（不准寫死可買）
-    if (
-        not emerging
-        and close is not None
-        and support is not None
-        and close < support
-    ):
+    # 現價跌破大量支撐：撐壓列一律 ▲破撐（含興櫃）；上市櫃 ★ 再降 ☆
+    price_broke = (
+        close is not None and support is not None and close < support
+    )
+    if price_broke:
         broken = True
     if emerging:
         status, icon, status_label = "risk", "⚠️", "興櫃量小"
@@ -598,8 +602,10 @@ def pick_row_to_screener_stock(row: Dict[str, Any], *, as_of: Optional[str] = No
         rev_pct = max(0, min(999, int(round(oct_r / thr * 100.0))))
 
     resist = _finite(row.get("resistance"))
-    support_ok = not broken
-    if broken and support is not None:
+    # 撐壓列依現價 vs 支撐；興櫃也要橘色 ▲破撐（狀態燈仍可維持 ⚠️）
+    support_broken = bool(price_broke)
+    support_ok = not support_broken
+    if support_broken and support is not None:
         support_text = f"▲破撐 {_fmt_price(support)}｜壓 {_fmt_price(resist)}"
     else:
         support_text = f"撐 {_fmt_price(support)}｜壓 {_fmt_price(resist)}"
@@ -629,16 +635,32 @@ def pick_row_to_screener_stock(row: Dict[str, Any], *, as_of: Optional[str] = No
     month_lab = str(row.get("rev_month_label") or "").strip()
     if not month_lab and len(rev_ym) == 6:
         month_lab = f"{int(rev_ym[4:6])}月"
+
+    def _fmt_yi_num(v: float) -> str:
+        if abs(float(v)) < 10:
+            return f"{float(v):.2f}".rstrip("0").rstrip(".")
+        return _fmt_num(v, 1)
+
     if oct_r is not None:
-        # 小營收保留兩位（山太士 0.95億），大數一位
-        rev_digits = 2 if abs(float(oct_r)) < 10 else 1
-        rev_body = f"{_fmt_num(oct_r, rev_digits)}億"
-        # _fmt_num 對 0.95/digits=1 會進位成 1；digits=2 才留 0.95
-        if rev_digits == 2:
-            rev_body = f"{float(oct_r):.2f}".rstrip("0").rstrip(".") + "億"
-        rev_now = f"{month_lab}{rev_body}" if month_lab else rev_body
+        rev_num = _fmt_yi_num(float(oct_r))
+        rev_now = f"{month_lab}{rev_num}億" if month_lab else f"{rev_num}億"
     else:
+        rev_num = None
         rev_now = "—"
+    if thr is not None:
+        gate_num = _fmt_yi_num(float(thr))
+        rev_gate = f"{gate_num}億"
+    else:
+        gate_num = None
+        rev_gate = "—"
+    # 單行：10月18.4 / 需20.5億 (90%)
+    if rev_num is not None and gate_num is not None:
+        head = f"{month_lab}{rev_num}" if month_lab else rev_num
+        rev_line = f"{head} / 需{gate_num}億 ({int(rev_pct)}%)"
+    elif rev_num is not None:
+        rev_line = f"{rev_now} ({int(rev_pct)}%)"
+    else:
+        rev_line = "—"
 
     return {
         "status": status,
@@ -667,7 +689,8 @@ def pick_row_to_screener_stock(row: Dict[str, Any], *, as_of: Optional[str] = No
         "is_emerging": emerging,
         "emerging_note": _emerging_note_text(row),
         "rev_now": rev_now,
-        "rev_gate": f"{_fmt_num(thr, 1)}億" if thr is not None else "—",
+        "rev_gate": rev_gate,
+        "rev_line": rev_line,
         "rev_pct": rev_pct,
         "support_ok": support_ok,
         "support_text": support_text,
@@ -950,12 +973,7 @@ def enrich_live_rows_from_db(
 
             close = _finite(row.get("close"))
             support = _finite(row.get("support"))
-            if (
-                not emerging
-                and close is not None
-                and support is not None
-                and close < support
-            ):
+            if close is not None and support is not None and close < support:
                 row["tech_broken"] = True
             out.append(row)
     finally:
