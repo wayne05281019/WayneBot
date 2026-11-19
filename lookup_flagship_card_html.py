@@ -425,6 +425,7 @@ _PEER_PREF = {
     "3595": ("5434", "3010"),  # 崇越、華立（封裝材料對照）
 }
 # 官方季報／現增尚未入庫時，旗艦卡用已核定數字補缺（有庫優先；不准發明 OHLC）
+# 只補財報／現增事實；合理 PE／目標價一律市場共識滾動中位，不准寫死灌水。
 _FLAGSHIP_FUND_OVERLAY: Dict[str, Dict[str, Any]] = {
     "3595": {
         "season": 3,
@@ -433,10 +434,6 @@ _FLAGSHIP_FUND_OVERLAY: Dict[str, Dict[str, Any]] = {
         "gm": 77.4,
         "eps_y": 9.2,
         "eps_n": 20.4,
-        "pe_y": 28.0,
-        "pe_n": 22.0,
-        "tgt": 570.0,
-        "fair": 456.0,
         "thr": 1.05,
         "placement": 400.0,
         "dilute_yi": 4.68,
@@ -683,10 +680,6 @@ def _soft_growth(
     out["peer_pe_median"] = peer_med
     out["peer_pe_n"] = int(peer_info.get("n") or 0)
     out["peer_pe_scope"] = str(peer_info.get("scope") or "")
-    if ov.get("pe_y") is not None:
-        pe_y = float(ov["pe_y"])
-    if ov.get("pe_n") is not None:
-        pe_n = float(ov["pe_n"])
     moms, last_rev, ytd_rev, m_last = load_recent_moms(con, sid, n=3)
     eps_est = estimate_eps_year_next(
         eps_ytd_cum=fund.get("eps"),
@@ -704,43 +697,39 @@ def _soft_growth(
     out["pe_y"] = pe_y
     out["pe_n"] = pe_n
     out["bucket"] = bucket
-    if (
-        eps_est.get("ok")
-        and close
-        and close > 0
-        and pe_y is not None
-        and pe_n is not None
-    ):
+    if eps_est.get("ok"):
         out["eps_y"] = _finite(eps_est.get("eps_2026"))
         out["eps_n"] = _finite(eps_est.get("eps_2027"))
         out["thr"] = _finite(eps_est.get("rev_threshold_yi"))
+    # overlay 只補財報／門檻事實；不准灌 pe／fair／tgt
+    if from_overlay:
+        for k in ("eps_e", "eps_q", "gm", "eps_y", "eps_n", "thr"):
+            if ov.get(k) is not None:
+                out[k] = _finite(ov.get(k))
+        out["season"] = int(ov["season"])
+    elif ov and season_used is not None and int(ov.get("season") or 0) == int(season_used):
+        for k in ("eps_y", "eps_n", "thr"):
+            if ov.get(k) is not None:
+                out[k] = _finite(ov.get(k))
+    # 目標價＝市場共識 PE × EPS；缺共識就不填
+    if (
+        close
+        and close > 0
+        and pe_y is not None
+        and pe_n is not None
+        and out.get("eps_y") is not None
+        and out.get("eps_n") is not None
+    ):
         tg = price_targets(
             float(close),
             20.0,
-            float(eps_est["eps_2026"]),
-            float(eps_est["eps_2027"]),
+            float(out["eps_y"]),
+            float(out["eps_n"]),
             float(pe_y),
             float(pe_n),
         )
         out["fair"] = _finite(tg.get("fair_year"))
         out["tgt"] = _finite(tg.get("target_next"))
-    elif eps_est.get("ok") and close and close > 0:
-        # 有 EPS 估但無市場共識 PE → 只填 EPS／門檻，不編造目標價
-        out["eps_y"] = _finite(eps_est.get("eps_2026"))
-        out["eps_n"] = _finite(eps_est.get("eps_2027"))
-        out["thr"] = _finite(eps_est.get("rev_threshold_yi"))
-    # 庫缺那一季：整組吃 overlay。
-    # 同季官方已入庫：EPS／毛利用庫；倍率／目標／門檻若有已核定 overlay 仍保留
-    # （興櫃缺 peer PE，純滾動估曾算出遠低於現價的假目標）。
-    if from_overlay:
-        for k in ("eps_e", "eps_q", "gm", "eps_y", "eps_n", "thr", "fair", "tgt", "pe_y", "pe_n"):
-            if ov.get(k) is not None:
-                out[k] = _finite(ov.get(k))
-        out["season"] = int(ov["season"])
-    elif ov and season_used is not None and int(ov.get("season") or 0) == int(season_used):
-        for k in ("eps_y", "eps_n", "thr", "fair", "tgt", "pe_y", "pe_n"):
-            if ov.get(k) is not None:
-                out[k] = _finite(ov.get(k))
     return out
 
 
@@ -1373,7 +1362,14 @@ def build_flagship_payload(
         fair_lo, fair_hi = fair_hi, fair_lo
     pe_min, pe_mid, pe_max, pe_dot = _pe_scale(pe_fwd, fair_lo, fair_hi)
     if pe_fwd is not None and fair_lo is not None and fair_hi is not None:
-        pe_note = "偏低" if pe_fwd < fair_lo else ("偏貴" if pe_fwd > fair_hi else "合理帶")
+        if pe_fwd < fair_lo:
+            pe_note = "偏低"
+        elif pe_fwd > fair_hi * 1.25:
+            pe_note = "遠高於同業共識"
+        elif pe_fwd > fair_hi:
+            pe_note = "偏貴"
+        else:
+            pe_note = "合理帶"
     elif pe_fwd is not None:
         pe_note = "滾動"
     else:

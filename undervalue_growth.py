@@ -25,6 +25,8 @@ QTY60_EMERGING_MAX = 400.0  # 低於此→興櫃／量小觀察池
 STAR_UPS_TGT_MIN = 25.0  # ★可買：明年空間 ≥ +25%
 # 滾動同業本益：樣本與極端值閘（官方收／季 EPS；不准寫死 25）
 PEER_PE_MEDIAN_MIN_N = 8
+# 細鏈門檻提高：n=3 太薄，市場差時不准當共識；不夠就退粗產業 n≥8
+PEER_PE_FINE_MIN_N = 5
 PEER_PE_MEDIAN_LO = 3.0
 PEER_PE_MEDIAN_HI = 80.0
 
@@ -323,7 +325,7 @@ def resolve_rolling_peer_pe_median(
 ) -> Dict[str, Any]:
     """合理 PE 滾動中位：細鏈同業 → 證交所粗產業；官方 pe 優先。
 
-    細鏈樣本 n≥3 就用（對齊低估掃）；粗產業仍要 n≥8。
+    細鏈須 n≥PEER_PE_FINE_MIN_N；不夠則退粗產業 n≥8。
     都不足才 median=None → 呼叫端不編造合理 PE／目標價。
     """
     sid_s = str(sid or "").strip()
@@ -339,7 +341,9 @@ def resolve_rolling_peer_pe_median(
     if len(sid_s) != 4 or len(day) != 8:
         return empty
 
-    # 1) 細鏈（industry_fine）
+    fine_min = int(PEER_PE_FINE_MIN_N)
+
+    # 1) 細鏈（industry_fine）——樣本夠才當市場共識
     fine_peers: List[str] = []
     path = str(db_path or "").strip()
     if path:
@@ -352,10 +356,10 @@ def resolve_rolling_peer_pe_median(
     if fine_peers:
         pes = _peer_pe_from_daily_valuation(conn, fine_peers, day)
         src = "fine_chain_official_pe"
-        if len(pes) < 3:
+        if len(pes) < fine_min:
             pes = _peer_pe_from_close_eps(conn, fine_peers, day)
             src = "fine_chain_close_eps"
-        if len(pes) >= 3:
+        if len(pes) >= fine_min:
             med = _median_sorted(pes)
             if med is not None:
                 return {
@@ -367,7 +371,7 @@ def resolve_rolling_peer_pe_median(
                     "label": f"細鏈中位{float(med):.1f}×（n={len(pes)}）",
                 }
 
-    # 2) 證交所粗產業
+    # 2) 證交所粗產業（較大母體＝較穩共識）
     tw = twse_industry_peer_pe_median(conn, sid_s, as_of=day)
     if tw.get("median") is not None:
         med = float(tw["median"])

@@ -181,8 +181,13 @@ def test_flagship_3595_emerging_platform_break():
     def _num(s: str) -> float:
         return float(str(s).replace(",", ""))
 
-    # 已核定 overlay 目標約 570；不准再掉回舊 bug 176 或純滾動估的偏低假目標
-    assert _num(p["tgt_n"]) >= 500
+    # 目標價＝光電業同業中位×EPS；不准再用 overlay 寫死 28×／570 灌水
+    assert "同業中位" in str(p.get("pe_source") or "")
+    peer = 22.085
+    assert _num(p["tgt_c"]) == pytest.approx(9.2 * peer, rel=0.02)
+    # default 桶明年縮放 13/16
+    assert _num(p["tgt_n"]) == pytest.approx(20.4 * peer * 13.0 / 16.0, rel=0.02)
+    assert _num(p["tgt_n"]) < float(p["close"])  # 現價高於共識目標＝偏貴，不准灌高
     html = render_flagship_html(p)
     assert "山太士" in html
     assert "興櫃防線與流動性警示" in html
@@ -321,11 +326,13 @@ def test_twse_industry_peer_pe_median_shipping():
     assert info["n"] >= 8
     assert info["median"] is not None
     assert 6.0 <= float(info["median"]) <= 15.0
-    # 華航細鏈樣本少→退粗產業；台光電細鏈夠→細鏈優先
+    # 華航細鏈 n 不足門檻→退粗產業；台光電細鏈夠→細鏈優先
     assert rolled.get("median") is not None
     assert "中位" in str(rolled.get("label") or "")
+    assert rolled.get("scope") == "twse_industry"
     assert fine2383.get("scope") == "fine_chain"
     assert fine2383.get("median") is not None
+    assert int(fine2383.get("n") or 0) >= 5
 
 
 @pytest.mark.skipif(not os.path.exists(DB), reason="no local wayne_market.db")
