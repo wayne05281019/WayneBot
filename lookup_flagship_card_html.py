@@ -618,8 +618,12 @@ def _soft_growth(
     close: Optional[float],
     chain: str,
     name: str,
+    as_of: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """旗艦卡顯示用軟估算：不強制過低估鐵律；缺官方季報就不填。"""
+    """旗艦卡顯示用軟估算：不強制過低估鐵律；缺官方季報就不填。
+
+    合理 PE 優先證交所粗產業同業滾動中位；不准寫死 25。
+    """
     out: Dict[str, Any] = {}
     try:
         from undervalue_growth import (
@@ -629,6 +633,7 @@ def _soft_growth(
             load_recent_moms,
             price_targets,
             select_fair_pe_pair,
+            twse_industry_peer_pe_median,
         )
     except Exception:
         return out
@@ -655,8 +660,22 @@ def _soft_growth(
     if not fund and not ov:
         return out
 
+    day = str(as_of or "").replace("-", "")[:8]
     bucket = industry_bucket(chain, (), name)
-    pe_y, pe_n, _ = select_fair_pe_pair(25.0, bucket)
+    peer_info = (
+        twse_industry_peer_pe_median(con, sid, as_of=day)
+        if len(day) == 8
+        else {"median": None, "n": 0, "industry": "", "source": "twse_industry_peer_pe"}
+    )
+    peer_med = peer_info.get("median")
+    pe_y, pe_n, _ = select_fair_pe_pair(peer_med, bucket)
+    out["pe_source"] = (
+        f"同業中位{float(peer_med):.1f}×（{peer_info.get('industry') or chain} n={int(peer_info.get('n') or 0)}）"
+        if peer_med is not None
+        else f"產業備援（{bucket}）"
+    )
+    out["peer_pe_median"] = peer_med
+    out["peer_pe_n"] = int(peer_info.get("n") or 0)
     if ov.get("pe_y") is not None:
         pe_y = float(ov["pe_y"])
     if ov.get("pe_n") is not None:
@@ -1145,26 +1164,40 @@ def build_flagship_payload(
     pe_y = pe_n = fair = tgt = thr = gm = None
     placement = dilute_yi = place_shares = None
     season_used = None
+    pe_source = ""
     peer_label = _short_industry(sid, industry, emerging)
     moat_html = ""
 
     try:
         con2 = sqlite3.connect(db_path)
         try:
-            from undervalue_growth import enrich_growth_row
+            from undervalue_growth import enrich_growth_row, twse_industry_peer_pe_median
 
             qty60_tmp = 1000.0
             if bars:
                 vols = [float(b[4] or 0) for b in bars[-60:]]
                 if vols:
                     qty60_tmp = sum(vols) / len(vols) / 1000.0
+            peer_info = twse_industry_peer_pe_median(con2, sid, as_of=day)
+            peer_med_raw = peer_info.get("median")
+            # enrich 要 float；無同業中位時傳 NaN 觸發產業備援（不准寫死 25）
+            peer_med_arg = (
+                float(peer_med_raw)
+                if peer_med_raw is not None
+                else float("nan")
+            )
+            if peer_med_raw is not None:
+                pe_source = (
+                    f"同業中位{float(peer_med_raw):.1f}×"
+                    f"（{peer_info.get('industry') or industry} n={int(peer_info.get('n') or 0)}）"
+                )
             eg = enrich_growth_row(
                 con2,
                 sid=sid,
                 name=name,
                 close=float(close or 0),
                 pe=20.0,
-                peer_med_raw=25.0,
+                peer_med_raw=peer_med_arg,
                 as_of=day,
                 yoy_pct=None,
                 qty60=float(qty60_tmp),
@@ -1187,7 +1220,9 @@ def build_flagship_payload(
                 if eg.get("industry"):
                     peer_label = _short_industry(sid, str(eg.get("industry")), emerging)
 
-            soft = _soft_growth(con2, sid, close=close, chain=industry, name=name)
+            soft = _soft_growth(
+                con2, sid, close=close, chain=industry, name=name, as_of=day
+            )
             if soft:
                 season_used = soft.get("season")
                 eps_e = eps_e if eps_e is not None else soft.get("eps_e")
@@ -1214,6 +1249,8 @@ def build_flagship_payload(
                     tgt = soft.get("tgt")
                 if soft.get("thr") is not None:
                     thr = soft.get("thr")
+                if soft.get("pe_source"):
+                    pe_source = str(soft.get("pe_source"))
 
             row = con2.execute(
                 "SELECT detail_json FROM undervalue_picks WHERE stock_id=? ORDER BY as_of DESC LIMIT 1",
@@ -1670,6 +1707,7 @@ def build_flagship_payload(
         "pe_fwd": pe_fwd,
         "pe_line": pe_line,
         "pe_note": pe_note,
+        "pe_source": pe_source or "—",
         "pe_min": pe_min,
         "pe_mid": pe_mid,
         "pe_max": pe_max,

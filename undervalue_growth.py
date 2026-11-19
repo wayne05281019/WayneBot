@@ -18,8 +18,15 @@ AI_SERVER_YOY_MIN = 100.0
 CORE_RATIO_MIN = 0.75  # 營業利益／稅前（缺稅前→／稅後淨利，本業>0）
 PEER_PE_HARD_CAP = 35.0
 PEER_PE_IP_CAP = 45.0
+PEER_PE_CYCLICAL_CAP = 18.0
+PEER_PE_FINANCE_CAP = 18.0
+PEER_PE_BIOTECH_CAP = 25.0
 QTY60_EMERGING_MAX = 400.0  # 低於此→興櫃／量小觀察池
 STAR_UPS_TGT_MIN = 25.0  # ★可買：明年空間 ≥ +25%
+# 滾動同業本益：樣本與極端值閘（官方收／季 EPS；不准寫死 25）
+PEER_PE_MEDIAN_MIN_N = 8
+PEER_PE_MEDIAN_LO = 3.0
+PEER_PE_MEDIAN_HI = 80.0
 
 # D3 硬剔除（DRAM 週期／電子通路；不准再進低估名單）
 HARD_EXCLUDE_SIDS = frozenset({"3006", "6265"})
@@ -35,17 +42,26 @@ _CYCLICAL_RE = re.compile(
     r"DRAM|標準型記憶體|記憶體週期|記憶體IC",
     re.I,
 )
+_FINANCE_RE = re.compile(r"金融|保險|銀行|證券|金控", re.I)
+_BIOTECH_RE = re.compile(r"生技|醫療|製藥|醫材|診所", re.I)
 _AI_SERVER_RE = re.compile(r"AI\s*伺服器|伺服器整機|高成長板卡|技嘉|永擎|AMAX", re.I)
 _IP_RE = re.compile(r"\bIP\b|矽智財|IC\s*設計|ASIC", re.I)
 
+# 產業表＝「同業滾動中位缺樣／爆表」時的備援與硬頂，不是日常合理倍數來源。
+# 特殊成長桶僅留市場長期共識偏高者；循環／金融／生技／一般備援對齊庫內粗產業中位帶。
 INDUSTRY_PE: Dict[str, Tuple[float, float]] = {
-    "ic_ip": (40.0, 32.0),
-    "adv_pack_mat": (35.0, 28.0),
-    "ai_server_parts": (28.0, 23.0),
-    "optical": (26.0, 21.0),
-    "ai_pcb": (26.0, 21.0),
-    "ai_server_oem": (16.0, 14.0),
-    "default": (22.0, 18.0),
+    # 特殊（有共識才留高倍）
+    "ic_ip": (40.0, 32.0),  # 矽智財／ASIC
+    "adv_pack_mat": (35.0, 28.0),  # 先進封裝材料
+    "ai_server_parts": (28.0, 23.0),  # AI 伺服器零組件
+    "optical": (26.0, 21.0),  # 光通訊／CPO
+    "ai_pcb": (26.0, 21.0),  # AI PCB／CCL
+    "ai_server_oem": (16.0, 14.0),  # 伺服器整機毛利薄
+    # 一般／循環備援（庫內中位約：航運9、營建10、鋼鐵13、多數電子13–20）
+    "cyclical": (12.0, 10.0),
+    "finance": (12.0, 11.0),
+    "biotech": (15.0, 12.0),
+    "default": (16.0, 13.0),
 }
 
 
@@ -65,9 +81,9 @@ def _blob(*parts: Any) -> str:
 
 def industry_bucket(chain: str = "", tags: Sequence[str] = (), name: str = "") -> str:
     blob = _blob(chain, " ".join(tags), name)
-    # 記憶體／成熟晶圓先走 default，不准被「IC設計」誤判成 IP/ASIC 40 倍
+    # 記憶體／成熟晶圓先走 cyclical／default，不准被「IC設計」誤判成 IP/ASIC 40 倍
     if re.search(r"記憶體|DRAM|SRAM|NAND|Flash|晶豪|力積|標準型", blob, re.I):
-        return "default"
+        return "cyclical" if _CYCLICAL_RE.search(blob) else "default"
     if _IP_RE.search(blob) or re.search(r"矽智財|(?<!記憶體)IC設計|IP/ASIC", blob):
         return "ic_ip"
     if re.search(r"先進封裝|特化材料|半導體材料|設備", blob):
@@ -80,15 +96,22 @@ def industry_bucket(chain: str = "", tags: Sequence[str] = (), name: str = "") -
         return "ai_pcb"
     if _AI_SERVER_RE.search(blob):
         return "ai_server_oem"
+    if _FINANCE_RE.search(blob):
+        return "finance"
+    if _BIOTECH_RE.search(blob):
+        return "biotech"
+    if _CYCLICAL_RE.search(blob):
+        return "cyclical"
     return "default"
 
 
 def select_fair_pe_pair(
     peer_med_raw: Optional[float], bucket: str
 ) -> Tuple[float, float, float]:
-    """同鏈中位未破硬頂→用中位算目標價；破頂才改產業表。
+    """合理 PE：優先滾動同業中位；缺樣／爆表才退產業備援表。
 
     回傳 (pe_year, pe_next, peer_for_display)。
+    不准寫死 25 當同業中位。
     """
     ind_y, ind_n = fair_pe_pair(bucket)
     cap = peer_pe_cap(bucket)
@@ -97,7 +120,7 @@ def select_fair_pe_pair(
         return float(ind_y), float(ind_n), float(ind_y)
     if med > cap:
         return float(ind_y), float(ind_n), float(ind_y)
-    # 中位可信：今年用中位；明年按產業表比例縮
+    # 中位可信：今年用滾動中位；明年按備援表比例略縮
     scale = float(ind_n) / float(ind_y) if ind_y else 1.0
     return float(med), float(med) * scale, float(med)
 
@@ -107,7 +130,142 @@ def fair_pe_pair(bucket: str) -> Tuple[float, float]:
 
 
 def peer_pe_cap(bucket: str) -> float:
-    return PEER_PE_IP_CAP if bucket == "ic_ip" else PEER_PE_HARD_CAP
+    b = str(bucket or "")
+    if b == "ic_ip":
+        return PEER_PE_IP_CAP
+    if b == "cyclical":
+        return PEER_PE_CYCLICAL_CAP
+    if b == "finance":
+        return PEER_PE_FINANCE_CAP
+    if b == "biotech":
+        return PEER_PE_BIOTECH_CAP
+    return PEER_PE_HARD_CAP
+
+
+def _median_sorted(vals: Sequence[float]) -> Optional[float]:
+    xs = sorted(float(v) for v in vals if _finite(v) is not None)
+    if not xs:
+        return None
+    n = len(xs)
+    mid = n // 2
+    if n % 2:
+        return float(xs[mid])
+    return float(xs[mid - 1] + xs[mid]) / 2.0
+
+
+def _annualize_cum_eps(eps: float, season: int) -> Optional[float]:
+    e = _finite(eps)
+    if e is None or e <= 0:
+        return None
+    s = int(season or 0)
+    if s >= 4:
+        return float(e)
+    if s == 3:
+        return float(e) * 4.0 / 3.0
+    if s == 2:
+        return float(e) * 2.0
+    if s == 1:
+        return float(e) * 4.0
+    return None
+
+
+def twse_industry_peer_pe_median(
+    conn: sqlite3.Connection,
+    sid: str,
+    *,
+    as_of: str,
+    min_n: int = PEER_PE_MEDIAN_MIN_N,
+) -> Dict[str, Any]:
+    """證交所粗產業同業本益滾動中位（官方收／季累計 EPS）。
+
+    來源：stock_universe.industry ＋ daily_quotes.close ＋ quarterly_income.eps。
+    年化：Q1×4、Q2×2、Q3×4/3、Q4 用全年。極端值剔除後取中位。
+    樣本不足回 median=None（呼叫端改吃產業備援表）。
+    """
+    empty = {
+        "median": None,
+        "n": 0,
+        "industry": "",
+        "source": "twse_industry_peer_pe",
+    }
+    sid_s = str(sid or "").strip()
+    day = str(as_of or "").replace("-", "")[:8]
+    if len(sid_s) != 4 or len(day) != 8:
+        return empty
+    try:
+        row = conn.execute(
+            """
+            SELECT COALESCE(industry, '') FROM stock_universe
+            WHERE stock_id=? LIMIT 1
+            """,
+            (sid_s,),
+        ).fetchone()
+    except sqlite3.Error:
+        return empty
+    industry = str(row[0] if row else "").strip()
+    if not industry:
+        return empty
+    try:
+        peers = [
+            str(r[0])
+            for r in conn.execute(
+                """
+                SELECT stock_id FROM stock_universe
+                WHERE industry=? AND length(stock_id)=4
+                  AND UPPER(COALESCE(market_type,'')) IN ('TW','TWO','TSE','OTC','')
+                """,
+                (industry,),
+            ).fetchall()
+            if r and r[0]
+        ]
+    except sqlite3.Error:
+        return empty
+    pes: List[float] = []
+    for psid in peers:
+        try:
+            cq = conn.execute(
+                """
+                SELECT close FROM daily_quotes
+                WHERE stock_id=? AND REPLACE(CAST(date AS TEXT),'-','')<=?
+                  AND close IS NOT NULL AND close>0
+                ORDER BY date DESC LIMIT 1
+                """,
+                (psid, day),
+            ).fetchone()
+            eq = conn.execute(
+                """
+                SELECT eps, season FROM quarterly_income
+                WHERE stock_id=? AND eps IS NOT NULL AND eps>0
+                ORDER BY year DESC, season DESC LIMIT 1
+                """,
+                (psid,),
+            ).fetchone()
+        except sqlite3.Error:
+            continue
+        if not cq or not eq:
+            continue
+        close = _finite(cq[0])
+        ann = _annualize_cum_eps(float(eq[0]), int(eq[1] or 0))
+        if close is None or ann is None or ann <= 0:
+            continue
+        pe = float(close) / float(ann)
+        if pe < PEER_PE_MEDIAN_LO or pe > PEER_PE_MEDIAN_HI:
+            continue
+        pes.append(pe)
+    med = _median_sorted(pes)
+    if med is None or len(pes) < int(min_n):
+        return {
+            "median": None,
+            "n": len(pes),
+            "industry": industry,
+            "source": "twse_industry_peer_pe",
+        }
+    return {
+        "median": float(med),
+        "n": len(pes),
+        "industry": industry,
+        "source": "twse_industry_peer_pe",
+    }
 
 
 def capped_peer_median(raw_med: Optional[float], bucket: str) -> Optional[float]:
@@ -874,7 +1032,7 @@ def enrich_growth_row(
         "core_ratio_pct": core_pct,
         "core_ratio_label": format_core_ratio(core_pct),
         "yoy_pct": yoy_pct,
-        "peer_pe_median_raw": float(peer_med_raw),
+        "peer_pe_median_raw": _finite(peer_med_raw),
         "peer_pe_median": float(med_cap),
         "fair_year": tg["fair_year"],
         "target_next": tg["target_next"],

@@ -273,22 +273,48 @@ def test_eps_progress_pct_not_eaten_by_ellipsis():
 @pytest.mark.skipif(not os.path.exists(DB), reason="no local wayne_market.db")
 def test_flagship_targets_keep_year_semantics_2610():
     """今年合理＝fair_year、明年＝target_next；不准因大小對調年標。"""
-    from lookup_flagship_card_html import _soft_growth, build_flagship_payload
     import sqlite3
+
+    from lookup_flagship_card_html import _soft_growth, build_flagship_payload
 
     p = build_flagship_payload(DB, "2610", as_of="20261118")
     con = sqlite3.connect(DB)
     try:
-        soft = _soft_growth(con, "2610", close=p.get("close"), chain="航運", name="華航")
+        soft = _soft_growth(
+            con, "2610", close=p.get("close"), chain="航運", name="華航", as_of="20261118"
+        )
     finally:
         con.close()
     assert soft.get("fair") and soft.get("tgt")
+    # 合理 PE 必須吃航運同業滾動中位，不准寫死 25
+    assert soft.get("peer_pe_median") is not None
+    assert float(soft["peer_pe_median"]) < 15.0
+    assert "同業中位" in str(soft.get("pe_source") or "")
+    assert "25" not in str(soft.get("pe_source") or "")
 
     def _num(s: str) -> float:
         return float(str(s).replace(",", ""))
 
     assert _num(p["tgt_c"]) == pytest.approx(float(soft["fair"]), rel=0.02)
     assert _num(p["tgt_n"]) == pytest.approx(float(soft["tgt"]), rel=0.02)
+    assert "同業中位" in str(p.get("pe_source") or "")
+
+
+@pytest.mark.skipif(not os.path.exists(DB), reason="no local wayne_market.db")
+def test_twse_industry_peer_pe_median_shipping():
+    import sqlite3
+
+    from undervalue_growth import twse_industry_peer_pe_median
+
+    con = sqlite3.connect(DB)
+    try:
+        info = twse_industry_peer_pe_median(con, "2610", as_of="20261118")
+    finally:
+        con.close()
+    assert info["industry"] == "航運業"
+    assert info["n"] >= 8
+    assert info["median"] is not None
+    assert 6.0 <= float(info["median"]) <= 15.0
 
 
 def test_chip_capsule_note_counts_beyond_five(tmp_path):

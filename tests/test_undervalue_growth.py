@@ -78,20 +78,26 @@ def test_cyclical_and_gross_gates():
     assert not ok2 and "黑名單" in why2
 
     assert industry_bucket("光通訊", ["CPO"], "光聖") == "optical"
-    assert industry_bucket("電子上游-記憶體IC設計", ["DRAM"], "晶豪科") == "default"
+    assert industry_bucket("電子上游-記憶體IC設計", ["DRAM"], "晶豪科") == "cyclical"
     assert industry_bucket("電子上游-IC-代工", ["成熟製程"], "力積電") == "default"
+    assert industry_bucket("航運", [], "華航") == "cyclical"
     assert capped_peer_median(62.5, "optical") == 26.0
     assert capped_peer_median(20.0, "optical") == 20.0
 
     from undervalue_growth import select_fair_pe_pair
 
-    # 中位未破頂→用中位；破頂→產業表
+    # 中位未破頂→用滾動中位；破頂→產業備援表
     y, n, disp = select_fair_pe_pair(13.2, "default")
     assert abs(y - 13.2) < 1e-9
     assert abs(disp - 13.2) < 1e-9
     assert n < y  # 明年倍數略低
     y2, n2, _ = select_fair_pe_pair(62.5, "optical")
     assert (y2, n2) == (26.0, 21.0)
+    # 缺同業中位→產業備援（不准默認 25）
+    y3, n3, _ = select_fair_pe_pair(None, "cyclical")
+    assert (y3, n3) == (12.0, 10.0)
+    y4, n4, _ = select_fair_pe_pair(None, "default")
+    assert (y4, n4) == (16.0, 13.0)
 
 
 def test_chip_capsule_from_daily_quotes_nets():
