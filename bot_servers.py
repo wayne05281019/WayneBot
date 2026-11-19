@@ -225,7 +225,7 @@ def _text_escapes_pending(text: str) -> bool:
         return True
     if t == MENU_BTN_BACK_MAIN or t == MENU_BTN_BACK_STEP:
         return True
-    if t in MENU_ROW1 or t in MENU_ROW2:
+    if t in MENU_ROW1 or t in MENU_ROW2 or t in MENU_ROW3:
         return True
     if t in MENU_BTN_SCREEN_ALIASES or t in MENU_BTN_FLOW_ALIASES:
         return True
@@ -237,7 +237,7 @@ def _text_escapes_pending(text: str) -> bool:
         return True
     if t in MENU_BTN_LEAVE_ZERO_ALIASES or t in MENU_BTN_DONGZHU_ALIASES:
         return True
-    if t in MENU_BTN_PIPELINE_ALIASES:
+    if t in MENU_BTN_PIPELINE_ALIASES or t in MENU_BTN_COMBO_SCREEN_ALIASES:
         return True
     if t in MENU_BTN_BIAOKE_ALIASES or t in MENU_BTN_LEAVE_BIAOKE_ALIASES:
         return True
@@ -693,6 +693,15 @@ MENU_BTN_PIPELINE_ALIASES = (
     "觀測",
     "今日觀測",
 )
+# 最終鈕（§9 鎖名）：機構式串節點篩選；第三排第 1 格，其餘空白保留。
+MENU_BTN_COMBO_SCREEN = "綜合篩選"
+MENU_BTN_COMBO_SCREEN_ALIASES = (
+    MENU_BTN_COMBO_SCREEN,
+    "綜合",
+    "篩選",
+    "機構篩選",
+    "流水篩選",
+)
 MENU_BTN_LEAVE_DONGZHU = "離開洞燭先機"
 MENU_BTN_LEAVE_DONGZHU_ALIASES = (
     MENU_BTN_LEAVE_DONGZHU,
@@ -781,6 +790,16 @@ MENU_ROW2 = (
     MENU_BTN_LEAVE_ZERO,
     MENU_BTN_DONGZHU,
 )
+# 第三排七格：第 1＝綜合篩選；2–7 全形空白保留（之後新功能位）。
+MENU_ROW3 = (
+    MENU_BTN_COMBO_SCREEN,
+    MENU_BTN_SLOT,
+    MENU_BTN_SLOT,
+    MENU_BTN_SLOT,
+    MENU_BTN_SLOT,
+    MENU_BTN_SLOT,
+    MENU_BTN_SLOT,
+)
 MENU_COMPACT_ALIASES = ("精簡選單", "精簡鍵盤")
 MENU_FULL_ALIASES = ("完整選單", "完整鍵盤")
 # 版面改版時遞增，讓舊客戶端自動強制刷新一次。
@@ -818,7 +837,8 @@ MENU_FULL_ALIASES = ("完整選單", "完整鍵盤")
 # v37：下排保留 AI倉，其右加「低估名單」（估值≠買訊；融合後掃；打字別名仍認）。上七下八。
 # v38：主選單拿掉「AI倉」鈕（2026-11-16 使用者鎖）；假錢倉改打字「AI倉」／「模擬倉」仍開。上七下七。
 # v39：下排最左加「流水線」觀測（分層對質，非買訊）。上七下八。
-MENU_LAYOUT_VERSION = "39"
+# v40：第三排七格；第 1＝綜合篩選（機構式串節點：流水線／連買等）；2–7 空白保留。上七下八＋三排七。
+MENU_LAYOUT_VERSION = "40"
 MAX_PICK_INLINE_ROWS = 8
 
 # 輸入列左邊三條槓（Telegram BotCommand）。跟下方兩排重複的不放，避免兩套入口。
@@ -1527,7 +1547,7 @@ class WayneTelegramBot:
         return
 
     def _reply_menu(self, uid: str = "", *, fast: bool = False):
-        """上六下七；下排隔日沖後壓撐觀察，最右洞燭先機。偉權與哥哥同一套，沒有精簡。
+        """上七下八＋第三排七格（第1綜合篩選、餘空白保留）。偉權與哥哥同一套，沒有精簡。
 
         fast=True：不打未讀庫（釘鍵盤／LOADING 後立刻用），避免空白好幾秒。
         """
@@ -1550,6 +1570,7 @@ class WayneTelegramBot:
         rows = [
             row1,
             [KeyboardButton(t) for t in MENU_ROW2],
+            [KeyboardButton(t) for t in MENU_ROW3],
         ]
         placeholder = "打股名／代號"
         try:
@@ -1571,6 +1592,7 @@ class WayneTelegramBot:
         rows = [
             row1,
             [KeyboardButton(t) for t in MENU_ROW2],
+            [KeyboardButton(t) for t in MENU_ROW3],
         ]
         placeholder = "還在飆大。打字＝問飆大。同一顆「離開飆大」回主選單。"
         try:
@@ -1600,6 +1622,7 @@ class WayneTelegramBot:
         rows = [
             [KeyboardButton(t) for t in MENU_ROW1],
             row2,
+            [KeyboardButton(t) for t in MENU_ROW3],
         ]
         placeholder = "還在洞燭。打代號＝能不能留。同一顆「離開洞燭先機」回主選單。"
         try:
@@ -8758,6 +8781,71 @@ class WayneTelegramBot:
                 except Exception:
                     pass
 
+    async def combo_screen_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """綜合篩選：機構式串節點（流水線／連買等各關）；非買訊、不准合成總分榜。
+
+        第一則必須 LOADING；讀庫進 to_thread，不准在 LOADING 前 touch DB。
+        """
+        uid = str(update.effective_user.id)
+        message = update.message
+        wait_h = await self._start_plain_wait(
+            message,
+            text_fn=lambda s: self._wait_bubble(
+                "綜合篩選進行中", s, now="串各節點", rest="推送頁面", fill_sec=18.0
+            ),
+        )
+        try:
+            await self._pin_reply_menu(message)
+        except Exception:
+            pass
+        delivered = False
+        try:
+            try:
+                self._touch_user(
+                    uid, getattr(update.effective_user, "first_name", "") or ""
+                )
+            except Exception:
+                pass
+            try:
+                await self._enter_main_menu(message, uid)
+            except Exception:
+                logger.exception("綜合篩選進主選單失敗，仍組頁")
+
+            def _build() -> str:
+                from pipeline_observe import (
+                    build_pipeline_observe,
+                    format_combo_screen_html,
+                )
+
+                payload = build_pipeline_observe(self.db_path, uid=uid)
+                return format_combo_screen_html(payload)
+
+            try:
+                html = await asyncio.wait_for(
+                    asyncio.to_thread(_build), timeout=45.0
+                )
+            except asyncio.TimeoutError:
+                html = (
+                    "綜合篩選逾時。"
+                    "資料庫忙或節點對質太慢，稍後再按「綜合篩選」。"
+                )
+            except Exception:
+                logger.exception("綜合篩選組頁失敗")
+                html = "綜合篩選失敗。稍後再試或改按流水線／連買等各節點原鈕核對。"
+            if not (html or "").strip():
+                html = "目前組不出綜合篩選（基準日或庫異常）。"
+            await self._stop_plain_wait(*wait_h)
+            await message.reply_html(
+                html, reply_markup=self._reply_menu(uid), disable_web_page_preview=True
+            )
+            delivered = True
+        finally:
+            if not delivered:
+                try:
+                    await self._stop_plain_wait(*wait_h)
+                except Exception:
+                    pass
+
     async def flow_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """資金輪動：第一個 await 必須是 LOADING；結束一定有內容或清楚中文原因。
 
@@ -9563,6 +9651,18 @@ class WayneTelegramBot:
             logger.info("主選單：流水線觀測 uid=%s", uid)
             self._pending.pop(actor, None)
             await self.pipeline_cmd(update, context)
+            return
+        if text in MENU_BTN_COMBO_SCREEN_ALIASES or text.lower().lstrip("/") in (
+            "combo",
+            "combo_screen",
+            "screen_combo",
+        ):
+            logger.info("主選單：綜合篩選 uid=%s", uid)
+            self._pending.pop(actor, None)
+            await self.combo_screen_cmd(update, context)
+            return
+        # 第三排空白保留格＝忽略，不准當指令。
+        if (update.message.text or "") == MENU_BTN_SLOT:
             return
         if text in MENU_BTN_SCREEN_ALIASES or text.lower().lstrip("/") == "screen":
             logger.info("主選單：海選 uid=%s", uid)

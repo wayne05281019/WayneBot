@@ -44,12 +44,12 @@ def test_reply_menu_is_two_rows_not_three():
     assert MENU_BTN_AI == "AI倉"
     assert MENU_BTN_WINRATE == "勝率買點"
     assert MENU_BTN_WATCH == "加入觀察"
-    assert MENU_LAYOUT_VERSION == "39"
+    assert MENU_LAYOUT_VERSION == "40"
     from bot_servers import MENU_BTN_CHONG, MENU_BTN_WAVE_STATUS
 
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     kb = bot._reply_menu()
-    assert len(kb.keyboard) == 2
+    assert len(kb.keyboard) == 3
     row1 = [btn.text for btn in kb.keyboard[0]]
     row2 = [btn.text for btn in kb.keyboard[1]]
     assert len(row1) == 7 and len(row2) == 8

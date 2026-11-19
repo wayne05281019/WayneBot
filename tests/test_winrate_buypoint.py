@@ -51,10 +51,12 @@ def _seed_elec_universe(db: str, rows) -> None:
 
 def test_menu_winrate_first_hai_xuan_second():
     assert MENU_BTN_WINRATE == "勝率買點"
-    assert MENU_LAYOUT_VERSION == "39"
+    assert MENU_LAYOUT_VERSION == "40"
     assert MENU_ROW1[0] == MENU_BTN_WINRATE
     assert MENU_ROW1[1] == "海選"
     assert len(MENU_ROW1) == 7 and len(MENU_ROW2) == 8
+    from bot_servers import MENU_ROW3
+    assert len(MENU_ROW3) == 7
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     row1 = [b.text for b in bot._reply_menu().keyboard[0]]
     assert row1[0] == "勝率買點"

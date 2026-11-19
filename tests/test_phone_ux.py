@@ -10,6 +10,7 @@ from bot_servers import (
     MENU_BTN_MARKET,
     MENU_ROW1,
     MENU_ROW2,
+    MENU_ROW3,
     PHONE_BUSY,
     WayneTelegramBot,
     _ACTIVE_PHONE_UID,
@@ -42,7 +43,7 @@ def test_context_uid_keeps_full_keyboard_without_arg(tmp_path):
     try:
         kb = bot._keyboard()
         labels = [b.text for row in kb.keyboard for b in row]
-        assert labels == list(MENU_ROW1) + list(MENU_ROW2)
+        assert labels == list(MENU_ROW1) + list(MENU_ROW2) + list(MENU_ROW3)
         assert "波浪位階" in labels
         assert "沖區" in labels
         assert MENU_BTN_MARKET in labels
@@ -63,7 +64,7 @@ def test_callback_bot_from_user_still_full(tmp_path):
     try:
         assert bot._menu_uid_from_message(msg) == "9001"
         labels = [b.text for row in bot._reply_menu().keyboard for b in row]
-        assert labels == list(MENU_ROW1) + list(MENU_ROW2)
+        assert labels == list(MENU_ROW1) + list(MENU_ROW2) + list(MENU_ROW3)
         actor = bot._actor_key(msg)
         assert actor.startswith("9001:")
         assert actor.endswith(":9001")
@@ -84,7 +85,7 @@ def test_restore_main_menu_ignores_old_compact_flag(tmp_path):
     assert "精簡" not in html
     kb = msg.reply_html.await_args.kwargs["reply_markup"]
     labels = [b.text for row in kb.keyboard for b in row]
-    assert labels == list(MENU_ROW1) + list(MENU_ROW2)
+    assert labels == list(MENU_ROW1) + list(MENU_ROW2) + list(MENU_ROW3)
 
 
 def test_restore_main_menu_full_copy(tmp_path):
@@ -132,7 +133,7 @@ def test_market_error_keeps_full_keyboard_and_hides_exception(tmp_path):
     assert "secret" not in text
     kb = msg.reply_text.await_args.kwargs["reply_markup"]
     labels = [b.text for row in kb.keyboard for b in row]
-    assert labels == list(MENU_ROW1) + list(MENU_ROW2)
+    assert labels == list(MENU_ROW1) + list(MENU_ROW2) + list(MENU_ROW3)
 
 
 def test_source_hides_ops_and_tracebacks():

@@ -20,6 +20,9 @@ from bot_servers import (
     MENU_LAYOUT_VERSION,
     MENU_ROW1,
     MENU_ROW2,
+    MENU_ROW3,
+    MENU_BTN_COMBO_SCREEN,
+    MENU_BTN_SLOT,
     WayneTelegramBot,
     MENU_BTN_WATCH,
 )
@@ -28,7 +31,7 @@ from wayne_db import init_database
 
 
 def test_full_menu_is_two_rows_no_compact():
-    assert MENU_LAYOUT_VERSION == "39"
+    assert MENU_LAYOUT_VERSION == "40"
     assert MENU_ROW1 == (
         MENU_BTN_WINRATE,
         "海選",
@@ -56,6 +59,10 @@ def test_full_menu_is_two_rows_no_compact():
     kb = bot._reply_menu()
     assert [b.text for b in kb.keyboard[0]] == list(MENU_ROW1)
     assert [b.text for b in kb.keyboard[1]] == list(MENU_ROW2)
+    assert [b.text for b in kb.keyboard[2]] == list(MENU_ROW3)
+    assert MENU_ROW3[0] == MENU_BTN_COMBO_SCREEN
+    assert MENU_ROW3[1:] == (MENU_BTN_SLOT,) * 6
+    assert len(kb.keyboard) == 3
 
 
 def test_old_compact_flag_cannot_shrink_keyboard(tmp_path):
@@ -65,9 +72,9 @@ def test_old_compact_flag_cannot_shrink_keyboard(tmp_path):
     bot.db_path = db
     bot._set_menu_compact("9", True)
     kb = bot._reply_menu("9")
-    assert len(kb.keyboard) == 2
+    assert len(kb.keyboard) == 3
     labels = [b.text for row in kb.keyboard for b in row]
-    assert labels == list(MENU_ROW1) + list(MENU_ROW2)
+    assert labels == list(MENU_ROW1) + list(MENU_ROW2) + list(MENU_ROW3)
     assert "波浪位階" in labels
     assert "沖區" in labels
     assert MENU_BTN_UNDERVALUE in labels
