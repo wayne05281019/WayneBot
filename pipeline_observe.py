@@ -574,11 +574,275 @@ def format_pipeline_observe_html(payload: Dict[str, Any]) -> str:
     return join_dashed(*blocks)
 
 
-def format_combo_screen_html(payload: Dict[str, Any]) -> str:
-    """綜合篩選：機構式串節點（環境→主題→候選→進場閘→連買／帳簿）；非買訊。
+def _sid_label(sid: str, name: str = "", *, days: Any = None) -> str:
+    s = str(sid or "").strip()
+    n = str(name or "").strip()
+    if not s:
+        return ""
+    lab = f"{s}{n}" if n else s
+    try:
+        d = int(days) if days is not None else 0
+    except Exception:
+        d = 0
+    if d > 0:
+        lab += f"·{d}天"
+    return lab
 
-    與流水線觀測共用同一套分層真相，標題與導語改成篩選鏈口吻；不准合成總分榜。
-    """
+
+def _join_sid_labels(items: Sequence[Dict[str, Any]], *, limit: int = 12) -> str:
+    labels: List[str] = []
+    for it in list(items)[: max(0, int(limit))]:
+        lab = _sid_label(
+            str(it.get("sid") or ""),
+            str(it.get("name") or ""),
+            days=it.get("days"),
+        )
+        if lab:
+            labels.append(lab)
+    if not labels:
+        return "今日無"
+    more = len(items) - len(labels)
+    tail = f"…另{more}" if more > 0 else ""
+    return "、".join(labels) + tail
+
+
+def _live_judge_pack(
+    market_db: str,
+    kind: str,
+    as_of: str,
+    *,
+    limit: int = 24,
+    bucket_key: str = "",
+    allow_latest: bool = True,
+) -> Tuple[str, List[Dict[str, Any]]]:
+    """從 evolve live_judge 取節點名單；回 (as_of, rows)。失敗＝空，不准假造。"""
+    want = _ymd(as_of)
+    if not kind:
+        return "", []
+    try:
+        from judge_tape import store_path
+
+        path = store_path(market_db)
+    except Exception:
+        return "", []
+    try:
+        conn = sqlite3.connect(path, timeout=10.0)
+        try:
+            day = want
+            if day:
+                n = conn.execute(
+                    "SELECT COUNT(1) FROM live_judge "
+                    "WHERE kind=? AND REPLACE(CAST(as_of AS TEXT),'-','')=?",
+                    (str(kind), day),
+                ).fetchone()
+                if not (n and int(n[0] or 0)) and allow_latest:
+                    day = ""
+            if not day and allow_latest:
+                row = conn.execute(
+                    "SELECT REPLACE(CAST(as_of AS TEXT),'-','') FROM live_judge "
+                    "WHERE kind=? ORDER BY REPLACE(CAST(as_of AS TEXT),'-','') DESC "
+                    "LIMIT 1",
+                    (str(kind),),
+                ).fetchone()
+                day = _ymd(row[0] if row else "")
+            if not day:
+                return "", []
+            rows = conn.execute(
+                "SELECT sid, name, extra FROM live_judge "
+                "WHERE kind=? AND REPLACE(CAST(as_of AS TEXT),'-','')=? "
+                "ORDER BY sid LIMIT ?",
+                (str(kind), day, max(int(limit) * 4, int(limit))),
+            ).fetchall()
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return "", []
+    out: List[Dict[str, Any]] = []
+    want_bucket = str(bucket_key or "").strip()
+    for sid, name, extra in rows:
+        s = str(sid or "").strip()
+        if not s:
+            continue
+        if want_bucket:
+            raw = str(extra or "")
+            if f'"bucket_key": "{want_bucket}"' not in raw and (
+                f'"bucket_key":"{want_bucket}"' not in raw
+            ):
+                # 寬鬆解析 JSON
+                try:
+                    import json
+
+                    blob = json.loads(raw) if raw else {}
+                    if str(blob.get("bucket_key") or "") != want_bucket:
+                        continue
+                except Exception:
+                    continue
+        out.append({"sid": s, "name": str(name or "").strip()})
+        if len(out) >= int(limit):
+            break
+    return day, out
+
+
+def _streak_top_rows(
+    db_path: str, kind: str, *, as_of: str = "", limit: int = 8
+) -> Tuple[str, List[Dict[str, Any]]]:
+    """連買最長天數桶前幾檔；回 (chip_as_of, rows)。觀察非買訊。"""
+    try:
+        from buy_streak import load_snapshot
+    except Exception:
+        return "", []
+    try:
+        snap = load_snapshot(db_path, kind, "ALL", as_of=as_of or None, use_cache=True)
+    except Exception:
+        return "", []
+    chip = _ymd(getattr(snap, "as_of", "") or "")
+    by_days = getattr(snap, "by_days", None) or {}
+    if not by_days:
+        return chip, []
+    ranked: List[Tuple[int, Any]] = []
+    for d, rows in by_days.items():
+        try:
+            days = int(d)
+        except Exception:
+            continue
+        for r in list(rows or []):
+            ranked.append((days, r))
+    ranked.sort(
+        key=lambda pair: (
+            -int(pair[0]),
+            -int(getattr(pair[1], "lead_lots", 0) or 0),
+            str(getattr(pair[1], "stock_id", "") or ""),
+        )
+    )
+    out: List[Dict[str, Any]] = []
+    for days, r in ranked[: max(0, int(limit))]:
+        sid = str(getattr(r, "stock_id", "") or "").strip()
+        if not sid:
+            continue
+        out.append(
+            {
+                "sid": sid,
+                "name": str(getattr(r, "name", "") or "").strip(),
+                "days": int(getattr(r, "days", days) or days),
+            }
+        )
+    return chip, out
+
+
+def build_combo_screen(
+    db_path: str,
+    *,
+    uid: str = "",
+    now=None,
+) -> Dict[str, Any]:
+    """綜合篩選 payload＝流水線對質＋各節點真名單（分欄，不准合成總分）。"""
+    base = build_pipeline_observe(db_path, uid=uid, now=now)
+    path = str(db_path or "").strip()
+    desk = _ymd(base.get("desk_as_of") or "")
+    lists: Dict[str, Any] = {}
+
+    # 進場可執行：勝率買點 roster（含名）
+    wr_items: List[Dict[str, Any]] = []
+    wr_as = desk
+    try:
+        from winrate_buypoint import latest_roster_as_of, load_winrate_roster, roster_marked
+
+        latest = _ymd(latest_roster_as_of(path)) if path else ""
+        use = desk if desk and roster_marked(path, desk) else latest
+        rows = load_winrate_roster(path, use) if path and use else []
+        for r in rows:
+            sid = str(r.get("stock_id") or "").strip()
+            if sid:
+                wr_items.append(
+                    {"sid": sid, "name": str(r.get("stock_name") or "").strip()}
+                )
+        wr_as = use or desk
+        if not wr_items and path:
+            wr_as, wr_items = _live_judge_pack(path, "winrate_buypoint", desk, limit=24)
+    except Exception:
+        if path:
+            wr_as, wr_items = _live_judge_pack(path, "winrate_buypoint", desk, limit=24)
+    lists["winrate"] = {"as_of": wr_as, "items": wr_items, "buy_ok": True}
+
+    # 剛離零／紅箭：live_judge 真落檔；紅箭無 kind 時退海選桶
+    lz_as, lz = _live_judge_pack(path, "leave_zero", desk, limit=24) if path else ("", [])
+    ma_as, ma = (
+        _live_judge_pack(path, "ma60_lower", desk, limit=24) if path else ("", [])
+    )
+    if not ma and path and desk:
+        try:
+            from screen_sessions import load_session_results, screen_session_has_data
+
+            if screen_session_has_data(path, desk):
+                res = load_session_results(path, desk, "morning") or {}
+                if not any(res.values()):
+                    res = load_session_results(path, desk, "evening") or {}
+                for sid in _ids_from_bucket(res, "ma60_lower"):
+                    ma.append({"sid": sid, "name": ""})
+                if ma:
+                    ma_as = desk
+        except Exception:
+            pass
+    lists["leave_zero"] = {"as_of": lz_as or desk, "items": lz, "buy_ok": True}
+    lists["ma60_lower"] = {"as_of": ma_as or desk, "items": ma, "buy_ok": True}
+
+    # 低估★（估值≠買訊）
+    uv_items: List[Dict[str, Any]] = []
+    uv_as = desk
+    try:
+        from undervalue_sync import load_picks
+
+        picks = load_picks(path, desk) if path and desk else []
+        for r in picks:
+            if str(r.get("mark") or "") != "star":
+                continue
+            sid = str(r.get("stock_id") or "").strip()
+            if sid:
+                uv_items.append(
+                    {"sid": sid, "name": str(r.get("name") or "").strip()}
+                )
+        if uv_items:
+            uv_as = desk
+        elif path:
+            uv_as, uv_items = _live_judge_pack(
+                path, "undervalue", desk, limit=16, bucket_key="star"
+            )
+    except Exception:
+        if path:
+            uv_as, uv_items = _live_judge_pack(
+                path, "undervalue", desk, limit=16, bucket_key="star"
+            )
+    lists["undervalue_star"] = {
+        "as_of": uv_as or desk,
+        "items": uv_items,
+        "buy_ok": False,
+    }
+
+    # 連買：外資／投信／雙買各取最長天數前幾檔；算不出再退 live_judge 樣本
+    for kind, key, lj_kind in (
+        ("foreign", "streak_foreign", "streak_foreign"),
+        ("trust", "streak_trust", "streak_trust"),
+        ("both", "streak_both", "streak_both"),
+    ):
+        chip_as, items = (
+            _streak_top_rows(path, kind, as_of=desk, limit=8) if path else ("", [])
+        )
+        if not items and path:
+            chip_as, items = _live_judge_pack(path, lj_kind, desk, limit=8)
+        lists[key] = {
+            "as_of": chip_as or desk,
+            "items": items,
+            "buy_ok": False,
+            "kind": kind,
+        }
+
+    base["lists"] = lists
+    base["combo"] = True
+    return base
+
+
+def format_combo_screen_html(payload: Dict[str, Any]) -> str:
+    """綜合篩選：先列各節點真名單，再附節點對質；非買訊、不准合成總分榜。"""
     from html import escape
     from tg_layout import join_dashed, title_line
 
@@ -586,36 +850,53 @@ def format_combo_screen_html(payload: Dict[str, Any]) -> str:
     fuse = _zh(payload.get("fuse_as_of") or "")
     today = _zh(payload.get("today") or "")
     summ = payload.get("summary") or {}
+    lists = payload.get("lists") or {}
     blocks: List[str] = [
         title_line("綜合篩選", desk, "非買訊"),
         "機構式節點：環境→主題→候選池→進場閘→連買／帳簿",
         f"日曆 {escape(today)}｜基準 {escape(desk)}｜fuse上限 {escape(fuse)}",
         f"節點齊 {summ.get('ok_n', 0)}／{summ.get('layer_n', 0)}｜失真 {summ.get('bad_n', 0)}｜問題 {summ.get('issue_n', 0)}",
     ]
-    issues: Sequence[LayerIssue] = payload.get("issues") or []
-    if issues:
-        lines = [f"· {escape(i.node)}：{escape(i.detail)}" for i in list(issues)[:12]]
-        blocks.append("<b>節點對質</b>\n" + "\n".join(lines))
 
-    for L in payload.get("layers") or []:
-        if not isinstance(L, Layer):
-            title = str(L.get("title") or "")
-            status = str(L.get("status") or "")
-            body = "\n".join(escape(x) for x in (L.get("lines") or []))
-            extra = "\n".join(escape(x) for x in (L.get("issues") or []))
-        else:
-            title, status = L.title, L.status
-            body = "\n".join(escape(x) for x in L.lines)
-            extra = "\n".join(escape(x) for x in L.issues)
-        head = f"<b>{escape(title)}</b>〔{escape(status)}〕"
-        chunk = head
-        if body:
-            chunk += "\n" + body
-        if extra:
-            chunk += "\n" + extra
+    def _sec(title: str, key: str, *, note: str = "") -> None:
+        pack = lists.get(key) or {}
+        items = list(pack.get("items") or [])
+        buy = "可進場" if pack.get("buy_ok") else "觀察非買"
+        head = f"<b>{escape(title)}</b>〔{escape(buy)}〕 n={len(items)}"
+        as_raw = _ymd(pack.get("as_of") or "")
+        if as_raw:
+            head += f"｜{_zh(as_raw)}"
+        body = _join_sid_labels(items, limit=12)
+        chunk = head + "\n" + escape(body)
+        if note:
+            chunk += "\n" + escape(note)
         blocks.append(chunk)
 
+    # 名單在前：使用者按這顆就是要看股票
+    _sec("進場｜勝率買點", "winrate", note="母閘剛離零＋出圖確認")
+    _sec("進場｜剛離零", "leave_zero", note="當日雷達落檔")
+    _sec("進場｜紅箭確認", "ma60_lower", note="未確認紅箭不算買訊")
+    _sec("觀察｜低估★", "undervalue_star", note="估值≠買訊")
+    _sec("觀察｜連買外資最長", "streak_foreign")
+    _sec("觀察｜連買投信最長", "streak_trust")
+    _sec("觀察｜連買雙買最長", "streak_both")
+
+    issues: Sequence[LayerIssue] = payload.get("issues") or []
+    if issues:
+        lines = [f"· {escape(i.node)}：{escape(i.detail)}" for i in list(issues)[:8]]
+        blocks.append("<b>節點對質</b>\n" + "\n".join(lines))
+
+    # 層狀態精簡一行，避免蓋住名單
+    layer_bits: List[str] = []
+    for L in payload.get("layers") or []:
+        if isinstance(L, Layer):
+            layer_bits.append(f"{L.title}{L.status}")
+        elif isinstance(L, dict):
+            layer_bits.append(f"{L.get('title') or ''}{L.get('status') or ''}")
+    if layer_bits:
+        blocks.append("<b>節點狀態</b> " + escape("｜".join(layer_bits)))
+
     blocks.append(
-        "<i>綜合篩選＝串節點對質，不是買訊、不准合成總分。進場只認勝率買點／剛離零與已確認紅箭。</i>"
+        "<i>各節點分開列，不准合成總分榜。進場只認勝率買點／剛離零與已確認紅箭；低估・連買只觀察。</i>"
     )
     return join_dashed(*blocks)

@@ -8813,11 +8813,11 @@ class WayneTelegramBot:
 
             def _build() -> str:
                 from pipeline_observe import (
-                    build_pipeline_observe,
+                    build_combo_screen,
                     format_combo_screen_html,
                 )
 
-                payload = build_pipeline_observe(self.db_path, uid=uid)
+                payload = build_combo_screen(self.db_path, uid=uid)
                 return format_combo_screen_html(payload)
 
             try:

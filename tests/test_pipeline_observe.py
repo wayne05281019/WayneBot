@@ -113,13 +113,33 @@ def test_pipeline_observe_builds_layers(tmp_path):
     assert "非買訊" in html
     assert payload.get("layers")
     assert payload.get("not_buy_signal") is True
-    from pipeline_observe import format_combo_screen_html
+    from pipeline_observe import build_combo_screen, format_combo_screen_html
+    from unittest.mock import patch
 
-    combo = format_combo_screen_html(payload)
-    assert "綜合篩選" in combo
-    assert "機構式節點" in combo
-    assert "非買訊" in combo
-    assert "總分" in combo
+    # 無 lists 時仍可渲染（今日無），不准炸
+    combo_bare = format_combo_screen_html(payload)
+    assert "綜合篩選" in combo_bare
+    assert "機構式節點" in combo_bare
+    assert "非買訊" in combo_bare
+    assert "總分" in combo_bare
+    assert "進場｜勝率買點" in combo_bare
+    # 有名單：勝率買點必須出現真實代號，不准只剩對質統計
+    # tmp DB 無產業鏈標 → AI-only 會清空；測組頁路徑時放行 roster
+    with patch(
+        "winrate_ai_priority.filter_winrate_rows_ai_only",
+        side_effect=lambda rows, db_path="": list(rows),
+    ):
+        combo_payload = build_combo_screen(
+            db,
+            uid="9",
+            now=datetime(2026, 11, 19, 9, 0, tzinfo=ZoneInfo("Asia/Taipei")),
+        )
+    assert combo_payload.get("combo") is True
+    wr = (combo_payload.get("lists") or {}).get("winrate") or {}
+    assert any(str(it.get("sid")) == "2317" for it in (wr.get("items") or []))
+    combo = format_combo_screen_html(combo_payload)
+    assert "2317" in combo and "鴻海" in combo
+    assert "進場｜勝率買點" in combo
     # 勝率有檔、海選桶空＝產品層差異說明，不准當失真 issues
     gate = next((L for L in payload["layers"] if getattr(L, "id", None) == "gate"), None)
     assert gate is not None
