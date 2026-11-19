@@ -1662,8 +1662,8 @@ def test_outlook_action_plain_risk_off_and_neutral():
         vs_ma20=0.8,
         ixic_pct=0.21,
     )
-    assert "黃金買點" in hold
-    assert "紅箭確認照表" in hold
+    assert "已過閘買訊" in hold
+    assert "紅箭確認照表" not in hold
     assert "還在零照表" not in hold
     assert "周帶量" not in hold
     cheap_night = _outlook_action_plain(
@@ -1674,7 +1674,7 @@ def test_outlook_action_plain_risk_off_and_neutral():
         vs_ma20=1.2,
         ixic_pct=1.4,
     )
-    assert "黃金買點" in cheap_night
+    assert "已過閘買訊" in cheap_night
     assert "台指期夜盤比日盤便宜" in cheap_night
     assert "周帶量" not in cheap_night
     assert "逆風" not in cheap_night
@@ -1808,12 +1808,12 @@ def test_format_screen_market_outlook_html_plain_language():
 
     plain = _plain(html)
     assert "大盤狀況" in html
-    assert "黃金買點" in plain
-    assert "紅箭確認照表" in plain
+    assert "已過閘買訊" in plain
+    assert "紅箭確認照表" not in plain
     assert "還在零照表" not in plain
     assert "周帶量" not in plain
-    assert "<code>黃金買點</code>" in html
-    assert "<code>紅箭確認</code>" in html
+    assert "<code>進場仍只認已過閘買訊</code>" in html
+    assert "<code>別追高</code>" in html
     assert html.split("\n", 1)[0].startswith("<b>WayneBot 海選</b>　2026/09/04")
     assert "昨收" not in html.split("\n", 1)[0]
     assert "(20260904)" not in html
@@ -1911,8 +1911,7 @@ def test_outlook_screenshot_one_fact_per_line_and_bold():
     lines = html.split("\n")
     plain_lines = [re.sub(r"<[^>]+>", "", ln) for ln in lines]
     assert "<code>偏空</code>" in html
-    assert "<code>黃金買點</code>" in html
-    assert "<code>紅箭確認</code>" in html
+    assert "<code>進場仍只認已過閘買訊</code>" in html
     assert "<code>別追高</code>" in html
     assert "周帶量" not in html
     assert "加權收盤" in html and "<code>46,288.00</code>" in html
@@ -1943,11 +1942,11 @@ def test_outlook_screenshot_one_fact_per_line_and_bold():
 def test_outlook_embolden_longest_phrase_first():
     from taiwan_market import _outlook_embolden
 
-    assert _outlook_embolden("偏空。黃金買點、紅箭確認照表，別追高。") == (
-        "<code>偏空</code>。<code>黃金買點</code>、<code>紅箭確認</code>照表，<code>別追高</code>。"
+    assert _outlook_embolden("偏空觀察。進場仍只認已過閘買訊，別追高。") == (
+        "<code>偏空觀察</code>。<code>進場仍只認已過閘買訊</code>，<code>別追高</code>。"
     )
-    assert _outlook_embolden("台指期夜盤比日盤便宜。黃金買點、紅箭確認照表，別追高。") == (
-        "<code>台指期夜盤比日盤便宜</code>。<code>黃金買點</code>、<code>紅箭確認</code>照表，<code>別追高</code>。"
+    assert _outlook_embolden("台指期夜盤比日盤便宜。進場仍只認已過閘買訊，別追高。") == (
+        "<code>台指期夜盤比日盤便宜</code>。<code>進場仍只認已過閘買訊</code>，<code>別追高</code>。"
     )
 
 

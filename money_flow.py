@@ -21,11 +21,17 @@ _LIVE_SECTOR_TTL = 45.0
 _FLOW_HTML_CACHE: Dict[Tuple[Any, ...], Tuple[float, str]] = {}
 _FLOW_HTML_TTL = 45.0
 _FLOW_HTML_LOCK = threading.Lock()
+# 法人有料日掃全表 GROUP BY，暖呼叫必須 memo，否則資金頁 memo 測永遠破 50ms
+_CHIP_DATE_CACHE: Dict[Tuple[str, int], Tuple[float, str]] = {}
+_CHIP_DATE_TTL = 45.0
+_CHIP_DATE_LOCK = threading.Lock()
 
 
 def clear_flow_html_cache() -> None:
     with _FLOW_HTML_LOCK:
         _FLOW_HTML_CACHE.clear()
+    with _CHIP_DATE_LOCK:
+        _CHIP_DATE_CACHE.clear()
 
 
 def ensure_sector_flow_table(conn: sqlite3.Connection) -> None:
@@ -85,9 +91,61 @@ def _latest_date(conn: sqlite3.Connection, db_path: str = "", now=None) -> str:
     return str(row[0] or "").replace("-", "")
 
 
+def latest_chip_quote_date(db_path: str, *, min_nonzero: int = 0) -> str:
+    """最近一個「法人淨額有料」的交易日（非0列數達門檻）。
+
+    現貨日 K 可能先齊、法人欄仍全 0；資金輪動必須跟法人日，不准跟空殼現貨日。
+    """
+    from import_health import MIN_CHIPS_NONZERO
+
+    path = str(db_path or "").strip()
+    need = int(min_nonzero) if min_nonzero > 0 else int(MIN_CHIPS_NONZERO)
+    if not path:
+        return ""
+    key = (path, need)
+    ts_now = time.monotonic()
+    with _CHIP_DATE_LOCK:
+        hit = _CHIP_DATE_CACHE.get(key)
+        if hit and (ts_now - float(hit[0])) < _CHIP_DATE_TTL:
+            return str(hit[1] or "")
+    out = ""
+    try:
+        conn = sqlite3.connect(path, timeout=15.0)
+        try:
+            conn.execute("PRAGMA busy_timeout=5000;")
+            rows = conn.execute(
+                """
+                SELECT REPLACE(CAST(date AS TEXT),'-','') AS d,
+                       SUM(
+                         CASE WHEN (ABS(COALESCE(foreign_net,0))
+                                    +ABS(COALESCE(trust_net,0))
+                                    +ABS(COALESCE(dealer_net,0)))>0
+                              THEN 1 ELSE 0 END
+                       ) AS nz
+                FROM daily_quotes
+                GROUP BY d
+                HAVING nz >= ?
+                ORDER BY d DESC
+                LIMIT 1
+                """,
+                (need,),
+            ).fetchone()
+            out = str(rows[0] or "").replace("-", "")[:8] if rows else ""
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        out = ""
+    with _CHIP_DATE_LOCK:
+        _CHIP_DATE_CACHE[key] = (time.monotonic(), out)
+        if len(_CHIP_DATE_CACHE) > 16:
+            oldest = min(_CHIP_DATE_CACHE.items(), key=lambda kv: float(kv[1][0]))
+            _CHIP_DATE_CACHE.pop(oldest[0], None)
+    return out
+
+
 def resolve_flow_as_of(db_path: str, now=None) -> Tuple[str, Optional[str]]:
     """
-    資金輪動基準日：盤後以 fuse 可融合日為準；庫裡當日上市＋上櫃齊才顯示當日。
+    資金輪動基準日：現貨齊日 ∩ 法人有料日；缺法人不准用空殼現貨日冒充輪動。
     回傳 (yyyymmdd, 若落後於應顯示日則附說明 HTML)。
     """
     from config import taipei_now
@@ -106,21 +164,43 @@ def resolve_flow_as_of(db_path: str, now=None) -> Tuple[str, Optional[str]]:
 
     tw_cap, two_cap, total_cap = count_markets(db_path, cap)
     if sides_complete(tw_cap, two_cap) and int(total_cap or 0) > 0:
-        as_of = cap
+        quote_as = cap
     else:
-        as_of = complete or cap
+        quote_as = complete or cap
+
+    if quote_as > cap:
+        quote_as = cap
+
+    chip_as = latest_chip_quote_date(db_path)
+    # 資金頁內容日＝法人有料日；現貨齊但法人空 → 退到 chip_as 並標失真／落後
+    as_of = quote_as
+    if chip_as and quote_as and chip_as < quote_as:
+        as_of = chip_as
+        lag = (
+            f"<i>現貨齊到 {format_trading_date_zh(quote_as)}，"
+            f"但法人淨額停在 {format_trading_date_zh(chip_as)}；"
+            f"輪動／買賣超只認法人日，不准用空殼現貨日排出 0 張假排名。</i>"
+        )
+    elif not chip_as and quote_as:
+        as_of = quote_as
+        lag = (
+            f"<i>現貨日 {format_trading_date_zh(quote_as)} 法人淨額不足；"
+            f"資金輪動內容不可用，請等盤後法人寫進庫。</i>"
+        )
+    else:
+        as_of = chip_as or quote_as
 
     if as_of > cap:
         as_of = cap
 
     phase = tw_session_phase(now)
     today = now.strftime("%Y%m%d")
-    if cap > as_of and phase in ("after", "open"):
+    if lag is None and cap > as_of and phase in ("after", "open"):
         lag = (
             f"<i>應顯示 {format_trading_date_zh(cap)} 收盤，"
             f"目前僅有 {format_trading_date_zh(as_of)} 資料（盤後更新中或尚未寫入）。</i>"
         )
-    elif tw_post_cash_pre_fuse(now) and as_of and as_of < today:
+    elif lag is None and tw_post_cash_pre_fuse(now) and as_of and as_of < today:
         # 13:30～16:30：cap 常＝昨＝as_of，舊 lag 不出；仍要說清楚盤後未齊。
         lag = (
             f"<i>現貨已收；法人／產業輪動仍截至 {format_trading_date_zh(as_of)} 完整日"
@@ -1329,16 +1409,19 @@ def format_sector_rotation_html(
 
 
 def _top(conn: sqlite3.Connection, ymd: str, col: str, desc: bool, limit: int = 6) -> List[sqlite3.Row]:
+    """個股法人排行：與產業輪動同一套擋 ETF／存託，不准 0050 進買賣超榜。"""
     order = "DESC" if desc else "ASC"
     conn.row_factory = sqlite3.Row
+    etf = _not_etf_clause()
     return conn.execute(
         f"""
-        SELECT stock_id, stock_name, market, close, pct_change, volume,
-               foreign_net, trust_net, dealer_net,
-               (foreign_net+trust_net+dealer_net) AS three_net
-        FROM daily_quotes
-        WHERE date=? AND length(stock_id)=4
-        ORDER BY {col} {order}
+        SELECT q.stock_id, q.stock_name, q.market, q.close, q.pct_change, q.volume,
+               q.foreign_net, q.trust_net, q.dealer_net,
+               (q.foreign_net+q.trust_net+q.dealer_net) AS three_net
+        FROM daily_quotes q
+        LEFT JOIN stock_universe u ON u.stock_id = q.stock_id
+        WHERE q.date=? {etf}
+        ORDER BY q.{col} {order}
         LIMIT ?
         """,
         (ymd, limit),
@@ -1406,12 +1489,16 @@ def format_flow_html(
     from tg_layout import kv_compact, section, join_dashed, title_line, html_metrics_tight, qty_text, pct_text
     from trading_calendar import format_trading_date_zh
 
+    from import_health import MIN_CHIPS_NONZERO
+
     health = audit_import(path, ymd, history=False)
     cover = f"上市 {health['tw']}　上櫃 {health['two']}"
     if health.get("problems"):
         cover += "　⚠️ " + "；".join(health["problems"])
     else:
         cover += "　開盤日兩邊都齊"
+    chips_nz = int(health.get("chips_nonzero") or 0)
+    chips_ok = chips_nz >= int(MIN_CHIPS_NONZERO)
 
     def line(r, col: str, rank: int) -> str:
         n = int(r[col] or 0)
@@ -1419,33 +1506,44 @@ def format_flow_html(
         title = _flow_stock_title(r["stock_id"], r["stock_name"], path, fine_map)
         return f"{rank}. {title}\n{html_metrics_tight(qty_text(n), pct_text(pct))}"
 
-    buy_f = _top(conn, ymd, "foreign_net", True)
-    sell_f = _top(conn, ymd, "foreign_net", False)
-    buy_t = _top(conn, ymd, "trust_net", True)
-    hot = conn.execute(
-        """
-        SELECT stock_id, stock_name, pct_change, volume, foreign_net, trust_net, dealer_net,
-               (foreign_net+trust_net+dealer_net) AS three_net
-        FROM daily_quotes
-        WHERE date=? AND length(stock_id)=4 AND volume>=3000 AND ABS(pct_change)>=1.5
-        ORDER BY ABS(foreign_net) DESC LIMIT 6
-        """,
-        (ymd,),
-    ).fetchall()
+    if chips_ok:
+        buy_f = _top(conn, ymd, "foreign_net", True)
+        sell_f = _top(conn, ymd, "foreign_net", False)
+        buy_t = _top(conn, ymd, "trust_net", True)
+        etf = _not_etf_clause()
+        hot = conn.execute(
+            f"""
+            SELECT q.stock_id, q.stock_name, q.pct_change, q.volume, q.foreign_net, q.trust_net, q.dealer_net,
+                   (q.foreign_net+q.trust_net+q.dealer_net) AS three_net
+            FROM daily_quotes q
+            LEFT JOIN stock_universe u ON u.stock_id = q.stock_id
+            WHERE q.date=? AND length(q.stock_id)=4 AND q.volume>=3000 AND ABS(q.pct_change)>=1.5
+              {etf}
+            ORDER BY ABS(q.foreign_net) DESC LIMIT 6
+            """,
+            (ymd,),
+        ).fetchall()
+    else:
+        buy_f, sell_f, buy_t, hot = [], [], [], []
     sid_pool = []
     for pack in (buy_f, sell_f, buy_t, hot):
         for r in pack:
             sid_pool.append(str(r["stock_id"]))
-    fine_map = _flow_fine_map(path, sid_pool)
+    fine_map = _flow_fine_map(path, sid_pool) if sid_pool else {}
     conn.close()
 
     ymd_s = format_trading_date_zh(ymd)
-    rotation = format_sector_rotation_html(path, ymd, now=now, lag=lag)
+    rotation = format_sector_rotation_html(path, ymd, now=now, lag=lag) if chips_ok else ""
     blocks = []
+    if lag:
+        blocks.append(lag)
     if rotation:
         blocks.append(rotation)
-    elif lag:
-        blocks.append(lag)
+    elif not chips_ok:
+        blocks.append(
+            f"<b>法人未入庫</b>：{ymd_s} 法人非0僅 {chips_nz}，"
+            "不顯示輪動／買賣超排名（避免 0 張假榜）。"
+        )
     blocks.extend(
         [
             title_line("個股資金", ymd_s, ""),
@@ -1456,6 +1554,12 @@ def format_flow_html(
             ),
         ]
     )
+    if not chips_ok:
+        blocks.append("法人欄空：個股買賣超排名略過。")
+        html = join_dashed(*blocks)
+        with _FLOW_HTML_LOCK:
+            _FLOW_HTML_CACHE[memo_key] = (time.monotonic(), html)
+        return html
     blocks.append(
         section(
             "<b>" + html_named("外資") + "買超</b>",

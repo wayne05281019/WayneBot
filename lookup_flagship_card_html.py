@@ -1457,7 +1457,7 @@ def build_flagship_payload(
                 f'<div class="sub amber">現增暫定 {html.escape(place_s)}｜'
                 f"稀釋股本 {html.escape(dilute_s)}</div>"
             )
-        foot = "★可買 ☆等止穩 ⚠️興櫃量小｜興櫃不適用法人與融資指標｜估值≠買訊"
+        foot = "★折價大 ☆等止穩 ⚠️興櫃量小｜興櫃不適用法人與融資指標｜估值≠買訊"
     else:
         mid_title = "股價位置與防線（還原權息）"
         marks = []
@@ -1544,7 +1544,7 @@ def build_flagship_payload(
             f'<div class="chip-row"><span>投信</span><span class="sqs">{_sq(chip_t)}</span></div>'
             f"</div>"
         )
-        foot = "★可買 ☆等止穩 ⚠️興櫃量小｜5日籌碼(左→右)：🟥買 🟩賣｜估值≠買訊"
+        foot = "★折價大 ☆等止穩 ⚠️興櫃量小｜5日籌碼(左→右)：🟥買 🟩賣｜估值≠買訊"
 
     # peers html（對齊 mock：名 + 倍數）
     peer_lines = []
@@ -2018,7 +2018,7 @@ def fill_flagship_html(d: Dict[str, Any]) -> str:
         bl_bottom = (
             f'<div class="cell-sub amber">{html.escape(d.get("emerging_note", "現增與流動性待補"))}</div>'
         )
-        footer = "★可買 ☆等止穩 ⚠️興櫃量小｜興櫃不適用法人與融資指標｜估值≠買訊"
+        footer = "★折價大 ☆等止穩 ⚠️興櫃量小｜興櫃不適用法人與融資指標｜估值≠買訊"
         ruler_title = "興櫃防線與流動性警示"
     else:
         bl_title = "目標價（今年合理／明年）＋近5日"
@@ -2030,7 +2030,7 @@ def fill_flagship_html(d: Dict[str, Any]) -> str:
             f'<span>投信</span><span class="sq-group">{t_sq}</span>'
             f"</div>"
         )
-        footer = "★可買 ☆等止穩 ⚠️興櫃量小｜5日籌碼(左→右)：🟥買 🟩賣｜估值≠買訊"
+        footer = "★折價大 ☆等止穩 ⚠️興櫃量小｜5日籌碼(左→右)：🟥買 🟩賣｜估值≠買訊"
         ruler_title = "股價位置與防線 (還原權息)"
 
     peers_html = "\n".join(

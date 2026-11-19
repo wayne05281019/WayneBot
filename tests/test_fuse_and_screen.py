@@ -577,14 +577,19 @@ class FuseAndScreenTest(unittest.TestCase):
             self.assertIn("+8,450張", html)
             self.assertNotIn("</code>張", html)
             # 凍結盤後已齊時鐘，避免 13:30～16:30 未齊標題改「資金輪動…尚未匯入」
+            # 本測只有數檔法人非0；把門檻降到樣本規模，仍驗「真有料才出輪動」契約
             from datetime import datetime
             from zoneinfo import ZoneInfo
 
-            flow = format_flow_html(
-                path,
-                yyyymmdd="20260828",
-                now=datetime(2026, 8, 28, 17, 0, tzinfo=ZoneInfo("Asia/Taipei")),
-            )
+            from money_flow import clear_flow_html_cache
+
+            clear_flow_html_cache()
+            with patch("import_health.MIN_CHIPS_NONZERO", 5):
+                flow = format_flow_html(
+                    path,
+                    yyyymmdd="20260828",
+                    now=datetime(2026, 8, 28, 17, 0, tzinfo=ZoneInfo("Asia/Taipei")),
+                )
             self.assertIn("盤後資金輪動", flow)
             self.assertIn("個股資金", flow)
             self.assertIn("買超", flow)

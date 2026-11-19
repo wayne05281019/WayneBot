@@ -4416,7 +4416,7 @@ def _latest_biaoke_index_snip(
     若寫了 8498／35000~38000 而最新主文沒寫，也併入（後文改口壓前文）。
     with_id=True 時回 (snip, post_id)；否則只回 snip 字串。
     """
-    empty = ("", "") if with_id else ""
+    empty = ("", "", "") if with_id else ""
     cap = _ymd(cap_ymd)
     if not db_path or not cap:
         return empty
@@ -4598,7 +4598,8 @@ def _latest_biaoke_index_snip(
         joined = main_flat[:budget].rstrip() + ("｜" + keep_tail if keep_tail else "")
         joined = joined[:1600]
     snip = joined
-    return (snip, best_pid) if with_id else snip
+    # with_id：一併回真實文日（YYYY-MM-DD 或 YYYYMMDD），不准用 cap／今天冒充題旨日
+    return (snip, best_pid, best_date) if with_id else snip
 
 
 def _reserve_avoid_zone(
@@ -4769,13 +4770,16 @@ def _latest_level_thesis(
     snip = str((row["snippet"] if row else "") or "")
     post_id = str((row["post_id"] if row else "") or "")
     # 對齊查詢當下最新大盤文：正文像現況位階就覆蓋 snap（仍卡 ≤cap／牆鐘）
-    post_snip, post_snip_id = _latest_biaoke_index_snip(
+    post_snip, post_snip_id, post_snip_day = _latest_biaoke_index_snip(
         db_path, cap, now=dt, with_id=True
     )
+    thesis_day = _ymd((row["as_of"] if row else "") or "") or cap
     if post_snip and (not snip or looks_like_level_now(post_snip)):
         snip = post_snip
         if post_snip_id:
             post_id = post_snip_id
+        if _ymd(post_snip_day):
+            thesis_day = _ymd(post_snip_day)
     # 9波擴延／35500~37300：庫內真文／snap 可壓舊 C3-x；口頭只補「尚無題旨」空窗
     # 更早 as_of／已有橫台・C3-3・C3-5 真文時，不准 oral-c9-band 蓋掉
     # 後文止跌／週五低確認不准被較早 C9／雙軌備線整段蓋掉
@@ -5106,7 +5110,8 @@ def _latest_level_thesis(
         "fib_note": "黃金切割反彈壓 0.382／0.618／0.75（他10/27台指日盤・可修訂）",
         "snippet": snip[:320],
         "snippet_full": snip[:1600],
-        "as_of": str((row["as_of"] if row else "") or cap),
+        # 真實題旨文日（不是 cap＝max(柱,今天)）；新鮮度比對靠這欄
+        "as_of": thesis_day,
         "post_id": post_id,
         "chart_as_of": cap,
     }
@@ -6578,32 +6583,60 @@ def _soxx_volume_by_date(db_path: str, since: str = "20260301") -> Dict[str, flo
 
 
 def _us_lead_read(db_path: str) -> Dict[str, Any]:
-    """納指／費半先行（活化 us_overnight；他的外圍順序）。缺柱先自己補。"""
+    """納指／費半先行（活化 us_overnight；他的外圍順序）。缺柱先自己補。
+
+    與大盤頁同一套新鮮閘：過舊／press_miss 只標停在哪日，％不准進判斷（§3／鮮）。
+    """
     out: Dict[str, Any] = {"note": "", "levels": {}}
     try:
         _ensure_us_index_daily(db_path)
     except Exception:
         logger.exception("補美股日K略過")
     try:
-        from us_overnight import load_us_overnight
+        from taiwan_market import _resolve_us_for_display
     except Exception:
-        return out
-    # 找最近有資料的 as_of；煙霧／空庫缺表不准炸 pack／preflight
-    conn = sqlite3.connect(db_path, timeout=15.0)
+        _resolve_us_for_display = None  # type: ignore
+    tw_as = ""
     try:
-        row = conn.execute(
-            "SELECT as_of FROM us_overnight ORDER BY as_of DESC LIMIT 1"
-        ).fetchone()
-    except sqlite3.OperationalError:
-        return out
-    finally:
-        conn.close()
-    if not row:
-        return out
-    as_of = str(row[0])
-    try:
-        us = load_us_overnight(db_path, as_of) or {}
+        tw_as = _ymd(_twii_chart_as_of(db_path))
     except Exception:
+        tw_as = ""
+    us: Dict[str, Any] = {}
+    fresh = False
+    as_of = ""
+    if _resolve_us_for_display and tw_as:
+        try:
+            us, fresh = _resolve_us_for_display(db_path, tw_as)
+            us = us or {}
+            as_of = str(us.get("as_of") or us.get("us_session") or "")
+        except Exception:
+            us, fresh = {}, False
+    if not us:
+        # 退回：最近一列（仍要標鮮度）
+        try:
+            from us_overnight import load_us_overnight
+        except Exception:
+            return out
+        conn = sqlite3.connect(db_path, timeout=15.0)
+        try:
+            row = conn.execute(
+                "SELECT as_of FROM us_overnight ORDER BY as_of DESC LIMIT 1"
+            ).fetchone()
+        except sqlite3.OperationalError:
+            return out
+        finally:
+            conn.close()
+        if not row:
+            return out
+        as_of = str(row[0])
+        try:
+            us = load_us_overnight(db_path, as_of) or {}
+        except Exception:
+            return out
+        fresh = False
+    if us.get("_press_miss") or not fresh:
+        stop = as_of or str(us.get("as_of") or "—")
+        out["note"] = f"美股快取過舊／未齊（停在{stop}），不進位階判斷"
         return out
     ixic_pct = us.get("ixic_pct")
     sox_pct = us.get("sox_pct")
@@ -6614,7 +6647,6 @@ def _us_lead_read(db_path: str) -> Dict[str, Any]:
         out["levels"]["ixic"] = float(ixic_px)
     if sox_px:
         out["levels"]["sox"] = float(sox_px)
-    # 庫內日K最後收也可當錨
     for sym, key in (("SOX", "sox"), ("IXIC", "ixic")):
         if key in out["levels"]:
             continue
@@ -6628,6 +6660,7 @@ def _us_lead_read(db_path: str) -> Dict[str, Any]:
         except (TypeError, ValueError):
             return "—"
 
+    # 外圍狀態句：只描述已收％，不准預測台股開盤／反彈空間
     lead = "外圍中性"
     try:
         sp = float(sox_pct) if sox_pct is not None else None
@@ -6635,15 +6668,16 @@ def _us_lead_read(db_path: str) -> Dict[str, Any]:
     except (TypeError, ValueError):
         sp = ip = None
     if sp is not None and sp <= -2.0:
-        lead = "費半大弱→台指夜／日偏壓（他常用費半先行）"
+        lead = "費半大弱（他常用費半先行）"
     elif sp is not None and sp >= 2.0:
-        lead = "費半偏強→短線反彈空間打開（仍看降軌）"
+        lead = "費半偏強（外圍）"
     elif ip is not None and ip <= -1.5:
-        lead = "納指弱→風險偏收斂"
+        lead = "納指弱"
     elif ip is not None and ip >= 1.5:
-        lead = "納指強→跟漲情緒，仍要過結構壓"
+        lead = "納指強"
+    face_as = as_of or str(us.get("as_of") or "")
     out["note"] = (
-        f"美股{as_of} 納指{_pct(ixic_pct)} 費半{_pct(sox_pct)}"
+        f"美股{face_as} 納指{_pct(ixic_pct)} 費半{_pct(sox_pct)}"
         f"（{regime or '—'}）；{lead}"
     )
     return out
@@ -11481,7 +11515,9 @@ def _build_live_pack(
         "snippet": thesis_pack.get("snippet") or "",
         "snippet_full": thesis_pack.get("snippet_full") or thesis_pack.get("snippet") or "",
         "chart_as_of": chart_as_of,
-        "thesis_as_of": thesis_cap,
+        # 題旨日＝他文真實日；cap 只是搜尋上限，不准寫進 thesis_as_of（否則「題旨落後」永不觸發）
+        "thesis_as_of": _ymd(thesis_pack.get("as_of")) or thesis_cap,
+        "thesis_cap": thesis_cap,
         "query_at": dt.isoformat(),
         "db_path": db_path,
     }

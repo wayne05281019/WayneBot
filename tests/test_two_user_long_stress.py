@@ -343,6 +343,7 @@ def test_two_users_all_buttons_and_help_topics_interleaved(tmp_path):
         "飆大",
         MENU_BTN_MARKET,
         MENU_BTN_FLOW,
+        "流水線",
         MENU_BTN_WAVE_STATUS,
         MENU_BTN_CHONG,
         MENU_BTN_PRESSURE,

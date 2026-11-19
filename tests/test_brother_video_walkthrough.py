@@ -103,9 +103,10 @@ def test_menu_buttons_exist_in_order_seven_plus_seven():
     from bot_servers import MENU_BTN_WINRATE, MENU_BTN_WATCH
 
     assert row1 == [MENU_BTN_WINRATE, "海選", "持股", MENU_BTN_WATCH, MENU_BTN_BIAOKE_FACE, MENU_BTN_MARKET, MENU_BTN_FLOW]
-    from bot_servers import MENU_BTN_CHONG, MENU_BTN_WAVE_STATUS
+    from bot_servers import MENU_BTN_CHONG, MENU_BTN_PIPELINE, MENU_BTN_WAVE_STATUS
 
     assert row2 == [
+        MENU_BTN_PIPELINE,
         MENU_BTN_WAVE_STATUS,
         MENU_BTN_CHONG,
         MENU_BTN_PRESSURE,

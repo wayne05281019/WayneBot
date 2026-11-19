@@ -134,6 +134,17 @@ def save_screen_session(db_path: str, as_of: str, session: str, results: Dict[st
                 ),
             )
             n += 1
+    if n == 0:
+        # 空跑仍落標記列，觀測能分「缺」（沒跑）與「空」（跑過零候選）
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO screen_sessions(
+                as_of, session, bucket, stock_id, stock_name,
+                pick_close, hi20_close, entry_price, defense_price, chase_warning
+            ) VALUES (?,?,?,?,?,?,?,?,?,?)
+            """,
+            (as_of, session, "_empty_mark", "__EMPTY__", "", None, None, None, None, 0),
+        )
     conn.commit()
     conn.close()
     try:
@@ -153,7 +164,11 @@ def session_ids(db_path: str, as_of: str, session: str) -> Set[str]:
         (str(as_of or "").replace("-", ""), session),
     ).fetchall()
     conn.close()
-    return {str(r[0]) for r in rows if r and r[0]}
+    return {
+        str(r[0])
+        for r in rows
+        if r and r[0] and str(r[0]) != "__EMPTY__"
+    }
 
 
 def overlap_ids(db_path: str, as_of: str) -> Set[str]:

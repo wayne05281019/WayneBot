@@ -113,9 +113,9 @@ def test_post_fuse_hook_calls_undervalue(monkeypatch):
 def test_menu_undervalue_without_ai_button():
     from bot_servers import MENU_BTN_AI, MENU_BTN_UNDERVALUE, MENU_ROW2, MENU_LAYOUT_VERSION
 
-    assert MENU_LAYOUT_VERSION == "38"
+    assert MENU_LAYOUT_VERSION == "39"
     assert MENU_BTN_UNDERVALUE == "低估名單"
-    assert MENU_ROW2[3] == MENU_BTN_UNDERVALUE
+    assert MENU_ROW2[4] == MENU_BTN_UNDERVALUE
     assert MENU_BTN_AI not in MENU_ROW2
     assert MENU_BTN_AI == "AI倉"  # 打字別名仍認
 

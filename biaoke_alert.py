@@ -684,6 +684,7 @@ def format_alert(event: Dict[str, Any], judged: Dict[str, Any], move: Dict[str, 
         lead,
         html_escape(body),
         "（擷取自原文）。",
+        "不是買訊。",
     ]
     return "\n".join(bits)
 

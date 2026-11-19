@@ -41,7 +41,8 @@ OWN_PE_LOOKBACK = 32
 FLOW_DAYS = 20
 FLOW_MIN_STAR = 1500.0
 FLOW_MIN_WATCH = 1500.0
-PEER_MIN_N = 3
+# 與 undervalue_growth.PEER_PE_FINE_MIN_N 對齊（n≥5）；不准 scan=3、滾動=5 雙軌
+PEER_MIN_N = 5
 # 硬濾（可量化；對齊鎖死規格能落地的部分）
 YOY_MIN_PCT = 15.0
 QTY60_A_MIN = 400.0  # A 穩當核心：近 60 日均量（張）

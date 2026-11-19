@@ -2846,8 +2846,9 @@ def compute_falling_risk(
     pcts = idx["pct_change"].astype(float) if "pct_change" in idx.columns else pd.Series([0.0] * len(idx))
     c = float(closes.iloc[-1])
     ma20 = float(closes.tail(20).mean()) if len(closes) >= 20 else c
-    if len(closes) >= 4 and c < ma20:
-        recent = closes.tail(4)
+    # 「3日未站回」＝含當日共 3 根收在月線下（不准文案寫3、實作吃4）
+    if len(closes) >= 3 and c < ma20:
+        recent = closes.tail(3)
         if all(float(x) < ma20 for x in recent):
             score += 25
             hits.append("跌破月線且3日未站回")
@@ -3030,15 +3031,17 @@ def _regime_plus_raw_history(db_path: str, as_of: str, *, lookback: int = 8) -> 
         official = _usable_official_breadth(
             load_index_breadth_daily(db_path, day) or _nearest_official_breadth(db_path, day)
         )
+        # 站月線％只認個股官方收廣度；不准把漲跌比×100 冒充 above_ma20_pct
         breadth, _ = _resolve_breadth_for_date(db_path, day)
+        if not int(breadth.get("sample_n") or 0):
+            breadth = {"above_ma20_pct": 0.0, "sample_n": 0}
         prev_official = _load_prev_official_breadth(db_path, day)
         core = compute_day_regime(db_path, day, idx["close"].astype(float))
         us_risk_off = False
         try:
-            from us_overnight import load_us_overnight
-
-            us = load_us_overnight(db_path, day)
-            us_risk_off = str(us.get("regime") or "") == "risk_off"
+            us_disp, us_fresh = _resolve_us_for_display(db_path, day)
+            if us_fresh and not (us_disp or {}).get("_press_miss"):
+                us_risk_off = str((us_disp or {}).get("regime") or "") == "risk_off"
         except Exception:
             us_risk_off = False
         fr = compute_falling_risk(
@@ -3092,12 +3095,12 @@ def regime_plus_screening_note(snap: Dict[str, Any]) -> str:
     pending = snap.get("regime_plus_pending")
     tail = f"（觀察切換→{REGIME_PLUS_LABELS.get(str(pending), pending)}）" if pending else ""
     notes = {
-        "trend_up": "多頭延伸：黃金買點與周帶量桶正常權重。",
-        "trend_up_late": "多頭末端：少追、降 cap、多看獲利格。",
+        "trend_up": "多頭延伸：環境偏多觀察。",
+        "trend_up_late": "多頭末端：少追、偏觀察。",
         "range": "箱型震盪：偏選股，不賭方向。",
-        "trend_down": "空頭延伸：縮短線桶，佈局需極嚴。",
-        "down_exhaust": "空頭衰竭：低檔觀察，海選仍不收空頭，不賭刀。",
-        "repair": "跌後修復：觀察 3 日站穩，不急追。",
+        "trend_down": "空頭延伸：短線偏逆風觀察。",
+        "down_exhaust": "空頭衰竭：低檔觀察，不賭刀。",
+        "repair": "跌後修復：觀察站穩，不急追。",
     }
     return f"盤勢　<b>{label}</b>{tail}　{notes.get(rp, '')}"
 
@@ -3286,14 +3289,14 @@ def analyze_taiwan_market(
         if near:
             flow_date, flow_net = near
     flow = float(flow_net) if flow_net is not None else 0.0
-    # 完整盤勢與表欄 refresh／回測同一套（選邊 2）
+    # 完整盤勢與表欄 refresh／回測同一套（選邊 2；#972）
     core = compute_day_regime(db_path, ref_date, idx["close"].astype(float))
+    # 美股逆風只認新鮮快取；過舊／press_miss 不准進下跌風險（與大盤頁隱藏舊％同一閘）
     us_risk_off = False
     try:
-        from us_overnight import load_us_overnight
-
-        us = load_us_overnight(db_path, ref_date)
-        us_risk_off = str(us.get("regime") or "") == "risk_off"
+        us_disp, us_fresh = _resolve_us_for_display(db_path, ref_date)
+        if us_fresh and not (us_disp or {}).get("_press_miss"):
+            us_risk_off = str((us_disp or {}).get("regime") or "") == "risk_off"
     except Exception:
         pass
     prev_official = _load_prev_official_breadth(db_path, ref_date)
@@ -3721,23 +3724,23 @@ def apply_market_weights(
 
 
 def market_screening_note(snap: Dict[str, Any]) -> str:
+    """環境旁註。不准發明「信心%」、不准替黃金買點加條件（§3／§4）。"""
     if not snap.get("ok"):
         return ""
     rp_note = regime_plus_screening_note(snap)
     if rp_note:
         return rp_note
     reg = snap.get("regime")
-    conf = snap.get("confidence")
     if reg == "bull":
-        return f"大盤多頭帶動（信心 {conf}%）：佈局桶加權偏多，黃金買點仍看獲利格。"
+        return "大盤多頭帶動：環境偏多；進場仍只認已過閘買訊。"
     if reg == "bear":
-        return f"大盤空方壓力（信心 {conf}%）：突破桶縮水，黃金買點需量熱＋站上月線。"
+        return "大盤空方壓力：環境偏空；進場仍只認已過閘買訊。"
     fr = int(snap.get("falling_risk") or 0)
     if fr >= 60:
-        return f"下跌風險 {fr}（紅燈）：當沖/隔日沖桶再降權，佈局看獲利格＋站上月線。"
+        return f"下跌風險 {fr}（紅燈）：短線偏逆風觀察。"
     if fr >= 35:
-        return f"下跌風險 {fr}（黃燈）：短線桶保守，選股看結構。"
-    return f"大盤區間震盪（信心 {conf}%）：中性權重，選股看個股結構。"
+        return f"下跌風險 {fr}（黃燈）：短線保守觀察。"
+    return "大盤區間震盪：中性環境；進場仍只認已過閘買訊。"
 
 
 def _regime_traffic_light(regime: str) -> str:
@@ -4204,7 +4207,7 @@ def _washout_copy_lines(wash: Dict[str, Any]) -> List[str]:
         lines.append(_page_b("、".join(parts[:mid]) + "。"))
         if mid < len(parts):
             lines.append(_page_b("、".join(parts[mid:]) + "。"))
-    lines.append(_page_b("下一個台股交易日不是平穩多頭日。"))
+    lines.append(_page_b("外圍大跌＝偏逆風觀察。"))
     return lines
 
 
@@ -4282,16 +4285,16 @@ def _outlook_action_plain(
     if us == "risk_off" or tw == "bear" or fr >= 60:
         return "逆風，佈局先等、當沖不要硬沖。"
     if us_down and night_firm:
-        return "美股弱、台指期夜盤沒跟崩。今天別追高，黃金買點仍按表。"
+        return "美股弱、台指期夜盤沒跟崩。今天別追高；進場仍只認已過閘買訊。"
     if us == "caution" or fr >= 35:
-        return "偏空。黃金買點、紅箭確認照表，別追高。"
+        return "偏空觀察。進場仍只認已過閘買訊，別追高。"
     if us_up and night_firm:
-        return "隔夜偏多，台股容易開高。黃金買點仍按表，不要追已經噴的。"
+        return "隔夜偏多觀察。進場仍只認已過閘買訊，不要追已經噴的。"
     if vs_ma20 is not None and float(vs_ma20) < -1.0:
-        return "加權還在月線下。黃金買點、紅箭確認照表，別追高。"
+        return "加權還在月線下。進場仍只認已過閘買訊，別追高。"
     if night_weak:
-        return "台指期夜盤比日盤便宜。黃金買點、紅箭確認照表，別追高。"
-    return "黃金買點、紅箭確認照表，別追高。"
+        return "台指期夜盤比日盤便宜。進場仍只認已過閘買訊，別追高。"
+    return "進場仍只認已過閘買訊，別追高。"
 
 
 def _outlook_wrap(text: str, *, width: int = 40) -> List[str]:
@@ -4317,6 +4320,9 @@ _OUTLOOK_ACTION_BOLD = (
     "當沖不要硬沖",
     "台指期夜盤比日盤便宜",
     "夜盤比日盤便宜",
+    "進場仍只認已過閘買訊",
+    "隔夜偏多觀察",
+    "偏空觀察",
     "黃金買點",
     "紅箭確認",
     "還在零",
@@ -4749,12 +4755,12 @@ def _brief_state_explain_lines(snap: Dict[str, Any]) -> List[str]:
     regime_lab = str(snap.get("regime_label") or "—")
     plus_lab = str(snap.get("regime_plus_label") or "—")
     zone_lab = _risk_zone_label(snap.get("risk_zone"))
-    conf = snap.get("confidence")
     action = _brief_note_tail(market_screening_note(snap))
-    why = f"現在＝{_page_b(regime_lab)}底下的{_page_b(plus_lab)}"
-    if conf is not None:
-        why += f"（把握 {_page_b(str(conf) + '%')}）"
-    why += f"；風險{_page_b(fr_lv)}{_page_b(str(fr))}；{_page_b(zone_lab)}。"
+    # 不准把 score 包裝成「把握／信心%」機率（§3）
+    why = (
+        f"現在＝{_page_b(regime_lab)}底下的{_page_b(plus_lab)}"
+        f"；風險{_page_b(fr_lv)}{_page_b(str(fr))}；{_page_b(zone_lab)}。"
+    )
     lines = [
         "<b>對照說明</b>",
         *pack_phone_bits("盤勢＝整體方向", "細分＝細狀態"),
@@ -4849,7 +4855,7 @@ def format_taiwan_market_brief_html(
     ]
     # 狀態列只留位階判斷；姿態白話進虛線「對照說明」欄，方便核對。
     regime = [
-        f"{_brief_lab('盤勢')}　{_page_b(snap['regime_label'])}（把握 {_page_b(str(snap['confidence']) + '%')}）",
+        f"{_brief_lab('盤勢')}　{_page_b(snap['regime_label'])}",
         f"{_brief_lab('細分盤勢')}　{_regime_plus_traffic_light(snap.get('regime_plus'))} {_page_b(snap.get('regime_plus_label', '—'))}",
         f"{_brief_lab('下跌風險')}　{fr_light} {_page_b(_falling_risk_face(int(snap.get('falling_risk') or 0)))}",
         f"{_brief_lab('高檔區')}　{_risk_zone_label(snap.get('risk_zone'))}",

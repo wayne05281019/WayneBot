@@ -257,6 +257,7 @@ def test_escape_wave_caution_is_not_exit_command():
     assert "怕錯過" not in html
     assert "飆大急推" in html
     assert "（擷取自原文）。" in html
+    assert "不是買訊" in html
     assert "對原文用" not in html
     assert "程式標籤（不是他原文）" not in html
     assert "官方加權盤中現價" not in html

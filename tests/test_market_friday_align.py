@@ -37,7 +37,8 @@ def test_washout_replaces_bull_zero_risk_without_new_score():
     }
     plain = _html_plain("\n".join(_page_regime_lines(snap, FRIDAY_US)))
     assert "美股收盤大跌" in plain
-    assert "下一個台股交易日不是平穩多頭日" in plain
+    assert "偏逆風觀察" in plain
+    assert "不是平穩多頭日" not in plain
     assert "不是還在往上" not in plain
     assert "不是風險 0" not in plain
     assert "美股現金" not in plain

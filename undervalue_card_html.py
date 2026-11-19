@@ -178,7 +178,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <span class="mono">{{FX_TEXT}}</span>
     </div>
     <div class="cards-stack">{{STOCK_CARDS_HTML}}</div>
-    <div class="footer-legend">★可買 ☆等止穩 ⚠️興櫃量小｜5日籌碼(左→右)：<span class="sq sq-b"></span>買 <span class="sq sq-s"></span>賣｜估值≠買訊</div>
+    <div class="footer-legend">★折價大 ☆等止穩 ⚠️興櫃量小｜5日籌碼(左→右)：<span class="sq sq-b"></span>買 <span class="sq sq-s"></span>賣｜估值≠買訊</div>
   </div>
 </body>
 </html>
@@ -579,7 +579,7 @@ def pick_row_to_screener_stock(row: Dict[str, Any], *, as_of: Optional[str] = No
     if emerging:
         status, icon, status_label = "risk", "⚠️", "興櫃量小"
     elif mark in ("star", "true", "★", "*") and not broken:
-        status, icon, status_label = "buy", "★", "可買"
+        status, icon, status_label = "buy", "★", "折價大"
     else:
         status, icon, status_label = "wait", "☆", "等止穩"
 

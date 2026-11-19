@@ -38,9 +38,13 @@ def test_cyclical_and_gross_gates():
 
     # 今年／明年目標不准靜默相同
     tg = price_targets(100.0, 20.0, 10.0, 12.5, 20.0, 16.0)
-    # 10*20=200；12.5*16=200 → 應上修明年
+    # 10*20=200；12.5*16=200 → 明年EPS×今年倍數上修
     assert abs(tg["fair_year"] - 200.0) < 1e-6
     assert tg["target_next"] > tg["fair_year"] + 1.0
+    # 無真實成長不准發明 8%
+    tg_flat = price_targets(100.0, 20.0, 10.0, 10.0, 20.0, 20.0)
+    assert abs(tg_flat["fair_year"] - 200.0) < 1e-6
+    assert abs(tg_flat["target_next"] - 200.0) < 1e-6
 
     assert passes_gross_margin(20.0)
     assert not passes_gross_margin(19.9)
@@ -227,6 +231,7 @@ def test_scan_rejects_cyclical_seed(tmp_path, monkeypatch):
             ("3081", "聯亞", "電子中游-通訊設備-光通訊", '["光通訊"]', 60.0),
             ("2455", "全新", "電子中游-通訊設備-光通訊", '["光通訊"]', 55.0),
             ("3105", "穩懋", "電子中游-通訊設備-光通訊", '["光通訊"]', 50.0),
+            ("4979", "眩輝", "電子中游-通訊設備-光通訊", '["光通訊"]', 52.5),
         ):
             conn.execute(
                 "INSERT OR REPLACE INTO stock_universe "
@@ -290,11 +295,12 @@ def test_scan_rejects_cyclical_seed(tmp_path, monkeypatch):
     monkeypatch.setattr(
         "undervalue_scan._peer_index",
         lambda _db: {
-            "6442": ["6442", "3081", "2455", "3105"],
-            "1714": ["1714", "3081", "2455", "3105"],
-            "3081": ["6442", "3081", "2455", "3105"],
-            "2455": ["6442", "3081", "2455", "3105"],
-            "3105": ["6442", "3081", "2455", "3105"],
+            "6442": ["6442", "3081", "2455", "3105", "4979"],
+            "1714": ["1714", "3081", "2455", "3105", "4979"],
+            "3081": ["6442", "3081", "2455", "3105", "4979"],
+            "2455": ["6442", "3081", "2455", "3105", "4979"],
+            "3105": ["6442", "3081", "2455", "3105", "4979"],
+            "4979": ["6442", "3081", "2455", "3105", "4979"],
         },
     )
     out = run_undervalue_scan(db, as_of, rule_key=RULE_PHONE)

@@ -63,11 +63,16 @@ def latest_biaoke_board_meta(db_path: str) -> Dict[str, str]:
             out["when"] = pd[:16] if pd else _ymd_dash(out["ymd"])
             out["post_id"] = str(row["post_id"] or "")
             out["snip"] = str(row["snippet"] or "")[:80]
-        # 再用 posts 最新一則（可能比 snap 新）
+        # 再用「大盤／位階」相關最新文（個股文不准把板面日拉新）
         post = conn.execute(
             """
             SELECT id, date, time, text FROM biaoke_posts
             WHERE IFNULL(kind,'') != 'bystander'
+              AND (
+                text LIKE '%大盤%' OR text LIKE '%加權%' OR text LIKE '%台指%'
+                OR text LIKE '%波浪%' OR text LIKE '%費半%' OR text LIKE '%位階%'
+                OR text LIKE '%下降壓%' OR text LIKE '%C3%' OR text LIKE '%假跌破%'
+              )
             ORDER BY date DESC, time DESC LIMIT 1
             """
         ).fetchone()

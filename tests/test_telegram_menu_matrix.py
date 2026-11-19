@@ -17,6 +17,7 @@ from bot_servers import (
     MENU_BTN_DONGZHU,
     MENU_BTN_FLOW,
     MENU_BTN_MARKET,
+    MENU_BTN_PIPELINE,
     MENU_BTN_REPORT,
     MENU_BTN_STREAK,
     MENU_BTN_WAVE_STATUS,
@@ -27,6 +28,7 @@ from bot_servers import (
 MENU_BUTTONS = [
     (MENU_BTN_WINRATE, "winrate_cmd"),
     (MENU_BTN_CARD, "decision_card_btn"),
+    (MENU_BTN_PIPELINE, "pipeline_cmd"),
     (MENU_BTN_WAVE_STATUS, "wave_status_cmd"),
     (MENU_BTN_CHONG, "chong_zone_cmd"),
     ("當沖", "daytrade_cmd"),  # 隱藏打字入口仍認
@@ -47,7 +49,11 @@ MENU_BUTTONS = [
     (MENU_BTN_DONGZHU, "dongzhu_cmd"),
 ]
 
-INSTANT_ACK_BUTTONS = {MENU_BTN_MARKET: "大盤進行中", MENU_BTN_FLOW: "資金輪動進行中"}
+INSTANT_ACK_BUTTONS = {
+    MENU_BTN_MARKET: "大盤進行中",
+    MENU_BTN_FLOW: "資金輪動進行中",
+    MENU_BTN_PIPELINE: "流水線觀測進行中",
+}
 
 
 def _msg(uid: int, text: str):
@@ -156,17 +162,34 @@ def test_instant_ack_before_slow_work(label, hint):
     bot._start_plain_wait = AsyncMock(side_effect=track_wait)
     bot._stop_plain_wait = AsyncMock()
     bot._send_market_page = AsyncMock()
-    # _bot() 會把 handler 換成 mock；此測須綁回真實 market_cmd / flow_cmd
+    # _bot() 會把 handler 換成 mock；此測須綁回真實 cmd
     bot.market_cmd = WayneTelegramBot.market_cmd.__get__(bot, WayneTelegramBot)
     bot.flow_cmd = WayneTelegramBot.flow_cmd.__get__(bot, WayneTelegramBot)
+    bot.pipeline_cmd = WayneTelegramBot.pipeline_cmd.__get__(bot, WayneTelegramBot)
     with patch("money_flow.format_flow_html", return_value="<b>資金</b>"), patch(
         "money_flow.resolve_flow_as_of", return_value=("20260902", "")
     ), patch("money_flow.recompute_sector_flow", return_value=1), patch(
         "trading_calendar.fuse_end_trading_date", return_value="20260902"
-    ), patch("money_flow.sector_flow_ready", return_value=True):
+    ), patch("money_flow.sector_flow_ready", return_value=True), patch(
+        "pipeline_observe.build_pipeline_observe",
+        return_value={
+            "today": "20260902",
+            "desk_as_of": "20260902",
+            "fuse_as_of": "20260902",
+            "layers": [],
+            "issues": [],
+            "summary": {"layer_n": 0, "bad_n": 0, "issue_n": 0, "ok_n": 0},
+            "not_buy_signal": True,
+        },
+    ), patch(
+        "pipeline_observe.format_pipeline_observe_html",
+        return_value="<b>流水線</b>",
+    ):
         msg = _msg(1001, label)
         if label == MENU_BTN_MARKET:
             asyncio.run(bot.market_cmd(_update(msg), MagicMock()))
+        elif label == MENU_BTN_PIPELINE:
+            asyncio.run(bot.pipeline_cmd(_update(msg), MagicMock()))
         else:
             asyncio.run(bot.flow_cmd(_update(msg), MagicMock()))
 

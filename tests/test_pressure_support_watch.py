@@ -132,13 +132,14 @@ def test_menu_seven_plus_seven_pressure_after_overnight():
         WayneTelegramBot,
     )
 
-    assert MENU_LAYOUT_VERSION == "38"
-    assert len(MENU_ROW1) == 7 and len(MENU_ROW2) == 7
+    assert MENU_LAYOUT_VERSION == "39"
+    assert len(MENU_ROW1) == 7 and len(MENU_ROW2) == 8
     assert MENU_ROW1[0] == MENU_BTN_WINRATE
     assert MENU_ROW1[1] == "海選"
-    assert MENU_ROW2[0] == "波浪位階"
-    assert MENU_ROW2[1] == "沖區"
-    assert MENU_ROW2[2] == MENU_BTN_PRESSURE
+    assert MENU_ROW2[0] == "流水線"
+    assert MENU_ROW2[1] == "波浪位階"
+    assert MENU_ROW2[2] == "沖區"
+    assert MENU_ROW2[3] == MENU_BTN_PRESSURE
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     kb = bot._reply_menu()
     assert [b.text for b in kb.keyboard[1]] == list(MENU_ROW2)

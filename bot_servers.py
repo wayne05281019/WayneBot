@@ -237,6 +237,8 @@ def _text_escapes_pending(text: str) -> bool:
         return True
     if t in MENU_BTN_LEAVE_ZERO_ALIASES or t in MENU_BTN_DONGZHU_ALIASES:
         return True
+    if t in MENU_BTN_PIPELINE_ALIASES:
+        return True
     if t in MENU_BTN_BIAOKE_ALIASES or t in MENU_BTN_LEAVE_BIAOKE_ALIASES:
         return True
     if t in MENU_BTN_LEAVE_DONGZHU_ALIASES:
@@ -683,6 +685,14 @@ MENU_BTN_DONGZHU_ALIASES = (
     "洞燭",
     "先機",
 )
+MENU_BTN_PIPELINE = "流水線"
+MENU_BTN_PIPELINE_ALIASES = (
+    MENU_BTN_PIPELINE,
+    "流水線觀測",
+    "今日流水線",
+    "觀測",
+    "今日觀測",
+)
 MENU_BTN_LEAVE_DONGZHU = "離開洞燭先機"
 MENU_BTN_LEAVE_DONGZHU_ALIASES = (
     MENU_BTN_LEAVE_DONGZHU,
@@ -762,6 +772,7 @@ MENU_ROW1 = (
     MENU_BTN_FLOW,
 )
 MENU_ROW2 = (
+    MENU_BTN_PIPELINE,
     MENU_BTN_WAVE_STATUS,
     MENU_BTN_CHONG,
     MENU_BTN_PRESSURE,
@@ -806,7 +817,8 @@ MENU_FULL_ALIASES = ("完整選單", "完整鍵盤")
 # v36：（作廢）曾誤把 AI倉換成低估名單；違功能全同／AI倉鈕留著。
 # v37：下排保留 AI倉，其右加「低估名單」（估值≠買訊；融合後掃；打字別名仍認）。上七下八。
 # v38：主選單拿掉「AI倉」鈕（2026-11-16 使用者鎖）；假錢倉改打字「AI倉」／「模擬倉」仍開。上七下七。
-MENU_LAYOUT_VERSION = "38"
+# v39：下排最左加「流水線」觀測（分層對質，非買訊）。上七下八。
+MENU_LAYOUT_VERSION = "39"
 MAX_PICK_INLINE_ROWS = 8
 
 # 輸入列左邊三條槓（Telegram BotCommand）。跟下方兩排重複的不放，避免兩套入口。
@@ -8681,6 +8693,71 @@ class WayneTelegramBot:
             await self._stop_plain_wait(*wait_h)
             raise
 
+    async def pipeline_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """流水線觀測：分層對質（環境／主題／候選／進場閘／帳簿）；非買訊。
+
+        第一則必須 LOADING；讀庫進 to_thread，不准在 LOADING 前 touch DB。
+        """
+        uid = str(update.effective_user.id)
+        message = update.message
+        wait_h = await self._start_plain_wait(
+            message,
+            text_fn=lambda s: self._wait_bubble(
+                "流水線觀測進行中", s, now="對質各層", rest="推送頁面", fill_sec=18.0
+            ),
+        )
+        try:
+            await self._pin_reply_menu(message)
+        except Exception:
+            pass
+        delivered = False
+        try:
+            try:
+                self._touch_user(
+                    uid, getattr(update.effective_user, "first_name", "") or ""
+                )
+            except Exception:
+                pass
+            try:
+                await self._enter_main_menu(message, uid)
+            except Exception:
+                logger.exception("流水線進主選單失敗，仍組頁")
+
+            def _build() -> str:
+                from pipeline_observe import (
+                    build_pipeline_observe,
+                    format_pipeline_observe_html,
+                )
+
+                payload = build_pipeline_observe(self.db_path, uid=uid)
+                return format_pipeline_observe_html(payload)
+
+            try:
+                html = await asyncio.wait_for(
+                    asyncio.to_thread(_build), timeout=45.0
+                )
+            except asyncio.TimeoutError:
+                html = (
+                    "流水線觀測逾時。"
+                    "資料庫忙或對質太慢，稍後再按「流水線」。"
+                )
+            except Exception:
+                logger.exception("流水線觀測組頁失敗")
+                html = "流水線觀測失敗。稍後再試或改按各層原鈕核對。"
+            if not (html or "").strip():
+                html = "目前組不出流水線觀測（基準日或庫異常）。"
+            await self._stop_plain_wait(*wait_h)
+            await message.reply_html(
+                html, reply_markup=self._reply_menu(uid), disable_web_page_preview=True
+            )
+            delivered = True
+        finally:
+            if not delivered:
+                try:
+                    await self._stop_plain_wait(*wait_h)
+                except Exception:
+                    pass
+
     async def flow_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """資金輪動：第一個 await 必須是 LOADING；結束一定有內容或清楚中文原因。
 
@@ -9478,6 +9555,14 @@ class WayneTelegramBot:
             self._pending.pop(actor, None)
             # 第一則必須是 LOADING：不准先 touch DB／cancel／鎖句。
             await self.flow_cmd(update, context)
+            return
+        if text in MENU_BTN_PIPELINE_ALIASES or text.lower().lstrip("/") in (
+            "pipeline",
+            "observe",
+        ):
+            logger.info("主選單：流水線觀測 uid=%s", uid)
+            self._pending.pop(actor, None)
+            await self.pipeline_cmd(update, context)
             return
         if text in MENU_BTN_SCREEN_ALIASES or text.lower().lstrip("/") == "screen":
             logger.info("主選單：海選 uid=%s", uid)
@@ -13006,6 +13091,7 @@ class WayneTelegramBot:
         app.add_handler(CommandHandler("portfolio", self._wrap_cmd(self.portfolio_cmd)))
         app.add_handler(CommandHandler("watch", self._wrap_cmd(self.watch_cmd)))
         app.add_handler(CommandHandler("flow", self._wrap_cmd(self.flow_cmd)))
+        app.add_handler(CommandHandler("pipeline", self._wrap_cmd(self.pipeline_cmd)))
         app.add_handler(CommandHandler("card", self._wrap_cmd(self.card_cmd)))
         app.add_handler(CommandHandler("chips", self._wrap_cmd(self.chips_cmd)))
         app.add_handler(CommandHandler("fund", self._wrap_cmd(self.fund_cmd)))
