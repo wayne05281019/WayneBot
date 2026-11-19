@@ -7,10 +7,12 @@ import os
 
 from bot_servers import WayneTelegramBot, _LOOKUP_CHART_KINDS
 from intraday_open_close_chart import (
+    OfficialDay,
     _CHART_LABEL_FS_SCALE,
     _GRID_FS_SCALE,
     _chart_label_fs,
     _grid_fs,
+    _level_anchors,
     _paint_smart_level_labels,
     _y_price_tick_band,
     prepare_lookup_intraday_series,
@@ -18,6 +20,44 @@ from intraday_open_close_chart import (
     resolve_intraday_market,
     render_lookup_intraday_result,
 )
+
+
+def test_level_anchors_use_day_hi_lo_not_vol_zone_words():
+    """當天走勢位階＝當日高／當日低；不准寫成大量區同字「壓／撐」。"""
+    off = OfficialDay(
+        stock_id="2330",
+        open=100.0,
+        high=110.0,
+        low=95.0,
+        close=105.0,
+        prev_close=100.0,
+        volume_lots=1000.0,
+        turnover_k=None,
+        avg_price=102.0,
+        pct_change=5.0,
+        change=5.0,
+        amplitude_pct=None,
+        q_avg_vol_lots=None,
+        w52_high=None,
+        w52_low=None,
+        source="test",
+        close_label="收盤",
+    )
+    xs = [0.0, 30.0, 60.0, 90.0]
+    ys = [100.0, 108.0, 96.0, 105.0]
+    highs = [101.0, 110.0, 98.0, 106.0]
+    lows = [99.0, 107.0, 95.0, 104.0]
+    opens = [100.0, 108.0, 97.0, 105.0]
+    anchors = _level_anchors(xs, ys, highs, lows, opens, off)
+    fulls = [a[1] for a in anchors]
+    shorts = [a[0] for a in anchors]
+    assert "當日高" in fulls and "當日低" in fulls
+    assert "高" in shorts and "低" in shorts
+    assert "壓" not in fulls and "撐" not in fulls
+    assert "壓" not in shorts and "撐" not in shorts
+    src = inspect.getsource(_level_anchors)
+    assert "當日高" in src and "當日低" in src
+    assert '"壓"' not in src and '"撐"' not in src
 
 
 def test_lookup_chart_kinds_include_intraday():
