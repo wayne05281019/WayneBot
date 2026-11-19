@@ -18,6 +18,7 @@ from bot_servers import (
     MENU_BTN_FLOW,
     MENU_BTN_MARKET,
     MENU_BTN_PIPELINE,
+    MENU_BTN_COMBO_SCREEN,
     MENU_BTN_REPORT,
     MENU_BTN_STREAK,
     MENU_BTN_WAVE_STATUS,
@@ -29,6 +30,7 @@ MENU_BUTTONS = [
     (MENU_BTN_WINRATE, "winrate_cmd"),
     (MENU_BTN_CARD, "decision_card_btn"),
     (MENU_BTN_PIPELINE, "pipeline_cmd"),
+    (MENU_BTN_COMBO_SCREEN, "combo_screen_cmd"),
     (MENU_BTN_WAVE_STATUS, "wave_status_cmd"),
     (MENU_BTN_CHONG, "chong_zone_cmd"),
     ("當沖", "daytrade_cmd"),  # 隱藏打字入口仍認
@@ -53,6 +55,7 @@ INSTANT_ACK_BUTTONS = {
     MENU_BTN_MARKET: "大盤進行中",
     MENU_BTN_FLOW: "資金輪動進行中",
     MENU_BTN_PIPELINE: "流水線觀測進行中",
+    MENU_BTN_COMBO_SCREEN: "綜合篩選進行中",
 }
 
 
@@ -166,6 +169,9 @@ def test_instant_ack_before_slow_work(label, hint):
     bot.market_cmd = WayneTelegramBot.market_cmd.__get__(bot, WayneTelegramBot)
     bot.flow_cmd = WayneTelegramBot.flow_cmd.__get__(bot, WayneTelegramBot)
     bot.pipeline_cmd = WayneTelegramBot.pipeline_cmd.__get__(bot, WayneTelegramBot)
+    bot.combo_screen_cmd = WayneTelegramBot.combo_screen_cmd.__get__(
+        bot, WayneTelegramBot
+    )
     with patch("money_flow.format_flow_html", return_value="<b>資金</b>"), patch(
         "money_flow.resolve_flow_as_of", return_value=("20260902", "")
     ), patch("money_flow.recompute_sector_flow", return_value=1), patch(
@@ -184,12 +190,17 @@ def test_instant_ack_before_slow_work(label, hint):
     ), patch(
         "pipeline_observe.format_pipeline_observe_html",
         return_value="<b>流水線</b>",
+    ), patch(
+        "pipeline_observe.format_combo_screen_html",
+        return_value="<b>綜合篩選</b>",
     ):
         msg = _msg(1001, label)
         if label == MENU_BTN_MARKET:
             asyncio.run(bot.market_cmd(_update(msg), MagicMock()))
         elif label == MENU_BTN_PIPELINE:
             asyncio.run(bot.pipeline_cmd(_update(msg), MagicMock()))
+        elif label == MENU_BTN_COMBO_SCREEN:
+            asyncio.run(bot.combo_screen_cmd(_update(msg), MagicMock()))
         else:
             asyncio.run(bot.flow_cmd(_update(msg), MagicMock()))
 

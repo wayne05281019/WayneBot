@@ -572,3 +572,50 @@ def format_pipeline_observe_html(payload: Dict[str, Any]) -> str:
         "<i>進場只認勝率買點／剛離零與已確認紅箭。低估・連買・洞燭・飆大・波浪不是買訊。</i>"
     )
     return join_dashed(*blocks)
+
+
+def format_combo_screen_html(payload: Dict[str, Any]) -> str:
+    """綜合篩選：機構式串節點（環境→主題→候選→進場閘→連買／帳簿）；非買訊。
+
+    與流水線觀測共用同一套分層真相，標題與導語改成篩選鏈口吻；不准合成總分榜。
+    """
+    from html import escape
+    from tg_layout import join_dashed, title_line
+
+    desk = _zh(payload.get("desk_as_of") or "")
+    fuse = _zh(payload.get("fuse_as_of") or "")
+    today = _zh(payload.get("today") or "")
+    summ = payload.get("summary") or {}
+    blocks: List[str] = [
+        title_line("綜合篩選", desk, "非買訊"),
+        "機構式節點：環境→主題→候選池→進場閘→連買／帳簿",
+        f"日曆 {escape(today)}｜基準 {escape(desk)}｜fuse上限 {escape(fuse)}",
+        f"節點齊 {summ.get('ok_n', 0)}／{summ.get('layer_n', 0)}｜失真 {summ.get('bad_n', 0)}｜問題 {summ.get('issue_n', 0)}",
+    ]
+    issues: Sequence[LayerIssue] = payload.get("issues") or []
+    if issues:
+        lines = [f"· {escape(i.node)}：{escape(i.detail)}" for i in list(issues)[:12]]
+        blocks.append("<b>節點對質</b>\n" + "\n".join(lines))
+
+    for L in payload.get("layers") or []:
+        if not isinstance(L, Layer):
+            title = str(L.get("title") or "")
+            status = str(L.get("status") or "")
+            body = "\n".join(escape(x) for x in (L.get("lines") or []))
+            extra = "\n".join(escape(x) for x in (L.get("issues") or []))
+        else:
+            title, status = L.title, L.status
+            body = "\n".join(escape(x) for x in L.lines)
+            extra = "\n".join(escape(x) for x in L.issues)
+        head = f"<b>{escape(title)}</b>〔{escape(status)}〕"
+        chunk = head
+        if body:
+            chunk += "\n" + body
+        if extra:
+            chunk += "\n" + extra
+        blocks.append(chunk)
+
+    blocks.append(
+        "<i>綜合篩選＝串節點對質，不是買訊、不准合成總分。進場只認勝率買點／剛離零與已確認紅箭。</i>"
+    )
+    return join_dashed(*blocks)

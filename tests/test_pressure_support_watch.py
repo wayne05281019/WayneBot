@@ -132,8 +132,11 @@ def test_menu_seven_plus_seven_pressure_after_overnight():
         WayneTelegramBot,
     )
 
-    assert MENU_LAYOUT_VERSION == "39"
+    assert MENU_LAYOUT_VERSION == "40"
     assert len(MENU_ROW1) == 7 and len(MENU_ROW2) == 8
+    from bot_servers import MENU_ROW3, MENU_BTN_COMBO_SCREEN, MENU_BTN_SLOT
+    assert len(MENU_ROW3) == 7 and MENU_ROW3[0] == MENU_BTN_COMBO_SCREEN
+    assert MENU_ROW3[1:] == (MENU_BTN_SLOT,) * 6
     assert MENU_ROW1[0] == MENU_BTN_WINRATE
     assert MENU_ROW1[1] == "海選"
     assert MENU_ROW2[0] == "流水線"
@@ -143,6 +146,8 @@ def test_menu_seven_plus_seven_pressure_after_overnight():
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     kb = bot._reply_menu()
     assert [b.text for b in kb.keyboard[1]] == list(MENU_ROW2)
+    assert [b.text for b in kb.keyboard[2]] == list(MENU_ROW3)
+    assert len(kb.keyboard) == 3
     tags = [b.text for b in bot._pressure_tag_keyboard().inline_keyboard[0]]
     assert tags == ["壓力橫盤", "測壓未破", "剛站上撐"]
     # 點股票 callback＝psk（一次三張），不是一般 k:

@@ -1240,9 +1240,9 @@ def test_l9c_help_topics_cancelled():
     ["勝率買點", "海選", "持股", "加入觀察", "台股大盤", "資金輪動", "波浪位階", "沖區", "壓撐觀察", "低估名單", "連買區", "飆大", "剛脫離零", "洞燭先機"],
 )
 def test_l9c_menu_buttons_named_on_menu(label):
-    from bot_servers import MENU_ROW1, MENU_ROW2, _normalize_menu_text
+    from bot_servers import MENU_ROW1, MENU_ROW2, MENU_ROW3, _normalize_menu_text
 
-    names = [_normalize_menu_text(t) for t in MENU_ROW1 + MENU_ROW2]
+    names = [_normalize_menu_text(t) for t in MENU_ROW1 + MENU_ROW2 + MENU_ROW3 if str(t).strip()]
     assert label in names
     assert "刷新" not in names
     assert "回報" not in names

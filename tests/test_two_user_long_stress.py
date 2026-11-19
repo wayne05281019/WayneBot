@@ -35,6 +35,7 @@ from bot_servers import (
     MENU_FULL_ALIASES,
     MENU_ROW1,
     MENU_ROW2,
+    MENU_ROW3,
     WayneTelegramBot,
 )
 from main_runner import MainRunner
@@ -55,7 +56,7 @@ BRO = "9002"
 WAYNE_I = 9001
 BRO_I = 9002
 
-ALL_BUTTONS = [t for t in list(MENU_ROW1) + list(MENU_ROW2) if str(t).strip()]
+ALL_BUTTONS = [t for t in list(MENU_ROW1) + list(MENU_ROW2) + list(MENU_ROW3) if str(t).strip()]
 ALIASES = ("刷新上一檔", "決策卡", "完整選單", "精簡選單", "選單", "幫助")
 HAMMER_SEC = 5.0
 BUTTON_ROUNDS = 48
@@ -351,6 +352,7 @@ def test_two_users_all_buttons_and_help_topics_interleaved(tmp_path):
         MENU_BTN_STREAK,
         MENU_BTN_LEAVE_ZERO,
         MENU_BTN_DONGZHU,
+        "綜合篩選",
     ]
 
     async def run():
@@ -404,7 +406,7 @@ def test_help_topics_and_compact_isolated(tmp_path):
     asyncio.run(run())
     wayne_kb = [[b.text for b in row] for row in bot._reply_menu(WAYNE).keyboard]
     bro_kb = [[b.text for b in row] for row in bot._reply_menu(BRO).keyboard]
-    assert wayne_kb == bro_kb == [list(MENU_ROW1), list(MENU_ROW2)]
+    assert wayne_kb == bro_kb == [list(MENU_ROW1), list(MENU_ROW2), list(MENU_ROW3)]
     for alias in MENU_FULL_ALIASES:
         assert alias
 

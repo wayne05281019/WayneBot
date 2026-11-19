@@ -113,6 +113,13 @@ def test_pipeline_observe_builds_layers(tmp_path):
     assert "非買訊" in html
     assert payload.get("layers")
     assert payload.get("not_buy_signal") is True
+    from pipeline_observe import format_combo_screen_html
+
+    combo = format_combo_screen_html(payload)
+    assert "綜合篩選" in combo
+    assert "機構式節點" in combo
+    assert "非買訊" in combo
+    assert "總分" in combo
     # 勝率有檔、海選桶空＝產品層差異說明，不准當失真 issues
     gate = next((L for L in payload["layers"] if getattr(L, "id", None) == "gate"), None)
     assert gate is not None
