@@ -286,6 +286,9 @@ def test_market_wave_phone_paint_uses_trio_panels_only():
     assert wave.index('panels="near"') < wave.index("_send_market_teach_one")
     assert wave.index('panels="near"') < wave.index('panels="micro"')
     assert "submit_mpl_paint" in wave
+    # 排隊不算逾時：與查股同走 _await_lookup_paint（不准裸 wait_for 含佇列）
+    assert "_await_lookup_paint" in wave
+    assert "asyncio.wait_for" not in wave
     assert 'panels="full"' not in wave and "panels='full'" not in wave
     assert 'panels="trio"' not in wave and "panels='trio'" not in wave
     from biaoke_level_learn import (
