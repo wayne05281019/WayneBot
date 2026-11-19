@@ -120,3 +120,67 @@ def test_pipeline_observe_builds_layers(tmp_path):
     assert "產品層" in gate_txt or "母閘" in gate_txt
     assert gate.status != "失真"
     assert not any("兩套掃描脫鉤" in (i.detail or "") for i in payload.get("issues") or [])
+    # 海選無 session＝缺，不准收尾翻成齊
+    pool = next((L for L in payload["layers"] if getattr(L, "id", None) == "pool"), None)
+    assert pool is not None
+    assert pool.status == "缺"
+
+
+def test_pipeline_observe_empty_buckets_not_ok(tmp_path):
+    """海選有 session 但三桶皆空＝空，不是齊。"""
+    from pipeline_observe import ST_EMPTY, build_pipeline_observe
+    from screen_sessions import save_screen_session
+    from silent_track_runs import ensure_pipeline_table
+    from winrate_buypoint import ensure_winrate_table
+
+    db = str(tmp_path / "obs_empty.db")
+    ensure_pipeline_table(db)
+    ensure_winrate_table(db)
+    day = "20261117"
+    conn = sqlite3.connect(db)
+    try:
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS index_daily ("
+            "date TEXT, symbol TEXT, close REAL, volume REAL, pct_change REAL, "
+            "ma20 REAL, ma60 REAL, regime TEXT, updated_at TEXT, "
+            "open REAL, high REAL, low REAL, PRIMARY KEY(date, symbol))"
+        )
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS daily_quotes ("
+            "date TEXT, stock_id TEXT, stock_name TEXT, market TEXT, "
+            "close REAL, open REAL, high REAL, low REAL, volume INTEGER, "
+            "foreign_net INTEGER, trust_net INTEGER, dealer_net INTEGER)"
+        )
+        for i in range(900):
+            conn.execute(
+                "INSERT INTO daily_quotes VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                (day, f"{i:04d}", f"T{i}", "TW", 100, 100, 100, 100, 1000, 0, 0, 0),
+            )
+        for i in range(700):
+            conn.execute(
+                "INSERT INTO daily_quotes VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                (day, f"{i+2000:04d}", f"O{i}", "OTC", 50, 50, 50, 50, 500, 0, 0, 0),
+            )
+        conn.execute(
+            "INSERT OR REPLACE INTO index_daily "
+            "(date, symbol, close, volume, pct_change, regime, updated_at) "
+            "VALUES (?,?,?,?,?,?,?)",
+            (day, "TWII", 40000.0, 1, -1.0, "bear", day),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    save_screen_session(
+        db,
+        day,
+        "morning",
+        {"leave_zero": [], "ma60_lower": [], "golden_buy": []},
+    )
+    payload = build_pipeline_observe(
+        db,
+        uid="9",
+        now=datetime(2026, 11, 17, 9, 0, tzinfo=ZoneInfo("Asia/Taipei")),
+    )
+    pool = next(L for L in payload["layers"] if L.id == "pool")
+    assert pool.status == ST_EMPTY
+    assert any("不是齊" in ln for ln in pool.lines)

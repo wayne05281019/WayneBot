@@ -2,7 +2,7 @@
 """低估名單 D3 PNG（話筒出圖）。只排版，不重算選股／買訊。
 
 D3 出圖強制 HTML_TEMPLATE＋Playwright（430×932 @3x → 1290×2796），禁 PIL／matplotlib 畫圖。
-排序 ★可買 → ☆等止穩 → ⚠️量小／興櫃。估值≠買訊。
+排序 ★折價大 → ☆等止穩 → ⚠️量小／興櫃。估值≠買訊。
 """
 from __future__ import annotations
 
@@ -305,9 +305,9 @@ def _is_emerging(mark: Any) -> bool:
 
 
 def _mark_glyph(mark: str) -> Tuple[str, Tuple[int, int, int], Tuple[int, int, int], str]:
-    """回傳 (glyph, 字色, 邊框色, 標籤)。標籤不含 glyph；表頭用『★ 可買』空一格。"""
+    """回傳 (glyph, 字色, 邊框色, 標籤)。標籤不含 glyph；表頭用『★ 折價大』空一格。"""
     if _is_star(mark):
-        return "★", GREEN, GREEN_EDGE, "可買"
+        return "★", GREEN, GREEN_EDGE, "折價大"
     if _is_emerging(mark):
         return "⚠", PURPLE, PURPLE_EDGE, "量小"
     return "☆", AMBER, AMBER_EDGE, "等止穩"
@@ -470,7 +470,7 @@ def _chip_colors(chip: str) -> Tuple[Tuple[int, int, int], Tuple[int, int, int]]
 
 
 def _header_fill(mark: Any) -> Tuple[int, int, int]:
-    """表頭實心底（對齊範本：可買深綠／等止穩琥珀／量小紫）。"""
+    """表頭實心底（對齊範本：折價大深綠／等止穩琥珀／量小紫）。"""
     if _is_star(mark):
         return (6, 48, 36)
     if _is_emerging(mark):
@@ -980,7 +980,7 @@ def _render_d3_page(
     fy = bot - foot_reserve
     _text_center_mid(
         dr, (content_l, fy, content_r, fy + foot_reserve),
-        "估值≠買訊｜★可買仍須對齊黃金買點才切入", foot_f, MUTED,
+        "估值≠買訊｜★折價大仍須對齊黃金買點才切入", foot_f, MUTED,
     )
 
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)

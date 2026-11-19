@@ -1491,13 +1491,16 @@ def format_flow_html(
         buy_f = _top(conn, ymd, "foreign_net", True)
         sell_f = _top(conn, ymd, "foreign_net", False)
         buy_t = _top(conn, ymd, "trust_net", True)
+        etf = _not_etf_clause()
         hot = conn.execute(
-            """
-            SELECT stock_id, stock_name, pct_change, volume, foreign_net, trust_net, dealer_net,
-                   (foreign_net+trust_net+dealer_net) AS three_net
-            FROM daily_quotes
-            WHERE date=? AND length(stock_id)=4 AND volume>=3000 AND ABS(pct_change)>=1.5
-            ORDER BY ABS(foreign_net) DESC LIMIT 6
+            f"""
+            SELECT q.stock_id, q.stock_name, q.pct_change, q.volume, q.foreign_net, q.trust_net, q.dealer_net,
+                   (q.foreign_net+q.trust_net+q.dealer_net) AS three_net
+            FROM daily_quotes q
+            LEFT JOIN stock_universe u ON u.stock_id = q.stock_id
+            WHERE q.date=? AND length(q.stock_id)=4 AND q.volume>=3000 AND ABS(q.pct_change)>=1.5
+              {etf}
+            ORDER BY ABS(q.foreign_net) DESC LIMIT 6
             """,
             (ymd,),
         ).fetchall()

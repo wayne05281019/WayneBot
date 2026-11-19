@@ -376,21 +376,27 @@ def resolve_official_as_of(db_path: str, *, now=None) -> str:
 
 
 def _latest_chip_date(conn: sqlite3.Connection, market: str, as_of: str) -> str:
-    """as_of 當日該市場已有日K＋法人欄位即可（基準日本身由 resolve_official_as_of 決定）。"""
+    """≤as_of 最近「有法人淨額」的該市場日（靜默凍／指定日空殼時往回找，不准空殼現貨日）。"""
+    day = str(as_of or "").replace("-", "")[:8]
+    if not day:
+        return ""
     row = conn.execute(
         """
-        SELECT COUNT(*)
+        SELECT q.date
         FROM daily_quotes q
         LEFT JOIN stock_universe u ON u.stock_id = q.stock_id
         WHERE length(q.stock_id) = 4
-          AND q.date = ?
+          AND q.date <= ?
           AND UPPER(COALESCE(u.market_type, q.market, '')) = ?
+          AND (ABS(COALESCE(q.foreign_net, 0))
+               + ABS(COALESCE(q.trust_net, 0))
+               + ABS(COALESCE(q.dealer_net, 0))) > 0
+        ORDER BY q.date DESC
+        LIMIT 1
         """,
-        (as_of, market),
+        (day, market),
     ).fetchone()
-    if row and int(row[0] or 0) > 0:
-        return as_of
-    return ""
+    return str(row[0] or "").replace("-", "")[:8] if row else ""
 
 
 def _load_rows(
@@ -505,11 +511,12 @@ def load_snapshot(
 
     conn = sqlite3.connect(db_path)
     try:
-        chip_as_of = str(as_of or "").replace("-", "")[:8] or resolve_official_as_of(db_path)
-        if not chip_as_of:
+        want = str(as_of or "").replace("-", "")[:8] or resolve_official_as_of(db_path)
+        if not want:
             return StreakSnapshot(as_of="", kind=kind, market=market)
-        if not _latest_chip_date(conn, market, chip_as_of):
-            return StreakSnapshot(as_of=chip_as_of, kind=kind, market=market)
+        chip_as_of = _latest_chip_date(conn, market, want)
+        if not chip_as_of:
+            return StreakSnapshot(as_of=want, kind=kind, market=market)
 
         cache_key = _cache_key(db_path, kind, market, chip_as_of)
         if use_cache:

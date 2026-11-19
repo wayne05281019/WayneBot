@@ -291,12 +291,17 @@ def build_pipeline_observe(
         ]
         if not has:
             pool.status = ST_MISSING
-            issues.append(LayerIssue("海選", f"{_zh(desk)} 無 screen_sessions"))
+            pool.issues.append(f"{_zh(desk)} 無 screen_sessions")
+            issues.append(LayerIssue("海選", pool.issues[-1]))
+        elif n_lz == 0 and n_ma == 0 and n_gb == 0:
+            pool.status = ST_EMPTY
+            pool.lines.append("海選三桶皆空（空＝正常，不是齊）")
         else:
-            pool.status = ST_OK if (n_lz + n_ma + n_gb) >= 0 else ST_EMPTY
+            pool.status = ST_OK
             if n_lz == 0 and n_ma == 0:
                 pool.lines.append("推播兩桶皆空＝今日無過閘候選（空＝正常）")
     except Exception as exc:
+        pool.status = ST_MISSING
         pool.issues.append(f"海選讀取失敗：{type(exc).__name__}")
         issues.append(LayerIssue("海選", pool.issues[-1]))
 
@@ -365,8 +370,11 @@ def build_pipeline_observe(
         pool.issues.append(f"低估讀取失敗：{type(exc).__name__}")
         issues.append(LayerIssue("低估", pool.issues[-1]))
 
-    if pool.status == ST_MISSING and pool.lines:
-        pool.status = ST_OK if not pool.issues else ST_BAD
+    # 不准把「缺／空」收尾翻成「齊」；只有本層真的無問題且已標齊才維持
+    if pool.status == ST_MISSING:
+        pass  # 維持缺
+    elif pool.issues:
+        pool.status = ST_BAD
     layers.append(pool)
 
     # —— 4 進場閘 ——
@@ -377,7 +385,8 @@ def build_pipeline_observe(
         from winrate_buypoint import latest_roster_as_of, load_winrate_roster, roster_marked
 
         wr_as = _ymd(latest_roster_as_of(path))
-        use = desk if desk and roster_marked(path, desk) else wr_as
+        desk_marked = bool(desk and roster_marked(path, desk))
+        use = desk if desk_marked else wr_as
         rows = load_winrate_roster(path, use) if use else []
         wr_ids = [str(r.get("stock_id") or "") for r in rows if r.get("stock_id")]
         gate.content_as_of = use
@@ -395,6 +404,15 @@ def build_pipeline_observe(
         elif len(wr_ids) == 0:
             gate.status = ST_EMPTY
             gate.lines.append("空名單＝今日無過閘可執行")
+        elif desk and use and use < desk:
+            gate.status = ST_STALE
+            gate.lines.append(f"名單日 {_zh(use)} 早於基準 {_zh(desk)}（過期，不准當今日齊）")
+            issues.append(
+                LayerIssue("勝率買點", f"roster {_zh(use)} ＜ 基準 {_zh(desk)}")
+            )
+            gate.lines.append(
+                "代號：" + "、".join(wr_ids[:12]) + ("…" if len(wr_ids) > 12 else "")
+            )
         else:
             gate.status = ST_OK
             gate.lines.append(

@@ -26,6 +26,7 @@ from buy_streak import (
     parse_market,
     parse_stock_code,
     parse_universe,
+    resolve_official_as_of,
 )
 
 
@@ -315,7 +316,10 @@ def test_production_as_of_matches_official_fuse_end():
     assert official == complete, f"official={official} complete={complete}"
     assert official <= cap, f"official={official} cap={cap}"
     snap = load_snapshot(db_path, KIND_FOREIGN, MARKET_TW, use_cache=False)
-    assert snap.as_of == official
+    # 連買基準＝法人有料日（可早於現貨完整日）；不准跟空殼現貨日
+    chip = resolve_official_as_of(db_path)
+    assert snap.as_of == chip, f"snap={snap.as_of} chip={chip}"
+    assert snap.as_of <= official, f"snap={snap.as_of} official={official}"
 
 
 def test_streak_last_bar_is_as_of(db):

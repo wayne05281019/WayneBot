@@ -134,7 +134,7 @@ def test_d3_header_mark_and_chip_split():
     from undervalue_card import _fmt_eps, _mark_glyph, _split_chip_pills
 
     g, _c, _e, lab = _mark_glyph("star")
-    assert g == "★" and lab == "可買"
+    assert g == "★" and lab == "折價大"
     g2, _, _, lab2 = _mark_glyph("emerging")
     assert g2 == "⚠" and lab2 == "量小"
     assert _split_chip_pills("投信連買・外資調節") == ["投信連買・外資調節"]
