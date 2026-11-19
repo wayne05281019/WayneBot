@@ -121,7 +121,7 @@ class LookupIntegrationTests(unittest.TestCase):
             )
 
     def test_send_card_to_locked_posts_three_photos(self):
-        """高低溫度卡→介紹圖→結構圖→大量撐壓（＋可有當天走勢）：逐張 reply_photo，不再走相簿。"""
+        """高低溫度卡→結構圖→大量撐壓（＋可有當天走勢）；介紹圖改圖下可點。"""
         bot = _bare_bot(self.db, tempfile.mkdtemp())
         message = _message(999001, 111)
 
@@ -150,9 +150,9 @@ class LookupIntegrationTests(unittest.TestCase):
 
         asyncio.run(_run())
 
-        # 查股主路徑至少四張 reply_photo（第5張可缺真路徑）；相簿只留 helper，不再被呼叫。
+        # 預設自動序三張核心（卡／結構／大量）；走勢本測刻意空路徑可缺；介紹不自動送。
         self.assertEqual(message.reply_media_group.await_count, 0)
-        self.assertGreaterEqual(message.reply_photo.await_count, 4)
+        self.assertGreaterEqual(message.reply_photo.await_count, 3)
         caps = []
         for call in message.reply_photo.await_args_list:
             caps.append(str(call.kwargs.get("caption") or ""))

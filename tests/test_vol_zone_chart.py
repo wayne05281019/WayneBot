@@ -159,8 +159,9 @@ def test_lookup_sends_four_photos_card_glance_struct_vol():
     assert src.find("vol_send_task = asyncio.create_task") < src.find(
         "intrad_item = await intrad_task"
     )
+    # 預設無自動介紹圖：當天走勢＝第4張（舊第5張）
     assert src.find("await vol_send_task") < src.find(
-        'hub_mk=hub, retry_label="第5張"'
+        'hub_mk=hub, retry_label="第4張"'
     )
     # 不准把決策卡還原 ohlc 當撐壓柱
     assert "already_normalized=True" not in src
