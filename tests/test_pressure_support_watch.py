@@ -150,6 +150,8 @@ def test_menu_seven_plus_seven_pressure_after_overnight():
     hub = bot._pressure_hub_keyboard("2330")
     labels = [b.text for r in hub.inline_keyboard for b in r]
     assert "介紹圖" in labels and "導航圖" in labels and "產業" in labels
+    intro = [b for r in hub.inline_keyboard for b in r if b.text == "介紹圖"][0]
+    assert (intro.callback_data or "") == "i:2330"
 
 
 def test_vol_zone_with_nav_signals_flag(tmp_path):

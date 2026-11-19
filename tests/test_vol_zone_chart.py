@@ -122,16 +122,15 @@ def test_lookup_sends_four_photos_card_glance_struct_vol():
     assert "render_lookup_vol_result" in src
     assert "render_lookup_intraday_result" in src
     assert "render_three_in_one_result" not in src
-    # 順序：高低溫度卡 → 介紹圖 → 結構圖 → 大量撐壓 → 當天走勢；一次一張、好了就送
+    # 順序：高低溫度卡 → 結構圖 → 大量撐壓 → 當天走勢；介紹圖改圖下可點
     assert "create_task(_struct_item())" in src
     assert "create_task(_vol_item())" in src
     assert "create_task(_intraday_item())" in src
     assert "_bump_progress" in src
-    assert src.find("glance_task = asyncio.create_task") < src.find(
-        "card_item = await card_render_task"
-    )
+    assert "_lookup_auto_glance_enabled" in src
+    assert "glance_queued.set()" in src
     assert src.find('current"] = "card"') < src.find("create_task(_struct_item())")
-    # 結構 task 與介紹並行（ensure 在 paint 外）；bump struct／volfill 在 await 前
+    # 結構 task 提早開（ensure 在 paint 外）；bump struct／volfill 在 await 前
     assert src.find("create_task(_struct_item())") < src.find(
         "struct_item = await struct_task"
     )

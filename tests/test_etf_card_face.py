@@ -303,10 +303,12 @@ def test_etf_hub_omits_revenue_stock_keeps_it():
     stk = [b.text for r in bot._hub_keyboard("2330").inline_keyboard for b in r]
     assert "營收" not in etf
     assert "營收" not in lev
+    assert "介紹圖" in etf
     assert "籌碼" in etf
     assert "產業" in etf
     assert "高低導航圖" in etf
     assert "K線" in etf
+    assert "介紹圖" in stk
     assert "營收" in stk
     assert "籌碼" in stk
     assert "產業" in stk

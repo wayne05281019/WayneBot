@@ -106,6 +106,7 @@ def test_kline_includes_emerging(tmp_path):
     bot.db_path = db
     kb = bot._hub_keyboard("3595", em=True)
     texts = [b.text for r in kb.inline_keyboard for b in r]
+    assert "介紹圖" in texts
     assert "K線" in texts
     assert "高低導航圖" in texts
     assert "產業" not in texts  # 興櫃圖下無產業；上市櫃仍有

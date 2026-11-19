@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""查股五張圖：完整圖下鈕只掛第 4 張大量區；第 2／3／5 張不要重複鍵盤。"""
+"""查股自動相簿：完整圖下鈕只掛當天走勢；介紹圖改圖下可點、不自動送。"""
 from __future__ import annotations
 
 import asyncio
@@ -136,10 +136,10 @@ class LookupHubLastCardOnlyTests(TestCase):
     def test_hub_markup_only_on_intraday_photo(self):
         send_markups, hub = self._run_lookup()
         kinds = [k for k, _ in send_markups]
-        self.assertEqual(kinds, ["card", "glance", "struct", "vol", "intraday"])
+        self.assertEqual(kinds, ["card", "struct", "vol", "intraday"])
+        self.assertNotIn("glance", kinds)
         by_kind = {k: mk for k, mk in send_markups}
         self.assertIsNone(by_kind["card"])
-        self.assertIsNone(by_kind["glance"])
         self.assertIsNone(by_kind["struct"])
         self.assertIsNone(by_kind["vol"])
         self.assertIs(by_kind["intraday"], hub)
@@ -147,16 +147,24 @@ class LookupHubLastCardOnlyTests(TestCase):
     def test_flagship_sent_first_then_normal_order(self):
         send_markups, hub = self._run_lookup(flagship_png=True)
         kinds = [k for k, _ in send_markups]
-        self.assertEqual(kinds, ["flagship", "card", "glance", "struct", "vol", "intraday"])
+        self.assertEqual(kinds, ["flagship", "card", "struct", "vol", "intraday"])
         self.assertIsNone(dict(send_markups)["flagship"])
 
-    def test_flagship_env_off_keeps_five(self):
+    def test_flagship_env_off_keeps_four(self):
         send_markups, _hub = self._run_lookup(
             flagship_png=True, env={"WAYNE_LOOKUP_FLAGSHIP": "0"}
         )
         self.assertEqual(
-            [k for k, _ in send_markups], ["card", "glance", "struct", "vol", "intraday"]
+            [k for k, _ in send_markups], ["card", "struct", "vol", "intraday"]
         )
+
+    def test_auto_glance_env_restores_old_order(self):
+        send_markups, hub = self._run_lookup(
+            env={"WAYNE_LOOKUP_AUTO_GLANCE": "1"}
+        )
+        kinds = [k for k, _ in send_markups]
+        self.assertEqual(kinds, ["card", "glance", "struct", "vol", "intraday"])
+        self.assertIs(dict(send_markups)["intraday"], hub)
 
     def test_source_does_not_reattach_hub_on_mid_cards(self):
         import inspect
@@ -164,13 +172,14 @@ class LookupHubLastCardOnlyTests(TestCase):
         src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
         # 舊 bug：介紹用 markup or hub 會把 None 又變回 hub
         self.assertNotIn("markup or hub", src)
-        # 完整鍵盤只掛第 5 張（hub_mk=hub）；前四張走 _send_kind_item 預設 hub_mk=None
+        # 完整鍵盤只掛當天走勢（hub_mk=hub）；中間張走 _send_kind_item 預設 hub_mk=None
         self.assertIn("hub_mk=hub", src)
         self.assertIn("_send_kind_item", src)
-        self.assertGreaterEqual(src.count("retry_label=\"第"), 4)
+        self.assertIn("_lookup_auto_glance_enabled", src)
+        self.assertGreaterEqual(src.count('retry_label="第'), 4)
 
     def test_source_vol_waits_struct_and_reports_mid_miss(self):
-        """大量區不准搶介紹／結構 paint；缺圖（含高低卡）要明示。"""
+        """大量區不准搶結構 paint；缺圖（含高低卡）要明示；介紹不進自動核心。"""
         import inspect
 
         src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
@@ -178,5 +187,20 @@ class LookupHubLastCardOnlyTests(TestCase):
         self.assertIn("struct_queued.wait()", src)
         self.assertIn("缺：", src)
         self.assertIn("miss_core", src)
+        self.assertIn('core_kinds = ("card", "struct", "vol")', src)
         self.assertIn("_await_lookup_paint", src)
         self.assertIn("asof_ymd=asof or None", src)
+
+    def test_hub_keyboard_has_intro_button(self):
+        bot = WayneTelegramBot.__new__(WayneTelegramBot)
+        bot.db_path = ""
+        with patch("bot_servers.TELEGRAM_AVAILABLE", True), patch(
+            "bot_servers.InlineKeyboardButton",
+            side_effect=lambda text, **k: SimpleNamespace(text=text, **k),
+        ), patch(
+            "bot_servers.InlineKeyboardMarkup",
+            side_effect=lambda rows: SimpleNamespace(inline_keyboard=rows),
+        ):
+            mk = bot._hub_keyboard("2330")
+        labels = [b.text for row in mk.inline_keyboard for b in row]
+        self.assertIn("介紹圖", labels)

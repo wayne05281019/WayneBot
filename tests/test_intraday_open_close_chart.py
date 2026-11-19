@@ -28,7 +28,7 @@ def test_send_card_wires_fifth_intraday():
     src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
     assert "_intraday_item" in src
     assert "render_lookup_intraday_result" in src
-    assert 'render_plan_kinds = ("card", "glance", "struct", "vol", "intraday")' in src
+    assert 'render_plan_kinds = ("card", "struct", "vol", "intraday")' in src
     # 第 5 張不掛 hub
     assert src.index("_intraday_item") > src.index("_vol_item")
     assert "當天走勢" in src

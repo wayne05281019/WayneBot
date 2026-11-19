@@ -37,12 +37,14 @@ def test_hub_news_url_button_on_top():
     }
     kb = bot._hub_keyboard("2330", news=news)
     rows = kb.inline_keyboard
-    assert rows[0][0].text == "產業"
-    assert isinstance(rows[0][1], InlineKeyboardButton)
-    assert rows[0][1].text == "報導12↑"
-    assert (rows[0][1].url or "").startswith("https://news.google.com")
+    assert rows[0][0].text == "介紹圖"
+    assert rows[0][1].text == "產業"
+    assert isinstance(rows[0][2], InlineKeyboardButton)
+    assert rows[0][2].text == "報導12↑"
+    assert (rows[0][2].url or "").startswith("https://news.google.com")
     assert all(b.text != "K線" for b in rows[0])
     texts = [b.text for r in rows for b in r]
+    assert "介紹圖" in texts
     assert "籌碼" in texts
     assert "產業" in texts
     assert "高低導航圖" in texts
@@ -57,10 +59,11 @@ def test_em_hub_has_industry_omits_chips():
     assert "產業" not in texts
     assert "籌碼" not in texts
     assert "營收" not in texts
+    assert "介紹圖" in texts
     assert "K線" in texts
     assert "高低導航圖" in texts
     assert "情境預估" in texts
-    assert [b.text for b in kb.inline_keyboard[0]] == ["高低導航圖", "K線"]
+    assert [b.text for b in kb.inline_keyboard[0]] == ["介紹圖", "高低導航圖", "K線"]
     assert [b.text for b in kb.inline_keyboard[1]] == ["情境預估"]
     assert [b.text for b in kb.inline_keyboard[2]] == ["加入觀察", "記買入"]
     sf = [b for r in kb.inline_keyboard for b in r if b.text == "情境預估"][0]
