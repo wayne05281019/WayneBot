@@ -1,0 +1,113 @@
+{
+  "as_of_taipei": "2026-11-19T16:59:00+0800",
+  "as_of_day": "20261119",
+  "infer_for": "20261120",
+  "today_job": "post_close_next_session_infer",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "certainty": false,
+  "segment_numbers": "REQUIRED",
+  "calendar_zh": "下一開市日＝11/20（若休市再順延）。",
+  "from_eod_zh": "11/19 TWII（60分補OHLC＋FMTQIK量）L38259.70／C38426.89：N1成立再探；W4/M2否決；M3升權維持、37837未測（距約423點）。",
+  "from_oral_zh": "11/16飆大：41800～42700＝波浪4帶；否決第二腳／38000；非買訊。",
+  "paths": [
+    {
+      "id": "M3_seek_37837_continue",
+      "priority": 1,
+      "status": "推論／未定案",
+      "must_happen_zh": "帶下續弱→下一開市日優先看是否測37837（假跌破另計）",
+      "segments_provisional": [
+        {
+          "label": "B-a_hold_fail",
+          "role": "41760仍失",
+          "level": 41760.0
+        },
+        {
+          "label": "B-b",
+          "role": "回測C3底／週五低37837",
+          "level": 37837.05
+        }
+      ],
+      "levels": {
+        "fail": 41760.0,
+        "retest": 37837.05
+      },
+      "invalidate_zh": "強反彈收回並收穩41800～42700波浪4帶內／上＝B-b延後"
+    },
+    {
+      "id": "W4_reclaim_418_427_band",
+      "priority": 2,
+      "status": "推論／未定案（口頭波浪4）",
+      "must_happen_zh": "若止跌反彈：先收回41800～42700（回測平均42250）",
+      "segments_provisional": [
+        {
+          "label": "wave4_band_reclaim",
+          "role": "收回波浪4帶",
+          "lo": 41800.0,
+          "hi": 42700.0
+        },
+        {
+          "label": "wave4_mid_42250",
+          "role": "回測平均",
+          "level": 42250.0
+        }
+      ],
+      "levels": {
+        "lo": 41800.0,
+        "mid": 42250.0,
+        "hi": 42700.0
+      },
+      "invalidate_zh": "續創新低並接近／觸及37837＝改回M3優先"
+    },
+    {
+      "id": "N1_follow_through_below_band",
+      "priority": 3,
+      "status": "推論／未定案",
+      "must_happen_zh": "若帶下再探：不再收回41800，L往37837靠近或觸及",
+      "segments_provisional": [
+        {
+          "label": "stay_below_wave4",
+          "role": "帶下停留",
+          "level": 41800.0
+        },
+        {
+          "label": "path_to_B_b",
+          "role": "銜接37837",
+          "level": 37837.05
+        }
+      ],
+      "levels": {
+        "band_lo": 41800.0,
+        "retest": 37837.05
+      },
+      "invalidate_zh": "收復帶內＝降權續弱句"
+    },
+    {
+      "id": "M2_dead_reclaim_watch",
+      "priority": 4,
+      "status": "對照／低權",
+      "must_happen_zh": "僅當強勢收復43135才升權（低機率）",
+      "segments_provisional": [
+        {
+          "label": "post_hold_reclaim",
+          "role": "若再收復43135",
+          "level": 43135.92
+        }
+      ],
+      "levels": {
+        "reclaim": 43135.92
+      },
+      "invalidate_zh": "未收復則維持低權；收復≠新五波①"
+    }
+  ],
+  "preferred_infer": "M3_seek_37837_continue",
+  "bottom_band": {
+    "lo": 41800.0,
+    "hi": 42700.0,
+    "source": "oral-wave4-band-418-427",
+    "note": "11/16口頭"
+  },
+  "not_buy_signal": true,
+  "not_new_impulse1_zh": "帶下續弱／未測37837 ≠ 自動新五波升；不准標新①。",
+  "evidence_gate_zh": "S8：本窗 preferred＝升權測37837，憑據＝11/16失41760＋11/17～11/19 N1帶下續弱再探（L38260）；無憑據不標新①。"
+}
