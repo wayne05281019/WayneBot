@@ -113,6 +113,10 @@ def test_pipeline_observe_builds_layers(tmp_path):
     assert "非買訊" in html
     assert payload.get("layers")
     assert payload.get("not_buy_signal") is True
-    # 勝率有檔、海選桶空 → 必須出現進場閘對質問題
-    texts = " ".join(i.detail for i in payload.get("issues") or [])
-    assert "勝率" in texts or "leave_zero" in texts or "進場閘" in html
+    # 勝率有檔、海選桶空＝產品層差異說明，不准當失真 issues
+    gate = next((L for L in payload["layers"] if getattr(L, "id", None) == "gate"), None)
+    assert gate is not None
+    gate_txt = " ".join(gate.lines)
+    assert "產品層" in gate_txt or "母閘" in gate_txt
+    assert gate.status != "失真"
+    assert not any("兩套掃描脫鉤" in (i.detail or "") for i in payload.get("issues") or [])

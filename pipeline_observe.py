@@ -314,7 +314,8 @@ def build_pipeline_observe(
                 pool.lines.append(f"{lab}戳：缺")
                 continue
             pool.lines.append(f"{lab}戳：{st.get('status')} {st.get('notes') or ''}")
-            # 雷達有數但海選離零桶空 → 兩套定義脫鉤
+            # 剛離零雷達＝窄母體（實綠首日）；海選 leave_zero＝母公式＋量／趨勢硬閘
+            # 筆數不同＝產品層差異，不准當「定義壞了／失真」
             if tid == "leave-zero-picks" and str(st.get("status")) == "success":
                 notes = str(st.get("notes") or "")
                 n_lz = _bucket_n(screen_res, "leave_zero")
@@ -324,13 +325,10 @@ def build_pipeline_observe(
                     except Exception:
                         radar_n = -1
                     if radar_n > 0:
-                        msg = (
-                            f"剛離零雷達 notes={notes} 但海選 leave_zero 桶=0"
-                            "（兩套掃描脫鉤）"
+                        pool.lines.append(
+                            f"產品層：剛離零雷達 n≈{radar_n}、海選離零桶 0"
+                            "（窄母體 vs 海選後置閘；非資料失真）"
                         )
-                        pool.status = ST_BAD
-                        pool.issues.append(msg)
-                        issues.append(LayerIssue("剛離零", msg))
     except Exception:
         pass
 
@@ -383,9 +381,13 @@ def build_pipeline_observe(
         rows = load_winrate_roster(path, use) if use else []
         wr_ids = [str(r.get("stock_id") or "") for r in rows if r.get("stock_id")]
         gate.content_as_of = use
+        n_screen_lz = _bucket_n(screen_res, "leave_zero")
+        n_screen_ma = _bucket_n(screen_res, "ma60_lower")
         gate.lines = [
-            f"勝率買點 roster {_zh(use)}｜n={len(wr_ids)}（只認 leave_zero 藍▲）",
-            "紅箭確認見海選桶 ma60_lower；其餘鈕不是買訊",
+            f"勝率買點 roster {_zh(use)}｜n={len(wr_ids)}",
+            "母閘＝leave_zero_screen_ok；勝率另加：圖仍畫▲＋exclude＋AI 生態系",
+            f"海選離零桶 n={n_screen_lz}（另加量熱／趨勢／短高硬閘）｜紅箭確認 n={n_screen_ma}",
+            "剛離零鈕＝更窄（實綠首日）；三套產品層，不准用最終集合互判定義壞",
         ]
         if not use or not roster_marked(path, use):
             gate.status = ST_MISSING
@@ -395,29 +397,21 @@ def build_pipeline_observe(
             gate.lines.append("空名單＝今日無過閘可執行")
         else:
             gate.status = ST_OK
-            gate.lines.append("代號：" + "、".join(wr_ids[:12]) + ("…" if len(wr_ids) > 12 else ""))
+            gate.lines.append(
+                "代號：" + "、".join(wr_ids[:12]) + ("…" if len(wr_ids) > 12 else "")
+            )
 
-        # 與海選 leave_zero 桶對質
+        # 產品層差異＝說明，不是失真（母公式可同、後置閘不同）
         lz_ids = set(_ids_from_bucket(screen_res, "leave_zero"))
         wr_set = set(wr_ids)
-        if wr_set and lz_ids and wr_set != lz_ids:
+        if wr_set or lz_ids:
             only_wr = sorted(wr_set - lz_ids)
             only_lz = sorted(lz_ids - wr_set)
-            msg = (
-                f"勝率 roster 與海選 leave_zero 不一致"
-                f"（僅勝率 {len(only_wr)}／僅海選 {len(only_lz)}）"
-            )
-            gate.status = ST_BAD
-            gate.issues.append(msg)
-            issues.append(LayerIssue("進場閘", msg))
-        elif wr_set and not lz_ids:
-            msg = (
-                f"勝率有 {len(wr_set)} 檔但海選 leave_zero 桶為空"
-                "（card_lz_paint 與 screen 桶兩套掃描）"
-            )
-            gate.status = ST_BAD
-            gate.issues.append(msg)
-            issues.append(LayerIssue("進場閘", msg))
+            if only_wr or only_lz:
+                gate.lines.append(
+                    f"產品層差異：僅勝率 {len(only_wr)}／僅海選離零 {len(only_lz)}"
+                    "（預期；非資料日失真）"
+                )
     except Exception as exc:
         gate.issues.append(f"勝率讀取失敗：{type(exc).__name__}")
         issues.append(LayerIssue("勝率買點", gate.issues[-1]))
