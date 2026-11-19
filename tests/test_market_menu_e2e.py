@@ -101,9 +101,10 @@ class TestMarketMenuE2E:
         from bot_servers import MENU_BTN_UNDERVALUE, MENU_BTN_BIAOKE_FACE, MENU_BTN_DONGZHU, MENU_BTN_FLOW, MENU_BTN_LEAVE_ZERO, MENU_BTN_PRESSURE, MENU_BTN_STREAK, MENU_BTN_WINRATE
 
         assert row1 == [MENU_BTN_WINRATE, "海選", "持股", MENU_BTN_WATCH, MENU_BTN_BIAOKE_FACE, MENU_BTN_MARKET, MENU_BTN_FLOW]
-        from bot_servers import MENU_BTN_CHONG, MENU_BTN_WAVE_STATUS
+        from bot_servers import MENU_BTN_CHONG, MENU_BTN_PIPELINE, MENU_BTN_WAVE_STATUS
 
         assert row2 == [
+            MENU_BTN_PIPELINE,
             MENU_BTN_WAVE_STATUS,
             MENU_BTN_CHONG,
             MENU_BTN_PRESSURE,
