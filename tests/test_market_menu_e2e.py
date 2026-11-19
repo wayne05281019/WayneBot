@@ -94,7 +94,7 @@ def _seed_market_db(path: str) -> str:
 class TestMarketMenuE2E:
     def test_layout_version_and_button_label(self):
         assert MENU_BTN_MARKET == "台股大盤"
-        assert MENU_LAYOUT_VERSION == "40"
+        assert MENU_LAYOUT_VERSION == "41"
         bot = WayneTelegramBot.__new__(WayneTelegramBot)
         row1 = [b.text for b in bot._reply_menu().keyboard[0]]
         row2 = [b.text for b in bot._reply_menu().keyboard[1]]
@@ -104,7 +104,6 @@ class TestMarketMenuE2E:
         from bot_servers import MENU_BTN_CHONG, MENU_BTN_PIPELINE, MENU_BTN_WAVE_STATUS
 
         assert row2 == [
-            MENU_BTN_PIPELINE,
             MENU_BTN_WAVE_STATUS,
             MENU_BTN_CHONG,
             MENU_BTN_PRESSURE,
@@ -113,6 +112,7 @@ class TestMarketMenuE2E:
             MENU_BTN_LEAVE_ZERO,
             MENU_BTN_DONGZHU,
         ]
+        assert MENU_BTN_PIPELINE not in row2
         assert "刷新" not in row1 + row2
         assert "回報" not in row1 + row2
 

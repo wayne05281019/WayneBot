@@ -72,7 +72,7 @@ def test_file_note_matches_this_change():
     assert "綜合篩選" in raw
     assert "模擬倉" in raw or "AI倉" in raw
     assert pu._clean_note(raw) == (
-        "v40：第三排「綜合篩選」＋六格空白保留；模擬倉關閉打 AI倉只回已關閉。"
+        "v41：隱藏「流水線」、第三排「綜合篩選」；上七下七完整顯示；AI倉只回已關閉。"
     )
 
 

@@ -780,8 +780,8 @@ MENU_ROW1 = (
     MENU_BTN_MARKET,
     MENU_BTN_FLOW,
 )
+# 第二排七格：流水線觀測已併進第三排「綜合篩選」（鍵盤隱藏；打字別名仍認）。
 MENU_ROW2 = (
-    MENU_BTN_PIPELINE,
     MENU_BTN_WAVE_STATUS,
     MENU_BTN_CHONG,
     MENU_BTN_PRESSURE,
@@ -838,7 +838,8 @@ MENU_FULL_ALIASES = ("完整選單", "完整鍵盤")
 # v38：主選單拿掉「AI倉」鈕（2026-11-16 使用者鎖）；假錢倉改打字「AI倉」／「模擬倉」仍開。上七下七。
 # v39：下排最左加「流水線」觀測（分層對質，非買訊）。上七下八。
 # v40：第三排七格；第 1＝綜合篩選（機構式串節點：流水線／連買等）；2–7 空白保留。上七下八＋三排七。
-MENU_LAYOUT_VERSION = "40"
+# v41：第二排隱藏「流水線」（綜合篩選已串節點＋名單）；上七下七＋三排七，第二排名稱可完整顯示。
+MENU_LAYOUT_VERSION = "41"
 MAX_PICK_INLINE_ROWS = 8
 
 # 輸入列左邊三條槓（Telegram BotCommand）。跟下方兩排重複的不放，避免兩套入口。
@@ -1547,7 +1548,7 @@ class WayneTelegramBot:
         return
 
     def _reply_menu(self, uid: str = "", *, fast: bool = False):
-        """上七下八＋第三排七格（第1綜合篩選、餘空白保留）。偉權與哥哥同一套，沒有精簡。
+        """上七下七＋第三排七格（第1綜合篩選、餘空白保留；流水線鍵盤隱藏）。偉權與哥哥同一套，沒有精簡。
 
         fast=True：不打未讀庫（釘鍵盤／LOADING 後立刻用），避免空白好幾秒。
         """

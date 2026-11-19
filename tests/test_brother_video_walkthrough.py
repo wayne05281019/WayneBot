@@ -106,7 +106,6 @@ def test_menu_buttons_exist_in_order_seven_plus_seven():
     from bot_servers import MENU_BTN_CHONG, MENU_BTN_PIPELINE, MENU_BTN_WAVE_STATUS
 
     assert row2 == [
-        MENU_BTN_PIPELINE,
         MENU_BTN_WAVE_STATUS,
         MENU_BTN_CHONG,
         MENU_BTN_PRESSURE,
@@ -115,6 +114,7 @@ def test_menu_buttons_exist_in_order_seven_plus_seven():
         MENU_BTN_LEAVE_ZERO,
         MENU_BTN_DONGZHU,
     ]
+    assert MENU_BTN_PIPELINE not in row2
     assert MENU_BTN_AI not in row2
 
 

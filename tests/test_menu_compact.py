@@ -31,7 +31,7 @@ from wayne_db import init_database
 
 
 def test_full_menu_is_two_rows_no_compact():
-    assert MENU_LAYOUT_VERSION == "40"
+    assert MENU_LAYOUT_VERSION == "41"
     assert MENU_ROW1 == (
         MENU_BTN_WINRATE,
         "海選",
@@ -44,7 +44,6 @@ def test_full_menu_is_two_rows_no_compact():
     from bot_servers import MENU_BTN_CHONG, MENU_BTN_PIPELINE, MENU_BTN_WAVE_STATUS
 
     assert MENU_ROW2 == (
-        MENU_BTN_PIPELINE,
         MENU_BTN_WAVE_STATUS,
         MENU_BTN_CHONG,
         MENU_BTN_PRESSURE,
@@ -53,6 +52,7 @@ def test_full_menu_is_two_rows_no_compact():
         MENU_BTN_LEAVE_ZERO,
         MENU_BTN_DONGZHU,
     )
+    assert MENU_BTN_PIPELINE not in MENU_ROW2
     assert "刷新" not in MENU_ROW1 + MENU_ROW2
     assert "回報" not in MENU_ROW1 + MENU_ROW2
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
