@@ -47,8 +47,8 @@ _BIOTECH_RE = re.compile(r"生技|醫療|製藥|醫材|診所", re.I)
 _AI_SERVER_RE = re.compile(r"AI\s*伺服器|伺服器整機|高成長板卡|技嘉|永擎|AMAX", re.I)
 _IP_RE = re.compile(r"\bIP\b|矽智財|IC\s*設計|ASIC", re.I)
 
-# 產業表＝「同業滾動中位缺樣／爆表」時的備援與硬頂，不是日常合理倍數來源。
-# 特殊成長桶僅留市場長期共識偏高者；循環／金融／生技／一般備援對齊庫內粗產業中位帶。
+# 產業表＝明年倍數相對今年的縮放比，以及掃描硬頂參考；不准再當「合理 PE」冒充市場共識。
+# 合理 PE 只認同業滾動成交中位（市場共識）；無樣本→不編造目標價。
 INDUSTRY_PE: Dict[str, Tuple[float, float]] = {
     # 特殊（有共識才留高倍）
     "ic_ip": (40.0, 32.0),  # 矽智財／ASIC
@@ -107,21 +107,17 @@ def industry_bucket(chain: str = "", tags: Sequence[str] = (), name: str = "") -
 
 def select_fair_pe_pair(
     peer_med_raw: Optional[float], bucket: str
-) -> Tuple[float, float, float]:
-    """合理 PE：優先滾動同業中位；缺樣／爆表才退產業備援表。
+) -> Tuple[Optional[float], Optional[float], Optional[float]]:
+    """合理 PE＝同業市場成交本益中位；無樣本不編造。
 
-    回傳 (pe_year, pe_next, peer_for_display)。
-    不准寫死 25 當同業中位。
+    回傳 (pe_year, pe_next, peer_for_display)。缺樣／非正數 → (None, None, None)。
+    明年略縮用產業表比例（時間風險），基底仍是市場中位；不准用產業表冒充共識。
     """
-    ind_y, ind_n = fair_pe_pair(bucket)
-    cap = peer_pe_cap(bucket)
     med = _finite(peer_med_raw)
     if med is None or med <= 0:
-        return float(ind_y), float(ind_n), float(ind_y)
-    if med > cap:
-        return float(ind_y), float(ind_n), float(ind_y)
-    # 中位可信：今年用滾動中位；明年按備援表比例略縮
-    scale = float(ind_n) / float(ind_y) if ind_y else 1.0
+        return None, None, None
+    ind_y, ind_n = fair_pe_pair(bucket)
+    scale = float(ind_n) / float(ind_y) if ind_y else 0.85
     return float(med), float(med) * scale, float(med)
 
 
@@ -328,7 +324,7 @@ def resolve_rolling_peer_pe_median(
     """合理 PE 滾動中位：細鏈同業 → 證交所粗產業；官方 pe 優先。
 
     細鏈樣本 n≥3 就用（對齊低估掃）；粗產業仍要 n≥8。
-    都不足才 median=None → 呼叫端吃產業備援表。
+    都不足才 median=None → 呼叫端不編造合理 PE／目標價。
     """
     sid_s = str(sid or "").strip()
     day = str(as_of or "").replace("-", "")[:8]
@@ -389,13 +385,11 @@ def resolve_rolling_peer_pe_median(
 
 
 def capped_peer_median(raw_med: Optional[float], bucket: str) -> Optional[float]:
+    """掃描用：有同業中位才過；爆表不再用產業表冒充共識。"""
     med = _finite(raw_med)
     if med is None or med <= 0:
         return None
-    cap = peer_pe_cap(bucket)
-    year_pe, _ = fair_pe_pair(bucket)
-    if med > cap:
-        return float(year_pe)
+    _ = bucket  # 桶別留給呼叫端標籤；此處不改寫市場中位
     return float(med)
 
 
@@ -1041,8 +1035,10 @@ def enrich_growth_row(
     med_cap = capped_peer_median(peer_med_raw, bucket)
     if med_cap is None:
         return None
-    # 中位未破硬頂→用中位；破頂→產業表（不准再無視中位硬套 40 倍）
+    # 只認市場成交中位；無共識不編造目標價
     use_pe_year, use_pe_next, _peer_disp = select_fair_pe_pair(peer_med_raw, bucket)
+    if use_pe_year is None or use_pe_next is None:
+        return None
 
     moms, last_rev, ytd_rev, m_last = load_recent_moms(conn, sid_s, n=3)
     # 月營收 yyyymm 年份須對得上估的會計年；一月常還停在去年 12 月

@@ -623,7 +623,7 @@ def _soft_growth(
 ) -> Dict[str, Any]:
     """旗艦卡顯示用軟估算：不強制過低估鐵律；缺官方季報就不填。
 
-    合理 PE 優先證交所粗產業同業滾動中位；不准寫死 25。
+    合理 PE 只認同業滾動成交中位（市場共識）；無樣本不編造目標價。
     """
     out: Dict[str, Any] = {}
     try:
@@ -678,7 +678,7 @@ def _soft_growth(
     out["pe_source"] = (
         str(peer_info.get("label") or "")
         if peer_med is not None
-        else f"產業備援（{bucket}）"
+        else "同業樣本不足"
     )
     out["peer_pe_median"] = peer_med
     out["peer_pe_n"] = int(peer_info.get("n") or 0)
@@ -704,7 +704,13 @@ def _soft_growth(
     out["pe_y"] = pe_y
     out["pe_n"] = pe_n
     out["bucket"] = bucket
-    if eps_est.get("ok") and close and close > 0:
+    if (
+        eps_est.get("ok")
+        and close
+        and close > 0
+        and pe_y is not None
+        and pe_n is not None
+    ):
         out["eps_y"] = _finite(eps_est.get("eps_2026"))
         out["eps_n"] = _finite(eps_est.get("eps_2027"))
         out["thr"] = _finite(eps_est.get("rev_threshold_yi"))
@@ -718,6 +724,11 @@ def _soft_growth(
         )
         out["fair"] = _finite(tg.get("fair_year"))
         out["tgt"] = _finite(tg.get("target_next"))
+    elif eps_est.get("ok") and close and close > 0:
+        # 有 EPS 估但無市場共識 PE → 只填 EPS／門檻，不編造目標價
+        out["eps_y"] = _finite(eps_est.get("eps_2026"))
+        out["eps_n"] = _finite(eps_est.get("eps_2027"))
+        out["thr"] = _finite(eps_est.get("rev_threshold_yi"))
     # 庫缺那一季：整組吃 overlay。
     # 同季官方已入庫：EPS／毛利用庫；倍率／目標／門檻若有已核定 overlay 仍保留
     # （興櫃缺 peer PE，純滾動估曾算出遠低於現價的假目標）。
@@ -1189,7 +1200,7 @@ def build_flagship_payload(
                 con2, sid, as_of=day, db_path=db_path
             )
             peer_med_raw = peer_info.get("median")
-            # enrich 要 float；無同業中位時傳 NaN 觸發產業備援（不准寫死 25）
+            # enrich 要 float；無同業中位→NaN→不編造目標價（不准產業表冒充共識）
             peer_med_arg = (
                 float(peer_med_raw)
                 if peer_med_raw is not None
@@ -1197,6 +1208,8 @@ def build_flagship_payload(
             )
             if peer_med_raw is not None:
                 pe_source = str(peer_info.get("label") or "")
+            else:
+                pe_source = "同業樣本不足"
             eg = enrich_growth_row(
                 con2,
                 sid=sid,

@@ -335,7 +335,7 @@ def test_flagship_html_shows_pe_source_2610():
     p = build_flagship_payload(DB, "2610", as_of="20261118")
     html = render_flagship_html(p)
     assert "合理帶：" in html
-    assert "中位" in html or "產業備援" in html
+    assert "中位" in html or "同業樣本不足" in html
     assert p.get("pe_source") and p["pe_source"] != "—"
 
 

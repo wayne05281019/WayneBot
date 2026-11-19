@@ -81,23 +81,27 @@ def test_cyclical_and_gross_gates():
     assert industry_bucket("電子上游-記憶體IC設計", ["DRAM"], "晶豪科") == "cyclical"
     assert industry_bucket("電子上游-IC-代工", ["成熟製程"], "力積電") == "default"
     assert industry_bucket("航運", [], "華航") == "cyclical"
-    assert capped_peer_median(62.5, "optical") == 26.0
+    # 爆表也不用產業表冒充；有中位就回中位
+    assert capped_peer_median(62.5, "optical") == 62.5
     assert capped_peer_median(20.0, "optical") == 20.0
+    assert capped_peer_median(None, "optical") is None
 
     from undervalue_growth import select_fair_pe_pair
 
-    # 中位未破頂→用滾動中位；破頂→產業備援表
+    # 有同業中位→市場共識；明年按產業表比例略縮
     y, n, disp = select_fair_pe_pair(13.2, "default")
     assert abs(y - 13.2) < 1e-9
     assert abs(disp - 13.2) < 1e-9
     assert n < y  # 明年倍數略低
-    y2, n2, _ = select_fair_pe_pair(62.5, "optical")
-    assert (y2, n2) == (26.0, 21.0)
-    # 缺同業中位→產業備援（不准默認 25）
-    y3, n3, _ = select_fair_pe_pair(None, "cyclical")
-    assert (y3, n3) == (12.0, 10.0)
-    y4, n4, _ = select_fair_pe_pair(None, "default")
-    assert (y4, n4) == (16.0, 13.0)
+    y2, n2, disp2 = select_fair_pe_pair(62.5, "optical")
+    assert abs(y2 - 62.5) < 1e-9
+    assert abs(disp2 - 62.5) < 1e-9
+    assert n2 < y2
+    # 缺同業中位→不編造（不准產業表冒充共識）
+    y3, n3, d3 = select_fair_pe_pair(None, "cyclical")
+    assert (y3, n3, d3) == (None, None, None)
+    y4, n4, d4 = select_fair_pe_pair(None, "default")
+    assert (y4, n4, d4) == (None, None, None)
 
 
 def test_chip_capsule_from_daily_quotes_nets():
@@ -301,7 +305,12 @@ def test_scan_rejects_cyclical_seed(tmp_path, monkeypatch):
     row = next(r for r in out["rows"] if r["stock_id"] == "6442")
     assert row.get("fair_year") is not None
     assert row.get("target_next") is not None
-    assert float(row["peer_pe_median"]) <= 35.0
+    # 合理 PE＝同業市場成交中位（≈52.5），不准再用產業表 26 冒充
+    assert abs(float(row["peer_pe_median"]) - 52.5) < 1e-6
+    assert abs(float(row["pe_year"]) - 52.5) < 1e-6
+    detail = row.get("detail") or {}
+    if detail.get("pe_year") is not None:
+        assert abs(float(detail["pe_year"]) - 52.5) < 1e-6
 
 
 def test_eps_year_uses_ytd_cum_not_q3_times_three():
