@@ -2290,7 +2290,8 @@ def _twii_bars_for_teach(
 _TEACH_BIAOKE_FRESH_AT: Dict[str, float] = {}
 _TEACH_BIAOKE_FRESH_SEC = 180.0  # 盤中／活畫 3 分內同庫只補一次
 # 話筒波浪不准被 ingest／walk 卡死（否則只出遠窗或第二次全沒）
-_TEACH_BIAOKE_INGEST_TIMEOUT_SEC = 12.0
+# 教具活畫：逾時仍出三窗；12s 常空等，壓到 3.5s（失敗一樣節流 180s）
+_TEACH_BIAOKE_INGEST_TIMEOUT_SEC = 3.5
 
 
 def _ensure_teach_biaoke_posts_fresh(
