@@ -2768,8 +2768,9 @@ def compute_falling_risk(
     pcts = idx["pct_change"].astype(float) if "pct_change" in idx.columns else pd.Series([0.0] * len(idx))
     c = float(closes.iloc[-1])
     ma20 = float(closes.tail(20).mean()) if len(closes) >= 20 else c
-    if len(closes) >= 4 and c < ma20:
-        recent = closes.tail(4)
+    # 「3日未站回」＝含當日共 3 根收在月線下（不准文案寫3、實作吃4）
+    if len(closes) >= 3 and c < ma20:
+        recent = closes.tail(3)
         if all(float(x) < ma20 for x in recent):
             score += 25
             hits.append("跌破月線且3日未站回")
@@ -2953,16 +2954,10 @@ def _regime_plus_raw_history(db_path: str, as_of: str, *, lookback: int = 8) -> 
         official = _usable_official_breadth(
             load_index_breadth_daily(db_path, day) or _nearest_official_breadth(db_path, day)
         )
-        if day == last_day:
-            breadth, _ = _resolve_breadth_for_date(db_path, day)
-        elif official:
-            up = int(official.get("up_count") or 0)
-            down = int(official.get("down_count") or 0)
-            total = up + down
-            up_ratio = float(official.get("up_ratio") or (up / total if total else 0.5))
-            breadth = {"above_ma20_pct": round(up_ratio * 100.0, 1), "sample_n": 0}
-        else:
-            breadth = {"above_ma20_pct": 50.0, "sample_n": 0}
+        # 站月線％只認個股官方收廣度；不准把漲跌比×100 冒充 above_ma20_pct
+        breadth, _ = _resolve_breadth_for_date(db_path, day)
+        if not int(breadth.get("sample_n") or 0):
+            breadth = {"above_ma20_pct": 0.0, "sample_n": 0}
         prev_official = _load_prev_official_breadth(db_path, day)
         flow_net = _sector_flow_net(db_path, day)
         if flow_net is None:
@@ -2976,10 +2971,9 @@ def _regime_plus_raw_history(db_path: str, as_of: str, *, lookback: int = 8) -> 
         )
         us_risk_off = False
         try:
-            from us_overnight import load_us_overnight
-
-            us = load_us_overnight(db_path, day)
-            us_risk_off = str(us.get("regime") or "") == "risk_off"
+            us_disp, us_fresh = _resolve_us_for_display(db_path, day)
+            if us_fresh and not (us_disp or {}).get("_press_miss"):
+                us_risk_off = str((us_disp or {}).get("regime") or "") == "risk_off"
         except Exception:
             us_risk_off = False
         fr = compute_falling_risk(
@@ -3232,12 +3226,12 @@ def analyze_taiwan_market(
         sector_flow=flow,
         official_up_ratio=(official.get("up_ratio") if official else None),
     )
+    # 美股逆風只認新鮮快取；過舊／press_miss 不准進下跌風險（與大盤頁隱藏舊％同一閘）
     us_risk_off = False
     try:
-        from us_overnight import load_us_overnight
-
-        us = load_us_overnight(db_path, ref_date)
-        us_risk_off = str(us.get("regime") or "") == "risk_off"
+        us_disp, us_fresh = _resolve_us_for_display(db_path, ref_date)
+        if us_fresh and not (us_disp or {}).get("_press_miss"):
+            us_risk_off = str((us_disp or {}).get("regime") or "") == "risk_off"
     except Exception:
         pass
     prev_official = _load_prev_official_breadth(db_path, ref_date)

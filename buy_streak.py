@@ -346,7 +346,21 @@ def clear_cache() -> None:
 
 
 def resolve_official_as_of(db_path: str, *, now=None) -> str:
-    """連買最後一天＝庫內官方融合收盤日（與海選／大盤同一基準，不晚於 fuse 上限）。"""
+    """連買最後一天＝法人有料日（與資金輪動同一基準）。
+
+    現貨齊但法人全 0 的日子不准當連買基準（否則連續天數建在空殼籌碼上）。
+    """
+    try:
+        from money_flow import latest_chip_quote_date, resolve_flow_as_of
+
+        chip = str(latest_chip_quote_date(db_path) or "").replace("-", "")[:8]
+        flow_as, _ = resolve_flow_as_of(db_path, now=now)
+        flow_as = str(flow_as or "").replace("-", "")[:8]
+        if chip and flow_as:
+            return min(chip, flow_as)
+        return chip or flow_as
+    except Exception:
+        pass
     try:
         from trading_calendar import resolve_screen_as_of
 

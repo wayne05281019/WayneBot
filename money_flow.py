@@ -1390,16 +1390,19 @@ def format_sector_rotation_html(
 
 
 def _top(conn: sqlite3.Connection, ymd: str, col: str, desc: bool, limit: int = 6) -> List[sqlite3.Row]:
+    """個股法人排行：與產業輪動同一套擋 ETF／存託，不准 0050 進買賣超榜。"""
     order = "DESC" if desc else "ASC"
     conn.row_factory = sqlite3.Row
+    etf = _not_etf_clause()
     return conn.execute(
         f"""
-        SELECT stock_id, stock_name, market, close, pct_change, volume,
-               foreign_net, trust_net, dealer_net,
-               (foreign_net+trust_net+dealer_net) AS three_net
-        FROM daily_quotes
-        WHERE date=? AND length(stock_id)=4
-        ORDER BY {col} {order}
+        SELECT q.stock_id, q.stock_name, q.market, q.close, q.pct_change, q.volume,
+               q.foreign_net, q.trust_net, q.dealer_net,
+               (q.foreign_net+q.trust_net+q.dealer_net) AS three_net
+        FROM daily_quotes q
+        LEFT JOIN stock_universe u ON u.stock_id = q.stock_id
+        WHERE q.date=? {etf}
+        ORDER BY q.{col} {order}
         LIMIT ?
         """,
         (ymd, limit),
