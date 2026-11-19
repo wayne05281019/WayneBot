@@ -4,6 +4,7 @@
 對齊 docs/intraday-v20-align-20261030.md：
 價／量同一 xlim 與 x_end；不准尾端假延長（真分時結束後不畫線）；
 上市櫃 xmax=13:30、興櫃=15:00。不准假資料。不是買訊。
+位階標＝「當日高／當日低」（當日分K高低），不是大量區壓／撐。
 """
 from __future__ import annotations
 
@@ -1634,12 +1635,13 @@ def _level_anchors(
     if n == 0:
         return out
     # 錨 y 只認走線收 ya[i]（圖上畫的折線）；分K高／低／開只用來挑「哪一分」、標文仍寫官方價。
-    # 舊：錨用 ha／la／oa → 點懸在線上／線下空白（3595 壓729／撐407.5／開盤）。
+    # 舊：錨用 ha／la／oa → 點懸在線上／線下空白。
+    # 標名用「當日高／當日低」：不是大量區壓撐，不准同字異義（2026-11-19 使用者鎖）。
     i_hi = int(np.nanargmax(ha)) if np.any(np.isfinite(ha)) else int(np.argmax(ya))
-    out.append(("壓", "壓", float(xa[i_hi]), float(ya[i_hi]), "up", float(off.high)))
+    out.append(("高", "當日高", float(xa[i_hi]), float(ya[i_hi]), "up", float(off.high)))
     out.append(("開", "開盤", float(xa[0]), float(ya[0]), "open", float(off.open)))
     i_lo = int(np.nanargmin(la)) if np.any(np.isfinite(la)) else int(np.argmin(ya))
-    out.append(("撐", "撐", float(xa[i_lo]), float(ya[i_lo]), "dn", float(off.low)))
+    out.append(("低", "當日低", float(xa[i_lo]), float(ya[i_lo]), "dn", float(off.low)))
     close_px = float(off.close)
     avg = float(off.avg_price) if off.avg_price and float(off.avg_price) > 0 else None
     merge_avg_close = (
@@ -1935,8 +1937,8 @@ def _paint_smart_level_labels(
         )
 
     # v15：事件＝次層；急殺與撐互斥（撐優先不動，急殺掃對側／上方）
-    support_rects = [p["full_rect"] for p in pending if p.get("full") == "撐"]
-    support_ys = [float(p["price"]) for p in pending if p.get("full") == "撐"]
+    support_rects = [p["full_rect"] for p in pending if p.get("full") == "當日低"]
+    support_ys = [float(p["price"]) for p in pending if p.get("full") == "當日低"]
     for eidx, (ex, ey, elab, eck) in enumerate(list(events or [])):
         ecol = color_map.get(eck, ink)
         full_txt = str(elab)
@@ -2101,7 +2103,7 @@ def _paint_smart_level_labels(
         return True
 
     def _is_support(p: Dict[str, Any]) -> bool:
-        return p.get("kind") == "level" and p.get("full") == "撐"
+        return p.get("kind") == "level" and p.get("full") == "當日低"
 
     def _is_event_kill(p: Dict[str, Any]) -> bool:
         return p.get("kind") == "event" and p.get("full") == "急殺"
@@ -2199,7 +2201,7 @@ def _paint_smart_level_labels(
     i_open = _by_full("開盤")
     i_avg = _by_full("均") or _by_full("均＝現")
     i_close = _by_full("現價") or (_by_full("均＝現") if i_avg is None else None)
-    i_press = _by_full("壓")
+    i_press = _by_full("當日高")
     # 價極近：左開／中均／右現
     if i_open is not None and i_avg is not None and i_close is not None and i_open != i_close:
         prices = [pending[i]["price"] for i in (i_open, i_avg, i_close)]
@@ -2342,7 +2344,7 @@ def _paint_smart_level_labels(
         if em.get("full") != "急殺":
             continue
         for lm in level_meta:
-            if lm.get("full") != "撐":
+            if lm.get("full") != "當日低":
                 continue
             if _rects_overlap(em["full_rect"], lm["full_rect"], pad=box_pad * 2.0):
                 kill_support_hits += 1
