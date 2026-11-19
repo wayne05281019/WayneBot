@@ -244,6 +244,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <div class="cell-v mono cyan">{{PE_FWD12M}}倍 <span class="cell-sub">({{PE_NOTE}})</span></div>
           <div class="ruler-track"><div class="ruler-dot" style="left: {{PE_DOT_PCT}}%;"></div></div>
           <div class="ruler-labels mono"><span>{{PE_MIN}}</span><span>{{PE_MID}}</span><span>{{PE_MAX}}</span></div>
+          <div class="cell-sub">合理帶：{{PE_SOURCE}}</div>
         </div>
 
         <div class="d3-cell">
@@ -632,8 +633,8 @@ def _soft_growth(
             load_quarter_fundamentals,
             load_recent_moms,
             price_targets,
+            resolve_rolling_peer_pe_median,
             select_fair_pe_pair,
-            twse_industry_peer_pe_median,
         )
     except Exception:
         return out
@@ -662,20 +663,26 @@ def _soft_growth(
 
     day = str(as_of or "").replace("-", "")[:8]
     bucket = industry_bucket(chain, (), name)
+    db_path = ""
+    try:
+        db_path = str(con.execute("PRAGMA database_list").fetchone()[2] or "")
+    except Exception:
+        db_path = ""
     peer_info = (
-        twse_industry_peer_pe_median(con, sid, as_of=day)
+        resolve_rolling_peer_pe_median(con, sid, as_of=day, db_path=db_path or None)
         if len(day) == 8
-        else {"median": None, "n": 0, "industry": "", "source": "twse_industry_peer_pe"}
+        else {"median": None, "n": 0, "label": "", "scope": ""}
     )
     peer_med = peer_info.get("median")
     pe_y, pe_n, _ = select_fair_pe_pair(peer_med, bucket)
     out["pe_source"] = (
-        f"同業中位{float(peer_med):.1f}×（{peer_info.get('industry') or chain} n={int(peer_info.get('n') or 0)}）"
+        str(peer_info.get("label") or "")
         if peer_med is not None
         else f"產業備援（{bucket}）"
     )
     out["peer_pe_median"] = peer_med
     out["peer_pe_n"] = int(peer_info.get("n") or 0)
+    out["peer_pe_scope"] = str(peer_info.get("scope") or "")
     if ov.get("pe_y") is not None:
         pe_y = float(ov["pe_y"])
     if ov.get("pe_n") is not None:
@@ -1171,14 +1178,16 @@ def build_flagship_payload(
     try:
         con2 = sqlite3.connect(db_path)
         try:
-            from undervalue_growth import enrich_growth_row, twse_industry_peer_pe_median
+            from undervalue_growth import enrich_growth_row, resolve_rolling_peer_pe_median
 
             qty60_tmp = 1000.0
             if bars:
                 vols = [float(b[4] or 0) for b in bars[-60:]]
                 if vols:
                     qty60_tmp = sum(vols) / len(vols) / 1000.0
-            peer_info = twse_industry_peer_pe_median(con2, sid, as_of=day)
+            peer_info = resolve_rolling_peer_pe_median(
+                con2, sid, as_of=day, db_path=db_path
+            )
             peer_med_raw = peer_info.get("median")
             # enrich 要 float；無同業中位時傳 NaN 觸發產業備援（不准寫死 25）
             peer_med_arg = (
@@ -1187,10 +1196,7 @@ def build_flagship_payload(
                 else float("nan")
             )
             if peer_med_raw is not None:
-                pe_source = (
-                    f"同業中位{float(peer_med_raw):.1f}×"
-                    f"（{peer_info.get('industry') or industry} n={int(peer_info.get('n') or 0)}）"
-                )
+                pe_source = str(peer_info.get("label") or "")
             eg = enrich_growth_row(
                 con2,
                 sid=sid,
@@ -1963,6 +1969,7 @@ def payload_to_card(p: Dict[str, Any]) -> Dict[str, Any]:
         "eps_latest_q": eps_latest,
         "pe_fwd12m": pe_fwd_s,
         "pe_note": pe_note or "—",
+        "pe_source": str(p.get("pe_source") or "—"),
         "pe_dot_pct": int(round(float(p.get("pe_dot") or 50))),
         "pe_min": str(p.get("pe_min") or "—"),
         "pe_mid": str(p.get("pe_mid") or "—"),
@@ -2049,6 +2056,7 @@ def fill_flagship_html(d: Dict[str, Any]) -> str:
         "EPS_LATEST_Q": d["eps_latest_q"],
         "PE_FWD12M": d["pe_fwd12m"],
         "PE_NOTE": d["pe_note"],
+        "PE_SOURCE": html.escape(str(d.get("pe_source") or "—")),
         "PE_DOT_PCT": str(max(5, min(95, int(d["pe_dot_pct"])))),
         "PE_MIN": d["pe_min"],
         "PE_MID": d["pe_mid"],

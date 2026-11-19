@@ -289,32 +289,54 @@ def test_flagship_targets_keep_year_semantics_2610():
     # 合理 PE 必須吃航運同業滾動中位，不准寫死 25
     assert soft.get("peer_pe_median") is not None
     assert float(soft["peer_pe_median"]) < 15.0
-    assert "同業中位" in str(soft.get("pe_source") or "")
-    assert "25" not in str(soft.get("pe_source") or "")
+    src = str(soft.get("pe_source") or "")
+    assert ("中位" in src) and ("25" not in src)
 
     def _num(s: str) -> float:
         return float(str(s).replace(",", ""))
 
     assert _num(p["tgt_c"]) == pytest.approx(float(soft["fair"]), rel=0.02)
     assert _num(p["tgt_n"]) == pytest.approx(float(soft["tgt"]), rel=0.02)
-    assert "同業中位" in str(p.get("pe_source") or "")
+    assert "中位" in str(p.get("pe_source") or "")
 
 
 @pytest.mark.skipif(not os.path.exists(DB), reason="no local wayne_market.db")
 def test_twse_industry_peer_pe_median_shipping():
     import sqlite3
 
-    from undervalue_growth import twse_industry_peer_pe_median
+    from undervalue_growth import resolve_rolling_peer_pe_median, twse_industry_peer_pe_median
 
     con = sqlite3.connect(DB)
     try:
         info = twse_industry_peer_pe_median(con, "2610", as_of="20261118")
+        rolled = resolve_rolling_peer_pe_median(
+            con, "2610", as_of="20261118", db_path=DB
+        )
+        fine2383 = resolve_rolling_peer_pe_median(
+            con, "2383", as_of="20261118", db_path=DB
+        )
     finally:
         con.close()
     assert info["industry"] == "航運業"
     assert info["n"] >= 8
     assert info["median"] is not None
     assert 6.0 <= float(info["median"]) <= 15.0
+    # 華航細鏈樣本少→退粗產業；台光電細鏈夠→細鏈優先
+    assert rolled.get("median") is not None
+    assert "中位" in str(rolled.get("label") or "")
+    assert fine2383.get("scope") == "fine_chain"
+    assert fine2383.get("median") is not None
+
+
+@pytest.mark.skipif(not os.path.exists(DB), reason="no local wayne_market.db")
+def test_flagship_html_shows_pe_source_2610():
+    from lookup_flagship_card_html import build_flagship_payload, render_flagship_html
+
+    p = build_flagship_payload(DB, "2610", as_of="20261118")
+    html = render_flagship_html(p)
+    assert "合理帶：" in html
+    assert "中位" in html or "產業備援" in html
+    assert p.get("pe_source") and p["pe_source"] != "—"
 
 
 def test_chip_capsule_note_counts_beyond_five(tmp_path):

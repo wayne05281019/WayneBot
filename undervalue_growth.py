@@ -169,29 +169,79 @@ def _annualize_cum_eps(eps: float, season: int) -> Optional[float]:
     return None
 
 
-def twse_industry_peer_pe_median(
-    conn: sqlite3.Connection,
-    sid: str,
-    *,
-    as_of: str,
-    min_n: int = PEER_PE_MEDIAN_MIN_N,
-) -> Dict[str, Any]:
-    """證交所粗產業同業本益滾動中位（官方收／季累計 EPS）。
+def _peer_pe_from_daily_valuation(
+    conn: sqlite3.Connection, peer_ids: Sequence[str], day: str
+) -> List[float]:
+    """官方 daily_valuation.pe（TWSE/TPEx bwibbu）；無真數不上。"""
+    out: List[float] = []
+    for psid in peer_ids:
+        sid = str(psid or "").strip()
+        if len(sid) != 4:
+            continue
+        try:
+            row = conn.execute(
+                """
+                SELECT pe FROM daily_valuation
+                WHERE stock_id=? AND REPLACE(CAST(date AS TEXT),'-','')<=?
+                  AND pe IS NOT NULL AND pe > 0
+                ORDER BY date DESC LIMIT 1
+                """,
+                (sid, day),
+            ).fetchone()
+        except sqlite3.Error:
+            continue
+        pe = _finite(row[0]) if row else None
+        if pe is None or pe < PEER_PE_MEDIAN_LO or pe > PEER_PE_MEDIAN_HI:
+            continue
+        out.append(float(pe))
+    return out
 
-    來源：stock_universe.industry ＋ daily_quotes.close ＋ quarterly_income.eps。
-    年化：Q1×4、Q2×2、Q3×4/3、Q4 用全年。極端值剔除後取中位。
-    樣本不足回 median=None（呼叫端改吃產業備援表）。
-    """
-    empty = {
-        "median": None,
-        "n": 0,
-        "industry": "",
-        "source": "twse_industry_peer_pe",
-    }
+
+def _peer_pe_from_close_eps(
+    conn: sqlite3.Connection, peer_ids: Sequence[str], day: str
+) -> List[float]:
+    """備援：官方收 ÷ 季累計 EPS 年化（無 daily_valuation 時）。"""
+    out: List[float] = []
+    for psid in peer_ids:
+        sid = str(psid or "").strip()
+        if len(sid) != 4:
+            continue
+        try:
+            cq = conn.execute(
+                """
+                SELECT close FROM daily_quotes
+                WHERE stock_id=? AND REPLACE(CAST(date AS TEXT),'-','')<=?
+                  AND close IS NOT NULL AND close>0
+                ORDER BY date DESC LIMIT 1
+                """,
+                (sid, day),
+            ).fetchone()
+            eq = conn.execute(
+                """
+                SELECT eps, season FROM quarterly_income
+                WHERE stock_id=? AND eps IS NOT NULL AND eps>0
+                ORDER BY year DESC, season DESC LIMIT 1
+                """,
+                (sid,),
+            ).fetchone()
+        except sqlite3.Error:
+            continue
+        if not cq or not eq:
+            continue
+        close = _finite(cq[0])
+        ann = _annualize_cum_eps(float(eq[0]), int(eq[1] or 0))
+        if close is None or ann is None or ann <= 0:
+            continue
+        pe = float(close) / float(ann)
+        if pe < PEER_PE_MEDIAN_LO or pe > PEER_PE_MEDIAN_HI:
+            continue
+        out.append(pe)
+    return out
+
+
+def twse_industry_peer_ids(conn: sqlite3.Connection, sid: str) -> Tuple[str, List[str]]:
+    """證交所粗產業同業清單。"""
     sid_s = str(sid or "").strip()
-    day = str(as_of or "").replace("-", "")[:8]
-    if len(sid_s) != 4 or len(day) != 8:
-        return empty
     try:
         row = conn.execute(
             """
@@ -201,10 +251,10 @@ def twse_industry_peer_pe_median(
             (sid_s,),
         ).fetchone()
     except sqlite3.Error:
-        return empty
+        return "", []
     industry = str(row[0] if row else "").strip()
     if not industry:
-        return empty
+        return "", []
     try:
         peers = [
             str(r[0])
@@ -219,52 +269,122 @@ def twse_industry_peer_pe_median(
             if r and r[0]
         ]
     except sqlite3.Error:
+        return industry, []
+    return industry, peers
+
+
+def twse_industry_peer_pe_median(
+    conn: sqlite3.Connection,
+    sid: str,
+    *,
+    as_of: str,
+    min_n: int = PEER_PE_MEDIAN_MIN_N,
+) -> Dict[str, Any]:
+    """證交所粗產業同業本益滾動中位（優先官方 daily_valuation.pe）。"""
+    empty = {
+        "median": None,
+        "n": 0,
+        "industry": "",
+        "source": "twse_industry_official_pe",
+        "scope": "twse_industry",
+    }
+    sid_s = str(sid or "").strip()
+    day = str(as_of or "").replace("-", "")[:8]
+    if len(sid_s) != 4 or len(day) != 8:
         return empty
-    pes: List[float] = []
-    for psid in peers:
-        try:
-            cq = conn.execute(
-                """
-                SELECT close FROM daily_quotes
-                WHERE stock_id=? AND REPLACE(CAST(date AS TEXT),'-','')<=?
-                  AND close IS NOT NULL AND close>0
-                ORDER BY date DESC LIMIT 1
-                """,
-                (psid, day),
-            ).fetchone()
-            eq = conn.execute(
-                """
-                SELECT eps, season FROM quarterly_income
-                WHERE stock_id=? AND eps IS NOT NULL AND eps>0
-                ORDER BY year DESC, season DESC LIMIT 1
-                """,
-                (psid,),
-            ).fetchone()
-        except sqlite3.Error:
-            continue
-        if not cq or not eq:
-            continue
-        close = _finite(cq[0])
-        ann = _annualize_cum_eps(float(eq[0]), int(eq[1] or 0))
-        if close is None or ann is None or ann <= 0:
-            continue
-        pe = float(close) / float(ann)
-        if pe < PEER_PE_MEDIAN_LO or pe > PEER_PE_MEDIAN_HI:
-            continue
-        pes.append(pe)
+    industry, peers = twse_industry_peer_ids(conn, sid_s)
+    if not industry or not peers:
+        return empty
+    pes = _peer_pe_from_daily_valuation(conn, peers, day)
+    src = "twse_industry_official_pe"
+    if len(pes) < int(min_n):
+        pes = _peer_pe_from_close_eps(conn, peers, day)
+        src = "twse_industry_close_eps"
     med = _median_sorted(pes)
     if med is None or len(pes) < int(min_n):
         return {
             "median": None,
             "n": len(pes),
             "industry": industry,
-            "source": "twse_industry_peer_pe",
+            "source": src,
+            "scope": "twse_industry",
         }
     return {
         "median": float(med),
         "n": len(pes),
         "industry": industry,
-        "source": "twse_industry_peer_pe",
+        "source": src,
+        "scope": "twse_industry",
+    }
+
+
+def resolve_rolling_peer_pe_median(
+    conn: sqlite3.Connection,
+    sid: str,
+    *,
+    as_of: str,
+    db_path: Optional[str] = None,
+) -> Dict[str, Any]:
+    """合理 PE 滾動中位：細鏈同業 → 證交所粗產業；官方 pe 優先。
+
+    細鏈樣本 n≥3 就用（對齊低估掃）；粗產業仍要 n≥8。
+    都不足才 median=None → 呼叫端吃產業備援表。
+    """
+    sid_s = str(sid or "").strip()
+    day = str(as_of or "").replace("-", "")[:8]
+    empty = {
+        "median": None,
+        "n": 0,
+        "industry": "",
+        "source": "",
+        "scope": "",
+        "label": "",
+    }
+    if len(sid_s) != 4 or len(day) != 8:
+        return empty
+
+    # 1) 細鏈（industry_fine）
+    fine_peers: List[str] = []
+    path = str(db_path or "").strip()
+    if path:
+        try:
+            from industry_fine import chain_peer_ids
+
+            fine_peers = [str(x) for x in (chain_peer_ids(path, sid_s) or []) if str(x).strip()]
+        except Exception:
+            fine_peers = []
+    if fine_peers:
+        pes = _peer_pe_from_daily_valuation(conn, fine_peers, day)
+        src = "fine_chain_official_pe"
+        if len(pes) < 3:
+            pes = _peer_pe_from_close_eps(conn, fine_peers, day)
+            src = "fine_chain_close_eps"
+        if len(pes) >= 3:
+            med = _median_sorted(pes)
+            if med is not None:
+                return {
+                    "median": float(med),
+                    "n": len(pes),
+                    "industry": "細鏈同業",
+                    "source": src,
+                    "scope": "fine_chain",
+                    "label": f"細鏈中位{float(med):.1f}×（n={len(pes)}）",
+                }
+
+    # 2) 證交所粗產業
+    tw = twse_industry_peer_pe_median(conn, sid_s, as_of=day)
+    if tw.get("median") is not None:
+        med = float(tw["median"])
+        ind = str(tw.get("industry") or "")
+        n = int(tw.get("n") or 0)
+        return {
+            **tw,
+            "label": f"同業中位{med:.1f}×（{ind} n={n}）",
+        }
+    return {
+        **empty,
+        **{k: tw.get(k) for k in ("n", "industry", "source", "scope") if k in tw},
+        "label": "",
     }
 
 
