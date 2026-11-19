@@ -499,9 +499,14 @@ def _streak_flags(flags: Sequence[str], want: str) -> int:
 
 
 def _pill_from_5d_flags(
-    foreign_5d: Sequence[str], trust_5d: Sequence[str], *, emerging: bool
+    foreign_5d: Sequence[str],
+    trust_5d: Sequence[str],
+    *,
+    emerging: bool,
+    foreign_buy_days: Optional[int] = None,
+    trust_buy_days: Optional[int] = None,
 ) -> tuple[str, str]:
-    """膠囊必須與方塊同一組 ['B'/'S'/'N']，不准另寫死字樣。"""
+    """近 5 格決定型態（同買／護盤）；「連買N日」用完整官方連買天數，不准卡死 5。"""
     if emerging:
         return "warn", "興櫃無法人"
     f5 = _normalize_5d_flags(foreign_5d)
@@ -510,8 +515,12 @@ def _pill_from_5d_flags(
     f_sell = sum(1 for x in f5 if x == "S")
     t_buy = sum(1 for x in t5 if x == "B")
     t_sell = sum(1 for x in t5 if x == "S")
-    tb = _streak_flags(t5, "B")
-    fb = _streak_flags(f5, "B")
+    tb = int(trust_buy_days) if trust_buy_days is not None else _streak_flags(t5, "B")
+    fb = int(foreign_buy_days) if foreign_buy_days is not None else _streak_flags(f5, "B")
+    if tb < 0:
+        tb = 0
+    if fb < 0:
+        fb = 0
     newest_f = f5[-1] if f5 else "N"
     newest_t = t5[-1] if t5 else "N"
     if newest_f == "S" and newest_t == "S":
@@ -980,8 +989,23 @@ def enrich_live_rows_from_db(
                         t_flags.insert(0, "N")
                     row["foreign_5d"] = f_flags[-5:]
                     row["trust_5d"] = t_flags[-5:]
+                    fb_days = tb_days = None
+                    try:
+                        from undervalue_growth import chip_capsule_note
+
+                        cap = chip_capsule_note(con, sid, day)
+                        fb_days = int(cap.get("foreign_streak") or 0)
+                        tb_days = int(cap.get("trust_streak") or 0)
+                        row["foreign_buy_days"] = fb_days
+                        row["trust_buy_days"] = tb_days
+                    except Exception:
+                        pass
                     ft, pill = _pill_from_5d_flags(
-                        row["foreign_5d"], row["trust_5d"], emerging=False
+                        row["foreign_5d"],
+                        row["trust_5d"],
+                        emerging=False,
+                        foreign_buy_days=fb_days,
+                        trust_buy_days=tb_days,
                     )
                     _ = ft
                     row["chip_note"] = pill
@@ -993,7 +1017,11 @@ def enrich_live_rows_from_db(
             # 無 DB 時仍清掉與方塊矛盾的寫死 chip；有陣列就依陣列重算
             if row.get("foreign_5d") is not None and row.get("trust_5d") is not None:
                 _, pill2 = _pill_from_5d_flags(
-                    row.get("foreign_5d"), row.get("trust_5d"), emerging=emerging
+                    row.get("foreign_5d"),
+                    row.get("trust_5d"),
+                    emerging=emerging,
+                    foreign_buy_days=row.get("foreign_buy_days"),
+                    trust_buy_days=row.get("trust_buy_days"),
                 )
                 row["chip_note"] = pill2
 

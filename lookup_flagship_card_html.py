@@ -6,8 +6,8 @@
 #    截圖輸出 1290x2796 滿版 PNG 後，透過 Telegram sendPhoto 發送。
 # 3. 本檔已修正「尺規數字重疊下面 4 格」與「底部卡片過度拉長空白」問題，
 #    切勿自行改寫 CSS 結構；只需將即時數據填入 render_single_card() 即可。
-# 4. 數據防呆：務必確保「明年目標 >= 今年合理」，且區分「累計EPS」與「最新單季EPS」。
-#    標籤不准寫假「正常／保守」（對齊低估卡：今年合理／明年）。
+# 4. 數據防呆：區分「累計EPS」與「最新單季EPS」；今年合理＝fair_year、明年＝target_next
+#    （對齊低估卡語意；不准用大小對調年標）。標籤不准寫假「正常／保守」。
 # 5. 查股相簿多一張旗艦卡（插第一張）；不准改既有五張圖。低估按鍵走 undervalue D3，不是這張。
 # ==============================================================================
 """
@@ -117,6 +117,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   }
   .cell-k { font-size: 12px; font-weight: 700; color: #CBD5E1; letter-spacing: 0.2px; }
   .cell-v { font-size: 13.5px; font-weight: 800; color: #FFFFFF; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* 賺錢進度：％必須完整可見，不准被 ellipsis 吃掉 */
+  .cell-v.eps-prog { display: flex; align-items: baseline; gap: 4px; overflow: hidden; }
+  .cell-v.eps-prog .eps-nums { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cell-v.eps-prog .eps-pct { flex: 0 0 auto; white-space: nowrap; }
   .cell-sub { font-size: 11.5px; color: #E2E8F0; line-height: 1.35; }
 
   /* 空軌要看得見：淺灰底＋白細框，填色帶微光 */
@@ -230,7 +234,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <div class="d3-grid">
         <div class="d3-cell">
           <div class="cell-k">今年賺錢進度</div>
-          <div class="cell-v mono">已賺 {{EPS_YTD}} / 估 {{EPS_EST_YR}} ({{EPS_PCT}}%)</div>
+          <div class="cell-v mono eps-prog"><span class="eps-nums">已賺 {{EPS_YTD}}／估 {{EPS_EST_YR}}</span><span class="eps-pct">({{EPS_PCT}}%)</span></div>
           <div class="prog-track"><div class="prog-fill {{BAR_CLS}}" style="width: {{EPS_PCT_CLAMP}}%;"></div></div>
           <div class="cell-sub">{{Q4_PROGRESS}}｜最新單季 {{EPS_LATEST_Q}}</div>
         </div>
@@ -240,6 +244,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <div class="cell-v mono cyan">{{PE_FWD12M}}倍 <span class="cell-sub">({{PE_NOTE}})</span></div>
           <div class="ruler-track"><div class="ruler-dot" style="left: {{PE_DOT_PCT}}%;"></div></div>
           <div class="ruler-labels mono"><span>{{PE_MIN}}</span><span>{{PE_MID}}</span><span>{{PE_MAX}}</span></div>
+          <div class="cell-sub">合理帶：{{PE_SOURCE}}</div>
         </div>
 
         <div class="d3-cell">
@@ -372,11 +377,26 @@ def _streak(flags: Sequence[str], want: str) -> int:
     return n
 
 
-def _chip_pills(f5: Sequence[str], t5: Sequence[str]) -> List[Tuple[str, str]]:
-    """回傳 [(cls, txt), ...]；mock 風格可拆成「投信護盤」「外資賣」兩顆。"""
+def _chip_pills(
+    f5: Sequence[str],
+    t5: Sequence[str],
+    *,
+    foreign_buy_days: Optional[int] = None,
+    trust_buy_days: Optional[int] = None,
+) -> List[Tuple[str, str]]:
+    """回傳 [(cls, txt), ...]；mock 風格可拆成「投信護盤」「外資賣」兩顆。
+
+    近 5 格只當視覺／型態（同買同賣／護盤）；「連買N日」天數必須用官方籌碼
+    完整連買（``foreign_buy_days``／``trust_buy_days``），不准卡死最多 5。
+    """
     f5 = [(str(x).upper()[:1] if str(x).upper()[:1] in "BSN" else "N") for x in (list(f5) + ["N"] * 5)[:5]]
     t5 = [(str(x).upper()[:1] if str(x).upper()[:1] in "BSN" else "N") for x in (list(t5) + ["N"] * 5)[:5]]
-    tb, fb = _streak(t5, "B"), _streak(f5, "B")
+    tb = int(trust_buy_days) if trust_buy_days is not None else _streak(t5, "B")
+    fb = int(foreign_buy_days) if foreign_buy_days is not None else _streak(f5, "B")
+    if tb < 0:
+        tb = 0
+    if fb < 0:
+        fb = 0
     f_sell = sum(1 for x in f5 if x == "S")
     t_buy = sum(1 for x in t5 if x == "B")
     nf, nt = f5[-1], t5[-1]
@@ -405,6 +425,7 @@ _PEER_PREF = {
     "3595": ("5434", "3010"),  # 崇越、華立（封裝材料對照）
 }
 # 官方季報／現增尚未入庫時，旗艦卡用已核定數字補缺（有庫優先；不准發明 OHLC）
+# 只補財報／現增事實；合理 PE／目標價一律市場共識滾動中位，不准寫死灌水。
 _FLAGSHIP_FUND_OVERLAY: Dict[str, Dict[str, Any]] = {
     "3595": {
         "season": 3,
@@ -413,10 +434,6 @@ _FLAGSHIP_FUND_OVERLAY: Dict[str, Dict[str, Any]] = {
         "gm": 77.4,
         "eps_y": 9.2,
         "eps_n": 20.4,
-        "pe_y": 28.0,
-        "pe_n": 22.0,
-        "tgt": 570.0,
-        "fair": 456.0,
         "thr": 1.05,
         "placement": 400.0,
         "dilute_yi": 4.68,
@@ -599,8 +616,12 @@ def _soft_growth(
     close: Optional[float],
     chain: str,
     name: str,
+    as_of: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """旗艦卡顯示用軟估算：不強制過低估鐵律；缺官方季報就不填。"""
+    """旗艦卡顯示用軟估算：不強制過低估鐵律；缺官方季報就不填。
+
+    合理 PE 只認同業滾動成交中位（市場共識）；無樣本不編造目標價。
+    """
     out: Dict[str, Any] = {}
     try:
         from undervalue_growth import (
@@ -609,6 +630,7 @@ def _soft_growth(
             load_quarter_fundamentals,
             load_recent_moms,
             price_targets,
+            resolve_rolling_peer_pe_median,
             select_fair_pe_pair,
         )
     except Exception:
@@ -636,12 +658,28 @@ def _soft_growth(
     if not fund and not ov:
         return out
 
+    day = str(as_of or "").replace("-", "")[:8]
     bucket = industry_bucket(chain, (), name)
-    pe_y, pe_n, _ = select_fair_pe_pair(25.0, bucket)
-    if ov.get("pe_y") is not None:
-        pe_y = float(ov["pe_y"])
-    if ov.get("pe_n") is not None:
-        pe_n = float(ov["pe_n"])
+    db_path = ""
+    try:
+        db_path = str(con.execute("PRAGMA database_list").fetchone()[2] or "")
+    except Exception:
+        db_path = ""
+    peer_info = (
+        resolve_rolling_peer_pe_median(con, sid, as_of=day, db_path=db_path or None)
+        if len(day) == 8
+        else {"median": None, "n": 0, "label": "", "scope": ""}
+    )
+    peer_med = peer_info.get("median")
+    pe_y, pe_n, _ = select_fair_pe_pair(peer_med, bucket)
+    out["pe_source"] = (
+        str(peer_info.get("label") or "")
+        if peer_med is not None
+        else "同業樣本不足"
+    )
+    out["peer_pe_median"] = peer_med
+    out["peer_pe_n"] = int(peer_info.get("n") or 0)
+    out["peer_pe_scope"] = str(peer_info.get("scope") or "")
     moms, last_rev, ytd_rev, m_last = load_recent_moms(con, sid, n=3)
     eps_est = estimate_eps_year_next(
         eps_ytd_cum=fund.get("eps"),
@@ -659,32 +697,39 @@ def _soft_growth(
     out["pe_y"] = pe_y
     out["pe_n"] = pe_n
     out["bucket"] = bucket
-    if eps_est.get("ok") and close and close > 0:
+    if eps_est.get("ok"):
         out["eps_y"] = _finite(eps_est.get("eps_2026"))
         out["eps_n"] = _finite(eps_est.get("eps_2027"))
         out["thr"] = _finite(eps_est.get("rev_threshold_yi"))
+    # overlay 只補財報／門檻事實；不准灌 pe／fair／tgt
+    if from_overlay:
+        for k in ("eps_e", "eps_q", "gm", "eps_y", "eps_n", "thr"):
+            if ov.get(k) is not None:
+                out[k] = _finite(ov.get(k))
+        out["season"] = int(ov["season"])
+    elif ov and season_used is not None and int(ov.get("season") or 0) == int(season_used):
+        for k in ("eps_y", "eps_n", "thr"):
+            if ov.get(k) is not None:
+                out[k] = _finite(ov.get(k))
+    # 目標價＝市場共識 PE × EPS；缺共識就不填
+    if (
+        close
+        and close > 0
+        and pe_y is not None
+        and pe_n is not None
+        and out.get("eps_y") is not None
+        and out.get("eps_n") is not None
+    ):
         tg = price_targets(
             float(close),
             20.0,
-            float(eps_est["eps_2026"]),
-            float(eps_est["eps_2027"]),
+            float(out["eps_y"]),
+            float(out["eps_n"]),
             float(pe_y),
             float(pe_n),
         )
         out["fair"] = _finite(tg.get("fair_year"))
         out["tgt"] = _finite(tg.get("target_next"))
-    # 庫缺那一季：整組吃 overlay。
-    # 同季官方已入庫：EPS／毛利用庫；倍率／目標／門檻若有已核定 overlay 仍保留
-    # （興櫃缺 peer PE，純滾動估曾算出遠低於現價的假目標）。
-    if from_overlay:
-        for k in ("eps_e", "eps_q", "gm", "eps_y", "eps_n", "thr", "fair", "tgt", "pe_y", "pe_n"):
-            if ov.get(k) is not None:
-                out[k] = _finite(ov.get(k))
-        out["season"] = int(ov["season"])
-    elif ov and season_used is not None and int(ov.get("season") or 0) == int(season_used):
-        for k in ("eps_y", "eps_n", "thr", "fair", "tgt", "pe_y", "pe_n"):
-            if ov.get(k) is not None:
-                out[k] = _finite(ov.get(k))
     return out
 
 
@@ -931,6 +976,8 @@ def build_flagship_payload(
     rev_yi = rev_ym = mom_pct = None
     chip_f = ["N"] * 5
     chip_t = ["N"] * 5
+    chip_f_streak = 0
+    chip_t_streak = 0
     peers_raw: List[dict] = []
     regime = {"cls": "banner-ok", "text": "", "right": ""}
     listing_note = "預計上櫃 —"
@@ -1093,6 +1140,15 @@ def build_flagship_payload(
             if got_f:
                 chip_f = (["N"] * 5 + got_f)[-5:]
                 chip_t = (["N"] * 5 + got_t)[-5:]
+            try:
+                from undervalue_growth import chip_capsule_note
+
+                cap = chip_capsule_note(con, sid, day)
+                chip_f_streak = int(cap.get("foreign_streak") or 0)
+                chip_t_streak = int(cap.get("trust_streak") or 0)
+            except Exception:
+                chip_f_streak = _streak(chip_f, "B")
+                chip_t_streak = _streak(chip_t, "B")
 
         peers_raw = _load_peers(
             con, sid, industry, day, emerging=emerging, limit=2 if emerging else 3
@@ -1115,26 +1171,41 @@ def build_flagship_payload(
     pe_y = pe_n = fair = tgt = thr = gm = None
     placement = dilute_yi = place_shares = None
     season_used = None
+    pe_source = ""
     peer_label = _short_industry(sid, industry, emerging)
     moat_html = ""
 
     try:
         con2 = sqlite3.connect(db_path)
         try:
-            from undervalue_growth import enrich_growth_row
+            from undervalue_growth import enrich_growth_row, resolve_rolling_peer_pe_median
 
             qty60_tmp = 1000.0
             if bars:
                 vols = [float(b[4] or 0) for b in bars[-60:]]
                 if vols:
                     qty60_tmp = sum(vols) / len(vols) / 1000.0
+            peer_info = resolve_rolling_peer_pe_median(
+                con2, sid, as_of=day, db_path=db_path
+            )
+            peer_med_raw = peer_info.get("median")
+            # enrich 要 float；無同業中位→NaN→不編造目標價（不准產業表冒充共識）
+            peer_med_arg = (
+                float(peer_med_raw)
+                if peer_med_raw is not None
+                else float("nan")
+            )
+            if peer_med_raw is not None:
+                pe_source = str(peer_info.get("label") or "")
+            else:
+                pe_source = "同業樣本不足"
             eg = enrich_growth_row(
                 con2,
                 sid=sid,
                 name=name,
                 close=float(close or 0),
                 pe=20.0,
-                peer_med_raw=25.0,
+                peer_med_raw=peer_med_arg,
                 as_of=day,
                 yoy_pct=None,
                 qty60=float(qty60_tmp),
@@ -1157,7 +1228,9 @@ def build_flagship_payload(
                 if eg.get("industry"):
                     peer_label = _short_industry(sid, str(eg.get("industry")), emerging)
 
-            soft = _soft_growth(con2, sid, close=close, chain=industry, name=name)
+            soft = _soft_growth(
+                con2, sid, close=close, chain=industry, name=name, as_of=day
+            )
             if soft:
                 season_used = soft.get("season")
                 eps_e = eps_e if eps_e is not None else soft.get("eps_e")
@@ -1184,6 +1257,8 @@ def build_flagship_payload(
                     tgt = soft.get("tgt")
                 if soft.get("thr") is not None:
                     thr = soft.get("thr")
+                if soft.get("pe_source"):
+                    pe_source = str(soft.get("pe_source"))
 
             row = con2.execute(
                 "SELECT detail_json FROM undervalue_picks WHERE stock_id=? ORDER BY as_of DESC LIMIT 1",
@@ -1263,7 +1338,14 @@ def build_flagship_payload(
         pills.append(("", mkt_lab))
         if short_ind and short_ind != "—":
             pills.append(("", short_ind))
-        pills.extend(_chip_pills(chip_f, chip_t))
+        pills.extend(
+            _chip_pills(
+                chip_f,
+                chip_t,
+                foreign_buy_days=chip_f_streak,
+                trust_buy_days=chip_t_streak,
+            )
+        )
 
     fwd = None
     if eps_y is not None and eps_n is not None:
@@ -1280,7 +1362,14 @@ def build_flagship_payload(
         fair_lo, fair_hi = fair_hi, fair_lo
     pe_min, pe_mid, pe_max, pe_dot = _pe_scale(pe_fwd, fair_lo, fair_hi)
     if pe_fwd is not None and fair_lo is not None and fair_hi is not None:
-        pe_note = "偏低" if pe_fwd < fair_lo else ("偏貴" if pe_fwd > fair_hi else "合理帶")
+        if pe_fwd < fair_lo:
+            pe_note = "偏低"
+        elif pe_fwd > fair_hi * 1.25:
+            pe_note = "遠高於同業共識"
+        elif pe_fwd > fair_hi:
+            pe_note = "偏貴"
+        else:
+            pe_note = "合理帶"
     elif pe_fwd is not None:
         pe_note = "滾動"
     else:
@@ -1318,12 +1407,14 @@ def build_flagship_payload(
         else f"撐 {_fmt_price(support)}｜壓 {_fmt_price(resist)}"
     )
 
-    # 明年＝較高目標、今年合理＝較低（對齊低估卡；不准假正常／保守）
-    tgt_vals = [v for v in (tgt, fair) if v is not None]
-    if len(tgt_vals) >= 2:
-        tgt_hi, tgt_lo = max(tgt_vals), min(tgt_vals)
-    elif len(tgt_vals) == 1:
-        tgt_hi = tgt_lo = tgt_vals[0]
+    # 對齊低估卡語意：今年合理＝fair_year、明年＝target_next（不准用大小對調年標）
+    # 明年 PE 壓縮時明年目標可低於今年合理，那是真數，不准改標籤硬抬。
+    if fair is not None and tgt is not None:
+        tgt_lo, tgt_hi = float(fair), float(tgt)
+    elif fair is not None:
+        tgt_lo = tgt_hi = float(fair)
+    elif tgt is not None:
+        tgt_lo = tgt_hi = float(tgt)
     else:
         tgt_hi = tgt_lo = None
 
@@ -1567,8 +1658,12 @@ def build_flagship_payload(
         t_s = _lot(t10)
         m_s = "融資 —" if m5 is None else f"融資 {_lot(m5)}"
         ev = _next_event_label(db_path, sid, day)
-        # 法定期限是「最晚」日，不是公司公告日，標「前」
-        ev = re.sub(r"^(年報|Q\d財報)期限 (\S+)$", lambda m: f"{'財報' if m.group(1) == '年報' else m.group(1)} {m.group(2)}前", ev)
+        # 法定期限是「最晚」日，不是公司公告日，標「前」；年報不准縮成泛稱「財報」
+        ev = re.sub(
+            r"^(年報|Q\d財報)期限 (\S+)$",
+            lambda m: f"{m.group(1)} {m.group(2)}前",
+            ev,
+        )
         extra_val = f"外資10日 {f_s}｜投信 {t_s}｜{m_s}｜{ev}"
 
     tip = _strategy_tip(
@@ -1627,6 +1722,7 @@ def build_flagship_payload(
         "pe_fwd": pe_fwd,
         "pe_line": pe_line,
         "pe_note": pe_note,
+        "pe_source": pe_source or "—",
         "pe_min": pe_min,
         "pe_mid": pe_mid,
         "pe_max": pe_max,
@@ -1882,6 +1978,7 @@ def payload_to_card(p: Dict[str, Any]) -> Dict[str, Any]:
         "eps_latest_q": eps_latest,
         "pe_fwd12m": pe_fwd_s,
         "pe_note": pe_note or "—",
+        "pe_source": str(p.get("pe_source") or "—"),
         "pe_dot_pct": int(round(float(p.get("pe_dot") or 50))),
         "pe_min": str(p.get("pe_min") or "—"),
         "pe_mid": str(p.get("pe_mid") or "—"),
@@ -1968,6 +2065,7 @@ def fill_flagship_html(d: Dict[str, Any]) -> str:
         "EPS_LATEST_Q": d["eps_latest_q"],
         "PE_FWD12M": d["pe_fwd12m"],
         "PE_NOTE": d["pe_note"],
+        "PE_SOURCE": html.escape(str(d.get("pe_source") or "—")),
         "PE_DOT_PCT": str(max(5, min(95, int(d["pe_dot_pct"])))),
         "PE_MIN": d["pe_min"],
         "PE_MID": d["pe_mid"],

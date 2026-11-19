@@ -77,6 +77,16 @@ def test_pill_matches_chip_squares():
     # 投信第 5 格灰 → 不可寫「投信連買5日」
     assert "投信連買5日" not in pill2
     assert "投信連買4日" not in pill2  # 連買從右算，右端 N 則 streak=0
+    # 完整連買天數可超過近 5 格
+    ft3, pill3 = _pill_from_5d_flags(
+        ["B", "B", "B", "B", "B"],
+        ["N", "N", "N", "N", "N"],
+        emerging=False,
+        foreign_buy_days=20,
+        trust_buy_days=0,
+    )
+    assert ft3 == "buy"
+    assert pill3 == "外資連買20日"
 
 
 def test_support_break_downgrades_star():

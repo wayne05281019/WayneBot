@@ -3317,8 +3317,12 @@ def _paint_title_stamp(ax, tw, C, brand_x, title_cy, stamp, clock_line, ohlc=Non
 
 
 def _draw_mini_candle(ax, x, y, w, h, open_, high, low, close, prev_close=None):
-    """在資料座標畫當日 K：陽紅陰綠（收相對開，對齊籌碼K線），含上下影。"""
-    from decision_card_signals import candle_body_up_taiwan
+    """表頭今K縮圖：色跟較昨日漲跌同（漲紅跌綠），與價數字一致。
+
+    主圖日K／量柱仍走陽紅陰綠（收相對開）；這裡不准再跟主圖分叉，
+    否則同一檔查股相簿縮圖會有的綠有的紅。
+    """
+    from decision_card_signals import candle_up_taiwan
 
     o, hi, lo, cl = float(open_), float(high), float(low), float(close)
     try:
@@ -3337,7 +3341,7 @@ def _draw_mini_candle(ax, x, y, w, h, open_, high, low, close, prev_close=None):
     def py(p):
         return y + (float(p) - lo) / rng * h
 
-    color = "#e53935" if candle_body_up_taiwan(cl, prev_close, o) else "#00897b"
+    color = "#e53935" if candle_up_taiwan(cl, prev_close, o) else "#00897b"
     cx = x + w / 2
     ax.plot([cx, cx], [py(lo), py(hi)], color=color, linewidth=2.4, solid_capstyle="round", zorder=4)
     body_lo, body_hi = py(min(o, cl)), py(max(o, cl))

@@ -244,6 +244,21 @@ def test_candle_body_up_taiwan_matches_chip_kline():
     assert candle_body_up_taiwan(100.0, prev_close=100.0, open_=100.0)
 
 
+def test_header_mini_candle_follows_quote_move_not_body():
+    """表頭今K縮圖跟較昨日同色；7402 型陰線但漲＝紅，不准再跟主圖陰綠分叉。"""
+    import inspect
+
+    from decision_card_signals import candle_body_up_taiwan, candle_up_taiwan
+    from wayne_navigator import _draw_mini_candle
+
+    # 7402 11/18：開 75.8 收 75.3、昨收 75.1 → 陰線／昨收紅
+    assert not candle_body_up_taiwan(75.3, prev_close=75.1, open_=75.8)
+    assert candle_up_taiwan(75.3, prev_close=75.1, open_=75.8)
+    src = inspect.getsource(_draw_mini_candle)
+    assert "candle_up_taiwan" in src
+    assert "candle_body_up_taiwan" not in src
+
+
 def test_template_regime_narrow_range_is_consolidation():
     """2633/2530 範本：60日區間過小時標整理格局，不是多頭。"""
     assert card_regime_label(26.25, 26.0, 25.8, space_60=7) == "整理格局"

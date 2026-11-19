@@ -35,7 +35,6 @@ def test_flagship_2383_listed_shape():
     def _num(s: str) -> float:
         return float(str(s).replace(",", ""))
 
-    assert _num(p["tgt_n"]) >= _num(p["tgt_c"])
     labels = [m["label"] for m in p["marks"]]
     assert "半年低" in labels
     assert "川寶" not in str(p.get("peers_raw"))
@@ -50,10 +49,11 @@ def test_flagship_2383_listed_shape():
     assert " / 需 需" not in html
     assert "今年合理" in html and "明年" in html
     assert "正常" not in html and "保守" not in html
+    assert 'class="eps-pct"' in html
     assert "融資・10日籌碼與關鍵日" in html
     assert "外資10日" in html
     # 事件日：官方未來法說，否則法定財報期限（不准發明日期）
-    assert re.search(r"｜(法說 |股東會 |財報 |Q\d財報 )\d{4}/\d{2}/\d{2}", p["extra_val"])
+    assert re.search(r"｜(法說 |股東會 |年報 |財報 |Q\d財報 )\d{4}/\d{2}/\d{2}", p["extra_val"])
     assert "💡 策略提示：" in html
     assert "大量撐" in p["tip"]
     # 4 格微光膠囊：回檔為負 → 綠（跌）色塊
@@ -80,6 +80,34 @@ def test_next_event_label_falls_back_to_report_deadline(tmp_path):
     assert _next_event_label(db, "2383", "20261118") == "年報期限 2027/03/31"
     assert _next_event_label(db, "2383", "20261101") == "法說 2026/11/03"
     assert _next_event_label(db, "9999", "20260601") == "Q2財報期限 2026/08/14"
+
+
+def test_extra_strip_keeps_annual_report_label():
+    """法定期限標「前」時，年報不准縮成泛稱「財報」。"""
+    import re
+
+    def _phone_ev(ev: str) -> str:
+        return re.sub(
+            r"^(年報|Q\d財報)期限 (\S+)$",
+            lambda m: f"{m.group(1)} {m.group(2)}前",
+            ev,
+        )
+
+    assert _phone_ev("年報期限 2027/03/31") == "年報 2027/03/31前"
+    assert _phone_ev("Q3財報期限 2026/11/14") == "Q3財報 2026/11/14前"
+    assert "財報 2027" not in _phone_ev("年報期限 2027/03/31")
+
+
+def test_forward_pe_is_price_over_rolling_eps():
+    """未來12月滾動本益比＝現價／(今年EPS×剩餘月權重＋明年EPS×已過月權重)。"""
+    from datetime import date
+
+    from lookup_flagship_card_html import calc_forward_12m_eps
+
+    # 11 月：剩餘 2／12 今年、10／12 明年
+    fwd = calc_forward_12m_eps(2.52, 2.77, date(2026, 11, 18))
+    assert fwd == 2.73
+    assert round(22.90 / fwd, 1) == 8.4
 
 
 def test_strategy_tip_buy_only_from_quantified_signal():
@@ -153,9 +181,23 @@ def test_flagship_3595_emerging_platform_break():
     def _num(s: str) -> float:
         return float(str(s).replace(",", ""))
 
-    assert _num(p["tgt_n"]) >= _num(p["tgt_c"])
-    # 已核定 overlay 目標約 570；不准再掉回舊 bug 176 或純滾動估的偏低假目標
-    assert _num(p["tgt_n"]) >= 500
+    # 目標價＝庫內同業中位×EPS（中位會隨柱移動，不准寫死 22.085）
+    assert "同業中位" in str(p.get("pe_source") or "")
+    from undervalue_growth import resolve_rolling_peer_pe_median
+
+    con2 = sqlite3.connect(DB)
+    try:
+        peer_info = resolve_rolling_peer_pe_median(
+            con2, "3595", as_of=as_of, db_path=DB
+        )
+    finally:
+        con2.close()
+    peer = float(peer_info.get("median") or 0)
+    assert peer > 0
+    assert _num(p["tgt_c"]) == pytest.approx(9.2 * peer, rel=0.02)
+    # default 桶明年縮放 13/16
+    assert _num(p["tgt_n"]) == pytest.approx(20.4 * peer * 13.0 / 16.0, rel=0.02)
+    assert _num(p["tgt_n"]) < float(p["close"])  # 現價高於共識目標＝偏貴，不准灌高
     html = render_flagship_html(p)
     assert "山太士" in html
     assert "興櫃防線與流動性警示" in html
@@ -172,3 +214,173 @@ def test_flagship_3595_emerging_platform_break():
     assert p["tip"] == "興櫃量小價差大，緊盯 11–12 月營收過 1.05 億門檻"
     assert 'class="callout-bar is-em"' in html
     assert payload_to_card(p)["m4_tints"][3] == "tint-amber"
+
+
+def test_chip_pills_use_full_foreign_streak_not_capped_at_5():
+    """連買區查 20 天進旗艦卡：膠囊要寫完整天數，不准卡死近 5 格。"""
+    from lookup_flagship_card_html import _chip_pills
+
+    f5 = ["B", "B", "B", "B", "B"]
+    t5 = ["N", "N", "N", "N", "N"]
+    capped = _chip_pills(f5, t5)
+    assert capped == [("pill-buy", "外資連買5日")]
+    full = _chip_pills(f5, t5, foreign_buy_days=20, trust_buy_days=0)
+    assert full == [("pill-buy", "外資連買20日")]
+
+
+def test_eps_progress_pct_not_eaten_by_ellipsis():
+    """今年賺錢進度％必須完整進 HTML，不准只剩 (71…。"""
+    from lookup_flagship_card_html import fill_flagship_html
+
+    card = {
+        "status": "wait",
+        "icon": "☆",
+        "status_label": "等買點",
+        "ticker": "2610",
+        "name": "華航",
+        "market_sector": "上市 · 航運",
+        "price": "22.90",
+        "change_pct": "▼ 0.87%",
+        "is_up": False,
+        "flow_pill": "籌碼中性",
+        "regime_text": "資金水位中性",
+        "regime_right": "USD/TWD 32.93",
+        "eps_k": "今年賺錢進度",
+        "eps_ytd": "1.8",
+        "eps_est_yr": "2.5",
+        "eps_pct": 71,
+        "q4_progress": "10月✓ 11 12待補",
+        "eps_latest_q": "0.72元",
+        "pe_fwd12m": "8.4",
+        "pe_note": "偏低",
+        "pe_dot_pct": 14,
+        "pe_min": "5x",
+        "pe_mid": "17x",
+        "pe_max": "29x",
+        "target_norm": "63",
+        "target_cons": "56.7",
+        "foreign_5d": ["B"] * 5,
+        "trust_5d": ["N"] * 5,
+        "is_emerging": False,
+        "emerging_note": "",
+        "rev_now": "10月 221.6",
+        "rev_gate": "239億",
+        "rev_pct": 93,
+        "support_ok": True,
+        "support_text": "撐 22.15｜壓 23.5",
+        "ruler_markers": [],
+        "m4": [("60日回檔", "-3.4%", "dn")] * 4,
+        "peer_chain": "航運",
+        "peers": [{"name": "華航", "val": "8.4x"}],
+        "moat_text": "航運",
+        "risk_text": "景氣",
+        "extra_title": "融資",
+        "extra_val": "—",
+        "action_callout": "先看高低卡",
+        "m4_tints": ["tint-green"] * 4,
+    }
+    html = fill_flagship_html(card)
+    assert "(71%)" in html
+    assert "(71…" not in html and "(71..." not in html
+    assert 'class="eps-pct"' in html
+
+
+@pytest.mark.skipif(not os.path.exists(DB), reason="no local wayne_market.db")
+def test_flagship_targets_keep_year_semantics_2610():
+    """今年合理＝fair_year、明年＝target_next；不准因大小對調年標。"""
+    import sqlite3
+
+    from lookup_flagship_card_html import _soft_growth, build_flagship_payload
+
+    p = build_flagship_payload(DB, "2610", as_of="20261118")
+    con = sqlite3.connect(DB)
+    try:
+        soft = _soft_growth(
+            con, "2610", close=p.get("close"), chain="航運", name="華航", as_of="20261118"
+        )
+    finally:
+        con.close()
+    assert soft.get("fair") and soft.get("tgt")
+    # 合理 PE 必須吃航運同業滾動中位，不准寫死 25
+    assert soft.get("peer_pe_median") is not None
+    assert float(soft["peer_pe_median"]) < 15.0
+    src = str(soft.get("pe_source") or "")
+    assert ("中位" in src) and ("25" not in src)
+
+    def _num(s: str) -> float:
+        return float(str(s).replace(",", ""))
+
+    assert _num(p["tgt_c"]) == pytest.approx(float(soft["fair"]), rel=0.02)
+    assert _num(p["tgt_n"]) == pytest.approx(float(soft["tgt"]), rel=0.02)
+    assert "中位" in str(p.get("pe_source") or "")
+
+
+@pytest.mark.skipif(not os.path.exists(DB), reason="no local wayne_market.db")
+def test_twse_industry_peer_pe_median_shipping():
+    import sqlite3
+
+    from undervalue_growth import resolve_rolling_peer_pe_median, twse_industry_peer_pe_median
+
+    con = sqlite3.connect(DB)
+    try:
+        info = twse_industry_peer_pe_median(con, "2610", as_of="20261118")
+        rolled = resolve_rolling_peer_pe_median(
+            con, "2610", as_of="20261118", db_path=DB
+        )
+        fine2383 = resolve_rolling_peer_pe_median(
+            con, "2383", as_of="20261118", db_path=DB
+        )
+    finally:
+        con.close()
+    assert info["industry"] == "航運業"
+    assert info["n"] >= 8
+    assert info["median"] is not None
+    assert 6.0 <= float(info["median"]) <= 15.0
+    # 華航細鏈 n 不足門檻→退粗產業；台光電細鏈夠→細鏈優先
+    assert rolled.get("median") is not None
+    assert "中位" in str(rolled.get("label") or "")
+    assert rolled.get("scope") == "twse_industry"
+    assert fine2383.get("scope") == "fine_chain"
+    assert fine2383.get("median") is not None
+    assert int(fine2383.get("n") or 0) >= 5
+
+
+@pytest.mark.skipif(not os.path.exists(DB), reason="no local wayne_market.db")
+def test_flagship_html_shows_pe_source_2610():
+    from lookup_flagship_card_html import build_flagship_payload, render_flagship_html
+
+    p = build_flagship_payload(DB, "2610", as_of="20261118")
+    html = render_flagship_html(p)
+    assert "合理帶：" in html
+    assert "中位" in html or "同業樣本不足" in html
+    assert p.get("pe_source") and p["pe_source"] != "—"
+
+
+def test_chip_capsule_note_counts_beyond_five(tmp_path):
+    import sqlite3
+    from datetime import date, timedelta
+
+    from undervalue_growth import chip_capsule_note
+
+    db = str(tmp_path / "c.db")
+    con = sqlite3.connect(db)
+    con.execute(
+        "CREATE TABLE daily_quotes (stock_id TEXT, date TEXT, foreign_net REAL, trust_net REAL)"
+    )
+    cur = date(2026, 11, 18)
+    days = []
+    for _ in range(20):
+        days.append(cur.strftime("%Y%m%d"))
+        cur -= timedelta(days=1)
+        while cur.weekday() >= 5:
+            cur -= timedelta(days=1)
+    for day in days:
+        con.execute(
+            "INSERT INTO daily_quotes VALUES (?,?,?,?)",
+            ("7402", day, 10.0, 0.0),
+        )
+    con.commit()
+    cap = chip_capsule_note(con, "7402", "20261118")
+    con.close()
+    assert cap["foreign_streak"] == 20
+    assert "外資連買20日" in cap["capsule"]
