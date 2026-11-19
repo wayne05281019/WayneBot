@@ -80,7 +80,7 @@ def _bot():
         ("daytrade", "_run_trade_bucket"),
         ("overnight", "_run_trade_bucket"),
         ("k:", "_send_card_to"),
-        ("i:", "_send_card_to"),
+        ("i:", "_send_intro_glance_to"),
         ("e:", "_send_etf_category_pick"),
         ("f:", "reply_html"),
         ("n:", "_send_industry"),
@@ -91,6 +91,7 @@ def test_callback_routes_to_expected_handler(prefix, handler_attr):
     if handler_attr.startswith("_"):
         setattr(bot, handler_attr, AsyncMock())
     bot._send_card_to = AsyncMock()
+    bot._send_intro_glance_to = AsyncMock()
     bot._send_decision_card_quick = AsyncMock()
     bot._send_navigation_chart = AsyncMock()
     bot._send_industry = AsyncMock()
@@ -140,7 +141,9 @@ def test_callback_routes_to_expected_handler(prefix, handler_attr):
     elif prefix == "k:":
         bot._send_card_to.assert_awaited_once()
     elif prefix == "i:":
-        bot._send_card_to.assert_awaited_once()
+        # 介紹圖改圖下可點：只送介紹，不准重跑整套查股
+        bot._send_intro_glance_to.assert_awaited_once()
+        bot._send_card_to.assert_not_awaited()
     elif prefix == "e:":
         bot._send_etf_category_pick.assert_awaited_once()
     elif prefix == "f:":

@@ -144,30 +144,23 @@ class LookupImageTests(unittest.TestCase):
         self.assertIn("create_task(_vol_item())", src)
         self.assertIn("create_task(_intraday_item())", src)
         self.assertIn("_bump_progress", src)
-        # 介紹圖在 await 高低卡完成之前就排隊，與送卡重疊
-        self.assertLess(
-            src.find("glance_task = asyncio.create_task"),
-            src.find("card_item = await card_render_task"),
-        )
-        # 送第2／4張時同步等第3／5 paint（單 worker；順序仍 2→3→4→5）
-        self.assertIn("glance_send_task", src)
+        # 預設略自動介紹；舊 AUTO_GLANCE 分支仍保留 create_task(_glance_item)
+        self.assertIn("_lookup_auto_glance_enabled", src)
+        self.assertIn("glance_queued.set()", src)
+        # 送結構／大量時同步等下一張 paint（單 worker；不准真並行 Agg）
         self.assertIn("vol_send_task", src)
         self.assertLess(
             src.find("vol_send_task = asyncio.create_task"),
             src.find("intrad_item = await intrad_task"),
         )
-        self.assertLess(
-            src.find("card_queued"),
-            src.find("glance_task = asyncio.create_task"),
-        )
-        # 結構提早 create（與介紹並行 ensure）；卡送出後才 bump glance／volfill
+        # 結構提早 create；卡送出後 bump struct／volfill
         self.assertLess(
             src.find("create_task(_struct_item())"),
             src.find("card_item = await card_render_task"),
         )
         self.assertLess(
             src.find("card_item = await card_render_task"),
-            src.find('await _bump_progress("glance")'),
+            src.find('await _bump_progress("struct")'),
         )
         self.assertIn("volfill", src)
         self.assertIn("ensure_official_volume_window", src)
@@ -181,14 +174,14 @@ class LookupImageTests(unittest.TestCase):
         struct_await = src.find("struct_item = await struct_task")
         self.assertGreater(vol_at, 0)
         self.assertGreater(struct_await, 0)
-        # task 可早開；大量區 paint 等 struct_queued，不准搶介紹／結構
+        # task 可早開；大量區 paint 等 struct_queued，不准搶結構
         self.assertLess(vol_at, struct_await)
         self.assertTrue(
             ("struct_queued.wait()" in src) or ("struct_queued.wait" in src)
         )
 
     def test_glance_and_card_render_start_together(self):
-        """高低溫度卡先開渲；介紹→結構→大量撐壓一次一張，paint worker 串行。"""
+        """預設自動相簿不含介紹圖；高低卡→結構→大量→走勢，paint worker 串行。"""
         from PIL import Image
 
         td = tempfile.mkdtemp()
@@ -298,17 +291,17 @@ class LookupImageTests(unittest.TestCase):
                 )
 
         asyncio.run(_run())
-        self.assertIn("glance", started)
+        # 預設介紹圖改圖下可點，不准自動開渲
+        self.assertNotIn("glance", started)
         self.assertIn("card", started)
         self.assertIn("struct", started)
         self.assertIn("vol", started)
         self.assertIn("intraday", started)
-        # 卡先開渲再介紹；結構／大量／走勢須都有開（CI 負載下並行啟動時序可抖，不鎖死毫秒序）
-        self.assertGreaterEqual(started["glance"] - started["card"], 0.15)
+        # 結構／大量／走勢須都有開（CI 負載下並行啟動時序可抖，不鎖死毫秒序）
         self.assertLessEqual(started["vol"] - started["struct"], 30.0)
         self.assertLessEqual(started["intraday"] - started["vol"], 30.0)
         self.assertEqual(message.reply_media_group.await_count, 0)
-        self.assertGreaterEqual(message.reply_photo.await_count, 5)
+        self.assertGreaterEqual(message.reply_photo.await_count, 4)
         caps = [
             str(c.kwargs.get("caption") or "")
             for c in message.reply_photo.await_args_list
@@ -538,16 +531,18 @@ class LookupImageTests(unittest.TestCase):
         self.assertIn("_await_lookup_paint", src)
         self.assertIn("miss_core", src)
         self.assertIn("查股第1張", src)
-        self.assertIn("查股第2張", src)
+        self.assertIn('retry_label="第2張"', src)
         self.assertNotIn("60.0, cap_links", src)
         self.assertNotIn('60.0, "高低決策卡"', src)
 
     def test_chart_progress_four_card_sequence(self):
         txt = WayneTelegramBot._chart_progress_text(3, current="card")
         self.assertIn("高低溫度卡", txt)
-        self.assertIn("介紹圖", txt)
         self.assertIn("結構圖", txt)
         self.assertIn("大量撐壓圖", txt)
+        self.assertIn("當天走勢圖", txt)
+        # 自動進度序不含介紹圖（改圖下可點）
+        self.assertNotIn("還有介紹圖", txt)
         self.assertNotIn("三合一", txt)
         self.assertNotIn("導航", txt)
         self.assertNotIn("其餘三張", txt)
@@ -555,37 +550,36 @@ class LookupImageTests(unittest.TestCase):
 
     def test_chart_progress_records_sent_stage(self):
         txt = WayneTelegramBot._chart_progress_text(
-            8, sent=["card", "glance"], current="struct"
+            8, sent=["card"], current="struct"
         )
         self.assertIn("現在：結構圖", txt)
-        self.assertIn("已送高低溫度卡、介紹圖", txt)
+        self.assertIn("已送高低溫度卡", txt)
         self.assertNotIn("接著：導航圖", txt)
         self.assertNotIn("其餘三張", txt)
         self.assertIn("好了這則會消失", txt)
 
-    def test_chart_progress_glance_after_card_not_silent(self):
-        """高低卡已出、介紹還在渲：LOADING 要寫清楚，不准只剩空白秒數。"""
+    def test_chart_progress_struct_after_card_not_silent(self):
+        """高低卡已出、結構還在渲：LOADING 要寫清楚，不准只剩空白秒數。"""
         txt = WayneTelegramBot._chart_progress_text(
-            12, sent=["card"], current="glance"
+            12, sent=["card"], current="struct"
         )
-        self.assertIn("現在：介紹圖", txt)
+        self.assertIn("現在：結構圖", txt)
         self.assertIn("已送高低溫度卡", txt)
-        self.assertIn("結構圖", txt)
         self.assertIn("大量撐壓圖", txt)
 
-    def test_chart_progress_overtime_starts_at_card_not_glance(self):
-        """逾時仍出圖：還沒送高低卡時「現在」不准跳寫介紹圖（假進度）。"""
+    def test_chart_progress_overtime_starts_at_card_not_struct(self):
+        """逾時仍出圖：還沒送高低卡時「現在」不准跳寫結構圖（假進度）。"""
         txt = WayneTelegramBot._chart_progress_text(
             130, sent=[], current="card", overtime=True
         )
         self.assertIn("查股逾時仍在出圖", txt)
         self.assertIn("現在：高低溫度卡", txt)
-        self.assertNotIn("現在：介紹圖", txt)
-        # 已送高低卡才輪到介紹
+        self.assertNotIn("現在：結構圖", txt)
+        # 已送高低卡才輪到結構
         txt2 = WayneTelegramBot._chart_progress_text(
-            130, sent=["card"], current="glance", overtime=True
+            130, sent=["card"], current="struct", overtime=True
         )
-        self.assertIn("現在：介紹圖", txt2)
+        self.assertIn("現在：結構圖", txt2)
         self.assertIn("已送高低溫度卡", txt2)
 
     def test_chart_progress_table_stage(self):

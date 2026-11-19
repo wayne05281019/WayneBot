@@ -28,16 +28,15 @@ def test_flow_sector_rows_use_indexed_date():
 
 def test_lookup_gc_once_after_all_pngs():
     src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
-    # 高低溫度卡→介紹圖→結構圖→大量撐壓；介紹提早排隊與送卡重疊；只准在全部 PNG 就緒後 gc 一次。
-    # 送第 N 張時同步等第 N+1 paint（三四五體感；不准真並行 Agg）。
+    # 高低溫度卡→結構圖→大量撐壓→當天走勢；介紹圖改圖下可點；只准在全部 PNG 就緒後 gc 一次。
+    # 送第 N 張時同步等第 N+1 paint（體感加速；不准真並行 Agg）。
     assert "card_item = await card_render_task" in src
     assert "create_task(_struct_item())" in src
     assert "create_task(_vol_item())" in src
     assert "_bump_progress" in src
-    assert "vol_send_task" in src and "glance_send_task" in src
-    assert src.index("glance_task = asyncio.create_task") < src.index(
-        "card_item = await card_render_task"
-    )
+    assert "vol_send_task" in src
+    assert "_lookup_auto_glance_enabled" in src
+    assert "glance_queued.set()" in src
     assert src.index("create_task(_struct_item())") < src.index(
         "card_item = await card_render_task"
     )
@@ -55,10 +54,11 @@ def test_lookup_gc_once_after_all_pngs():
     assert src.index("create_task(_vol_item())") < gc_at
     assert src.index("ensure_task = asyncio.create_task") < pair_at
     assert src.index("struct_prep_task = asyncio.create_task") < pair_at
-    # 營收 ensure 必須在介紹 paint 前開（與 MIS／官方量重疊）
+    # 營收 ensure 仍提早開（圖下點介紹圖可吃暖指紋）
     entry = inspect.getsource(WayneTelegramBot._send_card_to)
     assert "_schedule_lookup_fund_ensure" in entry
     assert "fund_task" in src
+    assert "_send_intro_glance_to" in inspect.getsource(WayneTelegramBot)
 
 
 def test_decision_card_quick_shares_lookup_timeouts():

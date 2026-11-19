@@ -462,14 +462,15 @@ def test_l3_em_hub_omits_chips_fund_industry():
     bot = _bot()
     kb = bot._hub_keyboard("3595", em=True)
     labels = [b.text for row in kb.inline_keyboard for b in row]
-    # 興櫃圖下＝觀察／記買入（結構／撐壓已涵蓋 K線／導航；無產業、無籌碼、無營收）
+    # 興櫃圖下＝介紹圖／導航／K線／觀察／記買入（無產業、無籌碼、無營收）
     assert "籌碼" not in labels
     assert "營收" not in labels
     assert "產業" not in labels
+    assert "介紹圖" in labels
     assert "加入觀察" in labels
     assert "K線" in labels
     assert "高低導航圖" in labels
-    assert [b.text for b in kb.inline_keyboard[0]] == ["高低導航圖", "K線"]
+    assert [b.text for b in kb.inline_keyboard[0]] == ["介紹圖", "高低導航圖", "K線"]
     assert [b.text for b in kb.inline_keyboard[1]] == ["情境預估"]
     assert [b.text for b in kb.inline_keyboard[2]] == ["加入觀察", "記買入"]
     assert "情境預估" in labels
@@ -479,6 +480,7 @@ def test_l3_listed_hub_has_chips():
     bot = _bot()
     kb = bot._hub_keyboard("2330", em=False)
     labels = [b.text for row in kb.inline_keyboard for b in row]
+    assert "介紹圖" in labels
     assert "籌碼" in labels
     assert "營收" in labels
     assert "產業" in labels
@@ -841,15 +843,14 @@ def test_l7_flow_sector_indexed():
 
 def test_l7_lookup_gc_once():
     src = _src(WayneTelegramBot._send_card_to_locked)
-    # 高低溫度卡→介紹圖→結構圖→大量撐壓；介紹與送卡重疊；只准在全部 PNG 就緒後 gc 一次。
+    # 高低溫度卡→結構圖→大量撐壓；介紹圖改圖下可點；只准在全部 PNG 就緒後 gc 一次。
     assert "card_item = await card_render_task" in src
     assert "create_task(_struct_item())" in src
     assert "create_task(_vol_item())" in src
     assert "_bump_progress" in src
     assert "card_queued" in src
-    assert src.index("glance_task = asyncio.create_task") < src.index(
-        "card_item = await card_render_task"
-    )
+    assert "_lookup_auto_glance_enabled" in src
+    assert "glance_queued.set()" in src
     assert "render_lookup_structure_result" in src
     assert "render_three_in_one_result" not in src
     assert src.count("gc.collect") == 1
