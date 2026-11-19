@@ -58,16 +58,11 @@ def test_nav180_render_memo(tmp_path):
     b = str(tmp_path / "b.png")
     p1 = generate_chart("2330", "台積電", db, a)
     assert p1 and os.path.isfile(p1) and os.path.getsize(p1) > 50000
-    # memo／複製路徑；GHA 滿載常 0.2～0.4s，冷渲仍是秒級。門檻只擋「又整張重畫」。
-    samples = []
-    for i in range(3):
-        out = str(tmp_path / f"m{i}.png")
-        t0 = time.perf_counter()
-        p2 = generate_chart("2330", "台積電", db, out)
-        samples.append(time.perf_counter() - t0)
-        assert p2 and os.path.isfile(p2)
-    elapsed = min(samples)
-    assert elapsed < 0.55, (elapsed, samples)
+    t0 = time.perf_counter()
+    p2 = generate_chart("2330", "台積電", db, b)
+    elapsed = time.perf_counter() - t0
+    assert p2 and os.path.isfile(p2)
+    assert elapsed < 0.25, elapsed
 
 
 def test_pressure_streams_per_stock_not_batch():

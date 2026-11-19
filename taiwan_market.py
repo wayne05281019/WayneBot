@@ -2319,7 +2319,6 @@ def sync_index_daily(db_path: str, range_: str = "5y") -> Dict[str, Any]:
             closes = df.loc[: row.name, "close"].astype(float)
             ma20 = float(closes.tail(20).mean()) if len(closes) >= 5 else float(row["close"])
             ma60 = float(closes.tail(60).mean()) if len(closes) >= 20 else ma20
-            # 暫寫價面盤勢（缺廣度不加分）；fuse 後 refresh_index_daily_regime 覆寫完整軌
             snap = _regime_from_closes(closes)
             conn.execute(
                 """
@@ -2574,14 +2573,10 @@ def _resolve_breadth_for_date(db_path: str, as_of: str) -> Tuple[Dict[str, float
 def _regime_from_closes(
     closes: pd.Series,
     *,
-    breadth_pct: float = 0.0,
+    breadth_pct: float = 50.0,
     sector_flow: float = 0.0,
     official_up_ratio: Optional[float] = None,
 ) -> Dict[str, Any]:
-    """盤勢評分核。缺廣度＝0 分（不准預設 50 假加分）。
-
-    話筒／表欄契約（2026-11-19 鎖選 2）：完整軌＝價＋真廣度＋法人＋官方漲跌比。
-    """
     if closes is None or len(closes) < 5:
         return {"regime": "unknown", "regime_label": "未知", "score": 0, "confidence": 50.0}
     c = float(closes.iloc[-1])
@@ -2632,79 +2627,6 @@ def _regime_from_closes(
         "chg5_pct": round(chg5, 2),
         "slope20_pct": round(slope20, 2),
     }
-
-
-def compute_day_regime(
-    db_path: str,
-    day: str,
-    closes: Optional[pd.Series] = None,
-) -> Dict[str, Any]:
-    """單日完整盤勢（與 ``analyze_taiwan_market`` 同源輸入）。
-
-    價＋``_resolve_breadth_for_date``＋法人淨額＋官方漲跌比；缺樣不加廣度分。
-    """
-    d = _norm_ymd(day)
-    if closes is None:
-        idx = load_index_daily(db_path, d, db_only=True)
-        if idx is None or getattr(idx, "empty", True):
-            return {"regime": "unknown", "regime_label": "未知", "score": 0, "confidence": 50.0}
-        closes = idx["close"].astype(float)
-    breadth, _breadth_date = _resolve_breadth_for_date(db_path, d)
-    official = _usable_official_breadth(
-        load_index_breadth_daily(db_path, d) or _nearest_official_breadth(db_path, d)
-    )
-    flow_net = _sector_flow_net(db_path, d)
-    if flow_net is None:
-        near = _nearest_sector_flow(db_path, d)
-        flow_net = near[1] if near else 0.0
-    return _regime_from_closes(
-        closes.astype(float),
-        breadth_pct=float(breadth.get("above_ma20_pct") or 0),
-        sector_flow=float(flow_net or 0),
-        official_up_ratio=(official.get("up_ratio") if official else None),
-    )
-
-
-def refresh_index_daily_regime(
-    db_path: str,
-    as_of: Optional[str] = None,
-    *,
-    lookback_days: int = 120,
-) -> Dict[str, Any]:
-    """用完整 analyze 同源輸入覆寫 ``index_daily.regime``（近 lookback 交易日）。
-
-    sync 寫入時可能尚無廣度／法人；fuse 在 ``sync_index_breadth_daily`` 之後呼叫本函，
-    讓回測 JOIN 與話筒同一套盤勢。
-    """
-    ensure_index_daily_table(db_path)
-    full = load_index_daily(db_path, db_only=True)
-    if full is None or getattr(full, "empty", True):
-        return {"ok": False, "updated": 0}
-    cap = _norm_ymd(as_of) if as_of else str(full["date"].iloc[-1])
-    dates = (
-        full.loc[full["date"].astype(str) <= cap, "date"].astype(str).tolist()
-    )
-    lb = max(int(lookback_days or 0), 1)
-    dates = dates[-lb:]
-    if not dates:
-        return {"ok": False, "updated": 0}
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    updated = 0
-    conn = sqlite3.connect(db_path)
-    try:
-        for day in dates:
-            closes = full.loc[full["date"].astype(str) <= day, "close"].astype(float)
-            snap = compute_day_regime(db_path, day, closes)
-            regime = str(snap.get("regime") or "unknown")
-            cur = conn.execute(
-                "UPDATE index_daily SET regime=?, updated_at=? WHERE date=? AND symbol=?",
-                (regime, now, day, _INDEX_SYMBOL),
-            )
-            updated += int(cur.rowcount or 0)
-        conn.commit()
-    finally:
-        conn.close()
-    return {"ok": True, "updated": updated, "from": dates[0], "to": dates[-1]}
 
 
 def _breadth_from_db(db_path: str, as_of: str) -> Dict[str, float]:
@@ -3023,6 +2945,7 @@ def _regime_plus_raw_history(db_path: str, as_of: str, *, lookback: int = 8) -> 
         .tolist()[-lookback:]
     )
     raw_hist: List[str] = []
+    last_day = dates[-1] if dates else ""
     for day in dates:
         idx = full_idx[full_idx["date"].astype(str) <= day].reset_index(drop=True)
         if idx.empty:
@@ -3030,9 +2953,27 @@ def _regime_plus_raw_history(db_path: str, as_of: str, *, lookback: int = 8) -> 
         official = _usable_official_breadth(
             load_index_breadth_daily(db_path, day) or _nearest_official_breadth(db_path, day)
         )
-        breadth, _ = _resolve_breadth_for_date(db_path, day)
+        if day == last_day:
+            breadth, _ = _resolve_breadth_for_date(db_path, day)
+        elif official:
+            up = int(official.get("up_count") or 0)
+            down = int(official.get("down_count") or 0)
+            total = up + down
+            up_ratio = float(official.get("up_ratio") or (up / total if total else 0.5))
+            breadth = {"above_ma20_pct": round(up_ratio * 100.0, 1), "sample_n": 0}
+        else:
+            breadth = {"above_ma20_pct": 50.0, "sample_n": 0}
         prev_official = _load_prev_official_breadth(db_path, day)
-        core = compute_day_regime(db_path, day, idx["close"].astype(float))
+        flow_net = _sector_flow_net(db_path, day)
+        if flow_net is None:
+            near = _nearest_sector_flow(db_path, day)
+            flow_net = near[1] if near else 0.0
+        core = _regime_from_closes(
+            idx["close"].astype(float),
+            breadth_pct=float(breadth.get("above_ma20_pct") or 0),
+            sector_flow=float(flow_net or 0),
+            official_up_ratio=(official.get("up_ratio") if official else None),
+        )
         us_risk_off = False
         try:
             from us_overnight import load_us_overnight
@@ -3053,8 +2994,7 @@ def _regime_plus_raw_history(db_path: str, as_of: str, *, lookback: int = 8) -> 
             official_breadth=official,
             prev_official=prev_official,
         )
-        # 每一日同尺算期貨領跌（不准只末日真算、前段強制「同步」）
-        lead = compute_futures_lead_stats(db_path, day)
+        lead = compute_futures_lead_stats(db_path, day) if day == last_day else {"label": "同步"}
         raw_hist.append(
             _classify_regime_plus_raw(
                 regime=str(core.get("regime") or "neutral"),
@@ -3286,8 +3226,12 @@ def analyze_taiwan_market(
         if near:
             flow_date, flow_net = near
     flow = float(flow_net) if flow_net is not None else 0.0
-    # 完整盤勢與表欄 refresh／回測同一套（選邊 2）
-    core = compute_day_regime(db_path, ref_date, idx["close"].astype(float))
+    core = _regime_from_closes(
+        idx["close"].astype(float),
+        breadth_pct=breadth.get("above_ma20_pct", 0),
+        sector_flow=flow,
+        official_up_ratio=(official.get("up_ratio") if official else None),
+    )
     us_risk_off = False
     try:
         from us_overnight import load_us_overnight
