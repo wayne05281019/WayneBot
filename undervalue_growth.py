@@ -660,7 +660,7 @@ def chip_capsule_note(conn: sqlite3.Connection, sid: str, as_of: str) -> Dict[st
             SELECT COALESCE(foreign_net, 0), COALESCE(trust_net, 0)
             FROM daily_quotes
             WHERE stock_id=? AND REPLACE(CAST(date AS TEXT),'-','')<=?
-            ORDER BY date DESC LIMIT 20
+            ORDER BY date DESC LIMIT 80
             """,
             (sid, day),
         ).fetchall()

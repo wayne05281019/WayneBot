@@ -372,11 +372,26 @@ def _streak(flags: Sequence[str], want: str) -> int:
     return n
 
 
-def _chip_pills(f5: Sequence[str], t5: Sequence[str]) -> List[Tuple[str, str]]:
-    """回傳 [(cls, txt), ...]；mock 風格可拆成「投信護盤」「外資賣」兩顆。"""
+def _chip_pills(
+    f5: Sequence[str],
+    t5: Sequence[str],
+    *,
+    foreign_buy_days: Optional[int] = None,
+    trust_buy_days: Optional[int] = None,
+) -> List[Tuple[str, str]]:
+    """回傳 [(cls, txt), ...]；mock 風格可拆成「投信護盤」「外資賣」兩顆。
+
+    近 5 格只當視覺／型態（同買同賣／護盤）；「連買N日」天數必須用官方籌碼
+    完整連買（``foreign_buy_days``／``trust_buy_days``），不准卡死最多 5。
+    """
     f5 = [(str(x).upper()[:1] if str(x).upper()[:1] in "BSN" else "N") for x in (list(f5) + ["N"] * 5)[:5]]
     t5 = [(str(x).upper()[:1] if str(x).upper()[:1] in "BSN" else "N") for x in (list(t5) + ["N"] * 5)[:5]]
-    tb, fb = _streak(t5, "B"), _streak(f5, "B")
+    tb = int(trust_buy_days) if trust_buy_days is not None else _streak(t5, "B")
+    fb = int(foreign_buy_days) if foreign_buy_days is not None else _streak(f5, "B")
+    if tb < 0:
+        tb = 0
+    if fb < 0:
+        fb = 0
     f_sell = sum(1 for x in f5 if x == "S")
     t_buy = sum(1 for x in t5 if x == "B")
     nf, nt = f5[-1], t5[-1]
@@ -931,6 +946,8 @@ def build_flagship_payload(
     rev_yi = rev_ym = mom_pct = None
     chip_f = ["N"] * 5
     chip_t = ["N"] * 5
+    chip_f_streak = 0
+    chip_t_streak = 0
     peers_raw: List[dict] = []
     regime = {"cls": "banner-ok", "text": "", "right": ""}
     listing_note = "預計上櫃 —"
@@ -1093,6 +1110,15 @@ def build_flagship_payload(
             if got_f:
                 chip_f = (["N"] * 5 + got_f)[-5:]
                 chip_t = (["N"] * 5 + got_t)[-5:]
+            try:
+                from undervalue_growth import chip_capsule_note
+
+                cap = chip_capsule_note(con, sid, day)
+                chip_f_streak = int(cap.get("foreign_streak") or 0)
+                chip_t_streak = int(cap.get("trust_streak") or 0)
+            except Exception:
+                chip_f_streak = _streak(chip_f, "B")
+                chip_t_streak = _streak(chip_t, "B")
 
         peers_raw = _load_peers(
             con, sid, industry, day, emerging=emerging, limit=2 if emerging else 3
@@ -1263,7 +1289,14 @@ def build_flagship_payload(
         pills.append(("", mkt_lab))
         if short_ind and short_ind != "—":
             pills.append(("", short_ind))
-        pills.extend(_chip_pills(chip_f, chip_t))
+        pills.extend(
+            _chip_pills(
+                chip_f,
+                chip_t,
+                foreign_buy_days=chip_f_streak,
+                trust_buy_days=chip_t_streak,
+            )
+        )
 
     fwd = None
     if eps_y is not None and eps_n is not None:

@@ -172,3 +172,45 @@ def test_flagship_3595_emerging_platform_break():
     assert p["tip"] == "興櫃量小價差大，緊盯 11–12 月營收過 1.05 億門檻"
     assert 'class="callout-bar is-em"' in html
     assert payload_to_card(p)["m4_tints"][3] == "tint-amber"
+
+
+def test_chip_pills_use_full_foreign_streak_not_capped_at_5():
+    """連買區查 20 天進旗艦卡：膠囊要寫完整天數，不准卡死近 5 格。"""
+    from lookup_flagship_card_html import _chip_pills
+
+    f5 = ["B", "B", "B", "B", "B"]
+    t5 = ["N", "N", "N", "N", "N"]
+    capped = _chip_pills(f5, t5)
+    assert capped == [("pill-buy", "外資連買5日")]
+    full = _chip_pills(f5, t5, foreign_buy_days=20, trust_buy_days=0)
+    assert full == [("pill-buy", "外資連買20日")]
+
+
+def test_chip_capsule_note_counts_beyond_five(tmp_path):
+    import sqlite3
+    from datetime import date, timedelta
+
+    from undervalue_growth import chip_capsule_note
+
+    db = str(tmp_path / "c.db")
+    con = sqlite3.connect(db)
+    con.execute(
+        "CREATE TABLE daily_quotes (stock_id TEXT, date TEXT, foreign_net REAL, trust_net REAL)"
+    )
+    cur = date(2026, 11, 18)
+    days = []
+    for _ in range(20):
+        days.append(cur.strftime("%Y%m%d"))
+        cur -= timedelta(days=1)
+        while cur.weekday() >= 5:
+            cur -= timedelta(days=1)
+    for day in days:
+        con.execute(
+            "INSERT INTO daily_quotes VALUES (?,?,?,?)",
+            ("7402", day, 10.0, 0.0),
+        )
+    con.commit()
+    cap = chip_capsule_note(con, "7402", "20261118")
+    con.close()
+    assert cap["foreign_streak"] == 20
+    assert "外資連買20日" in cap["capsule"]
