@@ -278,9 +278,9 @@ def scan_winrate_leave_zero(
     """
     from decision_card_signals import (
         cal60_low_close_at,
-        leave_zero_from_quote_df,
         profit_pct_cal60_series,
     )
+    from leave_zero_layers import PRODUCT_WINRATE, today_hit_from_quote_df
     from screening_engine import ScreeningEngine
     from universe import is_screen_equity
     from wayne_navigator import NavigatorEngine, frame_for_cal60_profit
@@ -331,7 +331,7 @@ def scan_winrate_leave_zero(
             profit_df = frame_for_cal60_profit(df, db_path)
         except Exception:
             profit_df = df
-        if not leave_zero_from_quote_df(profit_df):
+        if not today_hit_from_quote_df(profit_df, flags=PRODUCT_WINRATE):
             continue
         card: Dict[str, Any] = {}
         if nav is not None:
