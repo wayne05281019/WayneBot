@@ -6,8 +6,8 @@
 #    截圖輸出 1290x2796 滿版 PNG 後，透過 Telegram sendPhoto 發送。
 # 3. 本檔已修正「尺規數字重疊下面 4 格」與「底部卡片過度拉長空白」問題，
 #    切勿自行改寫 CSS 結構；只需將即時數據填入 render_single_card() 即可。
-# 4. 數據防呆：務必確保「明年目標 >= 今年合理」，且區分「累計EPS」與「最新單季EPS」。
-#    標籤不准寫假「正常／保守」（對齊低估卡：今年合理／明年）。
+# 4. 數據防呆：區分「累計EPS」與「最新單季EPS」；今年合理＝fair_year、明年＝target_next
+#    （對齊低估卡語意；不准用大小對調年標）。標籤不准寫假「正常／保守」。
 # 5. 查股相簿多一張旗艦卡（插第一張）；不准改既有五張圖。低估按鍵走 undervalue D3，不是這張。
 # ==============================================================================
 """
@@ -117,6 +117,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   }
   .cell-k { font-size: 12px; font-weight: 700; color: #CBD5E1; letter-spacing: 0.2px; }
   .cell-v { font-size: 13.5px; font-weight: 800; color: #FFFFFF; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* 賺錢進度：％必須完整可見，不准被 ellipsis 吃掉 */
+  .cell-v.eps-prog { display: flex; align-items: baseline; gap: 4px; overflow: hidden; }
+  .cell-v.eps-prog .eps-nums { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cell-v.eps-prog .eps-pct { flex: 0 0 auto; white-space: nowrap; }
   .cell-sub { font-size: 11.5px; color: #E2E8F0; line-height: 1.35; }
 
   /* 空軌要看得見：淺灰底＋白細框，填色帶微光 */
@@ -230,7 +234,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <div class="d3-grid">
         <div class="d3-cell">
           <div class="cell-k">今年賺錢進度</div>
-          <div class="cell-v mono">已賺 {{EPS_YTD}} / 估 {{EPS_EST_YR}} ({{EPS_PCT}}%)</div>
+          <div class="cell-v mono eps-prog"><span class="eps-nums">已賺 {{EPS_YTD}}／估 {{EPS_EST_YR}}</span><span class="eps-pct">({{EPS_PCT}}%)</span></div>
           <div class="prog-track"><div class="prog-fill {{BAR_CLS}}" style="width: {{EPS_PCT_CLAMP}}%;"></div></div>
           <div class="cell-sub">{{Q4_PROGRESS}}｜最新單季 {{EPS_LATEST_Q}}</div>
         </div>
@@ -1351,12 +1355,14 @@ def build_flagship_payload(
         else f"撐 {_fmt_price(support)}｜壓 {_fmt_price(resist)}"
     )
 
-    # 明年＝較高目標、今年合理＝較低（對齊低估卡；不准假正常／保守）
-    tgt_vals = [v for v in (tgt, fair) if v is not None]
-    if len(tgt_vals) >= 2:
-        tgt_hi, tgt_lo = max(tgt_vals), min(tgt_vals)
-    elif len(tgt_vals) == 1:
-        tgt_hi = tgt_lo = tgt_vals[0]
+    # 對齊低估卡語意：今年合理＝fair_year、明年＝target_next（不准用大小對調年標）
+    # 明年 PE 壓縮時明年目標可低於今年合理，那是真數，不准改標籤硬抬。
+    if fair is not None and tgt is not None:
+        tgt_lo, tgt_hi = float(fair), float(tgt)
+    elif fair is not None:
+        tgt_lo = tgt_hi = float(fair)
+    elif tgt is not None:
+        tgt_lo = tgt_hi = float(tgt)
     else:
         tgt_hi = tgt_lo = None
 

@@ -35,7 +35,6 @@ def test_flagship_2383_listed_shape():
     def _num(s: str) -> float:
         return float(str(s).replace(",", ""))
 
-    assert _num(p["tgt_n"]) >= _num(p["tgt_c"])
     labels = [m["label"] for m in p["marks"]]
     assert "半年低" in labels
     assert "川寶" not in str(p.get("peers_raw"))
@@ -50,6 +49,7 @@ def test_flagship_2383_listed_shape():
     assert " / 需 需" not in html
     assert "今年合理" in html and "明年" in html
     assert "正常" not in html and "保守" not in html
+    assert 'class="eps-pct"' in html
     assert "融資・10日籌碼與關鍵日" in html
     assert "外資10日" in html
     # 事件日：官方未來法說，否則法定財報期限（不准發明日期）
@@ -153,7 +153,6 @@ def test_flagship_3595_emerging_platform_break():
     def _num(s: str) -> float:
         return float(str(s).replace(",", ""))
 
-    assert _num(p["tgt_n"]) >= _num(p["tgt_c"])
     # 已核定 overlay 目標約 570；不准再掉回舊 bug 176 或純滾動估的偏低假目標
     assert _num(p["tgt_n"]) >= 500
     html = render_flagship_html(p)
@@ -184,6 +183,84 @@ def test_chip_pills_use_full_foreign_streak_not_capped_at_5():
     assert capped == [("pill-buy", "外資連買5日")]
     full = _chip_pills(f5, t5, foreign_buy_days=20, trust_buy_days=0)
     assert full == [("pill-buy", "外資連買20日")]
+
+
+def test_eps_progress_pct_not_eaten_by_ellipsis():
+    """今年賺錢進度％必須完整進 HTML，不准只剩 (71…。"""
+    from lookup_flagship_card_html import fill_flagship_html
+
+    card = {
+        "status": "wait",
+        "icon": "☆",
+        "status_label": "等買點",
+        "ticker": "2610",
+        "name": "華航",
+        "market_sector": "上市 · 航運",
+        "price": "22.90",
+        "change_pct": "▼ 0.87%",
+        "is_up": False,
+        "flow_pill": "籌碼中性",
+        "regime_text": "資金水位中性",
+        "regime_right": "USD/TWD 32.93",
+        "eps_k": "今年賺錢進度",
+        "eps_ytd": "1.8",
+        "eps_est_yr": "2.5",
+        "eps_pct": 71,
+        "q4_progress": "10月✓ 11 12待補",
+        "eps_latest_q": "0.72元",
+        "pe_fwd12m": "8.4",
+        "pe_note": "偏低",
+        "pe_dot_pct": 14,
+        "pe_min": "5x",
+        "pe_mid": "17x",
+        "pe_max": "29x",
+        "target_norm": "63",
+        "target_cons": "56.7",
+        "foreign_5d": ["B"] * 5,
+        "trust_5d": ["N"] * 5,
+        "is_emerging": False,
+        "emerging_note": "",
+        "rev_now": "10月 221.6",
+        "rev_gate": "239億",
+        "rev_pct": 93,
+        "support_ok": True,
+        "support_text": "撐 22.15｜壓 23.5",
+        "ruler_markers": [],
+        "m4": [("60日回檔", "-3.4%", "dn")] * 4,
+        "peer_chain": "航運",
+        "peers": [{"name": "華航", "val": "8.4x"}],
+        "moat_text": "航運",
+        "risk_text": "景氣",
+        "extra_title": "融資",
+        "extra_val": "—",
+        "action_callout": "先看高低卡",
+        "m4_tints": ["tint-green"] * 4,
+    }
+    html = fill_flagship_html(card)
+    assert "(71%)" in html
+    assert "(71…" not in html and "(71..." not in html
+    assert 'class="eps-pct"' in html
+
+
+@pytest.mark.skipif(not os.path.exists(DB), reason="no local wayne_market.db")
+def test_flagship_targets_keep_year_semantics_2610():
+    """今年合理＝fair_year、明年＝target_next；不准因大小對調年標。"""
+    from lookup_flagship_card_html import _soft_growth, build_flagship_payload
+    import sqlite3
+
+    p = build_flagship_payload(DB, "2610", as_of="20261118")
+    con = sqlite3.connect(DB)
+    try:
+        soft = _soft_growth(con, "2610", close=p.get("close"), chain="航運", name="華航")
+    finally:
+        con.close()
+    assert soft.get("fair") and soft.get("tgt")
+
+    def _num(s: str) -> float:
+        return float(str(s).replace(",", ""))
+
+    assert _num(p["tgt_c"]) == pytest.approx(float(soft["fair"]), rel=0.02)
+    assert _num(p["tgt_n"]) == pytest.approx(float(soft["tgt"]), rel=0.02)
 
 
 def test_chip_capsule_note_counts_beyond_five(tmp_path):
