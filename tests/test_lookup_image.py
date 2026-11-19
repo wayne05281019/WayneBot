@@ -181,7 +181,7 @@ class LookupImageTests(unittest.TestCase):
         )
 
     def test_glance_and_card_render_start_together(self):
-        """高低溫度卡先開渲；介紹→結構→大量撐壓一次一張，paint worker 串行。"""
+        """預設自動相簿不含介紹圖；高低卡→結構→大量→走勢，paint worker 串行。"""
         from PIL import Image
 
         td = tempfile.mkdtemp()
@@ -291,17 +291,17 @@ class LookupImageTests(unittest.TestCase):
                 )
 
         asyncio.run(_run())
-        self.assertIn("glance", started)
+        # 預設介紹圖改圖下可點，不准自動開渲
+        self.assertNotIn("glance", started)
         self.assertIn("card", started)
         self.assertIn("struct", started)
         self.assertIn("vol", started)
         self.assertIn("intraday", started)
-        # 卡先開渲再介紹；結構／大量／走勢須都有開（CI 負載下並行啟動時序可抖，不鎖死毫秒序）
-        self.assertGreaterEqual(started["glance"] - started["card"], 0.15)
+        # 結構／大量／走勢須都有開（CI 負載下並行啟動時序可抖，不鎖死毫秒序）
         self.assertLessEqual(started["vol"] - started["struct"], 30.0)
         self.assertLessEqual(started["intraday"] - started["vol"], 30.0)
         self.assertEqual(message.reply_media_group.await_count, 0)
-        self.assertGreaterEqual(message.reply_photo.await_count, 5)
+        self.assertGreaterEqual(message.reply_photo.await_count, 4)
         caps = [
             str(c.kwargs.get("caption") or "")
             for c in message.reply_photo.await_args_list
