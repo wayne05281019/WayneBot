@@ -511,6 +511,73 @@ def test_regime_close_keeps_official_two_decimals():
     assert out["close"] != 46551.1
 
 
+def test_regime_from_closes_default_breadth_no_phantom():
+    """缺廣度不准預設 50 假加分（選邊 2：完整軌誠實缺樣）。"""
+    from taiwan_market import _regime_from_closes
+
+    closes = pd.Series([float(20000 + i * 30) for i in range(80)])
+    bare = _regime_from_closes(closes)
+    phantom = _regime_from_closes(closes, breadth_pct=50.0)
+    assert bare["score"] == phantom["score"] - 1
+    assert bare["score"] < phantom["score"]
+
+
+def test_refresh_index_daily_regime_matches_analyze(tmp_path):
+    """fuse 回寫後表欄 regime ＝ analyze 完整軌。"""
+    import sqlite3
+    from datetime import datetime, timedelta
+
+    from taiwan_market import (
+        analyze_taiwan_market,
+        ensure_index_breadth_daily_table,
+        ensure_index_daily_table,
+        refresh_index_daily_regime,
+    )
+
+    db = str(tmp_path / "reg.db")
+    ensure_index_daily_table(db)
+    ensure_index_breadth_daily_table(db)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS stock_universe (stock_id TEXT, is_active INT)"
+    )
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS daily_quotes "
+        "(stock_id TEXT, date TEXT, close REAL, volume REAL, high REAL, low REAL)"
+    )
+    base = datetime(2025, 6, 2)
+    closes = [20000.0 + i * 40 for i in range(80)]
+    days = []
+    for i, c in enumerate(closes):
+        day = (base + timedelta(days=i)).strftime("%Y%m%d")
+        days.append(day)
+        conn.execute(
+            "INSERT INTO index_daily(date, symbol, open, high, low, close, volume, "
+            "pct_change, ma20, ma60, regime, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (day, "TWII", c, c, c, c, 1e6, 0.1, c, c, "bull", "t"),
+        )
+    last = days[-1]
+    conn.execute(
+        "INSERT INTO index_breadth_daily("
+        "date, up_count, down_count, limit_up, limit_down, flat_count, "
+        "up_tw, down_tw, up_two, down_two, source, updated_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+        (last, 200, 800, 0, 0, 50, 100, 400, 100, 400, "test", "t"),
+    )
+    conn.commit()
+    conn.close()
+    rr = refresh_index_daily_regime(db, last, lookback_days=5)
+    assert rr.get("ok")
+    snap = analyze_taiwan_market(db, last, db_only=True, page_light=True)
+    conn = sqlite3.connect(db)
+    row = conn.execute(
+        "SELECT regime FROM index_daily WHERE date=? AND symbol='TWII'", (last,)
+    ).fetchone()
+    conn.close()
+    assert snap.get("ok")
+    assert row and row[0] == snap.get("regime")
+
+
 def test_format_performance_shows_fmtqik_volume():
     from taiwan_market import _format_performance_lines
 

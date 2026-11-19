@@ -7108,10 +7108,8 @@ class WayneTelegramBot:
                 out = os.path.join(_paint_dir(self.db_path), f"{slot}-far.png")
                 return _render_twii_far_dark(self.db_path, out, p) or ""
 
-            got = await asyncio.wait_for(
-                asyncio.wrap_future(submit_mpl_paint(_one)),
-                timeout=float(_CHART_RENDER_TIMEOUT),
-            )
+            fut = submit_mpl_paint(_one)
+            got = await _await_lookup_paint(fut, float(_CHART_RENDER_TIMEOUT))
             return str(got or "")
         except asyncio.TimeoutError:
             logger.warning(
@@ -7145,9 +7143,9 @@ class WayneTelegramBot:
                 out = os.path.join(_paint_dir(self.db_path), f"{slot}-micro.png")
                 return _render_twii_super_near_dark(self.db_path, out, live) or ""
 
-            got = await asyncio.wait_for(
-                asyncio.wrap_future(submit_mpl_paint(_one)),
-                timeout=min(90.0, _CHART_RENDER_TIMEOUT),
+            fut = submit_mpl_paint(_one)
+            got = await _await_lookup_paint(
+                fut, float(min(90.0, _CHART_RENDER_TIMEOUT))
             )
             return str(got or "")
         except Exception:
@@ -7242,19 +7240,16 @@ class WayneTelegramBot:
                 self._market_teach_paint_lock = paint_lock
 
             async def _paint_panel(panel: str) -> dict:
-                return await asyncio.wait_for(
-                    asyncio.wrap_future(
-                        submit_mpl_paint(
-                            lambda p=panel: paint_open_day_hypothesis(
-                                self.db_path,
-                                force=True,
-                                panels=p,
-                                pack=pack or None,
-                            )
-                        )
-                    ),
-                    timeout=_CHART_RENDER_TIMEOUT,
+                # 排隊不算逾時（與查股 _await_lookup_paint 同契約；治假 120s）
+                fut = submit_mpl_paint(
+                    lambda p=panel: paint_open_day_hypothesis(
+                        self.db_path,
+                        force=True,
+                        panels=p,
+                        pack=pack or None,
+                    )
                 )
+                return await _await_lookup_paint(fut, float(_CHART_RENDER_TIMEOUT))
 
             kit: dict = {}
             far_painted: dict = {}
@@ -7398,7 +7393,7 @@ class WayneTelegramBot:
                 if str((far_painted or {}).get("error") or "") == "stamp_preflight":
                     await message.reply_text(
                         "大盤教具出圖前檢查未過（白底戳日／價），先不送。"
-                        "請稍後再按一次台股大盤。"
+                        "請稍後再按一次波浪位階。"
                     )
                     return
                 if far_painted:
@@ -7434,12 +7429,12 @@ class WayneTelegramBot:
                     if far_timed_out:
                         await message.reply_text(
                             "大盤教具第1張遠窗畫太久逾時（上費半／中加權／下量），"
-                            "先不送近窗以免順序錯。請稍後再按一次台股大盤。"
+                            "先不送近窗以免順序錯。請稍後再按一次波浪位階。"
                         )
                     else:
                         await message.reply_text(
                             "大盤教具第1張遠窗這次沒好（上費半／中加權／下量），"
-                            "先不送近窗以免順序錯。請稍後再按一次台股大盤。"
+                            "先不送近窗以免順序錯。請稍後再按一次波浪位階。"
                         )
                     return
                 # 2) 開近窗 paint，同時送遠窗
@@ -7477,9 +7472,8 @@ class WayneTelegramBot:
                     return
 
                 try:
-                    near_painted = await asyncio.wait_for(
-                        asyncio.wrap_future(near_fut),
-                        timeout=_CHART_RENDER_TIMEOUT,
+                    near_painted = await _await_lookup_paint(
+                        near_fut, float(_CHART_RENDER_TIMEOUT)
                     )
                 except asyncio.TimeoutError:
                     logger.warning("大盤近窗活畫逾時")
@@ -7535,9 +7529,8 @@ class WayneTelegramBot:
                     missing.append(label_by_key.get("near_path", "近窗"))
 
                 try:
-                    micro_painted = await asyncio.wait_for(
-                        asyncio.wrap_future(micro_fut),
-                        timeout=_CHART_RENDER_TIMEOUT,
+                    micro_painted = await _await_lookup_paint(
+                        micro_fut, float(_CHART_RENDER_TIMEOUT)
                     )
                 except asyncio.TimeoutError:
                     logger.warning("大盤超近活畫逾時")
@@ -7619,7 +7612,7 @@ class WayneTelegramBot:
                 try:
                     await message.reply_text(
                         f"大盤教具應一次三張（遠／近／超近），這次缺：{'、'.join(missing)}。"
-                        "請稍後再按一次台股大盤。"
+                        "請稍後再按一次波浪位階。"
                     )
                 except Exception:
                     pass

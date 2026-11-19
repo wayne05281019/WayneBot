@@ -377,3 +377,23 @@ def test_eps_year_before_q1_uses_prior_year():
     assert out["ok"]
     assert abs(out["eps_2026"] - 22.0) < 0.01
     assert "去年全年" in out["method"]
+
+
+def test_vol_support_note_break_is_strict(monkeypatch, tmp_path):
+    """破撐＝收 < 撐；貼撐 -0.1% 也算破（不准 0.995 寬容）。"""
+    import undervalue_growth as ug
+
+    db = str(tmp_path / "uv.db")
+    conn = sqlite3.connect(db)
+    monkeypatch.setattr(
+        ug,
+        "_find_vol_zone",
+        lambda *_a, **_k: {"high": 110.0, "low": 100.0, "date": "20260102"},
+    )
+    broke = ug.vol_support_note(conn, "2330", "20260110", 99.9)
+    hold = ug.vol_support_note(conn, "2330", "20260110", 100.0)
+    conn.close()
+    assert broke["broken"] is True
+    assert "跌破" in broke["status"]
+    assert hold["broken"] is False
+    assert "站回" in hold["status"]
