@@ -405,62 +405,28 @@ def _find_volume_zone_np(
     halt: np.ndarray,
     *,
     lookback: int = VOL_ZONE_LOOKBACK,
+    ex_cut_ymd: str = "",
 ) -> Optional[Dict[str, Any]]:
-    """與 vol_zone_chart.find_volume_zone 同準則（篩選略過除權切窗＝fast 路徑）。
+    """與 vol_zone_chart.find_volume_zone 同核（fast 預設仍可不帶除權切窗）。
 
     近窗＝恰 lookback 根**可交易**候選（停牌不佔名額），與 pandas 路徑同窗。
     """
+    from vol_zone_chart import pick_vol_zone_core
+
     n = len(closes)
     if n < 2:
         return None
-    end = n - 1
-    lb = max(int(lookback or 0), 1)
-    # 由末日往前數恰 lookback 根非停牌（對齊 find_volume_zone）
-    tradable = 0
-    start = end
-    for i in range(end - 1, -1, -1):
-        if bool(halt[i]):
-            continue
-        tradable += 1
-        start = i
-        if tradable >= lb:
-            break
-    last_close = float(closes[-1] or 0)
-    best_i = None
-    best_v = -1.0
-    active_i = None
-    active_v = -1.0
-    for i in range(start, end):
-        if bool(halt[i]):
-            continue
-        vv = float(vols[i] or 0)
-        if vv <= 0:
-            continue
-        hi = float(highs[i] or 0)
-        lo = float(lows[i] or 0)
-        if hi <= 0 or lo <= 0 or hi < lo:
-            continue
-        if vv > best_v:
-            best_v = vv
-            best_i = i
-        if hi >= last_close and vv > active_v:
-            active_v = vv
-            active_i = i
-    pick = active_i if active_i is not None else best_i
-    if pick is None:
-        return None
-    hi = float(highs[pick] or 0)
-    lo = float(lows[pick] or 0)
-    if hi <= 0 or lo <= 0 or hi < lo:
-        return None
-    return {
-        "i": int(pick),
-        "date": str(dates[pick] or ""),
-        "high": hi,
-        "low": lo,
-        "volume": float(vols[pick] or 0),
-        "active": bool(active_i is not None and pick == active_i),
-    }
+    skippable = [bool(halt[i]) for i in range(n)]
+    return pick_vol_zone_core(
+        dates=list(dates),
+        highs=list(highs),
+        lows=list(lows),
+        closes=list(closes),
+        vols=list(vols),
+        skippable=skippable,
+        lookback=lookback,
+        ex_cut_ymd=str(ex_cut_ymd or ""),
+    )
 
 
 def _classify_bars_np(

@@ -343,33 +343,43 @@ def _volume_first_bar_skippable(r: Dict[str, Any]) -> bool:
     return False
 
 
-def volume_first_price(bars: Sequence[Dict[str, Any]], *, lookback: int = 40) -> Dict[str, Any]:
+def volume_first_price(
+    bars: Sequence[Dict[str, Any]],
+    *,
+    lookback: int = 40,
+    ex_events: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
     """量先價行：近窗仍有效爆大量日高當壓、低當撐（與大量區專圖同一套）。
 
-    準則對齊 ``vol_zone_chart.find_volume_zone``（2026-10-27 鎖死同窗）：
-    1. 近窗＝恰 lookback 根**可交易**候選（預設 40），**不含最後一根**（大量區＝過去參考日）。
-       停牌／發明假柱不准佔名額（2233：發明 10/23 曾把 08/25 擠出 → 結構／大量區分叉）。
-    2. 候選＝當日高 ≥ 最近收（壓還在頭上／還在區內）；其中取成交量最大。
-    3. 若近窗已全部站上那些高 → 退回近窗（不含最後一根）絕對最大量。
-    沒公式、不編 KD；不是買訊。
+    選核＝``vol_zone_chart.pick_vol_zone_core``（與 ``find_volume_zone`` 同窗）。
+    有 ``ex_events`` 才切除權；沒有＝現況結構路徑。不是買訊。
     """
+    from vol_zone_chart import _scale_cut_date, pick_vol_zone_core
+
     lb = max(int(lookback or 0), 1)
     raw = list(bars or [])
     if not raw:
         return {}
     last = raw[-1]
     close = float(last.get("close") or 0)
-    # 由末日往前數恰 lookback 根可交易柱；與 find_volume_zone 同
-    cands_rev: List[Dict[str, Any]] = []
-    for r in reversed(raw[:-1]):
-        if _volume_first_bar_skippable(r):
-            continue
-        cands_rev.append(r)
-        if len(cands_rev) >= lb:
-            break
-    cands = list(reversed(cands_rev))
-    if not cands:
-        cands = [last]
+    n = len(raw)
+    dates = [r.get("date") for r in raw]
+    highs = [float(r.get("high") or 0) for r in raw]
+    lows = [float(r.get("low") or 0) for r in raw]
+    closes = [float(r.get("close") or 0) for r in raw]
+    vols = [float(r.get("volume") or 0) for r in raw]
+    skippable = [_volume_first_bar_skippable(r) for r in raw]
+    cut = _scale_cut_date(ex_events, last.get("date")) if ex_events else ""
+    zone = pick_vol_zone_core(
+        dates=dates,
+        highs=highs,
+        lows=lows,
+        closes=closes,
+        vols=vols,
+        skippable=skippable,
+        lookback=lb,
+        ex_cut_ymd=cut or "",
+    )
     # down_streak 仍看含末日的近尾（略過假停），與可讀連跌一致
     streak_rows = [last]
     for r in reversed(raw[:-1]):
@@ -379,31 +389,23 @@ def volume_first_price(bars: Sequence[Dict[str, Any]], *, lookback: int = 40) ->
         if len(streak_rows) >= min(8, lb + 1):
             break
     streak_rows.reverse()
-    best = None
-    best_v = -1.0
-    active = None
-    active_v = -1.0
-    for r in cands:
-        v = float(r.get("volume") or 0)
-        if v <= 0:
-            continue
-        hi_r = float(r.get("high") or 0)
-        lo_r = float(r.get("low") or 0)
-        if hi_r <= 0 or lo_r <= 0 or hi_r < lo_r:
-            continue
-        if v > best_v:
-            best_v = v
-            best = r
-        if close > 0 and hi_r >= close and v > active_v:
-            active_v = v
-            active = r
-    spike = active if active is not None else best
-    if spike is None:
-        spike = max(cands, key=lambda r: float(r.get("volume") or 0))
+    if zone is None:
+        # 近窗無候選時退回末日（舊行為）；不當產品主臉常態
+        spike = last
+        hi = float(spike.get("high") or 0)
+        lo = float(spike.get("low") or 0)
+        vol_spike = float(spike.get("volume") or 0)
+        spike_date = spike.get("date")
+        spike_ts = str(spike.get("ts") or "").strip()
+    else:
+        pick_i = int(zone["i"])
+        spike = raw[pick_i] if 0 <= pick_i < n else last
+        hi = float(zone["high"])
+        lo = float(zone["low"])
+        vol_spike = float(zone["volume"])
+        spike_date = zone.get("date") or spike.get("date")
+        spike_ts = str(spike.get("ts") or "").strip()
     vol_now = float(last.get("volume") or 0)
-    vol_spike = float(spike.get("volume") or 0)
-    hi = float(spike.get("high") or 0)
-    lo = float(spike.get("low") or 0)
     down = 0
     for i in range(len(streak_rows) - 1, 0, -1):
         if float(streak_rows[i].get("close") or 0) < float(
@@ -435,8 +437,8 @@ def volume_first_price(bars: Sequence[Dict[str, Any]], *, lookback: int = 40) ->
         "close": close,
         "pct": last.get("pct_change"),
         "vol_now": vol_now,
-        "spike_date": _ymd(spike.get("date")),
-        "spike_ts": str(spike.get("ts") or "").strip(),
+        "spike_date": _ymd(spike_date),
+        "spike_ts": spike_ts,
         "spike_high": hi,
         "spike_low": lo,
         "spike_vol": vol_spike,
