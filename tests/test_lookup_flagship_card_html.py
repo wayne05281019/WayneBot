@@ -181,9 +181,19 @@ def test_flagship_3595_emerging_platform_break():
     def _num(s: str) -> float:
         return float(str(s).replace(",", ""))
 
-    # 目標價＝光電業同業中位×EPS；不准再用 overlay 寫死 28×／570 灌水
+    # 目標價＝庫內同業中位×EPS（中位會隨柱移動，不准寫死 22.085）
     assert "同業中位" in str(p.get("pe_source") or "")
-    peer = 22.085
+    from undervalue_growth import resolve_rolling_peer_pe_median
+
+    con2 = sqlite3.connect(DB)
+    try:
+        peer_info = resolve_rolling_peer_pe_median(
+            con2, "3595", as_of=as_of, db_path=DB
+        )
+    finally:
+        con2.close()
+    peer = float(peer_info.get("median") or 0)
+    assert peer > 0
     assert _num(p["tgt_c"]) == pytest.approx(9.2 * peer, rel=0.02)
     # default 桶明年縮放 13/16
     assert _num(p["tgt_n"]) == pytest.approx(20.4 * peer * 13.0 / 16.0, rel=0.02)
