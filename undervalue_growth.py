@@ -502,7 +502,8 @@ def vol_support_note(
             out["support"] = float(lo)
         if hi is not None:
             out["resistance"] = float(hi)
-        if lo is not None and float(close) < float(lo) * 0.995:
+        # 2026-11-19 使用者鎖：破撐＝收 < 撐（與大量區／次層同尺；不准 0.995 寬容）
+        if lo is not None and float(close) < float(lo):
             out["broken"] = True
             out["status"] = f"跌破大量區撐 {lo:.0f}，先看表等止穩"
         elif lo is not None:
@@ -531,7 +532,7 @@ def vol_support_note(
     out["support"] = float(lo)
     if hi is not None:
         out["resistance"] = float(hi)
-    if float(close) < float(lo) * 0.995:
+    if float(close) < float(lo):
         out["broken"] = True
         out["status"] = f"跌破大量區撐 {lo:.0f}，先看表等止穩"
     else:
