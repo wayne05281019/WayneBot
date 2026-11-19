@@ -21,11 +21,17 @@ _LIVE_SECTOR_TTL = 45.0
 _FLOW_HTML_CACHE: Dict[Tuple[Any, ...], Tuple[float, str]] = {}
 _FLOW_HTML_TTL = 45.0
 _FLOW_HTML_LOCK = threading.Lock()
+# 法人有料日掃全表 GROUP BY，暖呼叫必須 memo，否則資金頁 memo 測永遠破 50ms
+_CHIP_DATE_CACHE: Dict[Tuple[str, int], Tuple[float, str]] = {}
+_CHIP_DATE_TTL = 45.0
+_CHIP_DATE_LOCK = threading.Lock()
 
 
 def clear_flow_html_cache() -> None:
     with _FLOW_HTML_LOCK:
         _FLOW_HTML_CACHE.clear()
+    with _CHIP_DATE_LOCK:
+        _CHIP_DATE_CACHE.clear()
 
 
 def ensure_sector_flow_table(conn: sqlite3.Connection) -> None:
@@ -96,6 +102,13 @@ def latest_chip_quote_date(db_path: str, *, min_nonzero: int = 0) -> str:
     need = int(min_nonzero) if min_nonzero > 0 else int(MIN_CHIPS_NONZERO)
     if not path:
         return ""
+    key = (path, need)
+    ts_now = time.monotonic()
+    with _CHIP_DATE_LOCK:
+        hit = _CHIP_DATE_CACHE.get(key)
+        if hit and (ts_now - float(hit[0])) < _CHIP_DATE_TTL:
+            return str(hit[1] or "")
+    out = ""
     try:
         conn = sqlite3.connect(path, timeout=15.0)
         try:
@@ -117,11 +130,17 @@ def latest_chip_quote_date(db_path: str, *, min_nonzero: int = 0) -> str:
                 """,
                 (need,),
             ).fetchone()
-            return str(rows[0] or "").replace("-", "")[:8] if rows else ""
+            out = str(rows[0] or "").replace("-", "")[:8] if rows else ""
         finally:
             conn.close()
     except sqlite3.Error:
-        return ""
+        out = ""
+    with _CHIP_DATE_LOCK:
+        _CHIP_DATE_CACHE[key] = (time.monotonic(), out)
+        if len(_CHIP_DATE_CACHE) > 16:
+            oldest = min(_CHIP_DATE_CACHE.items(), key=lambda kv: float(kv[1][0]))
+            _CHIP_DATE_CACHE.pop(oldest[0], None)
+    return out
 
 
 def resolve_flow_as_of(db_path: str, now=None) -> Tuple[str, Optional[str]]:
