@@ -30,6 +30,7 @@ def test_reply_menu_is_two_rows_not_three():
         MENU_BTN_MARKET,
         MENU_BTN_DONGZHU,
         MENU_BTN_FLOW,
+        MENU_BTN_PIPELINE,
         MENU_BTN_STREAK,
         MENU_BTN_PRESSURE,
         MENU_BTN_WATCH,
@@ -43,7 +44,7 @@ def test_reply_menu_is_two_rows_not_three():
     assert MENU_BTN_AI == "AI倉"
     assert MENU_BTN_WINRATE == "勝率買點"
     assert MENU_BTN_WATCH == "加入觀察"
-    assert MENU_LAYOUT_VERSION == "38"
+    assert MENU_LAYOUT_VERSION == "39"
     from bot_servers import MENU_BTN_CHONG, MENU_BTN_WAVE_STATUS
 
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
@@ -51,7 +52,7 @@ def test_reply_menu_is_two_rows_not_three():
     assert len(kb.keyboard) == 2
     row1 = [btn.text for btn in kb.keyboard[0]]
     row2 = [btn.text for btn in kb.keyboard[1]]
-    assert len(row1) == 7 and len(row2) == 7
+    assert len(row1) == 7 and len(row2) == 8
     assert row1 == [
         MENU_BTN_WINRATE,
         "海選",
@@ -62,6 +63,7 @@ def test_reply_menu_is_two_rows_not_three():
         MENU_BTN_FLOW,
     ]
     assert row2 == [
+        MENU_BTN_PIPELINE,
         MENU_BTN_WAVE_STATUS,
         MENU_BTN_CHONG,
         MENU_BTN_PRESSURE,
@@ -334,7 +336,8 @@ def test_refresh_silent_sends_reply_keyboard_with_streak():
     assert row1[1] == "海選"
     assert row2[-2] == MENU_BTN_LEAVE_ZERO
     assert row2[-1] == MENU_BTN_DONGZHU
-    assert row2[0] == "波浪位階"
+    assert row2[0] == "流水線"
+    assert row2[1] == "波浪位階"
     bot._mark_menu_layout_ok.assert_called_once_with("1")
 
 

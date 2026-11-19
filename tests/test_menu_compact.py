@@ -28,7 +28,7 @@ from wayne_db import init_database
 
 
 def test_full_menu_is_two_rows_no_compact():
-    assert MENU_LAYOUT_VERSION == "38"
+    assert MENU_LAYOUT_VERSION == "39"
     assert MENU_ROW1 == (
         MENU_BTN_WINRATE,
         "海選",
@@ -38,9 +38,10 @@ def test_full_menu_is_two_rows_no_compact():
         MENU_BTN_MARKET,
         MENU_BTN_FLOW,
     )
-    from bot_servers import MENU_BTN_CHONG, MENU_BTN_WAVE_STATUS
+    from bot_servers import MENU_BTN_CHONG, MENU_BTN_PIPELINE, MENU_BTN_WAVE_STATUS
 
     assert MENU_ROW2 == (
+        MENU_BTN_PIPELINE,
         MENU_BTN_WAVE_STATUS,
         MENU_BTN_CHONG,
         MENU_BTN_PRESSURE,
