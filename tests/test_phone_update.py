@@ -69,8 +69,11 @@ def test_file_note_matches_this_change():
     raw = Path(pu._NOTE_FILE).read_text(encoding="utf-8").splitlines()[0]
     assert "舊海選早報" not in raw
     assert "依時段" not in raw
+    assert "綜合篩選" in raw
     assert "模擬倉" in raw or "AI倉" in raw
-    assert pu._clean_note(raw) == "模擬倉整包關閉；打 AI倉只回已關閉，其它鈕照常"
+    assert pu._clean_note(raw) == (
+        "v40：第三排「綜合篩選」＋六格空白保留；模擬倉關閉打 AI倉只回已關閉。"
+    )
 
 
 def test_schedule_wait_note_at_fuse_window():

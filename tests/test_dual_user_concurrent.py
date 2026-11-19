@@ -99,8 +99,8 @@ def test_scratch_chart_paths_same_uid_still_unique():
 
 
 def test_owner_and_family_default_same_twelve_buttons_and_hub(tmp_path):
-    """新帳號預設十二顆與查股圖下鈕跟擁有者同一套，不是另一個精簡機器人。"""
-    from bot_servers import MENU_ROW1, MENU_ROW2, WayneTelegramBot
+    """新帳號預設主選單三排與查股圖下鈕跟擁有者同一套，不是另一個精簡機器人。"""
+    from bot_servers import MENU_ROW1, MENU_ROW2, MENU_ROW3, WayneTelegramBot
     from wayne_db import init_database
 
     db = str(tmp_path / "samekb.db")
@@ -111,7 +111,7 @@ def test_owner_and_family_default_same_twelve_buttons_and_hub(tmp_path):
     kb_b = bot._reply_menu(str(BRO_UID))
     wayne = [[b.text for b in row] for row in kb_w.keyboard]
     bro = [[b.text for b in row] for row in kb_b.keyboard]
-    assert wayne == bro == [list(MENU_ROW1), list(MENU_ROW2)]
+    assert wayne == bro == [list(MENU_ROW1), list(MENU_ROW2), list(MENU_ROW3)]
     hub_w = [b.text for r in bot._hub_keyboard("2330").inline_keyboard for b in r]
     hub_b = [b.text for r in bot._hub_keyboard("2330").inline_keyboard for b in r]
     assert hub_w == hub_b
@@ -122,8 +122,8 @@ def test_owner_and_family_default_same_twelve_buttons_and_hub(tmp_path):
 
 
 def test_owner_compact_flag_does_not_shrink_anyone(tmp_path):
-    """舊精簡旗打開也不准縮鍵盤；兩人都是完整兩排。"""
-    from bot_servers import MENU_ROW1, MENU_ROW2, WayneTelegramBot
+    """舊精簡旗打開也不准縮鍵盤；兩人都是完整三排。"""
+    from bot_servers import MENU_ROW1, MENU_ROW2, MENU_ROW3, WayneTelegramBot
     from wayne_db import init_database
 
     db = str(tmp_path / "compactiso.db")
@@ -133,7 +133,7 @@ def test_owner_compact_flag_does_not_shrink_anyone(tmp_path):
     bot._set_menu_compact(str(WAYNE_UID), True)
     wayne = [[b.text for b in row] for row in bot._reply_menu(str(WAYNE_UID)).keyboard]
     bro = [[b.text for b in row] for row in bot._reply_menu(str(BRO_UID)).keyboard]
-    assert wayne == bro == [list(MENU_ROW1), list(MENU_ROW2)]
+    assert wayne == bro == [list(MENU_ROW1), list(MENU_ROW2), list(MENU_ROW3)]
 
 
 @pytest.mark.parametrize("round_i", range(10))
