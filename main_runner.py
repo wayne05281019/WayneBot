@@ -1712,6 +1712,13 @@ class MainRunner:
             except Exception as e_foi:
                 logger.warning("台指期外資未平倉略過：%s", e_foi)
             try:
+                from taiwan_market import refresh_index_daily_regime
+
+                rr = refresh_index_daily_regime(self.db_path)
+                logger.info("index_daily.regime 完整軌回寫：%s", rr)
+            except Exception as e_rr:
+                logger.warning("regime 完整軌回寫略過：%s", e_rr)
+            try:
                 from taiwan_market import sync_regime_ai_weights
 
                 sync_regime_ai_weights(self.db_path)
