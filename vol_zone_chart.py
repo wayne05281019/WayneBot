@@ -1487,7 +1487,8 @@ def find_volume_zone(
 
 # 圖下不再加括號定義。事實句由 vol_zone_photo_caption 逐句送出。
 VOL_ZONE_CAPTION_HEAD = ""
-_PRESS_TOUCH = 0.997
+# 2026-11-19 使用者鎖：測壓觸壓與壓撐三標籤同一尺（高 ≥ 壓）
+_PRESS_TOUCH = 1.0
 _VOL_REAL = 0.70
 _VOL_THIN = 0.35
 _HEAT_CLAUSE = {
