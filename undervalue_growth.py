@@ -757,9 +757,9 @@ def price_targets(
 def vol_support_note(
     conn: sqlite3.Connection, sid: str, as_of: str, close: float
 ) -> Dict[str, Any]:
-    """大量區撐壓：優先 ``vol_zone_chart.find_volume_zone``（壓=高、撐=低）。
+    """大量區撐壓：只認 ``vol_zone_chart.find_volume_zone``（壓=高、撐=低）。
 
-    缺柱退回近 60 日最大量日低點近似。破撐→等止穩。
+    缺區＝「—」，不准用近 60 日最大量日冒充大量區（與圖／落檔脫鉤）。
     """
     day = str(as_of or "").replace("-", "")[:8]
     out: Dict[str, Any] = {
@@ -771,46 +771,18 @@ def vol_support_note(
     if len(day) != 8:
         return out
     zone = _find_vol_zone(conn, sid, day)
-    if zone:
-        lo = _finite(zone.get("low"))
-        hi = _finite(zone.get("high"))
-        if lo is not None:
-            out["support"] = float(lo)
-        if hi is not None:
-            out["resistance"] = float(hi)
-        if lo is not None and float(close) < float(lo) * 0.995:
-            out["broken"] = True
-            out["status"] = f"跌破大量區撐 {lo:.0f}，先看表等止穩"
-        elif lo is not None:
-            out["status"] = f"站回支撐區（大量區撐 {lo:.0f}）"
+    if not zone:
         return out
-    # 退回：近 60 日最大量那天的低
-    try:
-        rows = conn.execute(
-            """
-            SELECT date, high, low, close, volume FROM daily_quotes
-            WHERE stock_id=? AND REPLACE(CAST(date AS TEXT),'-','')<=?
-              AND volume IS NOT NULL AND volume > 0
-            ORDER BY date DESC LIMIT 60
-            """,
-            (sid, day),
-        ).fetchall()
-    except sqlite3.Error:
-        return out
-    if not rows:
-        return out
-    best = max(rows, key=lambda r: float(r[4] or 0))
-    lo = _finite(best[2])
-    hi = _finite(best[1])
-    if lo is None:
-        return out
-    out["support"] = float(lo)
+    lo = _finite(zone.get("low"))
+    hi = _finite(zone.get("high"))
+    if lo is not None:
+        out["support"] = float(lo)
     if hi is not None:
         out["resistance"] = float(hi)
-    if float(close) < float(lo) * 0.995:
+    if lo is not None and float(close) < float(lo) * 0.995:
         out["broken"] = True
         out["status"] = f"跌破大量區撐 {lo:.0f}，先看表等止穩"
-    else:
+    elif lo is not None:
         out["status"] = f"站回支撐區（大量區撐 {lo:.0f}）"
     return out
 

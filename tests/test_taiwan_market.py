@@ -1876,11 +1876,11 @@ def test_outlook_screenshot_one_fact_per_line_and_bold():
 def test_outlook_embolden_longest_phrase_first():
     from taiwan_market import _outlook_embolden
 
-    assert _outlook_embolden("偏空。黃金買點、紅箭確認照表，別追高。") == (
-        "<code>偏空</code>。<code>黃金買點</code>、<code>紅箭確認</code>照表，<code>別追高</code>。"
+    assert _outlook_embolden("偏空觀察。進場仍只認已過閘買訊，別追高。") == (
+        "<code>偏空觀察</code>。<code>進場仍只認已過閘買訊</code>，<code>別追高</code>。"
     )
-    assert _outlook_embolden("台指期夜盤比日盤便宜。黃金買點、紅箭確認照表，別追高。") == (
-        "<code>台指期夜盤比日盤便宜</code>。<code>黃金買點</code>、<code>紅箭確認</code>照表，<code>別追高</code>。"
+    assert _outlook_embolden("台指期夜盤比日盤便宜。進場仍只認已過閘買訊，別追高。") == (
+        "<code>台指期夜盤比日盤便宜</code>。<code>進場仍只認已過閘買訊</code>，<code>別追高</code>。"
     )
 
 

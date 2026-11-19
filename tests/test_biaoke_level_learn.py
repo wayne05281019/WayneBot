@@ -1826,10 +1826,11 @@ def test_same_day_fake_break_reply_merges_into_main_chrono(tmp_path):
     conn.close()
     tz = ZoneInfo("Asia/Taipei")
     now = datetime(2026, 11, 5, 15, 0, tzinfo=tz)
-    snip, pid = _latest_biaoke_index_snip(
+    snip, pid, day = _latest_biaoke_index_snip(
         db, "20261105", now=now, with_id=True
     )
     assert pid == "187684179"
+    assert day
     assert "C3-5完成" in snip
     assert "假跌破" in snip
     pack = _latest_level_thesis(db, as_of="20261105", now=now)
@@ -4047,7 +4048,7 @@ def test_snip_prefers_main_over_short_reply(tmp_path):
     conn.commit()
     conn.close()
     tz = ZoneInfo("Asia/Taipei")
-    snip, pid = _latest_biaoke_index_snip(
+    snip, pid, day = _latest_biaoke_index_snip(
         db,
         "20261101",
         now=datetime(2026, 11, 1, 12, 30, tzinfo=tz),
@@ -4055,6 +4056,7 @@ def test_snip_prefers_main_over_short_reply(tmp_path):
     )
     assert "3-3-4" in snip
     assert pid == "main187"
+    assert day
     assert "費辦" not in snip
 
 
@@ -4144,10 +4146,11 @@ def test_snip_main_plus_thread_chrono_not_drowned(tmp_path):
     conn.close()
     tz = ZoneInfo("Asia/Taipei")
     now = datetime(2026, 11, 6, 1, 20, tzinfo=tz)
-    snip, pid = _latest_biaoke_index_snip(
+    snip, pid, day = _latest_biaoke_index_snip(
         db, "20261106", now=now, with_id=True
     )
     assert pid == "187684179"
+    assert day
     assert "C3-5完成" in snip
     assert "45546" in snip and "46292" in snip
     assert "8498" in snip  # 同日較早劇本主文併入
