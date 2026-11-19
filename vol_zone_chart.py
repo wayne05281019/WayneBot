@@ -1394,6 +1394,89 @@ def _vol_zone_bar_skippable(work: pd.DataFrame, i: int, halt: pd.Series) -> bool
     return False
 
 
+def pick_vol_zone_core(
+    *,
+    dates: Sequence[Any],
+    highs: Sequence[Any],
+    lows: Sequence[Any],
+    closes: Sequence[Any],
+    vols: Sequence[Any],
+    skippable: Sequence[bool],
+    lookback: int = VOL_ZONE_LOOKBACK,
+    ex_cut_ymd: str = "",
+) -> Optional[Dict[str, Any]]:
+    """主大量區唯一選核：近窗可交易爆大量日 → 壓＝高、撐＝低。
+
+    三端（``find_volume_zone``／``volume_first_price``／壓撐 numpy）只做資料適配後呼叫本核。
+    不是買訊。觸壓／破撐門檻不在此核。
+    """
+    n = len(closes)
+    if n < 2 or n != len(highs) or n != len(lows) or n != len(vols) or n != len(dates):
+        return None
+    if len(skippable) != n:
+        return None
+    end = n - 1
+    lb = max(int(lookback or 0), 1)
+    tradable: List[int] = []
+    for i in range(end - 1, -1, -1):
+        if bool(skippable[i]):
+            continue
+        tradable.append(i)
+        if len(tradable) >= lb:
+            break
+    start = int(tradable[-1]) if tradable else end
+    cut = str(ex_cut_ymd or "").strip()
+    if cut:
+        for i in range(n):
+            if _bar_ymd(dates[i]) >= cut:
+                start = max(start, i)
+                break
+    last_close = float(closes[-1] or 0)
+    provisional = False
+    scan_end = end
+    if start >= end:
+        start = end
+        scan_end = n
+        provisional = True
+    best_i = None
+    best_v = -1.0
+    active_i = None
+    active_v = -1.0
+    for i in range(start, scan_end):
+        if bool(skippable[i]):
+            continue
+        v = float(vols[i] or 0)
+        if v <= 0:
+            continue
+        hi = float(highs[i] or 0)
+        lo = float(lows[i] or 0)
+        if hi <= 0 or lo <= 0 or hi < lo:
+            continue
+        if v > best_v:
+            best_v = v
+            best_i = i
+        if hi >= last_close and v > active_v:
+            active_v = v
+            active_i = i
+    pick = active_i if active_i is not None else best_i
+    if pick is None:
+        return None
+    hi = float(highs[pick] or 0)
+    lo = float(lows[pick] or 0)
+    if hi <= 0 or lo <= 0 or hi < lo:
+        return None
+    return {
+        "i": int(pick),
+        "date": str(dates[pick] or ""),
+        "high": hi,
+        "low": lo,
+        "volume": float(vols[pick] or 0),
+        "active": bool(active_i is not None and pick == active_i),
+        "provisional": bool(provisional),
+        "ex_cut": cut or "",
+    }
+
+
 def find_volume_zone(
     work: pd.DataFrame,
     *,
@@ -1422,72 +1505,25 @@ def find_volume_zone(
         if "is_halt" in work.columns
         else pd.Series(False, index=work.index)
     )
-    end = n - 1
-    lb = max(int(lookback or 0), 1)
-    # 由末日往前數恰 lookback 根可交易柱；假停牌不進計數
-    tradable: List[int] = []
-    for i in range(end - 1, -1, -1):
-        if _vol_zone_bar_skippable(work, i, halt):
-            continue
-        tradable.append(i)
-        if len(tradable) >= lb:
-            break
-    start = int(tradable[-1]) if tradable else end
+    skippable = [_vol_zone_bar_skippable(work, i, halt) for i in range(n)]
     last_d = _bar_ymd(work["date"].iloc[-1])
     cut = _scale_cut_date(ex_events, last_d)
-    if cut:
-        for i in range(n):
-            if _bar_ymd(work["date"].iloc[i]) >= cut:
-                start = max(start, i)
-                break
-    last_close = float(work["close"].iloc[-1] or 0)
-    provisional = False
-    if start >= end:
-        start = end
-        end = n
-        provisional = True
-    best_i = None
-    best_v = -1.0
-    active_i = None
-    active_v = -1.0
-    for i in range(start, end):
-        if _vol_zone_bar_skippable(work, i, halt):
-            continue
-        v = float(work["volume"].iloc[i] or 0)
-        if v <= 0:
-            continue
-        hi = float(work["high"].iloc[i] or 0)
-        lo = float(work["low"].iloc[i] or 0)
-        if hi <= 0 or lo <= 0 or hi < lo:
-            continue
-        if v > best_v:
-            best_v = v
-            best_i = i
-        if hi >= last_close and v > active_v:
-            active_v = v
-            active_i = i
-    pick = active_i if active_i is not None else best_i
-    if pick is None:
-        return None
-    hi = float(work["high"].iloc[pick] or 0)
-    lo = float(work["low"].iloc[pick] or 0)
-    if hi <= 0 or lo <= 0 or hi < lo:
-        return None
-    return {
-        "i": int(pick),
-        "date": str(work["date"].iloc[pick] or ""),
-        "high": hi,
-        "low": lo,
-        "volume": float(work["volume"].iloc[pick] or 0),
-        "active": bool(active_i is not None and pick == active_i),
-        "provisional": bool(provisional),
-        "ex_cut": cut,
-    }
+    return pick_vol_zone_core(
+        dates=list(work["date"].tolist()),
+        highs=list(pd.to_numeric(work["high"], errors="coerce").fillna(0.0).tolist()),
+        lows=list(pd.to_numeric(work["low"], errors="coerce").fillna(0.0).tolist()),
+        closes=list(pd.to_numeric(work["close"], errors="coerce").fillna(0.0).tolist()),
+        vols=list(pd.to_numeric(work["volume"], errors="coerce").fillna(0.0).tolist()),
+        skippable=skippable,
+        lookback=lookback,
+        ex_cut_ymd=cut or "",
+    )
 
 
 # 圖下不再加括號定義。事實句由 vol_zone_photo_caption 逐句送出。
 VOL_ZONE_CAPTION_HEAD = ""
-_PRESS_TOUCH = 0.997
+# 2026-11-19 使用者鎖：測壓觸壓與壓撐三標籤同一尺（高 ≥ 壓）
+_PRESS_TOUCH = 1.0
 _VOL_REAL = 0.70
 _VOL_THIN = 0.35
 _HEAT_CLAUSE = {

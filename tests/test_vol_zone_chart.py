@@ -413,6 +413,57 @@ def test_volume_first_and_find_zone_same_window_synthetic():
     assert float(st["spike_low"]) == float(zone["low"]) == 80.0
 
 
+def test_pick_vol_zone_core_matches_find_and_numpy():
+    """共用核＝pandas find_volume_zone＝壓撐 numpy（無除權）。"""
+    from pressure_support_watch import _find_volume_zone_np
+    from vol_zone_chart import VOL_ZONE_LOOKBACK, find_volume_zone, pick_vol_zone_core
+
+    lb = int(VOL_ZONE_LOOKBACK)
+    rows = []
+    for i in range(lb + 5):
+        rows.append(
+            {
+                "date": f"2026{100 + i:04d}",
+                "open": 100.0,
+                "high": 105.0,
+                "low": 95.0,
+                "close": 100.0,
+                "volume": 1000.0 + i,
+                "is_halt": False,
+            }
+        )
+    oldest = len(rows) - 1 - lb
+    rows[oldest]["volume"] = 50000.0
+    rows[oldest]["high"] = 120.0
+    rows[oldest]["low"] = 80.0
+    rows[-1]["close"] = 100.0
+    rows[-1]["volume"] = 90000.0
+    df = pd.DataFrame(rows)
+    zone = find_volume_zone(df, lookback=lb)
+    core = pick_vol_zone_core(
+        dates=list(df["date"]),
+        highs=list(df["high"]),
+        lows=list(df["low"]),
+        closes=list(df["close"]),
+        vols=list(df["volume"]),
+        skippable=[False] * len(df),
+        lookback=lb,
+    )
+    np_zone = _find_volume_zone_np(
+        np.asarray(df["date"].astype(str)),
+        np.asarray(df["high"], dtype=float),
+        np.asarray(df["low"], dtype=float),
+        np.asarray(df["close"], dtype=float),
+        np.asarray(df["volume"], dtype=float),
+        np.asarray([False] * len(df)),
+        lookback=lb,
+    )
+    assert zone and core and np_zone
+    assert zone["date"] == core["date"] == np_zone["date"] == rows[oldest]["date"]
+    assert zone["high"] == core["high"] == np_zone["high"] == 120.0
+    assert zone["low"] == core["low"] == np_zone["low"] == 80.0
+
+
 def _assert_2233_spike_zone(zone: dict, st: dict) -> None:
     """2233 近窗爆大量：結構＝大量區；lookback=40 滾動後近窗最大日可換，兩圖必須同日。"""
     assert zone and st
