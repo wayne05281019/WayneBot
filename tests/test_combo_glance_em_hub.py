@@ -166,12 +166,11 @@ def test_lookup_album_has_no_lecture_caption():
     assert "render_lookup_vol_result" in locked
     assert "render_three_in_one_result" not in locked
     assert "struct" in locked
-    # 順序：高低溫度卡 → 介紹圖 → 結構圖 → 大量撐壓圖
+    # 順序：高低溫度卡 → 結構圖 → 大量撐壓圖（介紹圖改圖下可點）
     assert "create_task(_struct_item())" in locked
     assert "create_task(_vol_item())" in locked
-    assert locked.find("glance_task = asyncio.create_task") < locked.find(
-        "card_item = await card_render_task"
-    )
+    assert "_lookup_auto_glance_enabled" in locked
+    assert "glance_queued.set()" in locked
     assert locked.find('current"] = "card"') < locked.find("create_task(_struct_item())")
     assert locked.find("create_task(_struct_item())") < locked.find(
         'await _bump_progress("struct")'
@@ -181,6 +180,8 @@ def test_lookup_album_has_no_lecture_caption():
     assert 'InlineKeyboardButton("K線"' in hub
     assert 'InlineKeyboardButton("高低導航圖"' in hub
     assert 'callback_data=f"n:{c}"' in hub
+    assert 'callback_data=f"i:{c}"' in hub
+    assert 'InlineKeyboardButton("介紹圖"' in hub
     assert 'callback_data=f"sf:{c}"' in hub
     assert "url=nav_url" not in hub
     assert "span=180" not in hub

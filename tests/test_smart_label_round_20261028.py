@@ -133,12 +133,12 @@ def test_lookup_progress_tick_has_hard_elapsed_cap():
     assert "查股逾時仍在出圖" in src or "overtime=overtime" in tick
     # 海選／plain wait 仍可 dismiss 殘框；查股路徑不准靠 dismiss 冒充成功
     progress_fn = WayneTelegramBot._chart_progress_text
-    txt = progress_fn(130, sent=["card", "glance", "struct"], current="vol", overtime=True)
+    txt = progress_fn(130, sent=["card", "struct"], current="vol", overtime=True)
     assert "逾時" in txt
-    # 還沒送高低卡：逾時「現在」必須是高低卡，不准跳介紹圖
+    # 還沒送高低卡：逾時「現在」必須是高低卡，不准跳結構圖
     early = progress_fn(130, sent=[], current="card", overtime=True)
     assert "現在：高低溫度卡" in early
-    assert "現在：介紹圖" not in early
+    assert "現在：結構圖" not in early
     # 階段 bump 也要帶 overtime，不准改回「查股進行中」蓋掉逾時口吻
     assert "overtime=elapsed >= max_el" in tick or "overtime=elapsed >=" in tick
     assert "with_parallel_channel=True" in src  # memo 鍵對齊第 4 張

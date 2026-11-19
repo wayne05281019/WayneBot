@@ -89,20 +89,19 @@ def test_volzone_and_lookup_cards_share_ft_gate():
     assert "_savefig_lookup_png" in glance
 
 
-def test_lookup_bot_awaits_card_before_glance():
-    """查股介紹圖不准跟高低卡 gather 搶同一把鎖的 wait_for 時計。"""
+def test_lookup_bot_skips_auto_glance_by_default():
+    """預設介紹圖不自動 paint；舊 gather(card, glance) 仍禁止；排隊不算逾時。"""
     from bot_servers import WayneTelegramBot
 
     src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
     assert "card_item = await card_render_task" in src
-    assert "glance_item = await glance_task" in src
+    assert "_lookup_auto_glance_enabled" in src
+    assert "glance_queued.set()" in src
     assert "submit_mpl_paint" in src
     # 舊寫法：gather(glance, card) 會讓後者排隊時間算進逾時
     assert "asyncio.gather(\n                _render_ready(\n                    \"glance\"" not in src
-    assert src.find("glance_task = asyncio.create_task") < src.find(
-        "card_item = await card_render_task"
-    )
-    # 排隊時間不准算進 paint 逾時（否則高低卡一慢，介紹／第5張被 wait_for 默默丟）
+    # 預設略介紹：create_task(_glance_item) 只在 AUTO_GLANCE 分支
+    assert "if _lookup_auto_glance_enabled():" in src
     assert "_await_lookup_paint" in src
 
 
