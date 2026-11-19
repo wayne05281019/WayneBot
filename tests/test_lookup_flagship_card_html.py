@@ -53,7 +53,7 @@ def test_flagship_2383_listed_shape():
     assert "融資・10日籌碼與關鍵日" in html
     assert "外資10日" in html
     # 事件日：官方未來法說，否則法定財報期限（不准發明日期）
-    assert re.search(r"｜(法說 |股東會 |財報 |Q\d財報 )\d{4}/\d{2}/\d{2}", p["extra_val"])
+    assert re.search(r"｜(法說 |股東會 |年報 |財報 |Q\d財報 )\d{4}/\d{2}/\d{2}", p["extra_val"])
     assert "💡 策略提示：" in html
     assert "大量撐" in p["tip"]
     # 4 格微光膠囊：回檔為負 → 綠（跌）色塊
@@ -80,6 +80,34 @@ def test_next_event_label_falls_back_to_report_deadline(tmp_path):
     assert _next_event_label(db, "2383", "20261118") == "年報期限 2027/03/31"
     assert _next_event_label(db, "2383", "20261101") == "法說 2026/11/03"
     assert _next_event_label(db, "9999", "20260601") == "Q2財報期限 2026/08/14"
+
+
+def test_extra_strip_keeps_annual_report_label():
+    """法定期限標「前」時，年報不准縮成泛稱「財報」。"""
+    import re
+
+    def _phone_ev(ev: str) -> str:
+        return re.sub(
+            r"^(年報|Q\d財報)期限 (\S+)$",
+            lambda m: f"{m.group(1)} {m.group(2)}前",
+            ev,
+        )
+
+    assert _phone_ev("年報期限 2027/03/31") == "年報 2027/03/31前"
+    assert _phone_ev("Q3財報期限 2026/11/14") == "Q3財報 2026/11/14前"
+    assert "財報 2027" not in _phone_ev("年報期限 2027/03/31")
+
+
+def test_forward_pe_is_price_over_rolling_eps():
+    """未來12月滾動本益比＝現價／(今年EPS×剩餘月權重＋明年EPS×已過月權重)。"""
+    from datetime import date
+
+    from lookup_flagship_card_html import calc_forward_12m_eps
+
+    # 11 月：剩餘 2／12 今年、10／12 明年
+    fwd = calc_forward_12m_eps(2.52, 2.77, date(2026, 11, 18))
+    assert fwd == 2.73
+    assert round(22.90 / fwd, 1) == 8.4
 
 
 def test_strategy_tip_buy_only_from_quantified_signal():

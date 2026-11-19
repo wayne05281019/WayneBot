@@ -1606,8 +1606,12 @@ def build_flagship_payload(
         t_s = _lot(t10)
         m_s = "融資 —" if m5 is None else f"融資 {_lot(m5)}"
         ev = _next_event_label(db_path, sid, day)
-        # 法定期限是「最晚」日，不是公司公告日，標「前」
-        ev = re.sub(r"^(年報|Q\d財報)期限 (\S+)$", lambda m: f"{'財報' if m.group(1) == '年報' else m.group(1)} {m.group(2)}前", ev)
+        # 法定期限是「最晚」日，不是公司公告日，標「前」；年報不准縮成泛稱「財報」
+        ev = re.sub(
+            r"^(年報|Q\d財報)期限 (\S+)$",
+            lambda m: f"{m.group(1)} {m.group(2)}前",
+            ev,
+        )
         extra_val = f"外資10日 {f_s}｜投信 {t_s}｜{m_s}｜{ev}"
 
     tip = _strategy_tip(
