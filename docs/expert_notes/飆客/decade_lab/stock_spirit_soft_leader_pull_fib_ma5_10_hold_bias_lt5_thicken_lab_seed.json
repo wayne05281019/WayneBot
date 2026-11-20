@@ -1,0 +1,106 @@
+{
+  "version": "stock_spirit_soft_leader_pull_fib_ma5_10_hold_bias_lt5_thicken_lab_v1",
+  "tz": "Asia/Taipei",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "status": "thicken_fail_keep_v106",
+  "gate_passed": false,
+  "keep": "v106",
+  "as_of": "2026-11-11T01:14:53+08:00",
+  "best_candidate": {
+    "leg": "spirit_soft_leader_pull_fib_ma5_10_hold_bias_lt5_thicken",
+    "entry": "SPIRIT_pull_fib",
+    "variant": "soft_leader_reclaim_ma5_10_hold_bias_lt5",
+    "kind": "vs_plain",
+    "oos_wr": 0.8129496402877698,
+    "oos_d": 111,
+    "plain_oos_wr": 0.7144662034112444,
+    "plain_oos_d": 559,
+    "delta_oos_wr": 0.09848343687652539,
+    "expectancy": 0.03756764354231742,
+    "avg_hold": 12.589928057553957,
+    "exit_reason_counts": {
+      "first_hi20": 134,
+      "max_hold_60": 5
+    },
+    "beats_v106_early_keep_oos": false,
+    "beats_v106_fast_keep_oos": false
+  },
+  "shared_vs_keep": [],
+  "promote_lookup": false,
+  "fold_table": [
+    {
+      "fold": "wf_expand_1_of_3",
+      "oos_d": 17,
+      "oos_wr": 0.8235294117647058,
+      "expectancy": 0.007212914311838224,
+      "avg_hold": 10.764705882352942,
+      "exit_reason_counts": {
+        "first_hi20": 17
+      },
+      "beats_v106_early": false,
+      "beats_v106_fast": false,
+      "beats_both": false,
+      "gate_n20": false
+    },
+    {
+      "fold": "wf_expand_2_of_3",
+      "oos_d": 15,
+      "oos_wr": 0.8666666666666667,
+      "expectancy": 0.033522888612936036,
+      "avg_hold": 11.466666666666667,
+      "exit_reason_counts": {
+        "first_hi20": 15
+      },
+      "beats_v106_early": false,
+      "beats_v106_fast": false,
+      "beats_both": false,
+      "gate_n20": false
+    },
+    {
+      "fold": "wf_expand_3_of_3",
+      "oos_d": 96,
+      "oos_wr": 0.8064516129032258,
+      "expectancy": 0.0380569284128071,
+      "avg_hold": 12.725806451612904,
+      "exit_reason_counts": {
+        "first_hi20": 119,
+        "max_hold_60": 5
+      },
+      "beats_v106_early": false,
+      "beats_v106_fast": false,
+      "beats_both": false,
+      "gate_n20": true
+    },
+    {
+      "fold": "half_split",
+      "oos_d": 111,
+      "oos_wr": 0.8129496402877698,
+      "expectancy": 0.03756764354231742,
+      "avg_hold": 12.589928057553957,
+      "exit_reason_counts": {
+        "first_hi20": 134,
+        "max_hold_60": 5
+      },
+      "beats_v106_early": false,
+      "beats_v106_fast": false,
+      "beats_both": false,
+      "gate_n20": true
+    }
+  ],
+  "thin_sample_risk": true,
+  "next": "soft_leader×pull_fib×reclaim×bias_lt5（次高 WR oos≈0.837 d=41；更厚獨立日；非 sell_desync）",
+  "entry": "SPIRIT_pull_fib",
+  "sell": "hi20_or_desync",
+  "focus_variant": "soft_leader_reclaim_ma5_10_hold_bias_lt5",
+  "confirm_variants": [
+    "plain",
+    "soft_leader_reclaim_ma5_10_hold",
+    "soft_leader_reclaim_ma5_10_hold_bias_lt5"
+  ],
+  "parents": [
+    "stock_spirit_soft_leader_pull_fib_ma5_10_hold_lab_decision.json",
+    "stock_spirit_soft_leader_fib618_vol_expand_thicken_lab_decision.json"
+  ],
+  "hypothesis_zh": "加厚 soft_leader_reclaim_ma5_10_hold_bias_lt5：多摺 walk-forward／半切；目標獨立 OOS 日 ≫20；理論贏且證據誠實則 gate 真結果→keep=v107"
+}
