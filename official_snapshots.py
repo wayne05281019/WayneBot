@@ -1717,19 +1717,58 @@ def sync_official_snapshots(db_path: str | None = None) -> Dict[str, Any]:
     fallback = max((r["date"] for r in fmt_rows), default="")
     if len(fallback) != 8:
         fallback = fuse_cap
+    bwibbu_rows = parse_bwibbu(fetched.get("bwibbu") or [])
+    tpex_pe_rows = parse_tpex_pe(fetched.get("tpex_pe") or [])
+    bwibbu_dates = sorted({str(r.get("date") or "") for r in bwibbu_rows if r.get("date")})
+    tpex_pe_dates = sorted({str(r.get("date") or "") for r in tpex_pe_rows if r.get("date")})
     val_n = mar_n = dt_n = nav_n = div_n = 0
     conn = sqlite3.connect(path)
     try:
-        val_n += _upsert_valuation(conn, parse_bwibbu(fetched.get("bwibbu") or []), now)
-        val_n += _upsert_valuation(conn, parse_tpex_pe(fetched.get("tpex_pe") or []), now)
+        val_n += _upsert_valuation(conn, bwibbu_rows, now)
+        val_n += _upsert_valuation(conn, tpex_pe_rows, now)
         mar_n += _upsert_margin(conn, parse_twse_margin(fetched.get("margn") or [], fallback_date=fallback), now)
         mar_n += _upsert_margin(conn, parse_tpex_margin(fetched.get("tpex_margin") or []), now)
         dt_n += _upsert_daytrade(conn, parse_twtb4u(fetched.get("twtb4u") or []), now)
         nav_n += _upsert_etf_nav(conn, parse_mis_etf_nav(fetched.get("etf_nav") or {}), now)
         div_n += _upsert_etf_div(conn, parse_etf_div(fetched.get("etf_div") or {}), now)
         conn.commit()
+        try:
+            row = conn.execute(
+                "SELECT MAX(date) FROM daily_valuation"
+            ).fetchone()
+            val_max = str(row[0] or "") if row else ""
+        except sqlite3.Error:
+            val_max = ""
     finally:
         conn.close()
+    # 估值落後 fuse_end：記進 errors，呼叫端可重試；不准默默當成功新數
+    if fuse_cap:
+        tw_max = bwibbu_dates[-1] if bwibbu_dates else ""
+        two_max = tpex_pe_dates[-1] if tpex_pe_dates else ""
+        if two_max and two_max < fuse_cap:
+            errors["valuation_tpex_lag"] = f"tpex_pe max={two_max} < fuse_end={fuse_cap}"
+            log.warning("櫃買本益落後：%s", errors["valuation_tpex_lag"])
+        if tw_max:
+            try:
+                from datetime import datetime as _dt
+                from trading_calendar import last_open_calendar_day_on_or_before
+
+                prev = (_dt.strptime(fuse_cap, "%Y%m%d") - timedelta(days=1)).strftime(
+                    "%Y%m%d"
+                )
+                prev_open = last_open_calendar_day_on_or_before(prev)
+            except Exception:
+                prev_open = ""
+            if tw_max < fuse_cap and (not prev_open or tw_max < prev_open):
+                errors["valuation_twse_lag"] = (
+                    f"bwibbu max={tw_max} < fuse_end={fuse_cap} (允許T-1={prev_open})"
+                )
+                log.warning("上市本益過舊：%s", errors["valuation_twse_lag"])
+    else:
+        val_max = bwibbu_dates[-1] if bwibbu_dates else (
+            tpex_pe_dates[-1] if tpex_pe_dates else ""
+        )
+
     if nav_n < 50:
         try:
             extra = fill_missing_etf_nav(path)
@@ -1766,6 +1805,10 @@ def sync_official_snapshots(db_path: str | None = None) -> Dict[str, Any]:
         "ok": not errors
         or val_n + mar_n + dt_n + fmt_n + ohlc_n + nav_n + div_n + mkt_mar_n > 0,
         "valuation": val_n,
+        "valuation_max": val_max,
+        "bwibbu_max": bwibbu_dates[-1] if bwibbu_dates else "",
+        "tpex_pe_max": tpex_pe_dates[-1] if tpex_pe_dates else "",
+        "fuse_cap": fuse_cap,
         "margin": mar_n,
         "market_margin": mkt_mar_n,
         "daytrade": dt_n,
