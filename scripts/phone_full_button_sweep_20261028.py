@@ -32,7 +32,7 @@ HEALTH = "https://waynebot-service.onrender.com/health"
 ARTIFACT = Path(os.environ.get("WAYNE_ARTIFACT_DIR", "/opt/cursor/artifacts")) / "phone-full-button-sweep-20261116"
 ARTIFACT.mkdir(parents=True, exist_ok=True)
 
-# 對齊主選單 v40：上七下八＋第三排綜合篩選；沖區子鍵／打字別名另掃
+# 對齊主選單 v41：上七下七＋第三排綜合篩選（流水線鍵盤隱藏）；沖區子鍵／打字別名另掃
 MENU_BUTTONS = [
     "勝率買點",
     "海選",
@@ -41,7 +41,6 @@ MENU_BUTTONS = [
     "飆大",
     "台股大盤",
     "資金輪動",
-    "流水線",
     "波浪位階",
     "沖區",
     "壓撐觀察",
@@ -50,7 +49,8 @@ MENU_BUTTONS = [
     "剛脫離零",
     "洞燭先機",
     "綜合篩選",
-    # 子鍵／打字入口
+    # 子鍵／打字入口（流水線鍵盤已隱藏；打字別名仍掃）
+    "流水線",
     "當沖",
     "隔日沖",
     "AI倉",  # 選單已無鈕；打字別名仍回已關閉

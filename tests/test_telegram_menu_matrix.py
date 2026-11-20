@@ -176,7 +176,7 @@ def test_instant_ack_before_slow_work(label, hint):
         "money_flow.resolve_flow_as_of", return_value=("20260902", "")
     ), patch("money_flow.recompute_sector_flow", return_value=1), patch(
         "trading_calendar.fuse_end_trading_date", return_value="20260902"
-    ), patch("money_flow.sector_flow_ready", return_value=True), patch(
+    ), patch("money_flow.sector_flow_ready", return_value=True    ), patch(
         "pipeline_observe.build_pipeline_observe",
         return_value={
             "today": "20260902",
@@ -186,6 +186,25 @@ def test_instant_ack_before_slow_work(label, hint):
             "issues": [],
             "summary": {"layer_n": 0, "bad_n": 0, "issue_n": 0, "ok_n": 0},
             "not_buy_signal": True,
+        },
+    ), patch(
+        "pipeline_observe.build_combo_screen",
+        return_value={
+            "today": "20260902",
+            "desk_as_of": "20260902",
+            "fuse_as_of": "20260902",
+            "layers": [],
+            "issues": [],
+            "summary": {"layer_n": 0, "bad_n": 0, "issue_n": 0, "ok_n": 0},
+            "lists": {
+                "winrate": {
+                    "as_of": "20260902",
+                    "items": [{"sid": "2330", "name": "台積電"}],
+                    "buy_ok": True,
+                }
+            },
+            "not_buy_signal": True,
+            "combo": True,
         },
     ), patch(
         "pipeline_observe.format_pipeline_observe_html",
