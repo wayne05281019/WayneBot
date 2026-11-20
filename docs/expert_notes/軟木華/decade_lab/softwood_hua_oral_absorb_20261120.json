@@ -6,7 +6,11 @@
   "expert_zh": "軟木華",
   "expert_en": "Softwood Hua",
   "legal_name_zh": "阮慕驊",
-  "aliases_zh": ["軟木華", "阮大哥", "慕驊哥"],
+  "aliases_zh": [
+    "軟木華",
+    "阮大哥",
+    "慕驊哥"
+  ],
   "identity_lock_zh": "軟木華＝阮慕驊（網友戲稱）；本檔專收他《財經一路發》2026-11-20 當日 live，不准混黃培碩／recovery funnel／飆大",
   "phone_sync": "blocked",
   "buy_signal": false,
@@ -70,7 +74,7 @@
     "transcript_excerpt_cleaned_zh": [
       "今年外資出現對台股史上最大的賣超，到今天以來的金額已經達到接近 3.2 兆元。",
       "今天外資賣超台股 94 億；投信賣超 87.5 億；自營商賣超 50.7 億；自營避險部位集中市場賣超 290 億；三大法人合計集中市場賣超 522 億。",
-      "櫃買部分外資反倒買超，已連日買超；三大法人合計櫃買買超約 69 億；但櫃買跌幅比加權更大（加權約跌 2.2%，櫃買約跌 2.79%，盤中一度近 8%）。",
+      "櫃買部分外資反倒買超，已連日買超；三大法人合計櫃買買超約 69 億；但櫃買跌幅比加權更大（加權約跌 2.2%，櫃買約跌 7.79%，盤中一度近 8%）。",
       "外資這一波提款一半以上提台積電；今天賣超約 1 萬 1,863 張，單檔約 238 億。台灣 50 賣超約 11 萬張、約 94 億（約 60% 是台積電）。",
       "投信賣超第一名也是台積電約 3,800 張、約 77 億；另賣聯電、大立光、國泰金、長榮——親一色權值股、沒跌停板可賣，是套取流動性。",
       "3037 欣興今天一開盤就被打到跌停；投信手上 PCB／CCL 很多，賣也賣不掉。",
@@ -96,8 +100,13 @@
       {
         "id": "H1_bull_needs_above_yearly_ma",
         "he_said_zh": "一個多方市場，他的 K 線一定要在年線之上。深度跌破年線要回到年線之上，才能講說他恢復了一個多方型態。",
-        "numbers": {"otc_bias_vs_yearly_ma_pct": -26.6},
-        "ohlc_fields": ["OTC.close", "OTC.ma250_or_yearly"],
+        "numbers": {
+          "otc_bias_vs_yearly_ma_pct": -26.6
+        },
+        "ohlc_fields": [
+          "OTC.close",
+          "OTC.ma250_or_yearly"
+        ],
         "not_buy_signal": true
       },
       {
@@ -109,7 +118,11 @@
           "rally_gain_multiple": 1.17,
           "no_rebound_gt_pct": 15
         },
-        "ohlc_fields": ["KOSPI.close", "KOSPI.high_swing", "KOSPI.low_swing"],
+        "ohlc_fields": [
+          "KOSPI.close",
+          "KOSPI.high_swing",
+          "KOSPI.low_swing"
+        ],
         "not_buy_signal": true
       },
       {
@@ -123,7 +136,15 @@
           "bias_ma120_pct": -33.5,
           "bias_ma250_pct": -26.6
         },
-        "ohlc_fields": ["OTC.close", "OTC.ma5", "OTC.ma10", "OTC.ma20", "OTC.ma60", "OTC.ma120", "OTC.ma250"],
+        "ohlc_fields": [
+          "OTC.close",
+          "OTC.ma5",
+          "OTC.ma10",
+          "OTC.ma20",
+          "OTC.ma60",
+          "OTC.ma120",
+          "OTC.ma250"
+        ],
         "not_buy_signal": true
       },
       {
@@ -134,7 +155,12 @@
           "distance_to_ma5y_pct": 4,
           "buffer_to_ma10y_pct": 29
         },
-        "ohlc_fields": ["OTC.close", "OTC.ma3y", "OTC.ma5y", "OTC.ma10y"],
+        "ohlc_fields": [
+          "OTC.close",
+          "OTC.ma3y",
+          "OTC.ma5y",
+          "OTC.ma10y"
+        ],
         "not_buy_signal": true
       },
       {
@@ -147,7 +173,11 @@
           "korea_drawdown_from_high_pct": 48,
           "korea_rally_multiple": 1.17
         },
-        "ohlc_fields": ["OTC.close", "OTC.year_open", "OTC.year_high"],
+        "ohlc_fields": [
+          "OTC.close",
+          "OTC.year_open",
+          "OTC.year_high"
+        ],
         "not_buy_signal": true
       },
       {
@@ -165,7 +195,13 @@
           "twii_ath_date": "2026-10-06",
           "otc_on_twii_ath": 434.3
         },
-        "ohlc_fields": ["GOLD.close", "SOX.close", "KOSPI.close", "OTC.close", "TWII.close"],
+        "ohlc_fields": [
+          "GOLD.close",
+          "SOX.close",
+          "KOSPI.close",
+          "OTC.close",
+          "TWII.close"
+        ],
         "not_buy_signal": true
       },
       {
@@ -177,21 +213,35 @@
           "otc_june_high": 459.56,
           "otc_oct6": 434.3
         },
-        "ohlc_fields": ["TWII.close", "OTC.close", "SOX.close"],
+        "ohlc_fields": [
+          "TWII.close",
+          "OTC.close",
+          "SOX.close"
+        ],
         "not_buy_signal": true
       },
       {
         "id": "H8_liquidity_extract_sell_no_limit_down",
         "he_said_zh": "這種所謂套取流動性的動作非常明顯——賣的排序全部都是重量級權值股以及最大的市值型 ETF。投信為什麼賣這些？我猜想其中一個原因是必須套取流動性，所以找沒有跌停板的股票賣；很多投信重倉股票一開盤就是跌停。",
         "numbers": null,
-        "ohlc_fields": ["stock.limit_down_flag", "market_inst_lots_daily", "ETF_0050"],
+        "ohlc_fields": [
+          "stock.limit_down_flag",
+          "market_inst_lots_daily",
+          "ETF_0050"
+        ],
         "not_buy_signal": true
       },
       {
         "id": "H9_bear_leg_no_rebound_over_15pct",
         "he_said_zh": "韓國股市在整個下跌過程中，没有任何一波的反彈超過 15%，持續往下破底。",
-        "numbers": {"max_countertrend_bounce_pct": 15},
-        "ohlc_fields": ["KOSPI.close", "swing_high", "swing_low"],
+        "numbers": {
+          "max_countertrend_bounce_pct": 15
+        },
+        "ohlc_fields": [
+          "KOSPI.close",
+          "swing_high",
+          "swing_low"
+        ],
         "not_buy_signal": true
       }
     ],
@@ -259,8 +309,12 @@
       },
       {
         "id": "E2_twii_vs_otc_day_drop",
-        "he_said_zh": "加權中場約跌 2.2%，櫃買約跌 2.79%，盤中一度跌幅逼近 8%。",
-        "approx_numbers": {"twii_pct": -2.2, "otc_pct": -2.79, "otc_intraday_near_pct": -8},
+        "he_said_zh": "加權中場約跌 2.2%，櫃買約跌 7.79%，盤中一度跌幅逼近 8%。",
+        "approx_numbers": {
+          "twii_pct": -2.2,
+          "otc_pct": -7.79,
+          "otc_intraday_near_pct": -8
+        },
         "not_buy_signal": true
       },
       {
@@ -268,7 +322,11 @@
         "symbol": "2330",
         "name_zh": "台積電",
         "he_said_zh": "外資這一波提款一半以上就是提台積電；今天賣超約 1 萬 1,863 張，單檔套現出場約 238 億。",
-        "approx_numbers": {"lots": 11863, "yi": 238, "share_of_wave_gt": 0.5},
+        "approx_numbers": {
+          "lots": 11863,
+          "yi": 238,
+          "share_of_wave_gt": 0.5
+        },
         "not_buy_signal": true
       },
       {
@@ -276,22 +334,51 @@
         "symbol": "0050",
         "name_zh": "元大台灣50",
         "he_said_zh": "ETF 他賣超第一名是台灣 50；台灣 50 有約 60% 的台積電，所以等同又賣了六成的台積電。賣超約 11 萬張、套現約 94 億。",
-        "approx_numbers": {"lots": 110000, "yi": 94, "tsmc_weight_pct": 60},
+        "approx_numbers": {
+          "lots": 110000,
+          "yi": 94,
+          "tsmc_weight_pct": 60
+        },
         "not_buy_signal": true
       },
       {
         "id": "E5_foreign_bluechip_list",
-        "symbols": ["2454", "2308", "2317", "3711"],
-        "names_zh": ["聯發科", "台達電", "鴻海", "日月光"],
+        "symbols": [
+          "2454",
+          "2308",
+          "2317",
+          "3711"
+        ],
+        "names_zh": [
+          "聯發科",
+          "台達電",
+          "鴻海",
+          "日月光"
+        ],
         "he_said_zh": "此外他賣超聯發科、台達電、鴻海、日月光——排序全部都是重量級權值股以及最大的市值型 ETF。",
         "not_buy_signal": true
       },
       {
         "id": "E6_trust_sell_top5",
-        "symbols": ["2330", "2303", "3008", "2882", "2603"],
-        "names_zh": ["台積電", "聯電", "大立光", "國泰金", "長榮"],
+        "symbols": [
+          "2330",
+          "2303",
+          "3008",
+          "2882",
+          "2603"
+        ],
+        "names_zh": [
+          "台積電",
+          "聯電",
+          "大立光",
+          "國泰金",
+          "長榮"
+        ],
         "he_said_zh": "投信賣超第一名居然也是台積電，賣了約 3,800 張、約 77 億；第二聯電、第三大立光、第四國泰金、第五長榮——親一色知名公司與重要權值股，都沒有跌停板。",
-        "approx_numbers": {"tsmc_lots": 3800, "tsmc_yi": 77},
+        "approx_numbers": {
+          "tsmc_lots": 3800,
+          "tsmc_yi": 77
+        },
         "not_buy_signal": true
       },
       {
@@ -352,20 +439,30 @@
         "id": "E11_twii_oct6_ath_desync",
         "index": "TWII",
         "he_said_zh": "台股 6 月見高後下跌，7 月大跌後出現非常強力的回升行情，甚至在 10 月 6 日加權指數來到約 49,000 點創下歷史新高；當時櫃買約 434.3，並未隨同創新高（櫃買今年高 459.56 在 6/22）。",
-        "approx_numbers": {"twii_ath_approx": 49000, "ath_date": "2026-10-06", "otc_that_day": 434.3},
+        "approx_numbers": {
+          "twii_ath_approx": 49000,
+          "ath_date": "2026-10-06",
+          "otc_that_day": 434.3
+        },
         "not_buy_signal": true
       },
       {
         "id": "E12_sox_form_like_otc",
         "index": "SOX",
         "he_said_zh": "費半今年最高點約 14,650 點出現在 6 月 22 日；10 月初相對來到接近高點、當時最高約 13,179 點，之後從 10 月初出現一波非常大的持續下跌、不斷破底。費半跟櫃買形態非常相近。",
-        "approx_numbers": {"june_high": 14650, "oct_near": 13179, "top_date": "2026-06-22"},
+        "approx_numbers": {
+          "june_high": 14650,
+          "oct_near": 13179,
+          "top_date": "2026-06-22"
+        },
         "not_buy_signal": true
       },
       {
         "id": "E13_foreign_ytd_3p2_trillion",
         "he_said_zh": "今年外資出現對台股史上最大的賣超，到今天以來金額已接近 3.2 兆元；這麼大的提款尤其集中在第三季、第四季。",
-        "approx_numbers": {"foreign_ytd_sell_trillion_twd": 3.2},
+        "approx_numbers": {
+          "foreign_ytd_sell_trillion_twd": 3.2
+        },
         "not_buy_signal": true
       }
     ],
@@ -381,7 +478,10 @@
       "kind": "hard_rule_candidate",
       "he_said_context_zh": "公開媒體／FB 引述（約 2026-01）：加權距 200 日均線正乖離約 30%≈2.5–3σ；再噴可能進 0.3% 極端值區",
       "source_note_zh": "新聞引述阮慕驊，不是 20261120 live；今日 live 改講櫃買年線負乖離 26.6%",
-      "ohlc_fields": ["TWII.close", "TWII.ma200_computed"],
+      "ohlc_fields": [
+        "TWII.close",
+        "TWII.ma200_computed"
+      ],
       "not_buy_signal": true,
       "not_from_today_live": true
     },
@@ -389,7 +489,11 @@
       "id": "P2_high_press_low_support_structure",
       "kind": "soft_opinion_structure",
       "he_said_context_zh": "FB 公開語意：高點有壓、低點有撐的糾結格局",
-      "ohlc_fields": ["TWII.high", "TWII.low", "TWII.close"],
+      "ohlc_fields": [
+        "TWII.high",
+        "TWII.low",
+        "TWII.close"
+      ],
       "not_buy_signal": true,
       "not_from_today_live": true
     }
