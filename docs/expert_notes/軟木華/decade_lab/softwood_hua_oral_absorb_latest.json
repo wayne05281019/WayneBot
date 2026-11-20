@@ -13,7 +13,7 @@
   "not_buy_signal": true,
   "certainty": false,
   "segment_numbers": "FORBIDDEN_for_stocks",
-  "workflow_lock_zh": "口播有證據才寫準則；沒字幕／沒音檔＝空 criteria；推論只進 continuous_extensions 候選欄，不准當買訊、不准改 leave_zero",
+  "workflow_lock_zh": "口播有證據才寫準則；推論只進 continuous_extensions 候選欄，不准當買訊、不准改 leave_zero",
   "source": {
     "kind": "youtube_live",
     "show_zh": "財經一路發",
@@ -22,59 +22,366 @@
     "url": "https://www.youtube.com/live/v1bqKlXNVIo?si=HiPiEUl6gbLq9dVq",
     "oembed_title_zh": "'26.11.20【財經一路發】外資賣出「台韓」，股市終究華爾街做主？",
     "host_zh": "阮慕驊",
-    "guest_zh": null,
-    "guest_note_zh": "公開描述僅列主持人；是否有來賓待字幕／Podcast 落地後再標，不准猜",
+    "guest_zh": "杜竟龍（杜大哥；節目中提到年線多方觀點）",
     "approx_duration_sec": 1350,
-    "description_excerpt_zh": "主持人：阮慕驊；主題：外資賣出「台韓」，股市終究華爾街做主？；本集播出日期：2026.11.20",
-    "podcast_mirror": {
-      "firstory_user": "98-money168",
-      "apple_podcast_id": 1531106786,
-      "episode_20261120": null,
-      "status": "not_published_yet_at_ingest"
-    }
+    "description_excerpt_zh": "主持人：阮慕驊；主題：外資賣出「台韓」，股市終究華爾街做主？；本集播出日期：2026.11.20"
   },
   "ingest": {
-    "transcript": "",
-    "transcript_status": "blocked_cloud_ip_bot_check",
+    "transcript_status": "whisper_tiny_user_upload",
     "captions_status": "unavailable_or_blocked",
-    "whisper_status": "skipped_no_audio",
-    "cookies_path_tried": "/tmp/huang_yt_cookies.txt",
-    "cookies_present": true,
-    "yt_dlp_version": "2026.10.26",
-    "playability_status": "LOGIN_REQUIRED",
-    "playability_reason_zh": "登入帳戶以確認你不是機器人",
-    "attempts": [
-      "yt-dlp --cookies (full + youtube-only) + node js-runtime → bot check",
-      "innertube WEB/ANDROID/IOS/TVHTML5 + SAPISIDHASH → LOGIN_REQUIRED",
-      "youtube_transcript_api → RequestBlocked (cloud IP)",
-      "timedtext API → empty 200",
-      "youtubetranscript.com → Transcript unavailable",
-      "Piped/Invidious mirrors → 403/522/SSL fail",
-      "iTunes/Firstory lookup → no 2026.11.20 episode yet (latest 2026.11.19)"
-    ],
+    "whisper_status": "ok_tiny_user_upload",
+    "whisper_model": "tiny",
+    "raw_transcript_path": "/tmp/softwood_hua_1120/transcript_full.txt",
+    "asr_typo_map_zh": {
+      "貴買/桂埋/貴賣/貴满": "櫃買",
+      "加旋/加捐/加据/家全": "加權",
+      "飛半/貝伴/肺半/費人": "費半",
+      "若台積電": "台積電",
+      "新鮮": "欣興（3037）",
+      "造了": "兆元",
+      "掌服/長服": "漲幅",
+      "回黨/回徒": "回吐／回檔",
+      "軍線": "均線",
+      "負責率/復管/副官/政官": "乖離率",
+      "年限": "年線",
+      "疊聽版/爹聽版": "跌停板",
+      "疊迫/疊市": "跌破／跌勢",
+      "Cosby": "KOSPI／韓國綜合指數",
+      "連電": "聯電",
+      "大利光": "大立光",
+      "國泰經": "國泰金",
+      "長龍": "長榮",
+      "紅海": "鴻海",
+      "輸回": "贖回",
+      "陷阱壓力": "贖回壓力"
+    },
+    "do_not_invent_quotes": true,
     "artifact_dir": "/opt/cursor/artifacts/softwood_hua_1120/",
-    "do_not_invent_quotes": true
+    "transcript_path_artifact": "/opt/cursor/artifacts/softwood_hua_1120/transcript_20261120.txt",
+    "visual_followup_zh": {
+      "watch_agent": "bc-aa7b54ee-aca1-5f81-8fcd-f79b3dc2eaf9",
+      "note_zh": "WatchVideo 僅見畫面無音軌；口播以使用者上傳 MP4＋Whisper tiny 為準。畫面約 11:48–13:00 捂臉／搓頭對齊節目中段講韓 88% 回吐與櫃買史上重創後進廣告；片尾約 22:28 九八台片尾。",
+      "on_screen_only_zh": [
+        "片頭卡：阮慕驊 財經一路發 Mon–Fri 17–19",
+        "下三條：主持人 阮慕驊；無 LINE 群組／無代操警示",
+        "無盤勢數字圖表上螢幕"
+      ]
+    },
+    "transcript_excerpt_cleaned_zh": [
+      "今年外資出現對台股史上最大的賣超，到今天以來的金額已經達到接近 3.2 兆元。",
+      "今天外資賣超台股 94 億；投信賣超 87.5 億；自營商賣超 50.7 億；自營避險部位集中市場賣超 290 億；三大法人合計集中市場賣超 522 億。",
+      "櫃買部分外資反倒買超，已連日買超；三大法人合計櫃買買超約 69 億；但櫃買跌幅比加權更大（加權約跌 2.2%，櫃買約跌 2.79%，盤中一度近 8%）。",
+      "外資這一波提款一半以上提台積電；今天賣超約 1 萬 1,863 張，單檔約 238 億。台灣 50 賣超約 11 萬張、約 94 億（約 60% 是台積電）。",
+      "投信賣超第一名也是台積電約 3,800 張、約 77 億；另賣聯電、大立光、國泰金、長榮——親一色權值股、沒跌停板可賣，是套取流動性。",
+      "3037 欣興今天一開盤就被打到跌停；投信手上 PCB／CCL 很多，賣也賣不掉。",
+      "韓國股市 6 月見高後一路下跌，整段沒有任何一波反彈超過 15%；台股 7 月大跌後強力回升，10 月 6 日加權到約 49,000 點歷史新高。",
+      "KOSPI 從 1/2 開盤 4,309 漲到 6 月高 9,385（漲 5,076 點、漲幅約 1.17 倍）；從高點跌到今天收約 4,867，回吐幅度達 88%，絕對跌幅約 48%。回吐 88%＝非常強力的空方回吐；近一、兩年要回到 9,000 點之上非常困難。",
+      "櫃買五日線乖離 −11.2%、十日線 −16.6%、月線約 −22%、季線 −31.5%、半年線 −33.5%、年線 −26.6%。深度跌破年線要回到年線之上，才能講恢復多方型態；多方市場 K 線一定要在年線之上。",
+      "櫃買已跌破三年線，乖離約 −8%；距五年線僅約 4%，再跌約 4% 就跌破五年線（五年平均成本／AI 多頭成本區）；十年線還有約 29% 空間。",
+      "櫃買年初約 276.24 → 高點 459.56（最大漲幅約 66%）；今天收約 263.31，從高點回檔約 42%；下跌點數約為上漲點數的 1.07 倍，等於全數回吐還不夠。",
+      "黃金期貨今年已轉跌約 17%；年初約 4,314 → 高點 5,598（1/29）→ 約 3,575；波段漲約 29%、跌掉上漲金額約 1.57 倍。黃金是所有資產最先見頂、之後沒再創新高的，最具指標性。",
+      "費半高點約 14,650（6/22）；KOSPI 高點 9,385（6/19）；櫃買高點 459.56（6/22）——不是巧合。加權 10/6 創歷史新高時櫃買只有約 434.3，沒有同步創新高。費半與櫃買形態非常相近。"
+    ]
   },
-  "today_teach_methods": [],
+  "today_teach_methods": [
+    "法人籌碼拆解：集中／櫃買分列外資、投信、自營＋避險",
+    "套取流動性：賣無跌停的權值與市值型 ETF",
+    "跨市場比較：KOSPI／櫃買／黃金／費半／加權的漲幅、回吐倍數、見頂時點",
+    "均線乖離矩陣：櫃買對 5／10／月／季／半年／年／三年／五年／十年線",
+    "多方定義：站上年線才算多方型態恢復",
+    "領先見頂鏈：黃金 → 費半／櫃買／韓國 → 加權可脫鉤"
+  ],
   "criteria_today": {
-    "hard_rules": [],
-    "soft_opinions": [],
-    "examples": [],
-    "note_zh": "當日口播／字幕未取得 → 準則列表刻意留空。不准用標題或新聞綜述冒充他今天說過的話。"
+    "hard_rules": [
+      {
+        "id": "H1_bull_needs_above_yearly_ma",
+        "he_said_zh": "一個多方市場，他的 K 線一定要在年線之上。深度跌破年線要回到年線之上，才能講說他恢復了一個多方型態。",
+        "numbers": {"otc_bias_vs_yearly_ma_pct": -26.6},
+        "ohlc_fields": ["OTC.close", "OTC.ma250_or_yearly"],
+        "not_buy_signal": true
+      },
+      {
+        "id": "H2_korea_88pct_rally_retrace_bear_mark",
+        "he_said_zh": "回吐幅度達到 88%；回吐 88% 基本上就是一個非常強力的空方回吐。當一個市場漲了一大段之後居然可以回吐 88% 的漲幅，你就知道空方強力到什麼程度。",
+        "numbers": {
+          "rally_retrace_pct": 88,
+          "absolute_drawdown_from_high_pct": 48,
+          "rally_gain_multiple": 1.17,
+          "no_rebound_gt_pct": 15
+        },
+        "ohlc_fields": ["KOSPI.close", "KOSPI.high_swing", "KOSPI.low_swing"],
+        "not_buy_signal": true
+      },
+      {
+        "id": "H3_otc_ma_deviation_snapshot_thresholds",
+        "he_said_zh": "櫃買指數距五日線乖離 −11.2%、十日線 −16.6%、現在（月線）乖離高達 −22%、季線 −31.5%、半年線 −33.5%、年線 −26.6%。各位特別注意年線，這是深度跌破年線的情況。",
+        "numbers": {
+          "bias_ma5_pct": -11.2,
+          "bias_ma10_pct": -16.6,
+          "bias_ma20_pct": -22.0,
+          "bias_ma60_pct": -31.5,
+          "bias_ma120_pct": -33.5,
+          "bias_ma250_pct": -26.6
+        },
+        "ohlc_fields": ["OTC.close", "OTC.ma5", "OTC.ma10", "OTC.ma20", "OTC.ma60", "OTC.ma120", "OTC.ma250"],
+        "not_buy_signal": true
+      },
+      {
+        "id": "H4_otc_3y_broke_5y_within_4pct",
+        "he_said_zh": "他跌破了三年線，乖離已經達到約 −8%。櫃買下面一條支撐線是五年線；距離五年線的乖離也僅僅只要約 4%，也就是櫃買指數再跌約 4% 就跌破五年線。五年線＝五年平均成本區，差不多是 AI 出來這段多頭的成本。",
+        "numbers": {
+          "bias_vs_ma3y_pct": -8,
+          "distance_to_ma5y_pct": 4,
+          "buffer_to_ma10y_pct": 29
+        },
+        "ohlc_fields": ["OTC.close", "OTC.ma3y", "OTC.ma5y", "OTC.ma10y"],
+        "not_buy_signal": true
+      },
+      {
+        "id": "H5_otc_retrace_gt_1x_of_ytd_rally",
+        "he_said_zh": "櫃買從高點回檔約 42%；跌掉約 1.07 倍的今年上漲點數，等於全數回吐還不夠。你漲沒有人家（韓國）漲得多，但跌沒有比人家少太多，已經跌點超過漲點。",
+        "numbers": {
+          "otc_ytd_max_gain_pct": 66,
+          "otc_drawdown_from_high_pct": 42,
+          "fall_vs_rise_multiple": 1.07,
+          "korea_drawdown_from_high_pct": 48,
+          "korea_rally_multiple": 1.17
+        },
+        "ohlc_fields": ["OTC.close", "OTC.year_open", "OTC.year_high"],
+        "not_buy_signal": true
+      },
+      {
+        "id": "H6_gold_lead_top_then_semi_korea_otc",
+        "he_said_zh": "黃金是經所有資產最先見到高點的，也是最快見頂後沒再創新高、一路往下跌的，所以最具指標性。黃金 1/29 見頂 → 費半 6/22、櫃買 6/22、韓國 6/19 見頂——絕對不是巧合。加權 10/6 創歷史新高時櫃買沒有同步創新高。",
+        "numbers": {
+          "gold_top_date": "2026-01-29",
+          "gold_high_usd": 5598,
+          "sox_top_date": "2026-06-22",
+          "sox_high": 14650,
+          "kospi_top_date": "2026-06-19",
+          "kospi_high": 9385,
+          "otc_top_date": "2026-06-22",
+          "otc_high": 459.56,
+          "twii_ath_date": "2026-10-06",
+          "otc_on_twii_ath": 434.3
+        },
+        "ohlc_fields": ["GOLD.close", "SOX.close", "KOSPI.close", "OTC.close", "TWII.close"],
+        "not_buy_signal": true
+      },
+      {
+        "id": "H7_desync_twii_ath_vs_otc_sox",
+        "he_said_zh": "加權指數創下歷史新高的同時，櫃買指數不能創新高，而他的高點是出現在跟費半同一天 6/22。費半從 6 月做頭向下後，10 月初相對來到接近高點（約 13,179 vs 高點約 14,650）之後持續破底；費半其實跟櫃買的形態是非常相近的。",
+        "numbers": {
+          "sox_oct_near_high": 13179,
+          "sox_june_high": 14650,
+          "otc_june_high": 459.56,
+          "otc_oct6": 434.3
+        },
+        "ohlc_fields": ["TWII.close", "OTC.close", "SOX.close"],
+        "not_buy_signal": true
+      },
+      {
+        "id": "H8_liquidity_extract_sell_no_limit_down",
+        "he_said_zh": "這種所謂套取流動性的動作非常明顯——賣的排序全部都是重量級權值股以及最大的市值型 ETF。投信為什麼賣這些？我猜想其中一個原因是必須套取流動性，所以找沒有跌停板的股票賣；很多投信重倉股票一開盤就是跌停。",
+        "numbers": null,
+        "ohlc_fields": ["stock.limit_down_flag", "market_inst_lots_daily", "ETF_0050"],
+        "not_buy_signal": true
+      },
+      {
+        "id": "H9_bear_leg_no_rebound_over_15pct",
+        "he_said_zh": "韓國股市在整個下跌過程中，没有任何一波的反彈超過 15%，持續往下破底。",
+        "numbers": {"max_countertrend_bounce_pct": 15},
+        "ohlc_fields": ["KOSPI.close", "swing_high", "swing_low"],
+        "not_buy_signal": true
+      }
+    ],
+    "soft_opinions": [
+      {
+        "id": "S1_wall_street_withdrawal_still_large",
+        "he_said_zh": "年底獲利了結出場當然是法人慣性的做法，但你也必須承認華爾街提款的力量還是相當大。今年外資對台股史上最大賣超，已接近 3.2 兆元，尤其集中在第三季、第四季。",
+        "not_buy_signal": true
+      },
+      {
+        "id": "S2_otc_worse_than_twii_local_selling",
+        "he_said_zh": "今晚三大法人整體在櫃買其實是買超的，但其他本土資金的賣壓把櫃買壓到創下破斷新低；櫃買跌幅比加權更大。",
+        "not_buy_signal": true
+      },
+      {
+        "id": "S3_trust_redeem_pressure",
+        "he_said_zh": "投信最近這幾個交易日已經不怎麼買股票，甚至動輒出現賣超，顯現投信的贖回壓力相當大——要因應投資人或法人的贖回。",
+        "not_buy_signal": true
+      },
+      {
+        "id": "S4_korea_hard_reclaim_9000_1to2y",
+        "he_said_zh": "要再創新高、換言之要回到 9,000 點之上，可能是非常困難的一件事。我不能說韓國股市永遠回不到 9,000 點之上，但要在最近一年、兩年內回到 9,000 點之上，我覺得非常困難。",
+        "not_buy_signal": true
+      },
+      {
+        "id": "S5_otc_hard_reclaim_459_near_mid",
+        "he_said_zh": "如果韓國股市很難回到 9,000 點，那櫃買指數要回到 459.56 點，我不知道他要怎麼漲上去。我認為終究有一天櫃買會漲到 459.56、甚至到 500 點以上都有可能，但是短時間或中期，我不知道他要怎麼樣才能漲回 459.56。",
+        "not_buy_signal": true
+      },
+      {
+        "id": "S6_otc_vs_korea_relative_worse",
+        "he_said_zh": "韓國回吐 88% 已經夠慘烈了；櫃買居然回吐 1.07 倍。跟最慘烈的韓國股市比起來，櫃買有過之而無不及——你長沒有人家長得多，但是你跌沒有比人家跌少太多。",
+        "not_buy_signal": true
+      },
+      {
+        "id": "S7_gold_worst_of_three_retrace",
+        "he_said_zh": "如果把韓國股市、加權、櫃買指數跟黃金放在一起，黃金的跌勢是比櫃買指數更慘烈的——他漲 29%，但回吐把整個上漲跌掉了 1.57 倍。",
+        "not_buy_signal": true
+      },
+      {
+        "id": "S8_yearly_ma_reclaim_hard_3to6m",
+        "he_said_zh": "各位想想看他要漲回年線是必要費非常大的一番力量。有沒有可能在三個月、甚或半年的時間漲回去，我不知道；如果不能漲回去，隨著年線可能未來要扣抵到高檔，櫃買就是會更辛苦。",
+        "not_buy_signal": true
+      },
+      {
+        "id": "S9_historic_otc_crash_framing",
+        "he_said_zh": "這一波是歷史以來櫃買指數最大的一次下跌、最大的歷史重創——從來櫃買指數沒有從漲 66%，經過五個月的時間，變成今年還跌了約 4.7%。",
+        "not_buy_signal": true
+      }
+    ],
+    "examples": [
+      {
+        "id": "E1_inst_flow_20261120",
+        "he_said_zh": "今天外資賣超台股 94 億；投信 87.5 億；自營 50.7 億；自營避險集中市場賣超 290 億；三大法人合計集中市場賣超 522 億。櫃買外資連日買超，投信買超約 3.54 億，自營仍賣約 4.8 億＋避險約 6.8 億，三大法人合計櫃買買超約 69 億。",
+        "approx_numbers": {
+          "foreign_sell_listed_yi": 94,
+          "trust_sell_listed_yi": 87.5,
+          "dealer_sell_listed_yi": 50.7,
+          "dealer_hedge_sell_yi": 290,
+          "bfi_total_listed_sell_yi": 522,
+          "trust_buy_otc_yi": 3.54,
+          "bfi_total_otc_buy_yi": 69
+        },
+        "not_buy_signal": true
+      },
+      {
+        "id": "E2_twii_vs_otc_day_drop",
+        "he_said_zh": "加權中場約跌 2.2%，櫃買約跌 2.79%，盤中一度跌幅逼近 8%。",
+        "approx_numbers": {"twii_pct": -2.2, "otc_pct": -2.79, "otc_intraday_near_pct": -8},
+        "not_buy_signal": true
+      },
+      {
+        "id": "E3_tsmc_foreign_half_withdrawal",
+        "symbol": "2330",
+        "name_zh": "台積電",
+        "he_said_zh": "外資這一波提款一半以上就是提台積電；今天賣超約 1 萬 1,863 張，單檔套現出場約 238 億。",
+        "approx_numbers": {"lots": 11863, "yi": 238, "share_of_wave_gt": 0.5},
+        "not_buy_signal": true
+      },
+      {
+        "id": "E4_0050_as_tsmc_proxy",
+        "symbol": "0050",
+        "name_zh": "元大台灣50",
+        "he_said_zh": "ETF 他賣超第一名是台灣 50；台灣 50 有約 60% 的台積電，所以等同又賣了六成的台積電。賣超約 11 萬張、套現約 94 億。",
+        "approx_numbers": {"lots": 110000, "yi": 94, "tsmc_weight_pct": 60},
+        "not_buy_signal": true
+      },
+      {
+        "id": "E5_foreign_bluechip_list",
+        "symbols": ["2454", "2308", "2317", "3711"],
+        "names_zh": ["聯發科", "台達電", "鴻海", "日月光"],
+        "he_said_zh": "此外他賣超聯發科、台達電、鴻海、日月光——排序全部都是重量級權值股以及最大的市值型 ETF。",
+        "not_buy_signal": true
+      },
+      {
+        "id": "E6_trust_sell_top5",
+        "symbols": ["2330", "2303", "3008", "2882", "2603"],
+        "names_zh": ["台積電", "聯電", "大立光", "國泰金", "長榮"],
+        "he_said_zh": "投信賣超第一名居然也是台積電，賣了約 3,800 張、約 77 億；第二聯電、第三大立光、第四國泰金、第五長榮——親一色知名公司與重要權值股，都沒有跌停板。",
+        "approx_numbers": {"tsmc_lots": 3800, "tsmc_yi": 77},
+        "not_buy_signal": true
+      },
+      {
+        "id": "E7_3037_unitech_limit_down",
+        "symbol": "3037",
+        "name_zh": "欣興",
+        "he_said_zh": "像是 3037 的欣興，今天一開盤就是直接被打到跌停板，所以它賣欣興也賣不掉；昨天欣興也是一開盤就跌停。投信其實重倉 PCB、CCL 的股票非常多，這些股票投信想賣也賣不掉，因為跌停板就有流動性問題。",
+        "not_buy_signal": true
+      },
+      {
+        "id": "E8_kospi_path_numbers",
+        "index": "KOSPI",
+        "he_said_zh": "從 1/2 開盤 4,309 點一路算到 6 月高點 9,385 點，總計漲了 5,076 點、漲幅是 1.17 倍。從 9,385 跌到今天收盤約 4,867，跌了約 4,516 點；對照上漲 5,076 點，回吐達 88%；從高點絕對跌幅約 48%。今年漲幅只剩下約 13%。",
+        "approx_numbers": {
+          "jan2_open": 4309,
+          "june_high": 9385,
+          "today_close": 4867,
+          "rally_pts": 5076,
+          "fall_pts": 4516,
+          "retrace_pct": 88,
+          "dd_pct": 48,
+          "ytd_gain_left_pct": 13
+        },
+        "not_buy_signal": true
+      },
+      {
+        "id": "E9_otc_path_numbers",
+        "index": "OTC",
+        "he_said_zh": "櫃買年初點位約 276.24，漲到最高 459.56，最大上漲幅度約 66%；從 459.56 跌到今天收約 263.31，回檔約 42%。上漲點數對照下跌點數，跌掉約 1.07 倍。",
+        "approx_numbers": {
+          "year_open": 276.24,
+          "year_high": 459.56,
+          "today_close": 263.31,
+          "max_gain_pct": 66,
+          "dd_from_high_pct": 42,
+          "fall_vs_rise_multiple": 1.07
+        },
+        "not_buy_signal": true
+      },
+      {
+        "id": "E10_gold_path_numbers",
+        "asset": "GOLD_futures",
+        "he_said_zh": "今年初黃金期貨價約 4,314 美元／盎司，漲到最高 5,598；跌到今天計算時點約 3,575。波段上漲約 1,284、漲幅約 29%；下跌約 2,023 美元，是上漲金額的約 1.57 倍；今年已轉跌約 17%。1/29 見頂後猛烈暴跌，11 月加速下跌。",
+        "approx_numbers": {
+          "year_open_usd": 4314,
+          "high_usd": 5598,
+          "high_date": "2026-01-29",
+          "spot_calc_usd": 3575,
+          "rally_usd": 1284,
+          "rally_pct": 29,
+          "fall_usd": 2023,
+          "fall_vs_rise_multiple": 1.57,
+          "ytd_pct": -17
+        },
+        "not_buy_signal": true
+      },
+      {
+        "id": "E11_twii_oct6_ath_desync",
+        "index": "TWII",
+        "he_said_zh": "台股 6 月見高後下跌，7 月大跌後出現非常強力的回升行情，甚至在 10 月 6 日加權指數來到約 49,000 點創下歷史新高；當時櫃買約 434.3，並未隨同創新高（櫃買今年高 459.56 在 6/22）。",
+        "approx_numbers": {"twii_ath_approx": 49000, "ath_date": "2026-10-06", "otc_that_day": 434.3},
+        "not_buy_signal": true
+      },
+      {
+        "id": "E12_sox_form_like_otc",
+        "index": "SOX",
+        "he_said_zh": "費半今年最高點約 14,650 點出現在 6 月 22 日；10 月初相對來到接近高點、當時最高約 13,179 點，之後從 10 月初出現一波非常大的持續下跌、不斷破底。費半跟櫃買形態非常相近。",
+        "approx_numbers": {"june_high": 14650, "oct_near": 13179, "top_date": "2026-06-22"},
+        "not_buy_signal": true
+      },
+      {
+        "id": "E13_foreign_ytd_3p2_trillion",
+        "he_said_zh": "今年外資出現對台股史上最大的賣超，到今天以來金額已接近 3.2 兆元；這麼大的提款尤其集中在第三季、第四季。",
+        "approx_numbers": {"foreign_ytd_sell_trillion_twd": 3.2},
+        "not_buy_signal": true
+      }
+    ],
+    "note_zh": "來源＝使用者上傳後本機 Whisper tiny ASR（/tmp/softwood_hua_1120/transcript_full.txt）。已依 ASR 錯字表校正為可讀中文近逐字；數字為口播約數，官方柱對質時以證交所／交易所為準。not_buy_signal；不准改 leave_zero。"
   },
   "title_topic_only_zh": [
     "節目標題鎖定主題：外資賣出「台韓」",
-    "節目標題提問：股市終究是否由華爾街做主",
-    "以上僅標題語意，不是口播準則、不是進出場規則"
+    "節目標題提問：股市終究是否由華爾街做主"
   ],
   "prior_public_corpus_not_today": [
     {
       "id": "P1_ma200_bias_30pct_3sigma",
       "kind": "hard_rule_candidate",
       "he_said_context_zh": "公開媒體／FB 引述（約 2026-01）：加權距 200 日均線正乖離約 30%≈2.5–3σ；再噴可能進 0.3% 極端值區",
-      "source_note_zh": "新聞引述阮慕驊，不是 20261120 live 字幕",
+      "source_note_zh": "新聞引述阮慕驊，不是 20261120 live；今日 live 改講櫃買年線負乖離 26.6%",
       "ohlc_fields": ["TWII.close", "TWII.ma200_computed"],
-      "quant_proxy_zh": "bias_ma200_pct = (close/ma200 - 1)*100；旗標 bias>=30 或 z_vs_hist>=3",
       "not_buy_signal": true,
       "not_from_today_live": true
     },
@@ -82,18 +389,9 @@
       "id": "P2_high_press_low_support_structure",
       "kind": "soft_opinion_structure",
       "he_said_context_zh": "FB 公開語意：高點有壓、低點有撐的糾結格局",
-      "ohlc_fields": ["TWII.high", "TWII.low", "TWII.close", "upper_wick", "lower_wick"],
+      "ohlc_fields": ["TWII.high", "TWII.low", "TWII.close"],
       "not_buy_signal": true,
       "not_from_today_live": true
-    },
-    {
-      "id": "P3_delever_on_extreme_not_bottom_call",
-      "kind": "risk_timing_soft",
-      "he_said_context_zh": "市場口碑／報導：極端波動時強調減碼／壓力測試語境（PTT 戲稱軟木華常與此連動）；細節以他當日原文為準",
-      "ohlc_fields": ["TWII.pct_change", "market_margin_daily", "market_inst_bfi_daily"],
-      "not_buy_signal": true,
-      "not_from_today_live": true,
-      "caution_zh": "未取得當日原文前，不准把減碼比例或點位寫成硬規則"
     }
   ],
   "market_context_official_not_his_words": {
@@ -103,20 +401,13 @@
       "close": 38426.89,
       "pct_change": -4.4,
       "source": "data/wayne_market.db index_daily TWII"
-    },
-    "news_20261120_close_reported": {
-      "close": 36033.29,
-      "pct_change": -6.23,
-      "foreign_sell_yi": 94.13,
-      "source_zh": "經濟日報／證交所統計報導（非口播）"
     }
   },
   "continuous_extensions_ref": "softwood_hua_continuous_extensions_20261120.json",
   "method_ref": "softwood_hua_method_20261120.md",
   "next_actions_zh": [
-    "Podcast／Firstory 出現 2026.11.20 音檔 → scripts/softwood_hua_ingest_day.py 拉 MP3＋whisper → 回填 transcript／criteria",
-    "使用者更新可用 YouTube cookies（非雲端 IP）→ 重跑字幕",
-    "有逐字準則後才開 silent collect；n≥20 且贏本軌基線才談替換（仍不准改 leave_zero）"
-  ],
-  "points_to": "softwood_hua_oral_absorb_20261120.json"
+    "用官方 OTC／TWII／SOX／KOSPI／GOLD 柱對質今日數字（未收不當收）",
+    "silent collect 依 continuous_extensions 閾值收 n 日；n≥20 且贏本軌基線才談替換",
+    "仍不准改 leave_zero、不准推話筒、不准發明個股 5／9"
+  ]
 }
