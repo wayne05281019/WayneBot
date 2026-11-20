@@ -323,23 +323,60 @@ def _recent_quotes(db_path: str, sid: str, desk: str, n: int = 25) -> List[Dict[
         con.close()
 
 
-def _eps_ytd(db_path: str, sid: str) -> Optional[float]:
+def _eps_pack(db_path: str, sid: str) -> Dict[str, Any]:
+    """近四季／可算窗 EPS（觀測站累計列經 fundamentals.recent_eps_windows）。
+
+    不准把「最新一列累計」假稱近四季。缺 n=4 就標 ttm=None，不准發明。
+    """
+    out: Dict[str, Any] = {
+        "eps_ttm": None,
+        "eps_ttm_n": 0,
+        "eps_latest_cum": None,
+        "windows": {},
+    }
     con = sqlite3.connect(str(db_path), timeout=15.0)
     try:
-        row = con.execute(
-            """
-            SELECT eps FROM quarterly_income
-            WHERE stock_id=? ORDER BY year DESC, season DESC LIMIT 1
-            """,
-            (sid,),
-        ).fetchone()
-        if not row or row[0] is None:
-            return None
-        return float(row[0])
+        rows = [
+            {"year": int(y), "season": int(s), "eps": float(e)}
+            for y, s, e in con.execute(
+                """
+                SELECT year, season, eps FROM quarterly_income
+                WHERE stock_id=? AND eps IS NOT NULL
+                ORDER BY year, season
+                """,
+                (sid,),
+            )
+            if e is not None
+        ]
     except Exception:
-        return None
+        return out
     finally:
         con.close()
+    if not rows:
+        return out
+    out["eps_latest_cum"] = float(rows[-1]["eps"])
+    try:
+        from fundamentals import recent_eps_windows
+
+        wins = recent_eps_windows(rows, max_n=4)
+    except Exception:
+        wins = {}
+    out["windows"] = {
+        int(k): float(v.get("eps_sum"))
+        for k, v in (wins or {}).items()
+        if v and v.get("eps_sum") is not None
+    }
+    if 4 in out["windows"]:
+        out["eps_ttm"] = out["windows"][4]
+        out["eps_ttm_n"] = 4
+    return out
+
+
+def _eps_ytd(db_path: str, sid: str) -> Optional[float]:
+    """相容舊呼叫：優先近四季合計；否則 None（不准退回誤用累計列當正 EPS）。"""
+    pack = _eps_pack(db_path, sid)
+    ttm = pack.get("eps_ttm")
+    return float(ttm) if ttm is not None else None
 
 
 def _rev_yoy(db_path: str, sid: str) -> Tuple[Optional[float], str]:
@@ -363,21 +400,72 @@ def _rev_yoy(db_path: str, sid: str) -> Tuple[Optional[float], str]:
         con.close()
 
 
+def _prev_open_day(desk: str) -> str:
+    d = _ymd(desk)
+    if len(d) != 8:
+        return ""
+    try:
+        from datetime import datetime as _dt
+        from trading_calendar import last_open_calendar_day_on_or_before
+
+        prev = (_dt.strptime(d, "%Y%m%d") - timedelta(days=1)).strftime("%Y%m%d")
+        return last_open_calendar_day_on_or_before(prev)
+    except Exception:
+        return ""
+
+
+def _pe_fresh_ok(pe_date: str, desk: str, market: str) -> bool:
+    """本益資料日必須貼 desk：同日；上市允許官方常晚一日（T−1 開市日）。
+
+    上櫃／興櫃要求同日。過舊＝不准進真可買（查股有資料日落後標；漏斗硬閘對齊）。
+    """
+    pe_d, desk_d = _ymd(pe_date), _ymd(desk)
+    if len(pe_d) != 8 or len(desk_d) != 8:
+        return False
+    if pe_d == desk_d:
+        return True
+    mkt = (market or "").upper()
+    if mkt in ("TW", "TSE", "LISTED", ""):
+        # 空 market 保守當上市口徑（BWIBBU 常 T−1）
+        return pe_d == _prev_open_day(desk_d)
+    return False
+
+
 def _pe_row(db_path: str, sid: str) -> Optional[float]:
+    """相容：回最新 pe 數值；缺日檢查請用 _pe_pack。"""
+    pack = _pe_pack(db_path, sid)
+    pe = pack.get("pe")
+    return float(pe) if pe is not None else None
+
+
+def _pe_pack(db_path: str, sid: str) -> Dict[str, Any]:
+    empty = {"date": "", "pe": None, "pb": None, "source": ""}
     con = sqlite3.connect(str(db_path), timeout=15.0)
     try:
+        cols = {
+            str(r[1]).lower()
+            for r in con.execute("PRAGMA table_info(daily_valuation)")
+        }
+        if "date" not in cols or "pe" not in cols:
+            return empty
+        select = ["date", "pe"]
+        select.append("pb" if "pb" in cols else "NULL")
+        select.append("source" if "source" in cols else "''")
         row = con.execute(
-            """
-            SELECT pe FROM daily_valuation WHERE stock_id=?
-            ORDER BY date DESC LIMIT 1
-            """,
+            f"SELECT {', '.join(select)} FROM daily_valuation "
+            "WHERE stock_id=? ORDER BY date DESC LIMIT 1",
             (sid,),
         ).fetchone()
-        if not row or row[0] is None:
-            return None
-        return float(row[0])
+        if not row:
+            return empty
+        return {
+            "date": _ymd(row[0]),
+            "pe": float(row[1]) if row[1] is not None else None,
+            "pb": float(row[2]) if row[2] is not None else None,
+            "source": str(row[3] or ""),
+        }
     except Exception:
-        return None
+        return empty
     finally:
         con.close()
 
@@ -712,9 +800,15 @@ def run_recovery_funnel(
 
         liq_ok, liq_why = _liquidity_ok(bars) if bars else (False, "無柱")
         broke = _structure_broke(bars) if bars else False
-        eps = _eps_ytd(db_path, sid)
+        eps_pack = _eps_pack(db_path, sid)
+        eps_ttm = eps_pack.get("eps_ttm")
+        # 軟縮用：有近四季用近四季；否則不拿累計列冒充正 EPS（避免假保護）
+        eps_for_soft = float(eps_ttm) if eps_ttm is not None else None
         yoy, rev_ym = _rev_yoy(db_path, sid)
-        pe = _pe_row(db_path, sid)
+        pe_pack = _pe_pack(db_path, sid)
+        pe = pe_pack.get("pe")
+        pe_date = str(pe_pack.get("date") or "")
+        mkt = str(meta.get("market") or "").upper()
 
         # S8 新鮮度：月營收過舊（>45 天）降權在 score
         fresh_penalty = 0.0
@@ -741,8 +835,8 @@ def run_recovery_funnel(
             bars=bars,
             twii=twii,
             yoy=yoy,
-            pe=pe,
-            eps=eps,
+            pe=pe if _pe_fresh_ok(pe_date, desk, mkt) else None,
+            eps=eps_for_soft,
         )
         score += fresh_penalty
         if fresh_penalty:
@@ -776,18 +870,30 @@ def run_recovery_funnel(
             "entry": sorted(entry),
             "reasons": reasons,
             "pe": pe,
-            "eps": eps,
+            "pe_date": pe_date,
+            "eps": eps_for_soft,
+            "eps_ttm": eps_ttm,
             "yoy": yoy,
         }
 
-        # 真可買硬條件
+        # 真可買硬條件：買訊＋柱＋流動＋結構；估值必須是「貼 desk 的官方本益」
         can_buy = bool(entry) and q_ok and liq_ok and not broke
-        if eps is not None and eps < 0:
+        if pe is None:
             can_buy = False
-            reasons.append("負EPS")
-        if pe is not None and pe > 40:
+            reasons.append("本益缺")
+        elif not _pe_fresh_ok(pe_date, desk, mkt):
+            can_buy = False
+            reasons.append("本益落後")
+        elif pe <= 0:
+            can_buy = False
+            reasons.append("本益無效")
+        elif pe > 40:
             can_buy = False
             reasons.append("本益過熱")
+        # 近四季 EPS 有算到且 ≤0 → 擋（與證交所不公布本益同向）；缺窗不拿累計列放行
+        if eps_ttm is not None and float(eps_ttm) <= 0:
+            can_buy = False
+            reasons.append("近四季EPS≤0")
         # 首日標註（有 leave_zero／winrate 當日）
         if "leave_zero" in entry or "winrate" in entry:
             labels.append("首日")

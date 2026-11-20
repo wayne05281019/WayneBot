@@ -152,11 +152,78 @@ def test_run_funnel_excludes_etf_and_keeps_structure(tmp_path: Path, monkeypatch
     sids_buy = {r["sid"] for r in out["buy_ok"]}
     sids_obs = {r["sid"] for r in out["observe"]}
     assert "0050" not in sids_buy and "0050" not in sids_obs
-    # 9907 負 EPS → 不准真可買（可進觀察）
+    # 9907 本益 50 → 本益過熱，不准真可買（可進觀察）
     assert "9907" not in sids_buy
     assert "9907" in sids_obs
-    # 6115 有買訊＋正 EPS＋額度夠 → 真可買
+    # 6115 有買訊＋當日本益＋額度夠 → 真可買
     assert "6115" in sids_buy
+
+
+def test_buy_ok_rejects_stale_or_missing_pe(tmp_path: Path, monkeypatch):
+    from recovery_funnel import _pe_fresh_ok
+
+    assert _pe_fresh_ok("20261120", "20261120", "TWO")
+    assert not _pe_fresh_ok("20261109", "20261120", "TWO")
+    assert _pe_fresh_ok("20261119", "20261120", "TW")  # 上市允許 T-1
+    assert not _pe_fresh_ok("20261106", "20261120", "TW")
+
+    db = _mem_db(tmp_path)
+    con = sqlite3.connect(db)
+    # 3685 風格：有買訊但本益缺
+    con.execute(
+        "INSERT INTO stock_universe VALUES (?,?,?,?,?,?,?)",
+        ("3685", "元創精密", "TWO", "STOCK", "電機機械", 1, ""),
+    )
+    con.execute("INSERT INTO stock_fine_industry VALUES (?,?)", ("3685", "機構"))
+    for j in range(30):
+        day = (datetime(2026, 11, 19) - timedelta(days=29 - j)).strftime("%Y%m%d")
+        c = 25.0 + j * 0.1
+        con.execute(
+            "INSERT INTO daily_quotes VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (day, "3685", "元創精密", "TWO", c, c + 0.5, c - 0.5, c, 800.0, 9000.0, 0.1),
+        )
+    con.execute(
+        "INSERT INTO daily_valuation VALUES (?,?,?)", ("3685", "20261119", None)
+    )
+    # 5314 風格：本益落後多日
+    con.execute(
+        "INSERT INTO stock_universe VALUES (?,?,?,?,?,?,?)",
+        ("5314", "世紀*", "TWO", "STOCK", "其他業", 1, ""),
+    )
+    con.execute("INSERT INTO stock_fine_industry VALUES (?,?)", ("5314", "其他"))
+    for j in range(30):
+        day = (datetime(2026, 11, 19) - timedelta(days=29 - j)).strftime("%Y%m%d")
+        c = 22.0 + j * 0.1
+        con.execute(
+            "INSERT INTO daily_quotes VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (day, "5314", "世紀*", "TWO", c, c + 0.5, c - 0.5, c, 800.0, 9000.0, 0.1),
+        )
+    con.execute(
+        "INSERT INTO daily_valuation VALUES (?,?,?)", ("5314", "20261109", 4.6)
+    )
+    con.commit()
+    con.close()
+
+    def fake_maps(db_path, desk):
+        return (
+            {
+                "6115": {"winrate"},
+                "3685": {"leave_zero"},
+                "5314": {"leave_zero"},
+            },
+            {"6115": "鎰勝", "3685": "元創精密", "5314": "世紀*"},
+        )
+
+    monkeypatch.setattr("recovery_funnel._collect_signal_maps", fake_maps)
+    monkeypatch.setattr("recovery_funnel.fetch_and_store_punish", lambda *a, **k: 0)
+    out = run_recovery_funnel(db, as_of="20261119", refresh_punish=False)
+    buy = {r["sid"] for r in out["buy_ok"]}
+    assert "6115" in buy
+    assert "3685" not in buy
+    assert "5314" not in buy
+    reasons = {r["sid"]: r.get("reasons") for r in out["observe"]}
+    assert "本益缺" in (reasons.get("3685") or [])
+    assert "本益落後" in (reasons.get("5314") or [])
 
 
 def test_schedule_hooks_wired():

@@ -1735,8 +1735,15 @@ class MainRunner:
 
             extra = sync_official_snapshots(self.db_path)
             logger.info("官方估值／資券／當沖／加權量：%s", extra)
+            # 本益落後 fuse_end → 立刻再抓一次；仍舊只記 log，不准拿過期本益當今日
+            err = (extra or {}).get("errors") or {}
+            if any(k.startswith("valuation_") for k in err):
+                logger.warning("官方本益落後，重試一次：%s", err)
+                extra2 = sync_official_snapshots(self.db_path)
+                logger.info("官方估值重試：%s", extra2)
         except Exception as e_off:
             logger.warning("官方快照略過：%s", e_off)
+
         try:
             from import_health import audit_import, format_audit_plain
             health = audit_import(self.db_path)
