@@ -125,7 +125,10 @@ def test_parse_drive_name_and_known_ids():
 
 
 def test_20261120_title_and_oral_teach_tags():
-    """20261120：標題三段／五段＋口播鎖不是下降趨勢＝第二隻腳。"""
+    """20261120：標題三段／五段＋大盤口播＋≈01:46 台積電五段非第二隻腳。"""
+    import json
+    from pathlib import Path
+
     from huang_youtube import extract_teach_tags, parse_rss_xml, pick_day_video
 
     title = "台積電強於大盤！三段式 vs. 五段式 20261120 黃培碩 分析師 運達證券投顧"
@@ -137,6 +140,22 @@ def test_20261120_title_and_oral_teach_tags():
     assert "not_downtrend" in oral_tags
     assert "second_foot" in oral_tags
     assert "fifth_leg" in oral_tags
+    absorb = json.loads(
+        Path("docs/expert_notes/飆客/decade_lab/huang_oral_absorb_20261120.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    mv = absorb.get("market_verdict_zh") or {}
+    assert "不是第二隻腳" in str(mv.get("now") or "")
+    assert "第五" in str(mv.get("now") or "")
+    clips = absorb.get("clips") or []
+    assert any(c.get("subject") == "TWII" for c in clips)
+    clip146 = next(c for c in clips if str(c.get("t_mmss") or "").startswith("~01:46"))
+    assert clip146.get("subject") == "TWII"
+    assert "second_foot" in (clip146.get("denies_tags") or [])
+    assert "台積電" not in str(clip146.get("subject_zh") or "") or "大盤" in str(
+        clip146.get("subject_zh") or ""
+    )
     sample = f"""<?xml version="1.0" encoding="UTF-8"?>
 <feed xmlns:yt="http://www.youtube.com/xml/schemas/2015"
  xmlns:media="http://search.yahoo.com/mrss/"

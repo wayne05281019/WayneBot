@@ -1,7 +1,7 @@
 {
-  "as_of_taipei": "2026-11-20T17:52:00+08:00",
+  "as_of_taipei": "2026-11-20T18:05:00+08:00",
   "as_of_day": "20261120",
-  "source": "user_oral_lock",
+  "source": "user_oral_lock+drive_asr_frames",
   "phone_sync": "blocked",
   "buy_signal": false,
   "not_buy_signal": true,
@@ -10,30 +10,74 @@
     "title": "台積電強於大盤！三段式 vs. 五段式 20261120 黃培碩 分析師 運達證券投顧",
     "published_utc": "2026-11-20T07:18:07Z",
     "drive_file_id": "1uMrzOIM-w5fNfXR6gqzyamZNP52eBMPY",
-    "drive_name": "1120黃培碩.mp4",
-    "drive_note_zh": "已登錄 HUANG_DRIVE_KNOWN_IDS；口播鎖另見 oral_lock_zh。"
+    "drive_name": "1120黃培碩.mp4"
   },
-  "oral_lock_zh": [
-    "黃培碩說明：大盤為什麼不是下降趨勢",
-    "他認為現況＝打第二隻腳（第二支腳／second_foot）",
-    "使用者續鎖：目前變成大盤五段式（fifth_leg／五段式；標題三段式 vs 五段式之定案側）",
-    "不准把 1–2–3–4–5 段號發明進話筒／個股；大盤教導對質另軌"
+  "media_evidence": {
+    "mp4": "/tmp/huang-drive-20261120/20261120.mp4",
+    "asr_20m": "/tmp/huang-drive-20261120/asr/clip20m.txt",
+    "asr_open100": "/tmp/huang-drive-20261120/clip146/open100.txt",
+    "frames_note_zh": "開場後口播定調大盤；約 01:46 前後多在畫台積電結構對照；大盤改五段的理由口播在後段（族群弱於台積）。"
+  },
+  "market_verdict_zh": {
+    "now": "大盤＝五段式／第五波下跌（正在走第五段／第五小段），不是第二隻腳",
+    "opening_quote_zh": "大盤今天再一個創低下來，當然這就不是第二隻腳了，而是第五波的下跌",
+    "today_low_asr": "35738（口播；對質用官方柱）",
+    "why_not_second_foot_zh": [
+      "先前估大盤可能第二支腳／只有三段式，是因為一直連動台積電",
+      "這次特殊：台積電相對大盤偏強（他仍認定台積＝三段式／第二隻腳味道；破 2020 到 1970 只破一點、軌道偏平→不像有效向下推動）",
+      "大盤相對台積弱：多個明星／電子權值族群從高檔大幅拉回修正，疊勢超過台積→大盤走出五段式下來"
+    ],
+    "how_he_reads_zh": [
+      "用推動／軌道斜率判斷：有效重點＝破底後軌道仍往下；軌道太平＝不像推動五段",
+      "大盤結構他畫成往下推動的五段（一二三四五）；細微波第五段內可能還有小段未完",
+      "操作節奏：第五波進行中先忍住、不要在這裡殺低；第五波走完後反彈回某區再評估要不要調節",
+      "就算之後真要變大空頭：也是這五波先走完→反彈→再打下去才叫大空頭；五段＝一組賣讓／賣壓，結束後才進整理或下一主題",
+      "選股：低本益比族群／錯殺觀察；不急在當日殺盤搶"
+    ],
+    "not_zh": [
+      "非買訊；話筒價仍跟飆大",
+      "不准把黃的 ①～⑤ 發明進話筒／個股浪號",
+      "台積電三段／第二隻腳＝對照用，不准反過來改寫大盤定調"
+    ]
+  },
+  "tsmc_contrast_zh": {
+    "role": "對照，不是本檔主鎖",
+    "verdict_zh": "個人認定：不是第五波下跌，而是第二隻腳（假跌破味道）；結構偏三段式",
+    "why_zh": "破底幅度小、軌道太平→不像同軌有效向下推動；相對大盤強"
+  },
+  "clips": [
+    {
+      "t_mmss": "00:42-00:50",
+      "subject": "TWII",
+      "subject_zh": "大盤",
+      "verdict_zh": "開場定調：不是第二隻腳，是第五波下跌",
+      "teach_tags": ["fifth_leg"],
+      "denies_tags": ["second_foot"]
+    },
+    {
+      "t_mmss": "~01:46",
+      "subject": "TWII",
+      "subject_zh": "大盤（使用者點名時刻；片中同時用台積圖教結構對照）",
+      "verdict_zh": "拆解五段 vs 第二隻腳的讀法（軌道／有效重點／推動）；定案主體＝大盤五段",
+      "teach_tags": ["fifth_leg"],
+      "denies_tags": ["second_foot"],
+      "note_zh": "使用者鎖：這一刻講的是大盤，不是台積電。台積圖＝教學對照。"
+    }
   ],
-  "teach_tags": ["not_downtrend", "second_foot", "fifth_leg", "three_leg"],
-  "structure_now_zh": "黃口播現況＝大盤五段式（非下降趨勢框架下的第二隻腳敘事＋五段定案）",
-  "vs_biaoke_zh": "飆大 11/16 口頭否決第二腳／38000；黃 11/20 口播主張不是下降趨勢、打第二隻腳，且目前變成大盤五段式。同窗名稱／路徑可對照，不准混勝率、不准把黃段號寫進話筒買訊。",
-  "media_dry": {
-    "gdown_ok": true,
-    "frames_n": 16,
-    "whisper": "tiny_20m",
-    "whisper_tags": ["second_foot", "fifth_leg", "three_leg"],
-    "note_zh": "本機 gdown＋影格＋tiny 口播已跑；YT cookies 本機無效不擋 Drive 路徑。不准把個股浪號寫進話筒買訊／三窗。"
-  },
+  "oral_lock_zh": [
+    "大盤現況＝五段式／第五波下跌，不是打第二隻腳",
+    "改口原因：台積相對強仍三段；大盤因族群大幅修正相對弱→走出五段",
+    "第五波進行中先忍、勿當大空頭起點殺低；走完反彈再評估",
+    "≈01:46 起拆結構讀法（使用者點名；主體大盤）"
+  ],
+  "teach_tags": ["not_downtrend", "fifth_leg", "three_leg", "second_foot"],
+  "teach_tags_note_zh": "not_downtrend＝操作上勿把「當下第五波」直接當大空頭起殺；second_foot 標籤保留給台積對照／否決大盤第二腳",
+  "vs_biaoke_zh": "飆大 11/16 否決第二腳／38000；黃 11/20 大盤定調五段／第五波（不是第二隻腳）。名稱可對照，不准混勝率、不准改話筒價。",
   "keep_split": [
     "話筒價位仍跟飆大口頭",
     "黃＝教導／吸收；非買訊",
     "不准發明 5／9",
-    "黃「大盤五段式」≠ 自動畫 ①②③④⑤ 進話筒",
-    "Drive 已登錄＋本機可 gdown；三窗不改（個股手繪／浪號不准進大盤窗）"
+    "大盤五段 ≠ 台積三段；分主體記",
+    "黃「五段式」≠ 自動畫 ①②③④⑤ 進話筒"
   ]
 }
