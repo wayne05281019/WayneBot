@@ -2224,6 +2224,16 @@ class MainRunner:
 
         _maybe("undervalue", _undervalue)
 
+        def _recovery_funnel() -> Dict[str, Any]:
+            from recovery_funnel import run_recovery_job
+
+            # 盤後定稿：接在融合／低估之後（約 16:30 窗尾＝設計 16:40）
+            return run_recovery_job(
+                self.db_path, skip_if_done=False, tag="postfuse"
+            )
+
+        _maybe("recovery-funnel", _recovery_funnel)
+
         def _narrative_fresh() -> Dict[str, Any]:
             from feature_self_check import refresh_and_check
 

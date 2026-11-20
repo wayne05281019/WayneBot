@@ -79,6 +79,7 @@ def test_main_scheduler_slots_match_clocks():
     assert '(2, 45, "open_check")' in src
     assert '(3, 0, "dc_sf_silent")' in src
     assert '(6, 30, "morning")' in src
+    assert '(6, 45, "recovery")' in src
     assert '(12, 45, "midday")' not in src
     assert '(16, 30, "fuse")' in src
     assert '(20, 0, "evening")' in src

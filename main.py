@@ -984,6 +984,8 @@ def catch_up_missed_jobs(now=None) -> None:
         return
     need_fuse = scheduler_owns("fuse") and mins >= 16 * 60 + 30
     need_morning = scheduler_owns("morning") and mins >= 6 * 60 + 30
+    # 台北 06:45：復原路漏斗早盤版（開市日；不寄）
+    need_recovery = scheduler_owns("recovery") and mins >= (6 * 60 + 45)
     # 台北 14:30：黃培碩對讀飆大畫線（開市日；非買訊）
     need_huang = scheduler_owns("huang_teach") and mins >= (14 * 60 + 30)
     # 雙時段比價（原 12:45 midday）已永久停用：不准補跑、不准再寄。
@@ -1017,6 +1019,7 @@ def catch_up_missed_jobs(now=None) -> None:
         (
             need_fuse,
             need_morning,
+            need_recovery,
             need_evening,
             need_winrate,
             need_open_check,
@@ -1026,6 +1029,15 @@ def catch_up_missed_jobs(now=None) -> None:
         # 平日重開也要確保最新完整日有海選快取（例如 pipeline success 但 sessions 被清掉）。
         _ensure_screen_cache(runner)
         return
+    if need_recovery and not need_morning:
+        # 早報仍欠寄時先讓 morning；已過 06:45 且早報好了才補復原桌
+        try:
+            from recovery_funnel import run_recovery_job
+
+            logger.info("補跑：已過台灣 06:45，復原路漏斗早盤版")
+            run_recovery_job(runner.db_path, skip_if_done=True, tag="morning0645")
+        except Exception:
+            logger.exception("補跑 recovery 失敗（不擋）")
     if need_huang:
         try:
             from tw_holidays import closed_tw_session
@@ -1295,6 +1307,15 @@ def run_scheduled_job(kind: str) -> None:
         except Exception:
             logger.exception("排程 huang_teach 失敗（不擋）")
         return
+    elif kind == "recovery":
+        # 台北 06:45：復原路漏斗早盤版（吃昨收 desk；不寄話筒）
+        try:
+            from recovery_funnel import run_recovery_job
+
+            run_recovery_job(runner.db_path, skip_if_done=True, tag="morning0645")
+        except Exception:
+            logger.exception("排程 recovery 失敗（不擋）")
+        return
     else:
         runner.run_increment_job(skip_if_done=True, notify=push)
     if kind in ("morning", "fuse", "evening", "winrate", "typhoon", "open_check"):
@@ -1340,6 +1361,7 @@ def start_daily_scheduler():
             (2, 45, "open_check"),
             (3, 0, "dc_sf_silent"),
             (6, 30, "morning"),
+            (6, 45, "recovery"),  # 復原路漏斗早盤版（吃昨收 desk）
             (14, 30, "huang_teach"),  # 黃培碩當日片對讀飆大→教導畫線（開市日）
             (16, 30, "fuse"),
             (20, 0, "evening"),
