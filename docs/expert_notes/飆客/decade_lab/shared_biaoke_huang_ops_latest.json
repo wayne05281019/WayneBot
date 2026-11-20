@@ -1,5 +1,5 @@
 {
-  "as_of_taipei": "2026-11-12T22:51:06+08:00",
+  "as_of_taipei": "2026-11-20T17:45:00+08:00",
   "phone_sync": "blocked",
   "buy_signal": false,
   "not_buy_signal": true,
@@ -69,8 +69,12 @@
     "勝率分開記；不准把黃段號寫進黃金買點／海選"
   ],
   "current_window": {
-    "preferred_align_zh": "兩邊同向偏修正消化：優先41760／41900～42700帶；37837升權才測",
-    "not_zh": "非買訊；phone_sync blocked；不准因名稱對齊就升第五腳"
+    "as_of_day": "20261120",
+    "preferred_align_zh": "官方柱仍先對 37837／41800～42700 帶；名稱對照可並讀，不准合成一套浪號",
+    "huang_1120_oral_zh": "黃口播鎖：大盤不是下降趨勢＝打第二隻腳；片 G9uSEfcljWQ（三段式 vs 五段式／台積電強於大盤）",
+    "biaoke_recent_zh": "飆大 11/16：41800～42700＝波浪4帶；否決第二腳／38000",
+    "view_diff_zh": "黃主張第二隻腳／非下降趨勢；飆大近窗否決第二腳——對照用，不准混勝率、不准改話筒價",
+    "not_zh": "非買訊；phone_sync blocked；不准因名稱對齊就升第五腳；Drive 1120＝1uMrzOIM-w5fNfXR6gqzyamZNP52eBMPY"
   },
   "evidence": [
     {
@@ -85,11 +89,18 @@
     },
     {
       "kind": "official_bar",
-      "zh": "11/10低41930.03；11/12收失43135",
+      "zh": "11/10低41930.03；11/12收失43135；11/19 TWII L38259.70／C38426.89",
       "as_of": [
         "20261110",
-        "20261112"
+        "20261112",
+        "20261119"
       ]
+    },
+    {
+      "kind": "huang_oral_lock",
+      "zh": "11/20 使用者鎖：不是下降趨勢＝打第二隻腳；YT G9uSEfcljWQ",
+      "file": "huang_oral_absorb_20261120.json",
+      "status": "user_confirmed"
     },
     {
       "kind": "user_recall_pending_quote",
@@ -101,7 +112,8 @@
     "黃教導段號 ≠ 飆大話筒價",
     "勝率不准混",
     "不准發明5／9",
-    "斜率門待原文才當硬憑據"
+    "斜率門待原文才當硬憑據",
+    "黃第二隻腳 ≠ 自動覆寫飆大否決第二腳"
   ],
   "fib618_gift_file": "huang_biaoke_fib618_gift_align_20261112.json",
   "fib618_align_zh": "黃0.618可重算≈42471.1（49968→37837）落入飆大41900～42700；上週五低不破舊憑據與帶上終點同向。"

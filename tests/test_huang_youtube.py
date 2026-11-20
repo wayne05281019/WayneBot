@@ -119,8 +119,46 @@ def test_parse_drive_name_and_known_ids():
     assert resolve_drive_file_id("20261117") == "1XDz4PwErKq5se_NtFJ12REb1eznJ16vS"
     assert resolve_drive_file_id("20261118") == "11VxUW3rSDVGDdhgY0_nqtBM7drSA9dj-"
     assert resolve_drive_file_id("20261119") == "1CMs7WKU3dVhquVCaQiz2QZIadP29llKV"
+    assert resolve_drive_file_id("20261120") == "1uMrzOIM-w5fNfXR6gqzyamZNP52eBMPY"
     assert HUANG_DRIVE_FOLDER_ID_DEFAULT.startswith("1")
     assert "37837" in extract_levels_from_text("低點 37837 與 42471")
+
+
+def test_20261120_title_and_oral_teach_tags():
+    """20261120：標題三段／五段＋口播鎖不是下降趨勢＝第二隻腳。"""
+    from huang_youtube import extract_teach_tags, parse_rss_xml, pick_day_video
+
+    title = "台積電強於大盤！三段式 vs. 五段式 20261120 黃培碩 分析師 運達證券投顧"
+    tags = extract_teach_tags(title)
+    assert "three_leg" in tags
+    assert "fifth_leg" in tags
+    oral = "大盤為什麼不是下降趨勢？他認為是打第二隻腳。"
+    oral_tags = extract_teach_tags(oral)
+    assert "not_downtrend" in oral_tags
+    assert "second_foot" in oral_tags
+    sample = f"""<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns:yt="http://www.youtube.com/xml/schemas/2015"
+ xmlns:media="http://search.yahoo.com/mrss/"
+ xmlns="http://www.w3.org/2005/Atom">
+ <entry>
+  <id>yt:video:rgE0ghdg1Hk</id>
+  <yt:videoId>rgE0ghdg1Hk</yt:videoId>
+  <title>期股戰</title>
+  <published>2026-11-20T07:33:55+00:00</published>
+  <media:group><media:description></media:description></media:group>
+ </entry>
+ <entry>
+  <id>yt:video:G9uSEfcljWQ</id>
+  <yt:videoId>G9uSEfcljWQ</yt:videoId>
+  <title>{title}</title>
+  <published>2026-11-20T07:18:07+00:00</published>
+  <media:group><media:description>x</media:description></media:group>
+ </entry>
+</feed>
+"""
+    day = pick_day_video(parse_rss_xml(sample), "20261120")
+    assert day["video_id"] == "G9uSEfcljWQ"
+    assert "20261120" in day["title"]
 
 
 def test_vtt_to_text_strips_timestamps(tmp_path):

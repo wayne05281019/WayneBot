@@ -1,0 +1,29 @@
+{
+  "as_of_taipei": "2026-11-20T17:40:00+08:00",
+  "as_of_day": "20261120",
+  "source": "user_oral_lock",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "not_buy_signal": true,
+  "youtube": {
+    "video_id": "G9uSEfcljWQ",
+    "title": "台積電強於大盤！三段式 vs. 五段式 20261120 黃培碩 分析師 運達證券投顧",
+    "published_utc": "2026-11-20T07:18:07Z",
+    "drive_file_id": "1uMrzOIM-w5fNfXR6gqzyamZNP52eBMPY",
+    "drive_name": "1120黃培碩.mp4",
+    "drive_note_zh": "已登錄 HUANG_DRIVE_KNOWN_IDS；口播鎖另見 oral_lock_zh。"
+  },
+  "oral_lock_zh": [
+    "黃培碩說明：大盤為什麼不是下降趨勢",
+    "他認為現況＝打第二隻腳（第二支腳／second_foot）",
+    "標題另見：台積電強於大盤；三段式 vs. 五段式（教法討論，不准發明浪號寫進買訊）"
+  ],
+  "teach_tags": ["not_downtrend", "second_foot", "three_leg", "fifth_leg"],
+  "vs_biaoke_zh": "飆大 11/16 口頭否決第二腳／38000；黃 11/20 口播主張不是下降趨勢、打第二隻腳。同窗名稱／路徑可對照，不准混勝率、不准把黃段號寫進話筒買訊。",
+  "keep_split": [
+    "話筒價位仍跟飆大口頭",
+    "黃＝教導／吸收；非買訊",
+    "不准發明 5／9",
+    "Drive 缺檔＝只吃 RSS 標題＋使用者口播鎖，不算看過全片"
+  ]
+}
