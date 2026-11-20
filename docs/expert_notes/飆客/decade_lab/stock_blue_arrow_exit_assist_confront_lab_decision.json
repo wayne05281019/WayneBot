@@ -1,0 +1,134 @@
+{
+  "version": "stock_blue_arrow_exit_assist_confront_lab_v1",
+  "as_of": "2026-11-11T01:31:20+08:00",
+  "tz": "Asia/Taipei",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "promote_lookup": false,
+  "promote_lab_signal": false,
+  "promote_candidates": [],
+  "best_candidate": null,
+  "gate_passed": false,
+  "status": "no_beat_keep_phone_stack_blocked",
+  "keep": "v106",
+  "soft_leader_invent": {
+    "status": "off",
+    "reason_zh": "soft_leader invent 三次 thicken 失敗；keep v106；本軌改對質藍▲出場協助",
+    "keep": "v106",
+    "thicken_failures_n": 3
+  },
+  "entry": "leave_zero_blue_tri",
+  "smoke": false,
+  "n_stocks_meta": 104,
+  "wr_d": {
+    "phone_stack": {
+      "wr": 0.5660776027660391,
+      "d": 3061,
+      "E": 0.0003466876232903756,
+      "n_trades": 10412,
+      "avg_hold": 11.598155973876297,
+      "exit_reason_counts": {
+        "sell_desync_cut": 2725,
+        "first_hi20": 3794,
+        "giveback_8pct": 3875,
+        "max_hold_60": 18
+      }
+    },
+    "first_hi20": {
+      "wr": 0.6663328086993847,
+      "d": 2632,
+      "E": 0.007322016378927362,
+      "n_trades": 6989,
+      "avg_hold": 23.866647589068535,
+      "exit_reason_counts": {
+        "first_hi20": 6539,
+        "max_hold_60": 450
+      }
+    },
+    "sell_desync_cut": {
+      "wr": 0.6315296008572194,
+      "d": 2716,
+      "E": 0.0068965452575204984,
+      "n_trades": 7466,
+      "avg_hold": 21.58545405839807,
+      "exit_reason_counts": {
+        "sell_desync_cut": 7036,
+        "max_hold_60": 430
+      }
+    },
+    "hold_max": {
+      "wr": 0.577023498694517,
+      "d": 2213,
+      "E": 0.04401790549557097,
+      "n_trades": 4979,
+      "avg_hold": 59.47539666599719,
+      "exit_reason_counts": {
+        "max_hold_60": 4979
+      }
+    },
+    "random_exit": {
+      "wr": 0.5427955250033697,
+      "d": 2802,
+      "E": 0.018558597393425042,
+      "n_trades": 7419,
+      "avg_hold": 30.474861841218495,
+      "exit_reason_counts": {
+        "random_exit": 7419
+      }
+    }
+  },
+  "comparisons_vs_phone_stack": {
+    "first_hi20_vs_phone_stack": {
+      "gate_n20": true,
+      "assist_fired": true,
+      "expectancy_delta": 0.006975328755636986,
+      "win_rate_delta": 0.10025520593334558,
+      "beats_phone_stack": true,
+      "beats_random_exit": false,
+      "beats_hold_max": false,
+      "tag_days": 2632,
+      "phone_days": 3061,
+      "random_days": 2802
+    },
+    "sell_desync_cut_vs_phone_stack": {
+      "gate_n20": true,
+      "assist_fired": true,
+      "expectancy_delta": 0.0065498576342301225,
+      "win_rate_delta": 0.0654519980911803,
+      "beats_phone_stack": true,
+      "beats_random_exit": false,
+      "beats_hold_max": false,
+      "tag_days": 2716,
+      "phone_days": 3061,
+      "random_days": 2802
+    },
+    "hold_max_vs_phone_stack": {
+      "gate_n20": true,
+      "assist_fired": true,
+      "expectancy_delta": 0.04367121787228059,
+      "win_rate_delta": 0.010945895928477833,
+      "beats_phone_stack": true,
+      "beats_random_exit": true,
+      "beats_hold_max": false,
+      "tag_days": 2213,
+      "phone_days": 3061,
+      "random_days": 2802
+    },
+    "random_exit_vs_phone_stack": {
+      "gate_n20": true,
+      "assist_fired": true,
+      "expectancy_delta": 0.018211909770134666,
+      "win_rate_delta": -0.02328207776266944,
+      "beats_phone_stack": false,
+      "beats_random_exit": false,
+      "beats_hold_max": false,
+      "tag_days": 2802,
+      "phone_days": 3061,
+      "random_days": 2802
+    }
+  },
+  "gate_one_liner": "entry=leave_zero fixed; phone_stack wr=0.5660776027660391 E=0.0003466876232903756 d=3061; first_hi20 wr=0.6663328086993847 E=0.007322016378927362 d=2632; sell_desync wr=0.6315296008572194 E=0.0068965452575204984 d=2716; random wr=0.5427955250033697 E=0.018558597393425042; gate=FAIL promote=[] phone_sync=blocked",
+  "finding_zh": "藍▲出場協助對質：gate=不過；候選=無；soft_leader invent 已關 keep v106；不准改 leave_zero／不上話筒。",
+  "next_zh": "出場◇／減碼◆未同時贏現況堆＋隨機對照 → 維持 text_only／不畫；下一刀可試先觸發順序或合併門檻，仍固定 leave_zero 進場",
+  "parent_track": "phone_trade_confront_latest.json"
+}
