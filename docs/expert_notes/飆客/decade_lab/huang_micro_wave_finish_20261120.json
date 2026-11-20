@@ -1,0 +1,188 @@
+{
+  "as_of_day": "20261120",
+  "buy_signal": false,
+  "phone_sync": "blocked",
+  "checklist": {
+    "purpose": "判斷個股細微波下跌是否走完（片中用畫圖答留言）",
+    "steps": [
+      "先定調整形：高檔下來常見 a-b-c；標準示範＝3-3-5（a三段、b三段、c五段下）",
+      "認 c 波五段：標 ①②③④⑤；⑤＝最後一大段下跌",
+      "再拆細微波：⑤ 內再標 1-2-3-4-5；五之五末端走完才叫細微波跌完味道完整",
+      "軌道／有效重點：同軌往下推動才有效；破一點、軌道太平≠有效五段",
+      "第五波進行中：先忍、不必殺低；可容忍再破一點；差一天＝一根跌停也認（南亞科）",
+      "走完後：反彈回先前第④波／前結構區再評估調節",
+      "空手另條件：低本益比／錯殺；約>20倍先不考慮（相對台積估值口播）",
+      "另一種相對低：上漲五波後回測次級④波水平支撐（威剛／倚強）—仍非話筒買訊"
+    ],
+    "endure_vs_observe_zh": {
+      "endure": "大盤／個股仍在第五段細微波中→忍住勿殺低",
+      "observe": "五之五末端結構完整（如南亞科當日放大）→相對低可觀察；仍可能再破一點",
+      "trapped": "被套→等反彈回前結構區再評估",
+      "empty_hand": "空手更謹慎；優先低本益比錯殺"
+    },
+    "docs_md": "docs/expert_notes/飆客/decade_lab/huang_wave_method_20261120.md",
+    "stock_cards_md": "docs/expert_notes/飆客/decade_lab/huang_micro_wave_stock_cards_20261120.md"
+  },
+  "examples": [
+    {
+      "symbol": "2408",
+      "name_zh": "南亞科",
+      "role": "main_demo",
+      "t_approx": "≈18:00-22:00",
+      "method_zh": "a-b-c 3-3-5；c⑤ 內細微波1–5；口播末端約264.5；差一天早進",
+      "levels_he_marked": [
+        "569",
+        "465.5",
+        "535",
+        "415.5",
+        "497.5",
+        "324",
+        "417",
+        "264.5"
+      ],
+      "phone_ok": false
+    },
+    {
+      "symbol": "3260",
+      "name_zh": "威剛",
+      "role": "secondary_w4_support",
+      "t_approx": "≈20:30",
+      "method_zh": "上漲五波後回測次級④波附近；標次級4波買點觀察",
+      "levels_he_marked": [
+        "233.5",
+        "389.5",
+        "253",
+        "525",
+        "252"
+      ],
+      "phone_ok": false
+    },
+    {
+      "symbol": "3219",
+      "name_zh": "倚強科",
+      "role": "prior_w4_retest",
+      "t_approx": "≈25:00-27:00",
+      "method_zh": "上漲五波峰值約150；回測前④≈81；當日低約79.9；另示11/6盤中77買",
+      "levels_he_marked": [
+        "53.3",
+        "68.4",
+        "78.6",
+        "97",
+        "81.3",
+        "150",
+        "119",
+        "79.9",
+        "77"
+      ],
+      "phone_ok": false
+    },
+    {
+      "symbol": "2382",
+      "name_zh": "廣達",
+      "role": "qa_micro_wave",
+      "t_approx": "≈38:00",
+      "method_zh": "留言止跌可否買；細微波看；估值偏低、要耐心；附近相對低不保證最低",
+      "levels_he_marked": [
+        "252"
+      ],
+      "phone_ok": false
+    },
+    {
+      "symbol": "6182",
+      "name_zh": "合晶",
+      "role": "qa_fifth_endure",
+      "t_approx": "≈35:00",
+      "method_zh": "第五段中不必殺；等回前結構區再評估",
+      "levels_he_marked": [],
+      "phone_ok": false
+    },
+    {
+      "symbol": "2327",
+      "name_zh": "國巨",
+      "role": "qa_same_as_6182",
+      "t_approx": "≈36:00",
+      "method_zh": "與合晶同構五段→第五段忍住",
+      "levels_he_marked": [],
+      "phone_ok": false
+    },
+    {
+      "symbol": "2308",
+      "name_zh": "台達電",
+      "role": "qa_fifth_incomplete",
+      "t_approx": "≈43:00",
+      "method_zh": "已走第五段味道；細微波似未完→被套不必殺、空手別急",
+      "levels_he_marked": [],
+      "phone_ok": false
+    },
+    {
+      "symbol": "6416",
+      "name_zh": "瑞祺電通",
+      "role": "qa_valuation",
+      "t_approx": "≈33:00",
+      "method_zh": "留言點名；錯殺／估值觀察，推動不易",
+      "levels_he_marked": [],
+      "phone_ok": false
+    },
+    {
+      "symbol": "OTC",
+      "name_zh": "櫃買",
+      "role": "index_parallel",
+      "method_zh": "與大盤類似五波對照：第五波別殺",
+      "levels_he_marked": [],
+      "phone_ok": false
+    },
+    {
+      "symbol": "2330",
+      "name_zh": "台積電",
+      "role": "contrast_only",
+      "method_zh": "三段／第二隻腳對照；不是本檔大盤定調主鎖",
+      "levels_he_marked": [
+        "2395",
+        "2020",
+        "1970"
+      ],
+      "phone_ok": false
+    }
+  ],
+  "cards": {
+    "doc": "docs/expert_notes/飆客/decade_lab/huang_micro_wave_stock_cards_20261120.md",
+    "6442": {
+      "huang_drew": false,
+      "official_as_of": "20261117",
+      "official_peak": {
+        "date": "20260903",
+        "high": 1920
+      },
+      "official_low": {
+        "date": "20261117",
+        "low": 941,
+        "close": 969
+      },
+      "checklist_complete": false,
+      "verdict_zh": "證據不足→不定細微波已跌完；不准發明浪號價",
+      "buy_signal": false
+    },
+    "2383": {
+      "huang_drew": false,
+      "official_as_of": "20261117",
+      "official_peak": {
+        "date": "20260818",
+        "high": 6470
+      },
+      "official_low": {
+        "date": "20261117",
+        "low": 3420,
+        "close": 3540
+      },
+      "checklist_complete": false,
+      "verdict_zh": "證據不足→不定細微波已跌完；不准發明浪號價",
+      "buy_signal": false
+    }
+  },
+  "market_lock": "大盤＝五段式／第五波下跌（正在走第五段／第五小段），不是第二隻腳",
+  "docs": {
+    "method_md": "docs/expert_notes/飆客/decade_lab/huang_wave_method_20261120.md",
+    "cards_md": "docs/expert_notes/飆客/decade_lab/huang_micro_wave_stock_cards_20261120.md",
+    "absorb_json": "docs/expert_notes/飆客/decade_lab/huang_oral_absorb_20261120.json"
+  }
+}
