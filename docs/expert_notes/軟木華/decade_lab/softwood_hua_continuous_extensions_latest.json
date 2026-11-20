@@ -53,7 +53,10 @@
       "id": "SH_otc_ma5y_break_distance",
       "db": "index_daily OTC + 長均",
       "compute_zh": "已破 ma3y 時，distance_to_ma5y_pct=(close/ma5y-1)*100；|distance|<=4 或跌破 ma5y 當事件",
-      "threshold_from_oral": {"bias_ma3y_pct": -8, "distance_to_ma5y_pct": 4},
+      "threshold_from_oral": {
+        "bias_ma3y_pct": -8,
+        "distance_to_ma5y_pct": 4
+      },
       "why_useful_zh": "他說五年線＝五年／AI 多頭平均成本；再跌約 4% 破五年線",
       "gate": "n>=20；只對質",
       "maps_hard": "H4_otc_3y_broke_5y_within_4pct",
@@ -63,17 +66,28 @@
       "id": "SH_korea_88pct_rally_retrace",
       "db": "外部 KOSPI 日柱（官方／可核對來源）",
       "compute_zh": "retrace=(swing_high-close)/(swing_high-swing_low_of_prior_rally)*100；旗標 retrace>=88；另記 bear 段內最大反彈是否 <15%",
-      "thresholds_from_oral": {"rally_retrace_pct": 88, "max_bounce_pct": 15, "absolute_dd_pct": 48},
+      "thresholds_from_oral": {
+        "rally_retrace_pct": 88,
+        "max_bounce_pct": 15,
+        "absolute_dd_pct": 48
+      },
       "why_useful_zh": "今日韓市硬標籤：88% 回吐＝強力空方；無 >15% 反彈＝持續破底",
       "gate": "n>=20 vs milder-retrace baseline",
-      "maps_hard": ["H2_korea_88pct_rally_retrace_bear_mark", "H9_bear_leg_no_rebound_over_15pct"],
+      "maps_hard": [
+        "H2_korea_88pct_rally_retrace_bear_mark",
+        "H9_bear_leg_no_rebound_over_15pct"
+      ],
       "not_buy_signal": true
     },
     {
       "id": "SH_otc_retrace_multiple_gt1",
       "db": "index_daily OTC",
       "compute_zh": "fall_pts=year_high-close；rise_pts=year_high-year_open；multiple=fall_pts/rise_pts；旗標 multiple>=1.07 或 drawdown_from_high_pct>=42",
-      "thresholds_from_oral": {"fall_vs_rise_multiple": 1.07, "dd_from_high_pct": 42, "max_gain_pct": 66},
+      "thresholds_from_oral": {
+        "fall_vs_rise_multiple": 1.07,
+        "dd_from_high_pct": 42,
+        "max_gain_pct": 66
+      },
       "why_useful_zh": "跌點超過今年漲點＝全數回吐還不夠；對質後續是否續弱／緩升",
       "gate": "n>=20",
       "maps_hard": "H5_otc_retrace_gt_1x_of_ytd_rally",
@@ -83,7 +97,10 @@
       "id": "SH_gold_lead_top",
       "db": "黃金期貨／現貨日柱（標清來源）",
       "compute_zh": "黃金是否在費半／櫃買／KOSPI／TWII 之前先創波段高且之後未再創高；另記 fall_vs_rise_multiple>=1.57",
-      "thresholds_from_oral": {"fall_vs_rise_multiple": 1.57, "lead_top": true},
+      "thresholds_from_oral": {
+        "fall_vs_rise_multiple": 1.57,
+        "lead_top": true
+      },
       "why_useful_zh": "他說黃金最先見頂最具指標性；可對質『金頂後 N 日半導／櫃買／韓是否跟頂』",
       "gate": "n>=20；跨資產對質，非買訊",
       "maps_hard": "H6_gold_lead_top_then_semi_korea_otc",
@@ -164,5 +181,6 @@
     "id": "softwood_hua_criteria_lab_v1_oral_thresholds",
     "status": "collecting_from_20261120_thresholds",
     "note_zh": "以 H1–H9 閾值開 silent collect；主欄＝OTC 年線乖離／韓 88% 回吐／黃金領先頂／TWII–OTC–SOX 脫鉤；過閘再生 v2"
-  }
+  },
+  "extension_brief_ref": "softwood_hua_extension_brief_20261120.md"
 }

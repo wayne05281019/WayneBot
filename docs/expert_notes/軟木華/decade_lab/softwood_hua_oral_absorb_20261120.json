@@ -499,13 +499,14 @@
     }
   ],
   "market_context_official_not_his_words": {
-    "note_zh": "官方／媒體盤勢脈絡，方便之後對質；不是他口播",
+    "note_zh": "官方／庫內盤勢對質見 official_confront_20261120；不是他口播",
     "twii_db_latest_seen": {
       "date": "20261119",
       "close": 38426.89,
       "pct_change": -4.4,
       "source": "data/wayne_market.db index_daily TWII"
-    }
+    },
+    "confront_ref": "official_confront_20261120"
   },
   "continuous_extensions_ref": "softwood_hua_continuous_extensions_20261120.json",
   "method_ref": "softwood_hua_method_20261120.md",
@@ -513,5 +514,126 @@
     "用官方 OTC／TWII／SOX／KOSPI／GOLD 柱對質今日數字（未收不當收）",
     "silent collect 依 continuous_extensions 閾值收 n 日；n≥20 且贏本軌基線才談替換",
     "仍不准改 leave_zero、不准推話筒、不准發明個股 5／9"
-  ]
+  ],
+  "official_confront_20261120": {
+    "tz": "Asia/Taipei",
+    "source_zh": "wayne_market.db index_daily / market_inst_bfi_daily / daily_quotes；Cross-check Softwood Hua live 分團",
+    "agent_id": "bc-6d7c12a4-3221-57a4-bda9-58ea286d8bca",
+    "note_zh": "未收／庫缺＝unknown，不准補假數。口播約數保留；對質以官方柱為準。",
+    "rows": [
+      {
+        "claim": "TWII Oct6 ATH ~49968",
+        "his": "~四萬九千／~49968",
+        "db": "TWII 2026-10-06 high 49968.92 close 49822.55",
+        "match": "match"
+      },
+      {
+        "claim": "TWII Jun→Jul大跌→Oct ATH",
+        "his": "Jun見高→Jul大跌→10/6新高",
+        "db": "Jun high 2026-06-23 48218.87; Jul low 2026-07-29 39384.85; then Oct ATH",
+        "match": "match"
+      },
+      {
+        "claim": "TWII recent crash scale",
+        "his": "自ATH重挫",
+        "db": "post-ATH low 2026-11-06 37837; 2026-11-19 close 38426.89 (~23% off ATH)",
+        "match": "match"
+      },
+      {
+        "claim": "OTC year-start",
+        "his": "270.24／後段口述276.24",
+        "db": "OTC 2026-01-02 close 278.03 (close-only)",
+        "match": "mismatch"
+      },
+      {
+        "claim": "OTC Jun high 459.56 on Jun22",
+        "his": "459.56",
+        "db": "OTC 2026-06-22 close 453.5 (YTD max close)",
+        "match": "mismatch"
+      },
+      {
+        "claim": "OTC today ~263.31",
+        "his": "~263.31",
+        "db": "last OTC 2026-11-04 close 343.5",
+        "match": "unknown"
+      },
+      {
+        "claim": "OTC on TWII ATH day",
+        "his": "434.3",
+        "db": "OTC 2026-10-06 close 430.86",
+        "match": "mismatch"
+      },
+      {
+        "claim": "KOSPI Jun high ~9385",
+        "his": "~9385 Jun19",
+        "db": "not in DB",
+        "match": "unknown"
+      },
+      {
+        "claim": "KOSPI recent ~4867",
+        "his": "~4867",
+        "db": "not in DB",
+        "match": "unknown"
+      },
+      {
+        "claim": "SOX Jun high ~14650",
+        "his": "~14650 Jun22",
+        "db": "SOX 2026-06-22 high 14655.29",
+        "match": "match"
+      },
+      {
+        "claim": "SOX early-Oct ~13179",
+        "his": "13179",
+        "db": "SOX 2026-10-05 high 13179.71",
+        "match": "match"
+      },
+      {
+        "claim": "Gold high 5598 Jan29",
+        "his": "5598",
+        "db": "GOLD 2026-01-29 high 5586.20",
+        "match": "near"
+      },
+      {
+        "claim": "Gold year-open 4314",
+        "his": "4314",
+        "db": "GOLD 2026-01-02 open 4340",
+        "match": "near"
+      },
+      {
+        "claim": "Gold today 3575",
+        "his": "3575",
+        "db": "last GOLD 2026-11-03 close 3947.70",
+        "match": "unknown"
+      },
+      {
+        "claim": "Foreign sell today 94億",
+        "his": "94",
+        "db": "no BFI after 2026-11-03",
+        "match": "unknown"
+      },
+      {
+        "claim": "Foreign YTD ~3.2兆",
+        "his": "3.2",
+        "db": "partial Mar27–Nov3 only −2.187兆",
+        "match": "unknown"
+      },
+      {
+        "claim": "2330/0050 foreign day lots",
+        "his": "11863張／11萬張",
+        "db": "foreign_net blank after 2026-11-03",
+        "match": "unknown"
+      }
+    ],
+    "strong_hits_zh": [
+      "TWII 10/6 ATH",
+      "SOX 6/22 與 10/5 13179",
+      "TWII Jun→Jul→Oct 路徑"
+    ],
+    "stale_or_missing_zh": [
+      "OTC／GOLD／BFI 庫停在約 11/03–04",
+      "無 KOSPI",
+      "當日法人與個股外資張數無法庫內核"
+    ]
+  },
+  "extension_brief_ref": "softwood_hua_extension_brief_20261120.md"
 }
