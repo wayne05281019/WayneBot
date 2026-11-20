@@ -1,56 +1,52 @@
 {
-  "as_of": "20261119",
-  "as_of_taipei": "2026-11-19T16:59:00+0800",
+  "as_of": "20261120",
+  "as_of_taipei": "2026-11-20T17:05:00+0800",
   "phone_sync": "blocked",
   "buy_signal": false,
   "certainty": false,
   "segment_numbers": "REQUIRED",
   "bar_status": {
     "twii_daily": "healed_60m_ohlc_plus_fmtqik_volume",
-    "tx_regular": "missing_in_db",
-    "tx_night": "present_prev_night_labeled_1119",
-    "note_zh": "庫內原柱 close＜low 廢柱；60分聚合補 OHLC 後 FMTQIK 填量（V>0、O≠H≠L≠C）可當收。台指日盤 regular 仍缺，對質以加權為主。"
+    "tx_regular": "not_checked",
+    "tx_night": "not_checked",
+    "note_zh": "Yahoo 日柱 V=0 且開盤尖端 O=H；60分聚合補 OHLC，FMTQIK 填量（V>0）可當收。C 對齊 MI_INDEX／FMTQIK 36033.29。"
   },
   "official": {
     "twii": {
-      "o": 40145.73046875,
-      "h": 40315.53125,
-      "l": 38259.69921875,
-      "c": 38426.89,
-      "v": 15282043.0
+      "o": 37646.13,
+      "h": 37646.13,
+      "l": 35738.68,
+      "c": 36033.29,
+      "v": 17070331.0
     },
     "tx_regular": null,
-    "tx_night": {
-      "o": 40330.0,
-      "h": 40689.0,
-      "l": 39411.0,
-      "c": 39987.0,
-      "note": "夜盤列 date=20261119；日盤 regular 缺"
-    },
+    "tx_night": null,
     "support_43135": 43135.92,
     "support_41760": 41760.0,
     "friday_low_twii": 37837.05,
+    "oral_35579": 35579.0,
+    "oral_37164": 37164.0,
     "wave4_band_oral_1116": [41800.0, 42700.0],
     "wave4_mid": 42250.0
   },
   "paths": [
     {
       "id": "M3_seek_37837_continue",
-      "verdict": "升權維持／37837未測（更靠近）",
+      "verdict": "成立且過測：L35739 已破 37837（約−2098點）",
       "segments_provisional": [
         {
           "label": "B-a_hold_fail",
-          "role": "H40316仍≪41760",
+          "role": "H37646≪41760／41800",
           "level": 41760.0
         },
         {
           "label": "B-b",
-          "role": "37837升權；L38260≫37837 未觸（距約423點）",
+          "role": "週五低37837已測並跌破；收仍在下方",
           "level": 37837.05
         }
       ],
-      "evidence_zh": "TWII O40145.73/H40315.53/L38259.70/C38426.89 V15282043：H仍＜41760；L自昨39261再探至38260，未到37837。",
-      "next_zh": "下一開市日：弱則續看37837；強反彈先看能否收回41800～42700。不准發明新五波①。"
+      "evidence_zh": "TWII（60分OHLC＋FMTQIK量）O37646.13/H37646.13/L35738.68/C36033.29 V17070331：L遠低於37837；收亦＜37837。",
+      "next_zh": "下一開市日：弱則改看口頭35579；若止跌先看能否收回並站穩37837（假跌破敘事）。不准發明新五波①。"
     },
     {
       "id": "W4_reclaim_418_427_band",
@@ -58,7 +54,7 @@
       "segments_provisional": [
         {
           "label": "wave4_band_reclaim",
-          "role": "未收回（H40316＜41800）",
+          "role": "未收回（H37646≪41800）",
           "lo": 41800.0,
           "hi": 42700.0
         },
@@ -68,12 +64,12 @@
           "level": 42250.0
         }
       ],
-      "evidence_zh": "日高40315.53未到41800；收38426.89仍在帶下且更遠。",
-      "next_zh": "反彈門檻仍是先收回41800～42700；非買訊。"
+      "evidence_zh": "日高37646.13遠低於41800；收36033.29更遠。",
+      "next_zh": "反彈門檻仍遠；非買訊。"
     },
     {
       "id": "N1_follow_through_below_band",
-      "verdict": "成立：帶下續弱並再探低",
+      "verdict": "成立：帶下續弱並貫穿37837",
       "segments_provisional": [
         {
           "label": "stay_below_wave4",
@@ -82,12 +78,12 @@
         },
         {
           "label": "path_to_B_b",
-          "role": "L38260往37837再靠近但未到",
+          "role": "L35739已過37837往下",
           "level": 37837.05
         }
       ],
-      "evidence_zh": "O40146/H40316/L38260/C38427皆在41800下；低點較昨39261再探至38260。",
-      "next_zh": "續弱鏈與M3同向；測37837仍未完成。"
+      "evidence_zh": "O/H/L/C皆在41800下；低點自昨38260再殺至35739，收36033。",
+      "next_zh": "續弱鏈完成37837測破；下接口頭35579對照，非新①。"
     },
     {
       "id": "M2_dead_reclaim_watch",
@@ -95,7 +91,7 @@
       "segments_provisional": [
         {
           "label": "post_hold_reclaim",
-          "role": "H40316≪43135",
+          "role": "H37646≪43135",
           "level": 43135.92
         }
       ],
@@ -110,17 +106,17 @@
       "N1：帶下續弱",
       "M2：收復43135（低權）"
     ],
-    "actual_path": "N1成立（帶下續弱再探L38260）；W4收回否決；M2收復否決；M3升權維持但37837未測（距約423點）。收38427仍在波浪4帶下。",
-    "unexpected_level": "相對 preferred（測37837），實際走出帶下急探但低點停在38260，未到週五低；亦未反彈進418～427。",
-    "which_segment_broke": "B-b/37837 尚未發生；wave4_band_reclaim 未發生。B-a_hold_fail 狀態延續。",
-    "rule_patch": "preferred＝升權測37837 時：若下一開市日仍失41760且L落在『帶下～37837之上』（例 38000～40500），標 N1_follow_through＋M3_pending_37837，不准把『未測到37837』當M3否決，也不准標新①。L每靠近一檔可升權pending，仍非觸發。",
+    "actual_path": "M3成立且過測（L35739破37837）；N1成立並加速；W4收回否決；M2收復否決。收36033仍在37837下、波浪4帶下。",
+    "unexpected_level": "相對 preferred『測37837』，實際不僅觸及且深破約2098點至35739；亦無任何收回418～427跡象。",
+    "which_segment_broke": "B-b/37837 已發生並跌破；wave4_band_reclaim 未發生；B-a_hold_fail 延續。",
+    "rule_patch": "preferred＝測37837 時：若L已＜37837且收仍＜37837，標 M3_triggered_broke_37837＋N1_follow_through，下一窗改口頭已有之35579為續弱對照、37837收回為假跌破觀察；不准把深破當新五波①，也不准發明未口述之新低目標。",
     "two_diff": {
-      "vs_biaoke_zh": "他11/16：41800～42700波浪4帶；否決第二腳／38000。官方11/19收38427、低38260：仍在帶下急探、未測37837／未讀第二腳。",
-      "vs_official_zh": "加權（60分OHLC＋FMTQIK量）O40145.73/H40315.53/L38259.70/C38426.89 V15282043；台指日盤 regular=缺。"
+      "vs_biaoke_zh": "他11/16：41800～42700波浪4帶；否決第二腳／38000；37837假跌破買點／不排除35579。官方11/20收36033、低35739：帶下深破37837，已低於38000否決線，尚未到35579。",
+      "vs_official_zh": "加權（60分OHLC＋FMTQIK量）O37646.13/H37646.13/L35738.68/C36033.29 V17070331；FMTQIK收＝36033.29（−2393.60）。"
     }
   },
-  "cycle8_review_zh": "大C修正：失41760後帶下急探38260，未測37837、未收回波浪4帶。下看37837 vs 收回418～427；非買訊；不准發明新五波①。",
+  "cycle8_review_zh": "大C修正：帶下急殺貫穿37837至35739，收36033。下看口頭35579 vs 收回站穩37837；波浪4帶仍遠。非買訊；不准發明新五波①。",
   "not_buy_signal": true,
   "preferred_was": "M3_seek_37837_continue",
-  "preferred_outcome_zh": "方向同向（續弱再探更近）但目標位未觸；N1 同步成立加強。"
+  "preferred_outcome_zh": "目標達成並過測（深破）；N1 同步成立。"
 }

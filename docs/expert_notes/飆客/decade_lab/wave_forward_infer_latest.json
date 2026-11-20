@@ -1,44 +1,67 @@
 {
-  "as_of_taipei": "2026-11-19T16:59:00+0800",
-  "as_of_day": "20261119",
-  "infer_for": "20261120",
+  "as_of_taipei": "2026-11-20T17:05:00+0800",
+  "as_of_day": "20261120",
+  "infer_for": "20261123",
   "today_job": "post_close_next_session_infer",
   "phone_sync": "blocked",
   "buy_signal": false,
   "certainty": false,
   "segment_numbers": "REQUIRED",
-  "calendar_zh": "下一開市日＝11/20（若休市再順延）。",
-  "from_eod_zh": "11/19 TWII（60分補OHLC＋FMTQIK量）L38259.70／C38426.89：N1成立再探；W4/M2否決；M3升權維持、37837未測（距約423點）。",
-  "from_oral_zh": "11/16飆大：41800～42700＝波浪4帶；否決第二腳／38000；非買訊。",
+  "calendar_zh": "下一開市日＝11/23（若休市再順延）。",
+  "from_eod_zh": "11/20 TWII（60分補OHLC＋FMTQIK量）L35738.68／C36033.29：M3成立過測破37837；N1成立；W4/M2否決。",
+  "from_oral_zh": "11/16飆大：41800～42700＝波浪4帶；否決第二腳／38000；37837假跌破買點；不排除9波擴延35579；非買訊。",
   "paths": [
     {
-      "id": "M3_seek_37837_continue",
+      "id": "M3_extend_toward_35579",
       "priority": 1,
       "status": "推論／未定案",
-      "must_happen_zh": "帶下續弱→下一開市日優先看是否測37837（假跌破另計）",
+      "must_happen_zh": "37837已破且收在下→下一開市日優先看續弱是否靠近／測口頭35579",
       "segments_provisional": [
         {
-          "label": "B-a_hold_fail",
-          "role": "41760仍失",
-          "level": 41760.0
+          "label": "B-b_broke",
+          "role": "37837已失",
+          "level": 37837.05
         },
         {
-          "label": "B-b",
-          "role": "回測C3底／週五低37837",
-          "level": 37837.05
+          "label": "oral_35579",
+          "role": "9波擴延對照（已口述）",
+          "level": 35579.0
         }
       ],
       "levels": {
-        "fail": 41760.0,
-        "retest": 37837.05
+        "broke": 37837.05,
+        "retest": 35579.0
       },
-      "invalidate_zh": "強反彈收回並收穩41800～42700波浪4帶內／上＝B-b延後"
+      "invalidate_zh": "收回並收穩37837之上＝改假跌破觀察優先；不准標新①"
+    },
+    {
+      "id": "FB_reclaim_37837_watch",
+      "priority": 2,
+      "status": "推論／未定案（口頭假跌破）",
+      "must_happen_zh": "若止跌反彈：先收回並站穩37837（假跌破敘事；非買訊）",
+      "segments_provisional": [
+        {
+          "label": "false_break_reclaim",
+          "role": "收回週五低／C3底",
+          "level": 37837.05
+        },
+        {
+          "label": "oral_37164_ref",
+          "role": "4/23低對照（已口述）",
+          "level": 37164.0
+        }
+      ],
+      "levels": {
+        "reclaim": 37837.05,
+        "ref_37164": 37164.0
+      },
+      "invalidate_zh": "續創新低靠近35579＝改回M3延伸優先"
     },
     {
       "id": "W4_reclaim_418_427_band",
-      "priority": 2,
-      "status": "推論／未定案（口頭波浪4）",
-      "must_happen_zh": "若止跌反彈：先收回41800～42700（回測平均42250）",
+      "priority": 3,
+      "status": "推論／未定案（口頭波浪4・遠門檻）",
+      "must_happen_zh": "強反彈才談：先收回41800～42700（回測平均42250）",
       "segments_provisional": [
         {
           "label": "wave4_band_reclaim",
@@ -57,34 +80,34 @@
         "mid": 42250.0,
         "hi": 42700.0
       },
-      "invalidate_zh": "續創新低並接近／觸及37837＝改回M3優先"
+      "invalidate_zh": "續弱測35579＝降權此路徑"
     },
     {
       "id": "N1_follow_through_below_band",
-      "priority": 3,
+      "priority": 4,
       "status": "推論／未定案",
-      "must_happen_zh": "若帶下再探：不再收回41800，L往37837靠近或觸及",
+      "must_happen_zh": "若帶下再探：不再收回37837，L往35579靠近或觸及",
       "segments_provisional": [
         {
-          "label": "stay_below_wave4",
-          "role": "帶下停留",
-          "level": 41800.0
+          "label": "stay_below_37837",
+          "role": "37837下停留",
+          "level": 37837.05
         },
         {
-          "label": "path_to_B_b",
-          "role": "銜接37837",
-          "level": 37837.05
+          "label": "path_to_35579",
+          "role": "銜接口頭35579",
+          "level": 35579.0
         }
       ],
       "levels": {
-        "band_lo": 41800.0,
-        "retest": 37837.05
+        "cap": 37837.05,
+        "retest": 35579.0
       },
-      "invalidate_zh": "收復帶內＝降權續弱句"
+      "invalidate_zh": "收復37837之上＝降權續弱句"
     },
     {
       "id": "M2_dead_reclaim_watch",
-      "priority": 4,
+      "priority": 5,
       "status": "對照／低權",
       "must_happen_zh": "僅當強勢收復43135才升權（低機率）",
       "segments_provisional": [
@@ -100,14 +123,14 @@
       "invalidate_zh": "未收復則維持低權；收復≠新五波①"
     }
   ],
-  "preferred_infer": "M3_seek_37837_continue",
+  "preferred_infer": "M3_extend_toward_35579",
   "bottom_band": {
     "lo": 41800.0,
     "hi": 42700.0,
     "source": "oral-wave4-band-418-427",
-    "note": "11/16口頭"
+    "note": "11/16口頭；現為遠門檻"
   },
   "not_buy_signal": true,
-  "not_new_impulse1_zh": "帶下續弱／未測37837 ≠ 自動新五波升；不准標新①。",
-  "evidence_gate_zh": "S8：本窗 preferred＝升權測37837，憑據＝11/16失41760＋11/17～11/19 N1帶下續弱再探（L38260）；無憑據不標新①。"
+  "not_new_impulse1_zh": "破37837／往35579 ≠ 自動新五波升；不准標新①。",
+  "evidence_gate_zh": "S8：本窗 preferred＝口頭35579續弱對照，憑據＝11/20官方已破37837且收在下；假跌破收回37837為次優先觀察。無憑據不標新①、不發明未口述更低目標。"
 }
