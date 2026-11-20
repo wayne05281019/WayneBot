@@ -20,10 +20,17 @@
   ],
   "teach_tags": ["not_downtrend", "second_foot", "three_leg", "fifth_leg"],
   "vs_biaoke_zh": "飆大 11/16 口頭否決第二腳／38000；黃 11/20 口播主張不是下降趨勢、打第二隻腳。同窗名稱／路徑可對照，不准混勝率、不准把黃段號寫進話筒買訊。",
+  "media_dry": {
+    "gdown_ok": true,
+    "frames_n": 16,
+    "whisper": "tiny_20m",
+    "whisper_tags": ["second_foot", "fifth_leg", "three_leg"],
+    "note_zh": "本機 gdown＋影格＋tiny 口播已跑；YT cookies 本機無效不擋 Drive 路徑。不准把個股浪號寫進話筒買訊／三窗。"
+  },
   "keep_split": [
     "話筒價位仍跟飆大口頭",
     "黃＝教導／吸收；非買訊",
     "不准發明 5／9",
-    "Drive 缺檔＝只吃 RSS 標題＋使用者口播鎖，不算看過全片"
+    "Drive 已登錄＋本機可 gdown；三窗不改（個股手繪／浪號不准進大盤窗）"
   ]
 }
