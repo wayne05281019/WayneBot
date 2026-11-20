@@ -1,0 +1,186 @@
+{
+  "as_of_day": "20261120",
+  "track": "softwood_hua",
+  "not_buy_signal": true,
+  "phone_sync": "blocked",
+  "leave_zero_untouched": true,
+  "wave_59_invent_forbidden": true,
+  "why_zh": "20261120 口播（whisper tiny）已給可量化閾值：櫃買均線乖離、韓 88% 回吐、黃金領先見頂、加權 vs 櫃買／費半脫鉤。先默默收 n 日對質，過閘才談替換本軌編碼；不准改 leave_zero",
+  "oral_thresholds_from_20261120": {
+    "otc_bias_ma5_pct": -11.2,
+    "otc_bias_ma10_pct": -16.6,
+    "otc_bias_ma20_pct": -22.0,
+    "otc_bias_ma60_pct": -31.5,
+    "otc_bias_ma120_pct": -33.5,
+    "otc_bias_yearly_ma_pct": -26.6,
+    "otc_bias_ma3y_pct": -8.0,
+    "otc_distance_to_ma5y_pct": 4.0,
+    "korea_rally_retrace_pct": 88,
+    "korea_max_bounce_in_bear_pct": 15,
+    "otc_fall_vs_rise_multiple": 1.07,
+    "gold_fall_vs_rise_multiple": 1.57,
+    "gold_lead_top": true,
+    "desync_twii_ath_vs_otc_sox": true
+  },
+  "silent_collect_fields": [
+    {
+      "id": "SH_otc_yearly_ma_bias",
+      "db": "index_daily OTC（或櫃買指數列）",
+      "compute_zh": "bias_yearly=(close/ma_yearly-1)*100；旗標 bias<=-26.6（深破年線）／close>ma_yearly（站回＝H1 多方恢復代理）",
+      "threshold_from_oral": -26.6,
+      "why_useful_zh": "他今日硬規則：多方 K 線一定要在年線之上；櫃買年線乖離 −26.6% 為當日觀測點",
+      "gate": "independent_days_n>=20 vs track baseline",
+      "maps_hard": "H1_bull_needs_above_yearly_ma",
+      "not_buy_signal": true
+    },
+    {
+      "id": "SH_otc_ma_deviation_ladder",
+      "db": "index_daily OTC",
+      "compute_zh": "同時記 bias_ma5/10/20/60/120；對照口播閾 −11.2/−16.6/−22/−31.5/−33.5；可對質『全階深負乖離日後 N 日路徑』",
+      "thresholds_from_oral": {
+        "ma5": -11.2,
+        "ma10": -16.6,
+        "ma20": -22.0,
+        "ma60": -31.5,
+        "ma120": -33.5
+      },
+      "why_useful_zh": "今日均線乖離矩陣；不是買訊，只做深度跌勢標籤",
+      "gate": "n>=20",
+      "maps_hard": "H3_otc_ma_deviation_snapshot_thresholds",
+      "not_buy_signal": true
+    },
+    {
+      "id": "SH_otc_ma5y_break_distance",
+      "db": "index_daily OTC + 長均",
+      "compute_zh": "已破 ma3y 時，distance_to_ma5y_pct=(close/ma5y-1)*100；|distance|<=4 或跌破 ma5y 當事件",
+      "threshold_from_oral": {
+        "bias_ma3y_pct": -8,
+        "distance_to_ma5y_pct": 4
+      },
+      "why_useful_zh": "他說五年線＝五年／AI 多頭平均成本；再跌約 4% 破五年線",
+      "gate": "n>=20；只對質",
+      "maps_hard": "H4_otc_3y_broke_5y_within_4pct",
+      "not_buy_signal": true
+    },
+    {
+      "id": "SH_korea_88pct_rally_retrace",
+      "db": "外部 KOSPI 日柱（官方／可核對來源）",
+      "compute_zh": "retrace=(swing_high-close)/(swing_high-swing_low_of_prior_rally)*100；旗標 retrace>=88；另記 bear 段內最大反彈是否 <15%",
+      "thresholds_from_oral": {
+        "rally_retrace_pct": 88,
+        "max_bounce_pct": 15,
+        "absolute_dd_pct": 48
+      },
+      "why_useful_zh": "今日韓市硬標籤：88% 回吐＝強力空方；無 >15% 反彈＝持續破底",
+      "gate": "n>=20 vs milder-retrace baseline",
+      "maps_hard": [
+        "H2_korea_88pct_rally_retrace_bear_mark",
+        "H9_bear_leg_no_rebound_over_15pct"
+      ],
+      "not_buy_signal": true
+    },
+    {
+      "id": "SH_otc_retrace_multiple_gt1",
+      "db": "index_daily OTC",
+      "compute_zh": "fall_pts=year_high-close；rise_pts=year_high-year_open；multiple=fall_pts/rise_pts；旗標 multiple>=1.07 或 drawdown_from_high_pct>=42",
+      "thresholds_from_oral": {
+        "fall_vs_rise_multiple": 1.07,
+        "dd_from_high_pct": 42,
+        "max_gain_pct": 66
+      },
+      "why_useful_zh": "跌點超過今年漲點＝全數回吐還不夠；對質後續是否續弱／緩升",
+      "gate": "n>=20",
+      "maps_hard": "H5_otc_retrace_gt_1x_of_ytd_rally",
+      "not_buy_signal": true
+    },
+    {
+      "id": "SH_gold_lead_top",
+      "db": "黃金期貨／現貨日柱（標清來源）",
+      "compute_zh": "黃金是否在費半／櫃買／KOSPI／TWII 之前先創波段高且之後未再創高；另記 fall_vs_rise_multiple>=1.57",
+      "thresholds_from_oral": {
+        "fall_vs_rise_multiple": 1.57,
+        "lead_top": true
+      },
+      "why_useful_zh": "他說黃金最先見頂最具指標性；可對質『金頂後 N 日半導／櫃買／韓是否跟頂』",
+      "gate": "n>=20；跨資產對質，非買訊",
+      "maps_hard": "H6_gold_lead_top_then_semi_korea_otc",
+      "not_buy_signal": true
+    },
+    {
+      "id": "SH_desync_twii_vs_otc_sox",
+      "db": "index_daily TWII + OTC + SOX",
+      "compute_zh": "TWII 創 rolling 高／歷史高當日，OTC 與 SOX 是否未創新高（或距自身波段高明顯落後）；另比 OTC 與 SOX 形態相似度（六月頂、十月近高失敗後破底）",
+      "thresholds_from_oral": {
+        "example_twii_ath_date": "2026-10-06",
+        "otc_on_that_day_vs_own_high": "434.3 vs 459.56",
+        "sox_june_high": 14650,
+        "sox_oct_near": 13179
+      },
+      "why_useful_zh": "今日脫鉤準則：加權創新高、櫃買／費半不同步＝值得推敲的空方／弱勢結構",
+      "gate": "n>=20 vs sync-new-high baseline",
+      "maps_hard": "H7_desync_twii_ath_vs_otc_sox",
+      "not_buy_signal": true
+    },
+    {
+      "id": "SH_liquidity_extract_no_limit_down",
+      "db": "market_inst_lots_daily + 個股漲跌停旗",
+      "compute_zh": "法人賣超前 N 名中『當日非跌停』佔比；權值／0050 類市值 ETF 賣超金額",
+      "why_useful_zh": "對齊『套取流動性＝賣無跌停權值／市值 ETF』；對質後續指數路徑，仍非進出場",
+      "gate": "n>=20",
+      "maps_hard": "H8_liquidity_extract_sell_no_limit_down",
+      "not_buy_signal": true
+    },
+    {
+      "id": "SH_foreign_sell_streak",
+      "db": "market_inst_bfi_daily",
+      "compute_zh": "外資賣超連續交易日數＋當日賣超金額；YTD 累計對照口播 ~3.2 兆語境（僅對質，不准假成本）",
+      "why_useful_zh": "本日主題外資賣出台韓；可對質連賣與 TWII／OTC 後續報酬",
+      "gate": "n>=20 vs no-streak baseline",
+      "not_buy_signal": true
+    },
+    {
+      "id": "SH_ma200_bias_pct",
+      "db": "index_daily TWII",
+      "compute_zh": "(close/ma200-1)*100；保留先前公開語境 30%／3σ 候選，與今日 OTC 年線 −26.6% 分列",
+      "why_useful_zh": "先前公開引述；今日主軸改櫃買年線，本欄降為旁軌",
+      "gate": "independent_days_n>=20 vs track baseline",
+      "maps_prior": "P1_ma200_bias_30pct_3sigma",
+      "status": "side_track_prior_corpus",
+      "not_buy_signal": true
+    }
+  ],
+  "schedule_hooks_proposed": [
+    {
+      "id": "softwood_hua_podcast_poll",
+      "when_zh": "開市日台北 20:00／22:30／翌日 01:00",
+      "action_zh": "查 Firstory/iTunes 是否出現當日《財經一路發》→ 有則拉 MP3＋whisper → 寫 absorb",
+      "skip_if": "休市日；或當日 absorb 已有 transcript_status 含 whisper／ok"
+    },
+    {
+      "id": "softwood_hua_eod_confront",
+      "when_zh": "開市日台北 16:40 後（官方加權／櫃買齊）",
+      "action_zh": "用已存口播閾值對官方柱；寫對／偏／未走完；不准推話筒",
+      "align": "AGENTS.md §3／§13"
+    }
+  ],
+  "confrontation_gate": {
+    "n_min_independent_trade_days": 20,
+    "empty_list_counts_as_zero": true,
+    "mix_winrate_with_biaoke_or_leave_zero": false,
+    "promote_requires": "beats_this_track_baseline AND oral_evidence_present",
+    "on_promote": "replace_track_code_and_spawn_next_variant",
+    "never": [
+      "change_leave_zero",
+      "change_golden_buy",
+      "invent_stock_wave_59",
+      "phone_sync_unverified_teach",
+      "fake_cost_fields"
+    ]
+  },
+  "next_variant_seed": {
+    "id": "softwood_hua_criteria_lab_v1_oral_thresholds",
+    "status": "collecting_from_20261120_thresholds",
+    "note_zh": "以 H1–H9 閾值開 silent collect；主欄＝OTC 年線乖離／韓 88% 回吐／黃金領先頂／TWII–OTC–SOX 脫鉤；過閘再生 v2"
+  },
+  "extension_brief_ref": "softwood_hua_extension_brief_20261120.md"
+}
