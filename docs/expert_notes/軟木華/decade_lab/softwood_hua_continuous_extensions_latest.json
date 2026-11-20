@@ -5,52 +5,88 @@
   "phone_sync": "blocked",
   "leave_zero_untouched": true,
   "wave_59_invent_forbidden": true,
-  "why_zh": "先把可量化、可對質的欄位定好；等口播落地後對齊他的 hard rules，默默收 n 天，過閘才談替換本軌編碼",
+  "extension_brief_ref": "softwood_hua_extension_brief_20261120.md",
+  "why_zh": "2026-11-20 口播已落地：提款權值／韓櫃金形態／櫃買乖離／加權確認失敗；只默默收可對質欄，過閘才談替換本軌",
+  "oral_numbers_lock_20261120": {
+    "foreign_ytd_sell_trillion": 3.2,
+    "listed_day_sell_yi": {"foreign": 94, "sit": 87.5, "dealer": 50.7, "dealer_hedge": 290, "total": 522},
+    "otc_day_chg_pct": -7.79,
+    "twii_day_chg_pct_approx": -2.2,
+    "tsmc_foreign_lots": 11863,
+    "tsmc_foreign_yi": 238,
+    "0050_foreign_lots": 110000,
+    "0050_foreign_yi": 94,
+    "kospi": {"jan2": 4309, "high": 9385, "high_date": "2026-06-19", "close": 4867, "rally_pts": 5076, "drop_pts": 4516, "retrace_of_rally_pct": 88, "peak_drop_pct": 48, "max_rebound_cap_pct": 15},
+    "otc": {"year_open": 276.24, "high": 459.56, "high_date": "2026-06-22", "close": 263.31, "rally_pts": 196.25, "rally_pct": 66, "drop_pts": 182.32, "drop_pct": 42, "retrace_multiple": 1.07, "oct6_level": 434.3},
+    "gold": {"year_open": 4314, "high": 5598, "high_date": "2026-01-29", "spot_cited": 3575, "rally_usd": 1284, "rally_pct": 29, "drop_usd": 2023, "retrace_multiple": 1.57, "ytd_pct_approx": -17, "peak_drop_pct_approx": 36},
+    "sox": {"high": 14650, "high_date": "2026-06-22", "oct_early_high_approx": 13179},
+    "twii_ath_date": "2026-10-06",
+    "twii_ath_approx": 49000,
+    "otc_ma_neg_bias_pct": {"ma5": 11.2, "ma10": 16.6, "ma20": 22, "ma60": 31.5, "ma120": 33.5, "ma200_year": 26.6, "ma3y": 8, "dist_to_ma5y_pct": 4, "dist_to_ma10y_pct": 29}
+  },
   "silent_collect_fields": [
     {
-      "id": "SH_ma200_bias_pct",
-      "db": "index_daily TWII",
-      "compute_zh": "(close/ma200-1)*100；ma200=近200根收盤均（庫無現成欄則當日算）",
-      "why_useful_zh": "他公開講過 30%／3σ 正乖離極端語境；可對質『極端警示日之後 N 日回撤／再漲』，不是買訊",
-      "gate": "independent_days_n>=20 vs track baseline",
-      "maps_prior": "P1_ma200_bias_30pct_3sigma"
+      "id": "SH_liq_extract_day",
+      "db": "market_inst_lots_daily + ETF/權值成交",
+      "compute_zh": "外資+投信賣超金額中，台積+0050+權值前5佔比；旗標＝佔比過閾的提款日",
+      "why_useful_zh": "對齊口播『套取流動性』；對質提款日後 N 日 TWII／櫃買路徑，非進出場",
+      "gate": "independent_days_n>=20 vs non-extract baseline",
+      "oral_anchor": "3.2兆／當日522億／台積一半以上／0050=60%台積"
     },
     {
-      "id": "SH_ma10_reclaim",
-      "db": "index_daily TWII",
-      "compute_zh": "close>ma10 且前一日 close<=ma10（站上十日線事件）",
-      "why_useful_zh": "節目生態常見『十日線＝多空分水嶺』語；若他當日親口確認再升級 hard_rule，否則只當候選代理",
-      "gate": "n>=20；須口播確認才准升硬規則",
-      "status": "candidate_pending_oral_confirm"
+      "id": "SH_otc_ma_bias_stack",
+      "db": "index_daily OTC/櫃買（或對應櫃買指數列）",
+      "compute_zh": "(close/maX-1)*100 for ma5/10/20/60/120/200；另算距3y/5y/10y",
+      "why_useful_zh": "對齊當日乖離表（年線-26.6%、距五年線4%）；極端事件後路徑統計",
+      "gate": "n>=20；只統計，不推話筒",
+      "oral_anchor": "ma5=-11.2 ma10=-16.6 ma20=-22 ma60=-31.5 ma120=-33.5 year=-26.6"
     },
     {
-      "id": "SH_foreign_sell_streak",
-      "db": "market_inst_bfi_daily",
-      "compute_zh": "外資賣超連續交易日數＋當日賣超金額",
-      "why_useful_zh": "本日主題『外資賣出台韓』；可對質外資連賣日數與 TWII 後續報酬，仍非進出場訊號",
-      "gate": "n>=20 vs no-streak baseline"
+      "id": "SH_otc_vs_twii_ath_diverge",
+      "db": "index_daily TWII + OTC",
+      "compute_zh": "TWII 創 rolling ATH 當日 OTC 是否同步 ATH；confirm_fail=1 若否",
+      "why_useful_zh": "對齊10/6加權新高／櫃買434.3未創新高；確認失敗序",
+      "gate": "n>=20 independent ATH events",
+      "oral_anchor": "2026-10-06 TWII ATH vs OTC 434.3 < 459.56"
     },
     {
-      "id": "SH_margin_delever_vs_index",
-      "db": "market_margin_daily + index_daily",
-      "compute_zh": "融資餘額日變化％ vs TWII 日報酬；去槓桿是否領先／落後急跌",
-      "why_useful_zh": "他風險語境常碰融資／壓力測試；用官方融資欄，不准推估成本",
-      "gate": "n>=20；只做對質統計"
+      "id": "SH_sox_otc_peak_sync",
+      "db": "費半日線（已凍美指欄）+ OTC",
+      "compute_zh": "年高日差（日曆日）＋見頂後60/120日峰跌％",
+      "why_useful_zh": "6/22費半與櫃買同頂是否可重複；形態相近語可量化",
+      "gate": "n>=20 completed peak episodes",
+      "oral_anchor": "SOX 14650 @6/22；OTC 459.56 @6/22；Oct SOX~13179"
     },
     {
-      "id": "SH_wick_structure_day",
-      "db": "index_daily TWII",
-      "compute_zh": "上影線比=(high-max(open,close))/(high-low)；下影線比對稱",
-      "why_useful_zh": "對齊『高點有壓、低點有撐』結構語；可量化長上／長下影日後續路徑",
-      "gate": "n>=20",
-      "maps_prior": "P2_high_press_low_support_structure"
+      "id": "SH_retrace_multiple",
+      "db": "KOSPI/OTC/Gold/TWII 波段高低",
+      "compute_zh": "drop_pts / prior_rally_pts；另記 peak_drop_pct",
+      "why_useful_zh": "口播88%／1.07×／1.57×；跨資產空方回吐強度對質",
+      "gate": "n>=20 completed swings；空波段不算",
+      "oral_anchor": "KOSPI 88% of rally; OTC 1.07x; Gold 1.57x"
+    },
+    {
+      "id": "SH_rebound_cap_15",
+      "db": "index_daily KOSPI（或對照 TWII/OTC 熊段）",
+      "compute_zh": "熊段內任一反彈高點相對前低是否 >15%",
+      "why_useful_zh": "他親口：韓股下跌過程無反彈超過15%",
+      "gate": "n>=20；口播閾值已確認可當 hard_rule 候選代理",
+      "status": "oral_confirmed_threshold",
+      "oral_anchor": "no rebound >15% after June KOSPI high"
     },
     {
       "id": "SH_named_level_hit",
       "db": "index_daily + absorb.levels_json",
-      "compute_zh": "他口播點名指數位 → 官方高／低是否觸及；未收盤不算",
-      "why_useful_zh": "對齊飆大位階對質做法，但分軌記；空位階＝不記",
-      "gate": "只有他確實說過的價才列；n>=20 才談升權"
+      "compute_zh": "親口位（9000／459.56／五年線距離4%…）官方高低是否觸及；未收不當收",
+      "why_useful_zh": "位階對質分軌；空位階不記",
+      "gate": "only orally named levels；n>=20 before weight-up"
+    },
+    {
+      "id": "SH_foreign_sell_streak",
+      "db": "market_inst_bfi_daily",
+      "compute_zh": "外資賣超連續交易日數＋當日賣超金額（兆級YTD上下文另欄）",
+      "why_useful_zh": "主題外資提款；連賣日數 vs 後續報酬仍非進出場",
+      "gate": "n>=20 vs no-streak baseline"
     }
   ],
   "schedule_hooks_proposed": [
@@ -63,7 +99,7 @@
     {
       "id": "softwood_hua_eod_confront",
       "when_zh": "開市日台北 16:40 後（官方加權齊）",
-      "action_zh": "用已存口播位階／準則旗對官方柱；寫對／偏／未走完；不准推話筒",
+      "action_zh": "用已存口播位階／乖離／確認失敗旗對官方柱；寫對／偏／未走完；不准推話筒",
       "align": "AGENTS.md §3／§13"
     }
   ],
@@ -82,8 +118,8 @@
     ]
   },
   "next_variant_seed": {
-    "id": "softwood_hua_criteria_lab_v0_scaffold",
-    "status": "waiting_oral_transcript",
-    "note_zh": "字幕／Podcast 落地後，把 hard_rules 翻成上列 silent_collect_fields 的具體閾值，再開 v1 對質"
+    "id": "softwood_hua_criteria_lab_v1_oral_20261120",
+    "status": "collecting",
+    "note_zh": "口播閾值已入 silent_collect_fields；開始收 n 日，過閘才替換本軌並再生 v2"
   }
 }
