@@ -71,17 +71,30 @@ def build_spirit_masks(
     roll_low = low.rolling(swing_look, min_periods=20).min()
     span = (roll_high - roll_low).replace(0, np.nan)
     near_any = pd.Series(False, index=idx)
-    near_618 = pd.Series(False, index=idx)
-    near_382 = pd.Series(False, index=idx)
+    near_by_ratio: Dict[str, pd.Series] = {
+        "0.382": pd.Series(False, index=idx),
+        "0.5": pd.Series(False, index=idx),
+        "0.618": pd.Series(False, index=idx),
+        "0.786": pd.Series(False, index=idx),
+    }
     for r in RETRACE_RATIOS:
-        # 上升波段回撤買區：高點往下切
+        # 上升波段回撤買區：高點往下切（定義切割率，不另發明）
         lvl = roll_high - span * float(r)
         hit = _near_level(c, lvl, pct=1.5)
         near_any = near_any | hit
-        if abs(r - 0.618) < 1e-9:
-            near_618 = hit
         if abs(r - 0.382) < 1e-9:
-            near_382 = hit
+            near_by_ratio["0.382"] = hit
+        elif abs(r - 0.5) < 1e-9:
+            near_by_ratio["0.5"] = hit
+        elif abs(r - 0.618) < 1e-9:
+            near_by_ratio["0.618"] = hit
+        elif abs(r - 0.786) < 1e-9:
+            near_by_ratio["0.786"] = hit
+
+    near_618 = near_by_ratio["0.618"]
+    near_382 = near_by_ratio["0.382"]
+    near_500 = near_by_ratio["0.5"]
+    near_786 = near_by_ratio["0.786"]
 
     bank = bank or {}
     V = bank.get("hsiao_V", pd.Series(False, index=idx))
@@ -104,6 +117,8 @@ def build_spirit_masks(
         "FIB_near_any": near_any.fillna(False),
         "FIB_near_618": near_618.fillna(False),
         "FIB_near_382": near_382.fillna(False),
+        "FIB_near_500": near_500.fillna(False),
+        "FIB_near_786": near_786.fillna(False),
         # 精神交叉：裸K意圖 × 量價 ×（浪起漲或切割貼近）
         "SPIRIT_core": intent_build_soft & (w3_start | w3_zone | near_618 | near_382),
         "SPIRIT_strict": intent_build & V & (w3_start | near_618),
