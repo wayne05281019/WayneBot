@@ -115,7 +115,8 @@ def test_menu_undervalue_without_ai_button():
 
     assert MENU_LAYOUT_VERSION == "41"
     assert MENU_BTN_UNDERVALUE == "低估名單"
-    assert MENU_ROW2[4] == MENU_BTN_UNDERVALUE
+    # v41：第二排隱藏流水線後，低估在 index 3（波浪／沖區／壓撐／低估／連買…）
+    assert MENU_ROW2[3] == MENU_BTN_UNDERVALUE
     assert MENU_BTN_AI not in MENU_ROW2
     assert MENU_BTN_AI == "AI倉"  # 打字別名仍認
 
