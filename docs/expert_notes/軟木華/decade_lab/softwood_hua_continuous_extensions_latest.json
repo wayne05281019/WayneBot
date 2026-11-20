@@ -1,0 +1,89 @@
+{
+  "as_of_day": "20261120",
+  "track": "softwood_hua",
+  "not_buy_signal": true,
+  "phone_sync": "blocked",
+  "leave_zero_untouched": true,
+  "wave_59_invent_forbidden": true,
+  "why_zh": "先把可量化、可對質的欄位定好；等口播落地後對齊他的 hard rules，默默收 n 天，過閘才談替換本軌編碼",
+  "silent_collect_fields": [
+    {
+      "id": "SH_ma200_bias_pct",
+      "db": "index_daily TWII",
+      "compute_zh": "(close/ma200-1)*100；ma200=近200根收盤均（庫無現成欄則當日算）",
+      "why_useful_zh": "他公開講過 30%／3σ 正乖離極端語境；可對質『極端警示日之後 N 日回撤／再漲』，不是買訊",
+      "gate": "independent_days_n>=20 vs track baseline",
+      "maps_prior": "P1_ma200_bias_30pct_3sigma"
+    },
+    {
+      "id": "SH_ma10_reclaim",
+      "db": "index_daily TWII",
+      "compute_zh": "close>ma10 且前一日 close<=ma10（站上十日線事件）",
+      "why_useful_zh": "節目生態常見『十日線＝多空分水嶺』語；若他當日親口確認再升級 hard_rule，否則只當候選代理",
+      "gate": "n>=20；須口播確認才准升硬規則",
+      "status": "candidate_pending_oral_confirm"
+    },
+    {
+      "id": "SH_foreign_sell_streak",
+      "db": "market_inst_bfi_daily",
+      "compute_zh": "外資賣超連續交易日數＋當日賣超金額",
+      "why_useful_zh": "本日主題『外資賣出台韓』；可對質外資連賣日數與 TWII 後續報酬，仍非進出場訊號",
+      "gate": "n>=20 vs no-streak baseline"
+    },
+    {
+      "id": "SH_margin_delever_vs_index",
+      "db": "market_margin_daily + index_daily",
+      "compute_zh": "融資餘額日變化％ vs TWII 日報酬；去槓桿是否領先／落後急跌",
+      "why_useful_zh": "他風險語境常碰融資／壓力測試；用官方融資欄，不准推估成本",
+      "gate": "n>=20；只做對質統計"
+    },
+    {
+      "id": "SH_wick_structure_day",
+      "db": "index_daily TWII",
+      "compute_zh": "上影線比=(high-max(open,close))/(high-low)；下影線比對稱",
+      "why_useful_zh": "對齊『高點有壓、低點有撐』結構語；可量化長上／長下影日後續路徑",
+      "gate": "n>=20",
+      "maps_prior": "P2_high_press_low_support_structure"
+    },
+    {
+      "id": "SH_named_level_hit",
+      "db": "index_daily + absorb.levels_json",
+      "compute_zh": "他口播點名指數位 → 官方高／低是否觸及；未收盤不算",
+      "why_useful_zh": "對齊飆大位階對質做法，但分軌記；空位階＝不記",
+      "gate": "只有他確實說過的價才列；n>=20 才談升權"
+    }
+  ],
+  "schedule_hooks_proposed": [
+    {
+      "id": "softwood_hua_podcast_poll",
+      "when_zh": "開市日台北 20:00／22:30／翌日 01:00",
+      "action_zh": "查 Firstory/iTunes 是否出現當日《財經一路發》→ 有則拉 MP3＋whisper → 寫 absorb",
+      "skip_if": "休市日；或當日 absorb 已有 transcript_status=ok"
+    },
+    {
+      "id": "softwood_hua_eod_confront",
+      "when_zh": "開市日台北 16:40 後（官方加權齊）",
+      "action_zh": "用已存口播位階／準則旗對官方柱；寫對／偏／未走完；不准推話筒",
+      "align": "AGENTS.md §3／§13"
+    }
+  ],
+  "confrontation_gate": {
+    "n_min_independent_trade_days": 20,
+    "empty_list_counts_as_zero": true,
+    "mix_winrate_with_biaoke_or_leave_zero": false,
+    "promote_requires": "beats_this_track_baseline AND oral_evidence_present",
+    "on_promote": "replace_track_code_and_spawn_next_variant",
+    "never": [
+      "change_leave_zero",
+      "change_golden_buy",
+      "invent_stock_wave_59",
+      "phone_sync_unverified_teach",
+      "fake_cost_fields"
+    ]
+  },
+  "next_variant_seed": {
+    "id": "softwood_hua_criteria_lab_v0_scaffold",
+    "status": "waiting_oral_transcript",
+    "note_zh": "字幕／Podcast 落地後，把 hard_rules 翻成上列 silent_collect_fields 的具體閾值，再開 v1 對質"
+  }
+}

@@ -1,0 +1,122 @@
+{
+  "as_of": "2026-11-20T23:00:00+08:00",
+  "as_of_day": "20261120",
+  "tz": "Asia/Taipei",
+  "track": "softwood_hua",
+  "expert_zh": "軟木華",
+  "expert_en": "Softwood Hua",
+  "legal_name_zh": "阮慕驊",
+  "aliases_zh": ["軟木華", "阮大哥", "慕驊哥"],
+  "identity_lock_zh": "軟木華＝阮慕驊（網友戲稱）；本檔專收他《財經一路發》2026-11-20 當日 live，不准混黃培碩／recovery funnel／飆大",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "not_buy_signal": true,
+  "certainty": false,
+  "segment_numbers": "FORBIDDEN_for_stocks",
+  "workflow_lock_zh": "口播有證據才寫準則；沒字幕／沒音檔＝空 criteria；推論只進 continuous_extensions 候選欄，不准當買訊、不准改 leave_zero",
+  "source": {
+    "kind": "youtube_live",
+    "show_zh": "財經一路發",
+    "channel_zh": "九八新聞台",
+    "video_id": "v1bqKlXNVIo",
+    "url": "https://www.youtube.com/live/v1bqKlXNVIo?si=HiPiEUl6gbLq9dVq",
+    "oembed_title_zh": "'26.11.20【財經一路發】外資賣出「台韓」，股市終究華爾街做主？",
+    "host_zh": "阮慕驊",
+    "guest_zh": null,
+    "guest_note_zh": "公開描述僅列主持人；是否有來賓待字幕／Podcast 落地後再標，不准猜",
+    "approx_duration_sec": 1350,
+    "description_excerpt_zh": "主持人：阮慕驊；主題：外資賣出「台韓」，股市終究華爾街做主？；本集播出日期：2026.11.20",
+    "podcast_mirror": {
+      "firstory_user": "98-money168",
+      "apple_podcast_id": 1531106786,
+      "episode_20261120": null,
+      "status": "not_published_yet_at_ingest"
+    }
+  },
+  "ingest": {
+    "transcript": "",
+    "transcript_status": "blocked_cloud_ip_bot_check",
+    "captions_status": "unavailable_or_blocked",
+    "whisper_status": "skipped_no_audio",
+    "cookies_path_tried": "/tmp/huang_yt_cookies.txt",
+    "cookies_present": true,
+    "yt_dlp_version": "2026.10.26",
+    "playability_status": "LOGIN_REQUIRED",
+    "playability_reason_zh": "登入帳戶以確認你不是機器人",
+    "attempts": [
+      "yt-dlp --cookies (full + youtube-only) + node js-runtime → bot check",
+      "innertube WEB/ANDROID/IOS/TVHTML5 + SAPISIDHASH → LOGIN_REQUIRED",
+      "youtube_transcript_api → RequestBlocked (cloud IP)",
+      "timedtext API → empty 200",
+      "youtubetranscript.com → Transcript unavailable",
+      "Piped/Invidious mirrors → 403/522/SSL fail",
+      "iTunes/Firstory lookup → no 2026.11.20 episode yet (latest 2026.11.19)"
+    ],
+    "artifact_dir": "/opt/cursor/artifacts/softwood_hua_1120/",
+    "do_not_invent_quotes": true
+  },
+  "today_teach_methods": [],
+  "criteria_today": {
+    "hard_rules": [],
+    "soft_opinions": [],
+    "examples": [],
+    "note_zh": "當日口播／字幕未取得 → 準則列表刻意留空。不准用標題或新聞綜述冒充他今天說過的話。"
+  },
+  "title_topic_only_zh": [
+    "節目標題鎖定主題：外資賣出「台韓」",
+    "節目標題提問：股市終究是否由華爾街做主",
+    "以上僅標題語意，不是口播準則、不是進出場規則"
+  ],
+  "prior_public_corpus_not_today": [
+    {
+      "id": "P1_ma200_bias_30pct_3sigma",
+      "kind": "hard_rule_candidate",
+      "he_said_context_zh": "公開媒體／FB 引述（約 2026-01）：加權距 200 日均線正乖離約 30%≈2.5–3σ；再噴可能進 0.3% 極端值區",
+      "source_note_zh": "新聞引述阮慕驊，不是 20261120 live 字幕",
+      "ohlc_fields": ["TWII.close", "TWII.ma200_computed"],
+      "quant_proxy_zh": "bias_ma200_pct = (close/ma200 - 1)*100；旗標 bias>=30 或 z_vs_hist>=3",
+      "not_buy_signal": true,
+      "not_from_today_live": true
+    },
+    {
+      "id": "P2_high_press_low_support_structure",
+      "kind": "soft_opinion_structure",
+      "he_said_context_zh": "FB 公開語意：高點有壓、低點有撐的糾結格局",
+      "ohlc_fields": ["TWII.high", "TWII.low", "TWII.close", "upper_wick", "lower_wick"],
+      "not_buy_signal": true,
+      "not_from_today_live": true
+    },
+    {
+      "id": "P3_delever_on_extreme_not_bottom_call",
+      "kind": "risk_timing_soft",
+      "he_said_context_zh": "市場口碑／報導：極端波動時強調減碼／壓力測試語境（PTT 戲稱軟木華常與此連動）；細節以他當日原文為準",
+      "ohlc_fields": ["TWII.pct_change", "market_margin_daily", "market_inst_bfi_daily"],
+      "not_buy_signal": true,
+      "not_from_today_live": true,
+      "caution_zh": "未取得當日原文前，不准把減碼比例或點位寫成硬規則"
+    }
+  ],
+  "market_context_official_not_his_words": {
+    "note_zh": "官方／媒體盤勢脈絡，方便之後對質；不是他口播",
+    "twii_db_latest_seen": {
+      "date": "20261119",
+      "close": 38426.89,
+      "pct_change": -4.4,
+      "source": "data/wayne_market.db index_daily TWII"
+    },
+    "news_20261120_close_reported": {
+      "close": 36033.29,
+      "pct_change": -6.23,
+      "foreign_sell_yi": 94.13,
+      "source_zh": "經濟日報／證交所統計報導（非口播）"
+    }
+  },
+  "continuous_extensions_ref": "softwood_hua_continuous_extensions_20261120.json",
+  "method_ref": "softwood_hua_method_20261120.md",
+  "next_actions_zh": [
+    "Podcast／Firstory 出現 2026.11.20 音檔 → scripts/softwood_hua_ingest_day.py 拉 MP3＋whisper → 回填 transcript／criteria",
+    "使用者更新可用 YouTube cookies（非雲端 IP）→ 重跑字幕",
+    "有逐字準則後才開 silent collect；n≥20 且贏本軌基線才談替換（仍不准改 leave_zero）"
+  ],
+  "points_to": "softwood_hua_oral_absorb_20261120.json"
+}
