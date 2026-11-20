@@ -71,10 +71,10 @@
   "current_window": {
     "as_of_day": "20261120",
     "preferred_align_zh": "官方柱仍先對 37837／41800～42700 帶；名稱對照可並讀，不准合成一套浪號",
-    "huang_1120_oral_zh": "黃口播鎖：大盤不是下降趨勢＝打第二隻腳；片 G9uSEfcljWQ（三段式 vs 五段式／台積電強於大盤）",
+    "huang_1120_oral_zh": "黃口播鎖：不是下降趨勢＝打第二隻腳；目前變成大盤五段式；片 G9uSEfcljWQ",
     "biaoke_recent_zh": "飆大 11/16：41800～42700＝波浪4帶；否決第二腳／38000",
-    "view_diff_zh": "黃主張第二隻腳／非下降趨勢；飆大近窗否決第二腳——對照用，不准混勝率、不准改話筒價",
-    "not_zh": "非買訊；phone_sync blocked；不准因名稱對齊就升第五腳；Drive 1120＝1uMrzOIM-w5fNfXR6gqzyamZNP52eBMPY"
+    "view_diff_zh": "黃＝第二隻腳＋大盤五段式／非下降趨勢；飆大近窗否決第二腳——對照用，不准混勝率、不准改話筒價、不准發明段號",
+    "not_zh": "非買訊；phone_sync blocked；不准因五段式就畫 ①～⑤ 進話筒；Drive 1120＝1uMrzOIM-w5fNfXR6gqzyamZNP52eBMPY"
   },
   "evidence": [
     {
@@ -98,7 +98,7 @@
     },
     {
       "kind": "huang_oral_lock",
-      "zh": "11/20 使用者鎖：不是下降趨勢＝打第二隻腳；YT G9uSEfcljWQ",
+      "zh": "11/20 使用者鎖：不是下降趨勢＝第二隻腳；目前大盤五段式；YT G9uSEfcljWQ",
       "file": "huang_oral_absorb_20261120.json",
       "status": "user_confirmed"
     },

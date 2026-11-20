@@ -132,10 +132,11 @@ def test_20261120_title_and_oral_teach_tags():
     tags = extract_teach_tags(title)
     assert "three_leg" in tags
     assert "fifth_leg" in tags
-    oral = "大盤為什麼不是下降趨勢？他認為是打第二隻腳。"
+    oral = "大盤為什麼不是下降趨勢？他認為是打第二隻腳。目前變成大盤五段式。"
     oral_tags = extract_teach_tags(oral)
     assert "not_downtrend" in oral_tags
     assert "second_foot" in oral_tags
+    assert "fifth_leg" in oral_tags
     sample = f"""<?xml version="1.0" encoding="UTF-8"?>
 <feed xmlns:yt="http://www.youtube.com/xml/schemas/2015"
  xmlns:media="http://search.yahoo.com/mrss/"
