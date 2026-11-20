@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-11-10T07:02:55+0800",
+  "as_of": "2026-11-10T10:19:01+0800",
   "tz": "Asia/Taipei",
   "track": "market_tw",
   "pot": "wave_teach_aid_deepen",
@@ -10,28 +10,27 @@
   "parent_keep": "wave_decade_replay baseline score_mode",
   "replace": false,
   "gate": {
-    "n_decided": 215,
+    "n_decided": 221,
     "gate_n20": true,
     "score_mode": "phrase_focus",
     "drop_in_for_loose_baseline": false,
     "baseline_hit_rate": 0.393646408839779,
-    "labeled_hit_rate": 0.4186046511627907,
-    "delta_hit_rate": 0.024958,
+    "labeled_hit_rate": 0.4253393665158371,
+    "delta_hit_rate": 0.031693,
     "matched_day": {
-      "n_matched_decided": 215,
-      "labeled_hit": 90,
-      "loose_hit": 91,
-      "labeled_hit_rate": 0.4186046511627907,
-      "loose_hit_rate": 0.4232558139534884,
-      "delta_hit_rate_matched": -0.004651,
+      "n_matched_decided": 221,
+      "labeled_hit": 94,
+      "loose_hit": 92,
+      "labeled_hit_rate": 0.4253393665158371,
+      "loose_hit_rate": 0.416289592760181,
+      "delta_hit_rate_matched": 0.00905,
       "note_zh": "同日對照：headline 高於 loose 全窗若只因放棄難日＝不誠實換閘"
     },
     "min_delta_clear": 0.02,
     "clearly_better": true,
     "matched_clearly_better": false,
     "honest_flags": [
-      "matched_day_not_clearly_better",
-      "headline_selection_bias_vs_matched"
+      "matched_day_not_clearly_better"
     ],
     "gate_flags": [
       "matched_day_not_clearly_better",
@@ -43,20 +42,20 @@
   },
   "labeled_with_his": {
     "rows": 750,
-    "n_decided": 215,
-    "hit": 90,
-    "miss": 125,
-    "hit_rate": 0.4186046511627907,
-    "n_with_named": 439,
-    "n_night_touched": 245
+    "n_decided": 221,
+    "hit": 94,
+    "miss": 127,
+    "hit_rate": 0.4253393665158371,
+    "n_with_named": 441,
+    "n_night_touched": 251
   },
   "matched_day_vs_loose": {
-    "n_matched_decided": 215,
-    "labeled_hit": 90,
-    "loose_hit": 91,
-    "labeled_hit_rate": 0.4186046511627907,
-    "loose_hit_rate": 0.4232558139534884,
-    "delta_hit_rate_matched": -0.004651,
+    "n_matched_decided": 221,
+    "labeled_hit": 94,
+    "loose_hit": 92,
+    "labeled_hit_rate": 0.4253393665158371,
+    "loose_hit_rate": 0.416289592760181,
+    "delta_hit_rate_matched": 0.00905,
     "note_zh": "同日對照：headline 高於 loose 全窗若只因放棄難日＝不誠實換閘"
   },
   "next_long_window_zh": "續收 phrase_focus with_his；另備 phrase_focus_crash 急跌相位＋開市日墊；n≥20 且同日對照贏 loose 才談換（仍非 drop-in）",

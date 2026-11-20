@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-11-10T07:02:55+0800",
+  "as_of": "2026-11-10T10:19:01+0800",
   "tz": "Asia/Taipei",
   "track": "market_tw",
   "pot": "wave_teach_aid_labeled",
@@ -48,31 +48,31 @@
   },
   "labeled_with_his": {
     "rows": 750,
-    "n_decided": 215,
-    "hit": 90,
-    "miss": 125,
-    "hit_rate": 0.4186046511627907,
-    "n_with_named": 439,
-    "n_night_touched": 245
+    "n_decided": 221,
+    "hit": 94,
+    "miss": 127,
+    "hit_rate": 0.4253393665158371,
+    "n_with_named": 441,
+    "n_night_touched": 251
   },
   "labeled_in_timeline_seal": {
     "rows": 20,
-    "n_decided": 11,
-    "hit": 4,
-    "miss": 7,
-    "hit_rate": 0.36363636363636365,
-    "n_with_named": 17,
-    "n_night_touched": 12
+    "n_decided": 17,
+    "hit": 8,
+    "miss": 9,
+    "hit_rate": 0.47058823529411764,
+    "n_with_named": 19,
+    "n_night_touched": 17
   },
   "by_timeline_phase": {
     "candidate": {
       "rows": 3,
-      "n_decided": 2,
+      "n_decided": 3,
       "hit": 0,
-      "miss": 2,
+      "miss": 3,
       "hit_rate": 0.0,
       "n_with_named": 3,
-      "n_night_touched": 1
+      "n_night_touched": 3
     },
     "confirm": {
       "rows": 1,
@@ -81,23 +81,23 @@
       "miss": 1,
       "hit_rate": 0.0,
       "n_with_named": 1,
-      "n_night_touched": 0
+      "n_night_touched": 1
     },
     "crash": {
       "rows": 8,
-      "n_decided": 2,
-      "hit": 1,
-      "miss": 1,
-      "hit_rate": 0.5,
-      "n_with_named": 5,
-      "n_night_touched": 4
+      "n_decided": 6,
+      "hit": 4,
+      "miss": 2,
+      "hit_rate": 0.6666666666666666,
+      "n_with_named": 7,
+      "n_night_touched": 6
     },
     "guidance": {
       "rows": 4,
-      "n_decided": 3,
-      "hit": 2,
+      "n_decided": 4,
+      "hit": 3,
       "miss": 1,
-      "hit_rate": 0.6666666666666666,
+      "hit_rate": 0.75,
       "n_with_named": 4,
       "n_night_touched": 4
     },
@@ -108,7 +108,7 @@
       "miss": 118,
       "hit_rate": 0.4215686274509804,
       "n_with_named": 422,
-      "n_night_touched": 233
+      "n_night_touched": 234
     },
     "warn": {
       "rows": 4,
@@ -138,37 +138,36 @@
     "prior_replace": false
   },
   "matched_day_vs_loose": {
-    "n_matched_decided": 215,
-    "labeled_hit": 90,
-    "loose_hit": 91,
-    "labeled_hit_rate": 0.4186046511627907,
-    "loose_hit_rate": 0.4232558139534884,
-    "delta_hit_rate_matched": -0.004651,
+    "n_matched_decided": 221,
+    "labeled_hit": 94,
+    "loose_hit": 92,
+    "labeled_hit_rate": 0.4253393665158371,
+    "loose_hit_rate": 0.416289592760181,
+    "delta_hit_rate_matched": 0.00905,
     "note_zh": "同日對照：headline 高於 loose 全窗若只因放棄難日＝不誠實換閘"
   },
   "comparison": {
-    "n_decided": 215,
+    "n_decided": 221,
     "gate_n20": true,
     "score_mode": "phrase_focus",
     "drop_in_for_loose_baseline": false,
     "baseline_hit_rate": 0.393646408839779,
-    "labeled_hit_rate": 0.4186046511627907,
-    "delta_hit_rate": 0.024958,
+    "labeled_hit_rate": 0.4253393665158371,
+    "delta_hit_rate": 0.031693,
     "matched_day": {
-      "n_matched_decided": 215,
-      "labeled_hit": 90,
-      "loose_hit": 91,
-      "labeled_hit_rate": 0.4186046511627907,
-      "loose_hit_rate": 0.4232558139534884,
-      "delta_hit_rate_matched": -0.004651,
+      "n_matched_decided": 221,
+      "labeled_hit": 94,
+      "loose_hit": 92,
+      "labeled_hit_rate": 0.4253393665158371,
+      "loose_hit_rate": 0.416289592760181,
+      "delta_hit_rate_matched": 0.00905,
       "note_zh": "同日對照：headline 高於 loose 全窗若只因放棄難日＝不誠實換閘"
     },
     "min_delta_clear": 0.02,
     "clearly_better": true,
     "matched_clearly_better": false,
     "honest_flags": [
-      "matched_day_not_clearly_better",
-      "headline_selection_bias_vs_matched"
+      "matched_day_not_clearly_better"
     ],
     "gate_flags": [
       "matched_day_not_clearly_better",

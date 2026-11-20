@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-11-10T07:04:08+0800",
+  "as_of": "2026-11-10T10:19:03+0800",
   "tz": "Asia/Taipei",
   "track": "market_tw",
   "pot": "wave_long_horizon_collect",
@@ -10,8 +10,8 @@
   "no_invent_wave_5_9": true,
   "gates": {
     "phrase_focus": {
-      "n_decided": 215,
-      "delta_hit_rate_matched": -0.004651,
+      "n_decided": 221,
+      "delta_hit_rate_matched": 0.00905,
       "replace": false,
       "flag": "matched_day_not_clearly_better"
     },
