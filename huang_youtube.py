@@ -45,12 +45,16 @@ HUANG_DRIVE_KNOWN_IDS = {
     "20261118": "11VxUW3rSDVGDdhgY0_nqtBM7drSA9dj-",
     # 使用者 2026-11-19 上傳「1119黃培碩.mp4」
     "20261119": "1CMs7WKU3dVhquVCaQiz2QZIadP29llKV",
+    # 使用者 2026-11-20 上傳「1120黃培碩.mp4」
+    "20261120": "1uMrzOIM-w5fNfXR6gqzyamZNP52eBMPY",
 }
 _ATOM = {"atom": "http://www.w3.org/2005/Atom", "yt": "http://www.youtube.com/xml/schemas/2015", "media": "http://search.yahoo.com/mrss/"}
 
-# 標題教法關鍵（先吸收；口播再補）
+# 標題／口播教法關鍵（先吸收；口播再補）
 _TEACH_PATTERNS = (
     (r"第二[支隻]腳", "second_foot"),
+    # 2026-11-20 使用者鎖：黃口播「大盤不是下降趨勢＝打第二隻腳」
+    (r"不是下降趨勢|非下降趨勢|不是空頭趨勢|不是下跌趨勢", "not_downtrend"),
     (r"第五[波腳段]|[五5]\s*段", "fifth_leg"),
     (r"[三3]\s*段", "three_leg"),
     (r"次級\s*4|次級四", "subwave4"),
