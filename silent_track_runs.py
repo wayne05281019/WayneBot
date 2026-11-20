@@ -52,6 +52,7 @@ TRACK_LABELS: Dict[str, str] = {
     "twii-session": "開盤前當日盤勢",
     "screen-review": "海選復盤對帳",
     "biaoke-postfuse": "飆大盤後彙整（融合後）",
+    "recovery-funnel": "復原路漏斗（融合後／06:45）",
     "narrative-fresh": "飆大／波浪主述新鮮度",
 }
 

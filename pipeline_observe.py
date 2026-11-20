@@ -838,25 +838,61 @@ def build_combo_screen(
 
     base["lists"] = lists
     base["combo"] = True
+    # 復原路漏斗：優先讀已落檔；缺則現場算一輪（按鍵當下對齊現況）
+    try:
+        from recovery_funnel import load_recovery_run, run_recovery_funnel
+
+        desk_day = _ymd(base.get("desk_as_of") or "")
+        recovery = load_recovery_run(path, desk_day) if path else None
+        if not recovery and path and desk_day:
+            recovery = run_recovery_funnel(
+                path, as_of=desk_day, now=now, refresh_punish=False
+            )
+        if recovery:
+            base["recovery"] = recovery
+    except Exception:
+        logger = __import__("logging").getLogger(__name__)
+        logger.exception("綜合篩選復原路漏斗略過")
     return base
 
 
 def format_combo_screen_html(payload: Dict[str, Any]) -> str:
-    """綜合篩選：先列各節點真名單，再附節點對質；非買訊、不准合成總分榜。"""
+    """綜合篩選：復原路兩欄優先，再附各節點真名單／對質；不准合成總分榜。"""
     from html import escape
     from tg_layout import join_dashed, title_line
+
+    # 復原路漏斗兩欄（若有）
+    recovery = payload.get("recovery")
+    if isinstance(recovery, dict) and (
+        recovery.get("buy_ok") is not None or recovery.get("observe") is not None
+    ):
+        try:
+            from recovery_funnel import format_recovery_funnel_html
+
+            head = format_recovery_funnel_html(recovery)
+        except Exception:
+            head = ""
+    else:
+        head = ""
 
     desk = _zh(payload.get("desk_as_of") or "")
     fuse = _zh(payload.get("fuse_as_of") or "")
     today = _zh(payload.get("today") or "")
     summ = payload.get("summary") or {}
     lists = payload.get("lists") or {}
-    blocks: List[str] = [
-        title_line("綜合篩選", desk, "非買訊"),
-        "機構式節點：環境→主題→候選池→進場閘→連買／帳簿",
-        f"日曆 {escape(today)}｜基準 {escape(desk)}｜fuse上限 {escape(fuse)}",
-        f"節點齊 {summ.get('ok_n', 0)}／{summ.get('layer_n', 0)}｜失真 {summ.get('bad_n', 0)}｜問題 {summ.get('issue_n', 0)}",
-    ]
+    blocks: List[str] = []
+    if head:
+        blocks.append(head)
+        blocks.append(title_line("節點分欄", desk, "對質"))
+    else:
+        blocks.append(title_line("綜合篩選", desk, "非買訊"))
+    blocks.extend(
+        [
+            "機構式節點：環境→主題→候選池→進場閘→連買／帳簿",
+            f"日曆 {escape(today)}｜基準 {escape(desk)}｜fuse上限 {escape(fuse)}",
+            f"節點齊 {summ.get('ok_n', 0)}／{summ.get('layer_n', 0)}｜失真 {summ.get('bad_n', 0)}｜問題 {summ.get('issue_n', 0)}",
+        ]
+    )
 
     def _sec(title: str, key: str, *, note: str = "") -> None:
         pack = lists.get(key) or {}
