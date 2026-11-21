@@ -57,6 +57,19 @@ HT_PAD = 4
 HT_BODY_FONT = 28  # 字高／列高 ≈0.84
 HT_NOTE_FONT = 14
 HT_GRID_W = 1
+# 滾動窗：月表左右各 N 列（最新在上）；季表單季 N 季（左新右舊，兩塊各 4）
+HT_MONTHLY_ROWS = 12
+HT_QUARTERLY_COLS = 8  # 需庫內至少 N 季累計列；缺前期成長％／欄位顯示 —
+
+
+def _rolling_monthly(months: Sequence[Dict[str, Any]], n: int = HT_MONTHLY_ROWS):
+    """最新→舊；只取前 n。右欄配對用全量 by_ym，不截斷對照年。"""
+    return list(months or [])[: max(0, int(n))]
+
+
+def _rolling_quarterly(quarters: Sequence[Dict[str, Any]], n: int = HT_QUARTERLY_COLS):
+    """最新→舊；取前 n 季（畫面兩塊×4）。"""
+    return list(quarters or [])[: max(0, int(n))]
 
 
 def _font(size: int, *, bold: bool = True):
@@ -490,7 +503,7 @@ def _load_agm_event(sid: str, db_path: str) -> Dict[str, Any]:
 
 
 def _load_official_dividend(sid: str, db_path: str) -> Dict[str, Any]:
-    """最近一筆官方除息（TWT49U）；啟發式不上。"""
+    """最近一筆官方除息（TWT49U）＋股利分派（t187ap45 盈配／資配）；啟發式不上。"""
     out: Dict[str, Any] = {}
     if not db_path or not os.path.isfile(db_path):
         return out
@@ -511,17 +524,76 @@ def _load_official_dividend(sid: str, db_path: str) -> Dict[str, Any]:
             ).fetchone()
         finally:
             con.close()
-        if not row:
-            return out
-        return {
-            "ex_date": _ymd(row[0]),
-            "kind": str(row[1] or "").strip(),
-            "cash_div": _finite(row[2]),
-            "source": str(row[3] or "").strip(),
-            "updated_at": str(row[4] or "").strip(),
-        }
+        if row:
+            out = {
+                "ex_date": _ymd(row[0]),
+                "kind": str(row[1] or "").strip(),
+                "cash_div": _finite(row[2]),
+                "source": str(row[3] or "").strip(),
+                "updated_at": str(row[4] or "").strip(),
+            }
     except Exception:
-        return out
+        out = {}
+    # 盈配／資配：證交所 t187ap45（元／股）；0 也是真數要顯示
+    try:
+        import requests
+
+        resp = requests.get(
+            "https://openapi.twse.com.tw/v1/opendata/t187ap45_L",
+            headers=_openapi_headers(),
+            timeout=45,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        if isinstance(data, list):
+            for item in data:
+                code = str(item.get("公司代號") or "").strip()
+                if code != sid:
+                    continue
+                earn = _finite(item.get("股東配發-盈餘轉增資配股(元/股)"))
+                cap = _finite(item.get("股東配發-資本公積轉增資配股(元/股)"))
+                cash_earn = _finite(item.get("股東配發-盈餘分配之現金股利(元/股)"))
+                out["stock_div_earn"] = earn  # 盈配
+                out["stock_div_capital"] = cap  # 資配
+                out["div_year"] = str(item.get("股利年度") or "").strip()
+                out["div_allocate_source"] = "t187ap45_L"
+                if out.get("cash_div") is None and cash_earn is not None:
+                    out["cash_div"] = cash_earn
+                break
+    except Exception:
+        pass
+    return out
+
+
+def _load_agm_openapi(sid: str) -> Dict[str, Any]:
+    """股東會地點／日期：t187ap41_L（無開會時刻欄 → 時間只留日）。"""
+    empty: Dict[str, Any] = {}
+    try:
+        import requests
+
+        resp = requests.get(
+            "https://openapi.twse.com.tw/v1/opendata/t187ap41_L",
+            headers=_openapi_headers(),
+            timeout=45,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        if not isinstance(data, list):
+            return empty
+        for item in data:
+            code = str(item.get("公司代號") or "").strip()
+            if code != sid:
+                continue
+            return {
+                "date": _ymd(item.get("開會日期")),
+                "kind": str(item.get("股東常(臨時)會") or "").strip(),
+                "place": str(item.get("開會地點") or "").strip(),
+                "title": str(item.get("開會地點") or "").strip(),
+                "source": "t187ap41_L",
+            }
+    except Exception:
+        return empty
+    return empty
 
 
 def _load_income_parent_ni(sid: str) -> Dict[str, Any]:
@@ -628,7 +700,11 @@ def load_value_fund_pack(stock_id: str, db_path: str = None) -> Dict[str, Any]:
         "single": {},
         "sources": {},
         "note": "",
-        "omit": "應收／存貨週轉、業務比重、長期借款明細、會計年度月：OpenAPI 彙總無欄 → —",
+        "omit": (
+            "應收／存貨週轉／長期借款：OpenAPI／MOPS 一般業彙總無明細 "
+            "（要 XBRL／財報附註）；業務比重：年報營運概況；"
+            "會計年度月／股東會時刻：OpenAPI 無欄 → —"
+        ),
     }
     if not sid or not path or not os.path.isfile(path):
         empty["note"] = "缺庫"
@@ -711,6 +787,16 @@ def load_value_fund_pack(stock_id: str, db_path: str = None) -> Dict[str, Any]:
     income_ni = _load_income_parent_ni(sid)
     dividend = _load_official_dividend(sid, path)
     agm = _load_agm_event(sid, path)
+    agm_o = _load_agm_openapi(sid)
+    if agm_o:
+        # OpenAPI 有開會地點；庫列可補日期。時刻欄官方沒有 → 不上假 09:00
+        if agm_o.get("place"):
+            agm["place"] = agm_o["place"]
+        if agm_o.get("date") and not agm.get("date"):
+            agm["date"] = agm_o["date"]
+        if agm_o.get("kind") and not agm.get("kind"):
+            agm["kind"] = agm_o["kind"]
+        agm["source"] = agm_o.get("source") or agm.get("source") or ""
     roe_pct = (
         _roe_from_pack(
             quarterly, balance, ni_parent=income_ni.get("ni_parent")
@@ -747,6 +833,7 @@ def load_value_fund_pack(stock_id: str, db_path: str = None) -> Dict[str, Any]:
         "quarterly_asof": q_asof,
         "dividend_ex": dividend.get("ex_date") or "",
         "dividend_source": dividend.get("source") or "",
+        "div_allocate_source": dividend.get("div_allocate_source") or "",
         "agm_date": agm.get("date") or "",
         "agm_source": agm.get("source") or "",
         "income_published": str(income_ni.get("published") or ""),
@@ -877,24 +964,23 @@ def render_overview_png(pack: Dict[str, Any], out_path: str) -> str:
     mid_x = W // 2
 
     founded = _roc_ymd(co.get("founded")) or "—"
-    phone = _fmt_phone(co.get("phone")) or ""
+    phone = _fmt_phone(co.get("phone")) or "—"
     fax = _fmt_phone(co.get("fax")) or ""
-    phone_s = "／".join(x for x in (phone, fax) if x) or "—"
     left_co = [
         ("股票名稱", pack.get("name") or "—"),
         ("創立日期", founded),
         ("董事長", co.get("chairman") or "—"),
-        ("電話", phone_s),
+        ("電話", phone),
         ("中文全名", co.get("name_full") or pack.get("name") or "—"),
         ("英文全名", co.get("name_en") or "—"),
         ("公司地址", co.get("address") or "—"),
-        ("業務比重", "—"),  # OpenAPI 無欄
+        ("業務比重", "—"),  # 年報營運概況；OpenAPI 無
     ]
     right_co = [
         ("股票代碼", pack.get("stock_id") or "—"),
-        ("會計年度月份", "—"),  # t187ap03 無欄
+        ("會計年度月份", "—"),  # OpenAPI 無欄；多數曆年＝1月但不准猜
         ("總經理", co.get("gm") or "—"),
-        ("", ""),
+        ("電話", fax or "—"),  # HT：右欄第二支＝傳真
         ("", ""),
         ("", ""),
         ("", ""),
@@ -928,11 +1014,14 @@ def render_overview_png(pack: Dict[str, Any], out_path: str) -> str:
 
     agm_when = "—"
     if agm.get("date"):
+        # OpenAPI／庫皆無開會時刻 → 只顯示日，不上假 09:00
         agm_when = _roc_ymd(agm["date"]) or "—"
-    agm_place = co.get("address") or "—"
-    if agm.get("title") and "號" in str(agm.get("title")):
-        # title 常帶地址；有真地址列優先用公司住址
-        pass
+    agm_place = (
+        agm.get("place")
+        or (agm.get("title") if agm.get("title") and "號" in str(agm.get("title")) else "")
+        or co.get("address")
+        or "—"
+    )
     ex_div = "—"
     if div.get("ex_date"):
         ex_div = _roc_ymd(div["ex_date"]) or "—"
@@ -941,6 +1030,13 @@ def render_overview_png(pack: Dict[str, Any], out_path: str) -> str:
         if _finite(div.get("cash_div")) is not None
         else "—"
     )
+    # 盈配／資配：t187ap45 官方元／股（0 也顯示）
+    earn_div = div.get("stock_div_earn")
+    cap_div = div.get("stock_div_capital")
+    earn_s = (
+        _fmt_m(earn_div, digits=3) if _finite(earn_div) is not None else "—"
+    )
+    cap_s = _fmt_m(cap_div, digits=3) if _finite(cap_div) is not None else "—"
     debt = _finite(bs.get("debt_ratio_pct"))
     roe = _finite(pack.get("roe_pct"))
     book_nav = _finite(bs.get("book_nav")) or _finite(pack.get("book_from_pb"))
@@ -948,10 +1044,10 @@ def render_overview_png(pack: Dict[str, Any], out_path: str) -> str:
     left_bot = [
         ("股東大會地點", agm_place, YELLOW if agm_place != "—" else MUTED),
         ("股東大會時間", agm_when, GREEN if agm_when != "—" else MUTED),
-        ("除權日期", "—", MUTED),  # 最近官方列為息；無權則不上假
+        ("除權日期", "—", MUTED),  # 最近 TWT49U 為息；無權則不上假
         ("除息日期", ex_div, GREEN if ex_div != "—" else MUTED),
-        ("盈配(元)", "—", MUTED),
-        ("資配(元)", "—", MUTED),
+        ("盈配(元)", earn_s, YELLOW if earn_s != "—" else MUTED),
+        ("資配(元)", cap_s, YELLOW if cap_s != "—" else MUTED),
         ("現金股利(元)", cash_div, YELLOW if cash_div != "—" else MUTED),
         (
             "股本(億)",
@@ -1072,8 +1168,7 @@ def render_monthly_png(pack: Dict[str, Any], out_path: str) -> str:
         for m in months
         if str(m.get("yyyymm") or "").isdigit() and len(str(m.get("yyyymm"))) == 6
     }
-    show_n = 12
-    show = months[:show_n]
+    show = _rolling_monthly(months, HT_MONTHLY_ROWS)
 
     mid = W // 2
     table_top = y0 + HT_PAD
@@ -1153,7 +1248,7 @@ def render_monthly_png(pack: Dict[str, Any], out_path: str) -> str:
     yq = table_bot + 4
     _draw_center(draw, W // 2, yq + 8, "季營收 (Q1-Q4 累計)", f_c, WHITE)
     yq += 20
-    qs = list(pack.get("quarterly") or [])[:4]
+    qs = _rolling_quarterly(pack.get("quarterly") or [], 4)
     label_w = HT_LABEL_W
     col_w = HT_COL_W
     q_box_top = yq
@@ -1249,7 +1344,7 @@ def render_quarterly_png(pack: Dict[str, Any], out_path: str) -> str:
     f_c = _font(HT_BODY_FONT)
     f_note = _font(HT_NOTE_FONT)
     single = pack.get("single") or {}
-    qs = list(pack.get("quarterly") or [])[:8]
+    qs = _rolling_quarterly(pack.get("quarterly") or [], HT_QUARTERLY_COLS)
     blocks = [qs[:4], qs[4:8]]
     metrics = [
         ("期別", "season"),
