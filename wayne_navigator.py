@@ -499,6 +499,7 @@ def try_glance_memo(
         fund_fp = stock_fundamentals_fingerprint(dbp, stock_id)
     except Exception:
         fund_fp = ()
+    # 須與 render_first_glance_png 指紋同版；暖路徑預設 slim（dense=False）
     memo_key = (
         "glance",
         str(stock_id or ""),
@@ -507,7 +508,8 @@ def try_glance_memo(
         fund_fp,
         int(GLANCE_PNG_DPI),
         int(LOOKUP_JPEG_QUALITY),
-        "match-card-076-fund-rev2line-v80-qrev-q-eps",
+        "match-card-076-fund-rev2line-v81-glance-slim",
+        "slim",
     )
     return _lookup_render_memo_get(memo_key, save_path) or ""
 

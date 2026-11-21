@@ -82,7 +82,7 @@ def _bot():
         ("k:", "_send_card_to"),
         ("i:", "_send_intro_glance_to"),
         ("e:", "_send_etf_category_pick"),
-        ("f:", "reply_html"),
+        ("f:", "_send_fund_to"),
         ("n:", "_send_industry"),
     ],
 )
@@ -103,6 +103,7 @@ def test_callback_routes_to_expected_handler(prefix, handler_attr):
     bot._run_manual_screening = AsyncMock()
     bot._start_screen_pick = AsyncMock()
     bot._send_etf_category_pick = AsyncMock()
+    bot._send_fund_to = AsyncMock()
     bot._run_trade_bucket = AsyncMock()
     bot._reply_help_topic = AsyncMock()
     bot._remove_watch_clicked = AsyncMock()
@@ -147,7 +148,8 @@ def test_callback_routes_to_expected_handler(prefix, handler_attr):
     elif prefix == "e:":
         bot._send_etf_category_pick.assert_awaited_once()
     elif prefix == "f:":
-        msg.reply_html.assert_awaited()
+        # 價值＝三張圖（reply_photo），不是舊 HTML 長表
+        bot._send_fund_to.assert_awaited_once()
     elif prefix == "n:":
         bot._send_industry.assert_awaited_once()
 

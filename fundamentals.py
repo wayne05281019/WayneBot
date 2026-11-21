@@ -2412,8 +2412,11 @@ def glance_fundamentals_plain(
                     rows.append(("營益率", f"{opm:.1f}%"))
                     rows.append(("淨利率", f"{npm:.1f}%"))
             else:
+                # 與價值・總覽同口徑：毛利率＋營益率＋EPS（長表仍走價值三圖）
                 if float(q.get("gross_margin_pct") or 0) or float(q.get("gross_profit") or 0):
                     rows.append(("毛利率", f"{float(q['gross_margin_pct']):.1f}%"))
+                if rev:
+                    rows.append(("營益率", f"{opm:.1f}%"))
             rows.append(("EPS", f"{float(q['eps']):.2f}"))
         elif emerging and (months or m):
             rows.append(("季毛利／EPS", "觀測站尚未見此檔綜合損益列"))
@@ -2434,7 +2437,7 @@ def glance_fundamentals_plain(
     except Exception:
         pass
     if not dense and not emerging and rows:
-        rows.append(("價值", "點圖下「價值」看總覽／月營收／季報三張"))
+        rows.append(("價值", "點圖下「價值」→點開打橫看三張"))
     if not rows:
         if emerging:
             rows.append(("基本面", "興櫃月營收尚未同步到庫（櫃買 OpenAPI）"))

@@ -61,6 +61,9 @@ def test_slim_keeps_glance_drops_dense_margins(tmp_path):
     assert d_labs.count("7月營收") + sum(1 for x in d_labs if x.endswith("月營收")) >= 4
     assert sum(1 for x in s_labs if x.endswith("月營收")) == 2
     assert "毛利" in d_labs and "營益率" in d_labs and "淨利率" in d_labs
-    assert "毛利" not in s_labs and "營益率" not in s_labs and "淨利率" not in s_labs
-    assert "毛利率" in s_labs and "EPS" in s_labs and "估值" in s_labs
+    # slim 對齊價值總覽：毛利率＋營益率＋EPS；仍無毛利金額／淨利率（長表走價值三圖）
+    assert "毛利" not in s_labs and "淨利率" not in s_labs
+    assert "毛利率" in s_labs and "營益率" in s_labs and "EPS" in s_labs and "估值" in s_labs
     assert "價值" in s_labs and "價值" not in d_labs
+    tip = dict(slim).get("價值") or ""
+    assert "打橫" in tip

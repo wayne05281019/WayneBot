@@ -70,7 +70,8 @@ def test_format_fundamentals_html_uses_yi_not_mom_yoy_pct(tmp_path):
     assert "毛利率" in blob
     assert "營益率" in blob
     labs = [a for a, _b in plain]
-    assert labs.count("毛利") == 1
+    # slim：無毛利金額／淨利率；有毛利率＋營益率＋EPS
+    assert "毛利" not in labs
     assert "毛利率" in labs
     assert "營益率" in labs
     assert "MoM" not in blob
