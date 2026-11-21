@@ -586,15 +586,23 @@ def run_undervalue_scan(
         from undervalue_growth import enrich_growth_row
 
         pe_packs = _load_latest_pe_packs(conn, ymd)
-        pe_map = {
-            sid: float(p["pe"])
-            for sid, p in pe_packs.items()
-            if p.get("pe") is not None
-        }
-        if not pe_map:
+        if not pe_packs:
             empty["note"] = "無官方本益"
             return empty
-        meta = _quote_meta(conn, ymd, pe_map.keys())
+        # 先取 meta（含 market_type），再建「僅新鮮本益」地圖：候選人閘與同鏈中位同一母體
+        meta = _quote_meta(conn, ymd, pe_packs.keys())
+        pe_map: Dict[str, float] = {}
+        for sid, pack in pe_packs.items():
+            if pack.get("pe") is None:
+                continue
+            mkt = str((meta.get(sid) or {}).get("market_type") or "").strip()
+            pe_date = str(pack.get("date") or "")
+            if not _pe_fresh_for_scan(pe_date, ymd, mkt):
+                continue
+            pe_map[sid] = float(pack["pe"])
+        if not pe_map:
+            empty["note"] = "無新鮮官方本益"
+            return empty
         leaders = _leader_ids(path, meta)
         peer_ix = _peer_index(path)
         stars: List[Dict[str, Any]] = []
@@ -607,13 +615,20 @@ def run_undervalue_scan(
                 continue
             if is_hard_excluded(sid):
                 continue
-            mkt = str(meta[sid].get("market_type") or "").strip()
-            pe_date = str((pe_packs.get(sid) or {}).get("date") or "")
-            if not _pe_fresh_for_scan(pe_date, ymd, mkt):
-                continue
+            # pe_map 已只收新鮮本益；同鏈中位也只吃 pe_map（過舊同業不准拉中位）
             # 實質獲利：最新官方累計 EPS＞0；虧損／缺季報不上
             if not _latest_cum_eps_positive(conn, sid):
                 continue
+            # 軟閘：真實近四季 TTM≤0 排除；n<4 不發明 TTM、不因此擋
+            try:
+                from recovery_funnel import _eps_pack
+
+                eps_pack = _eps_pack(path, sid)
+                ttm = eps_pack.get("eps_ttm")
+                if ttm is not None and float(ttm) <= 0.0:
+                    continue
+            except Exception:
+                pass
             # 硬濾：最新月營收 YoY ≥ +15%（無 YoY 不上；不准假成長）
             yoy = meta[sid].get("yoy_pct")
             if yoy is None or float(yoy) < YOY_MIN_PCT:
