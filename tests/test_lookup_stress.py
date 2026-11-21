@@ -55,7 +55,9 @@ def test_four_tier_cards_parallel_under_deadline():
         print(f"card {sid} {dt:.3f}s close={card.get('close')} pct={card.get('gain_pct')}")
     print(f"four_tier_cards_parallel wall={wall:.3f}s serial_sum={serial_sum:.3f}s")
     # 暖後並行應快過串行合計；留 15% 公差給排程抖動。硬頂防死鎖／長卡。
-    assert wall < serial_sum * 0.85 + 0.05, (wall, serial_sum)
+    # 超暖時 serial_sum≈0（頁快取命中），執行緒開銷會讓 wall>serial——改只盯硬頂。
+    if serial_sum >= 0.05:
+        assert wall < serial_sum * 0.85 + 0.05, (wall, serial_sum)
     assert wall < 2.5, f"四檔決策卡並行太慢 {wall:.2f}s"
 
 
