@@ -37,7 +37,9 @@ TPEX_INCOME = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap06_O_ci"
 # 公開資訊觀測站「已公告」月營收彙總（無驗證碼）。OpenAPI 月營收是全市場同一期，
 # 10 號前仍停在上上月時，先公告的公司（例如緯穎 8 月）只出現在這份表。
 # 興櫃月營收：櫃買 OpenAPI t187ap05_R（免驗證碼快照）＋ NAS `/rotc/` 彙總表補歷史（rot／emg 404）。
-# 興櫃季報：無 OpenAPI；免驗證碼走 mopsov `ajax_t163sb04` TYPEK=rotc（一般業多半只申報半年／全年＝季別 02／04）。
+# 上市櫃季報／月營收：OpenAPI 只有最新一期；歷史走 mopsov ajax_t163sb04（sii／otc）
+# ＋ NAS 月營收彙總回補。興櫃季報：無 OpenAPI；ajax_t163sb04 TYPEK=rotc（多半半年／全年）。
+
 # 個股驗證碼頁不抓。
 MOPS_NAS_MONTHLY = "https://mopsov.twse.com.tw/nas/t21/{ex}/t21sc03_{roc}_{month}_{kind}.html"
 MOPS_INCOME_AJAX = "https://mopsov.twse.com.tw/mops/web/ajax_t163sb04"
@@ -631,6 +633,165 @@ def fetch_mops_emerging_income(
     return rows, errors
 
 
+def listed_income_seasons(today_ymd: str = "", *, n: int = 12) -> List[Tuple[int, int]]:
+    """上市櫃綜合損益要回補的（年, 季）。價值三圖窗 8 季＋YoY 需再往前。"""
+    raw = str(today_ymd or "").replace("-", "")[:8]
+    if len(raw) == 8 and raw.isdigit():
+        y, m = int(raw[:4]), int(raw[4:6])
+    else:
+        from datetime import datetime
+
+        now = datetime.now()
+        y, m = now.year, now.month
+    # 粗門檻：Q1≥5、Q2≥8、Q3≥11、Q4 隔年才齊
+    min_month = {1: 5, 2: 8, 3: 11, 4: 13}
+    out: List[Tuple[int, int]] = []
+    for year in range(y, y - 6, -1):
+        for season in (4, 3, 2, 1):
+            if year == y and m < min_month[season]:
+                continue
+            out.append((year, season))
+            if len(out) >= max(1, min(int(n or 1), 16)):
+                return out
+    return out
+
+
+def listed_income_gap_seasons(
+    conn: sqlite3.Connection,
+    seasons: Optional[List[Tuple[int, int]]] = None,
+    *,
+    min_rows_tw: int = 400,
+    min_rows_two: int = 300,
+) -> List[Tuple[int, int]]:
+    """上市／櫃買任一市場筆數不足的季 → 要抓。"""
+    need: List[Tuple[int, int]] = []
+    for year, season in seasons or listed_income_seasons():
+        tw = conn.execute(
+            "SELECT COUNT(*) FROM quarterly_income WHERE market=? AND year=? AND season=?",
+            ("TW", int(year), int(season)),
+        ).fetchone()[0]
+        two = conn.execute(
+            "SELECT COUNT(*) FROM quarterly_income WHERE market=? AND year=? AND season=?",
+            ("TWO", int(year), int(season)),
+        ).fetchone()[0]
+        if int(tw or 0) < int(min_rows_tw) or int(two or 0) < int(min_rows_two):
+            need.append((int(year), int(season)))
+    return need
+
+
+def fetch_mops_listed_income(
+    seasons: Optional[List[Tuple[int, int]]] = None,
+) -> Tuple[List[Dict[str, Any]], List[str]]:
+    """上市／櫃買綜合損益歷史：ajax_t163sb04 TYPEK=sii／otc（OpenAPI 只有最新一期）。"""
+    rows: List[Dict[str, Any]] = []
+    errors: List[str] = []
+    for year, season in seasons or listed_income_seasons():
+        roc_year = year - 1911
+        for typek, market in (("sii", "TW"), ("otc", "TWO")):
+            form = {
+                "encodeURIComponent": "1",
+                "step": "1",
+                "firstin": "1",
+                "off": "1",
+                "isQuery": "Y",
+                "TYPEK": typek,
+                "year": str(roc_year),
+                "season": f"{int(season):02d}",
+            }
+            try:
+                html = _decode_mops_html(_post_form(MOPS_INCOME_AJAX, form))
+                if not html.strip() or "查無資料" in html:
+                    logger.info("MOPS %s 季報 %sQ%s 無資料", market, year, season)
+                    continue
+                parsed = parse_mops_income_html(
+                    html, year=year, season=season, market=market
+                )
+                rows.extend(parsed)
+                logger.info(
+                    "MOPS %s 季報 %sQ%s 解析 %s 筆", market, year, season, len(parsed)
+                )
+            except Exception as e:
+                msg = f"mops income {market} {year}Q{season}: {e}"
+                errors.append(msg)
+                logger.warning(msg)
+            time.sleep(0.45)
+    return rows, errors
+
+
+def mops_listed_monthly_urls(yyyymm: str) -> List[Tuple[str, str]]:
+    """只上市／上櫃 NAS 月營收（不含興櫃）。"""
+    return [(u, m) for u, m in mops_monthly_urls(yyyymm) if m in ("TW", "TWO")]
+
+
+def listed_monthly_gap_months(
+    conn: sqlite3.Connection,
+    latest_yyyymm: str,
+    *,
+    months: int = 14,
+    min_rows_tw: int = 800,
+    min_rows_two: int = 600,
+) -> List[str]:
+    """庫裡上市／櫃買月營收筆數不足的年月（略過本檔期）。"""
+    out: List[str] = []
+    n = max(1, min(int(months or 1), 24))
+    for i in range(1, n):
+        yyyymm = _shift_yyyymm(latest_yyyymm, i)
+        if not yyyymm:
+            continue
+        tw = conn.execute(
+            "SELECT COUNT(*) FROM monthly_revenue WHERE market=? AND yyyymm=?",
+            ("TW", yyyymm),
+        ).fetchone()[0]
+        two = conn.execute(
+            "SELECT COUNT(*) FROM monthly_revenue WHERE market=? AND yyyymm=?",
+            ("TWO", yyyymm),
+        ).fetchone()[0]
+        if int(tw or 0) < int(min_rows_tw) or int(two or 0) < int(min_rows_two):
+            out.append(yyyymm)
+    return out
+
+
+def fetch_mops_listed_monthly_history(
+    latest_yyyymm: str,
+    *,
+    months: int = 14,
+    only_yyyymm: Optional[List[str]] = None,
+) -> Tuple[List[Dict[str, Any]], List[str]]:
+    """上市／櫃買月營收歷史：NAS sii／otc 往回補（OpenAPI 只有最新一期）。"""
+    rows: List[Dict[str, Any]] = []
+    errors: List[str] = []
+    if only_yyyymm is not None:
+        targets = [
+            str(x).replace("-", "")[:6]
+            for x in only_yyyymm
+            if str(x).replace("-", "")[:6].isdigit()
+        ]
+    else:
+        n = max(1, min(int(months or 1), 24))
+        targets = []
+        for i in range(n):
+            yyyymm = _shift_yyyymm(latest_yyyymm, i)
+            if yyyymm:
+                targets.append(yyyymm)
+    for yyyymm in targets:
+        for url, market in mops_listed_monthly_urls(yyyymm):
+            try:
+                html = _decode_mops_html(_get_bytes(url))
+                if not html.strip():
+                    continue
+                parsed = parse_t21sc03_html(html, yyyymm, market)
+                rows.extend(parsed)
+                logger.info(
+                    "MOPS 上市櫃月營收 %s %s 解析 %s 筆", yyyymm, market, len(parsed)
+                )
+            except Exception as e:
+                msg = f"mops listed {yyyymm} {market}: {e}"
+                errors.append(msg)
+                logger.warning(msg)
+            time.sleep(0.35)
+    return rows, errors
+
+
 def parse_monthly_row(item: dict, market: str) -> Optional[Dict[str, Any]]:
     sid = str(item.get("公司代號") or item.get("SecuritiesCompanyCode") or "").strip()
     if not sid:
@@ -827,6 +988,54 @@ def sync_fundamentals(db_path: str = None) -> Dict[str, Any]:
         msg = f"mops EM history: {e}"
         errors.append(msg)
         logger.warning(msg)
+    listed_m_hist_n = 0
+    try:
+        # 上市櫃 OpenAPI 月營收也只有最新一期；NAS sii／otc 往回補 12+ 月。
+        force_ym = [filing_month]
+        prev2 = _shift_yyyymm(filing_month, 1)
+        if prev2:
+            force_ym.append(prev2)
+        gap_lm = listed_monthly_gap_months(conn, filing_month, months=14)
+        refresh_lm = list(dict.fromkeys([*force_ym, *gap_lm]))
+        # 本檔期已在 fetch_mops_monthly_filings；歷史從缺口月補
+        hist_only = [ym for ym in refresh_lm if ym != filing_month]
+        if hist_only:
+            lm_rows, lm_err = fetch_mops_listed_monthly_history(
+                filing_month, only_yyyymm=hist_only
+            )
+            errors.extend(lm_err)
+            if lm_rows:
+                listed_m_hist_n = _upsert_monthly(conn, lm_rows)
+                conn.commit()
+                monthly_rows.extend(lm_rows)
+                logger.info(
+                    "上市櫃月營收 NAS 歷史寫入 %s 筆（%s）",
+                    listed_m_hist_n,
+                    hist_only[:6],
+                )
+    except Exception as e:
+        msg = f"mops listed monthly history: {e}"
+        errors.append(msg)
+        logger.warning(msg)
+    listed_income_n = 0
+    try:
+        gap_lq = listed_income_gap_seasons(conn)
+        if gap_lq:
+            lq_rows, lq_err = fetch_mops_listed_income(gap_lq)
+            errors.extend(lq_err)
+            if lq_rows:
+                listed_income_n = _upsert_income(conn, lq_rows)
+                conn.commit()
+                income_rows.extend(lq_rows)
+                logger.info(
+                    "上市櫃綜合損益 MOPS 寫入 %s 筆（缺口 %s）",
+                    listed_income_n,
+                    gap_lq[:4],
+                )
+    except Exception as e:
+        msg = f"mops listed income: {e}"
+        errors.append(msg)
+        logger.warning(msg)
     em_income_n = 0
     try:
         gap_q = emerging_income_gap_seasons(conn)
@@ -860,6 +1069,8 @@ def sync_fundamentals(db_path: str = None) -> Dict[str, Any]:
         "mops_filing_month": filing_month,
         "mops_rows": mops_n,
         "emerging_monthly_history_rows": em_hist_n,
+        "listed_monthly_history_rows": listed_m_hist_n,
+        "listed_income_rows": listed_income_n,
         "emerging_income_rows": em_income_n,
         "income_rows": i_n,
         "errors": errors,
@@ -870,9 +1081,9 @@ def sync_fundamentals(db_path: str = None) -> Dict[str, Any]:
         "db_income": int(q_max[0] or 0),
         "db_latest_quarter": f"{q_max[1]}Q{q_max[2]}" if q_max[1] else "",
         "note": (
-            "OpenAPI 月營收是全市場同一期快照（含櫃買興櫃 t187ap05_R）；"
-            "已先公告的上市櫃／興櫃另從公開資訊觀測站 NAS（sii／otc／rotc）彙總表補入。"
-            "季報 OpenAPI 僅上市櫃最新一期；興櫃綜合損益走 mopsov ajax_t163sb04 TYPEK=rotc。"
+            "OpenAPI 月營收／季報是全市場最新一期快照；"
+            "歷史月營收從公開資訊觀測站 NAS（sii／otc／rotc）回補；"
+            "歷史季報從 mopsov ajax_t163sb04（sii／otc／rotc）回補。"
         ),
     }
     logger.info("基本面同步完成 %s", stats)
@@ -1039,6 +1250,7 @@ def refresh_announced_monthly(
             logger.warning("查股補月營收 OpenAPI %s 失敗：%s", market, e)
     mops_n = 0
     em_hist_n = 0
+    listed_hist_n = 0
     conn = sqlite3.connect(path)
     try:
         if monthly_rows:
@@ -1068,9 +1280,19 @@ def refresh_announced_monthly(
                 if em_rows:
                     em_hist_n = _upsert_monthly(conn, em_rows)
                     conn.commit()
+            gap_lm = listed_monthly_gap_months(conn, filing, months=14)
+            hist_only = [ym for ym in dict.fromkeys([*force_ym, *gap_lm]) if ym != filing]
+            if hist_only:
+                lm_rows, lm_err = fetch_mops_listed_monthly_history(
+                    filing, only_yyyymm=hist_only
+                )
+                errors.extend(lm_err)
+                if lm_rows:
+                    listed_hist_n = _upsert_monthly(conn, lm_rows)
+                    conn.commit()
         except Exception as e:
-            errors.append(f"mops EM history: {e}")
-            logger.warning("查股補興櫃月營收歷史失敗：%s", e)
+            errors.append(f"mops monthly history: {e}")
+            logger.warning("查股補月營收歷史失敗：%s", e)
     finally:
         conn.close()
     _note_filing_sync(filing, ok=True)
@@ -1081,6 +1303,7 @@ def refresh_announced_monthly(
         "mops_rows": mops_n,
         "openapi_rows": len(monthly_rows),
         "emerging_monthly_history_rows": em_hist_n,
+        "listed_monthly_history_rows": listed_hist_n,
         "errors": errors,
         "coverage": cover,
         "reason": reason or "",
@@ -1120,12 +1343,24 @@ def refresh_announced_income(
             errors.append(f"{market}/income: {e}")
             logger.warning("查股補季報 OpenAPI %s 失敗：%s", market, e)
     em_n = 0
+    listed_n = 0
     i_n = 0
     conn = sqlite3.connect(path)
     try:
         if income_rows:
             i_n = _upsert_income(conn, income_rows)
             conn.commit()
+        try:
+            gap_lq = listed_income_gap_seasons(conn)
+            if gap_lq:
+                lq_rows, lq_err = fetch_mops_listed_income(gap_lq)
+                errors.extend(lq_err)
+                if lq_rows:
+                    listed_n = _upsert_income(conn, lq_rows)
+                    conn.commit()
+        except Exception as e:
+            errors.append(f"mops listed income: {e}")
+            logger.warning("查股補上市櫃季報歷史失敗：%s", e)
         try:
             gap_q = emerging_income_gap_seasons(conn)
             if gap_q:
@@ -1144,6 +1379,7 @@ def refresh_announced_income(
     stats = {
         "ok": True,
         "income_rows": i_n,
+        "listed_income_rows": listed_n,
         "emerging_income_rows": em_n,
         "errors": errors,
         "reason": reason or "",
