@@ -314,6 +314,13 @@ def format_line_stock_block(
     plan_fn = plan_fn or _safety_plan_plain
 
     item = hydrate_line_share_item(item, db_path)
+    if db_path and not str(item.get("fund_side_note") or "").strip():
+        try:
+            from screen_fund_annotate import hydrate_items_fund_side
+
+            hydrate_items_fund_side([item], str(db_path))
+        except Exception:
+            pass
     sid = str(item.get("stock_id") or item.get("code") or "")
     sname = str(item.get("stock_name") or item.get("name") or "")
 
@@ -389,6 +396,14 @@ def format_line_stock_block(
     notices = notice_fn(item)
     if notices:
         lines.extend(_kv_lines("標記", "　".join(notices), keep_units=True))
+    try:
+        from screen_fund_annotate import fund_side_note_from_item
+
+        fund_note = fund_side_note_from_item(item)
+    except Exception:
+        fund_note = ""
+    if fund_note:
+        lines.extend(_kv_lines("基本", fund_note, keep_units=True))
     profit_val = _line_profit_value(item)
     if profit_val:
         lines.extend(_kv_lines("獲利", profit_val, keep_units=True))
@@ -478,6 +493,13 @@ def format_line_bucket_body(
     dict_items = [it for it in items if isinstance(it, dict)]
     if not dict_items:
         return ""
+    if db_path:
+        try:
+            from screen_fund_annotate import hydrate_items_fund_side
+
+            hydrate_items_fund_side(dict_items, str(db_path))
+        except Exception:
+            pass
     parts = [line_bucket_header(bucket_key, len(dict_items))]
     for n, it in enumerate(dict_items, start=1):
         if n > 1:
