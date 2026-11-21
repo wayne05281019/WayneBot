@@ -101,7 +101,8 @@ def test_value_panels_render_6416(tmp_path):
     assert pack["ok"] is True
     assert pack["valuation"]["pe"] == 16.86
     assert pack["quarterly"][0]["eps"] == 5.40
-    assert "ROE" in pack["omit"]
+    # 應收／存貨週轉仍無 OpenAPI 明細；負債比／ROE 有資產負債源時另算
+    assert "應收" in pack["omit"] or "週轉" in pack["omit"]
     out = render_value_fund_panels("6416", db, str(tmp_path / "charts"), uid="t")
     assert out["ok"] is True
     assert len(out["paths"]) == 3

@@ -1,7 +1,11 @@
 # -*- coding: utf-8 -*-
 """價值投資三圖：對齊轟天雷「表格式」可讀性（黑底／黃標／青格／紅漲青跌）。
 
-只吃官方庫／OpenAPI 真數。ROE／負債比／應收週轉／存貨週轉無免驗證源 → 顯示 —。
+只吃官方庫／OpenAPI 真數。
+- 負債比／ROE／每股參考淨值 ← OpenAPI 資產負債 t187ap07（由官方合計欄算出）
+- 除息／現金股利 ← 庫內 ex_rights（TWT49U 官方）
+- 股東會 ← company_events（t187ap41）
+- 應收／存貨週轉、業務比重、長期負債權益比（需長期借款明細）→ OpenAPI 彙總無欄，顯示 —
 季報明細圖用「單季」：累計列差分還原（與 expand_ytd_income_eps_to_single 同規則）。
 估值≠買訊；切入仍只認高低卡黃金買點。
 """
@@ -52,20 +56,16 @@ HT_NOTE_FONT = 14
 HT_GRID_W = 1
 
 
-def _font(size: int, *, bold: bool = False):
-    """襯線 CJK＋橫向壓窄＝逼近 HT 瘦高明體感；失敗退回無襯線。"""
+def _font(size: int, *, bold: bool = True):
+    """全部粗體（使用者鎖）；襯線優先＋橫向壓窄逼近 HT 瘦高字。"""
     from PIL import ImageFont
 
     size = int(size)
-    cands = []
-    if bold:
-        cands += [
-            "/usr/share/fonts/opentype/noto/NotoSerifCJK-Bold.ttc",
-            "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
-        ]
-    cands += [
-        "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
+    # 一律優先 Bold；無 Bold 檔才退 Regular
+    cands = [
+        "/usr/share/fonts/opentype/noto/NotoSerifCJK-Bold.ttc",
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
         "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
         "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
@@ -77,7 +77,7 @@ def _font(size: int, *, bold: bool = False):
             continue
     from industry_card import _card_font
 
-    return _card_font(size, bold=bold)
+    return _card_font(size, bold=True)
 
 
 def _text_w(font, text: str) -> int:
@@ -296,23 +296,27 @@ def _expand_cum_field(
     return out
 
 
+def _openapi_headers() -> Dict[str, str]:
+    return {
+        "User-Agent": "Mozilla/5.0",
+        "Accept-Encoding": "gzip, deflate",
+        "Accept": "application/json",
+    }
+
+
 def _load_company_profile(sid: str) -> Dict[str, Any]:
     """證交所 t187ap03／櫃買對應：有抓到才上，失敗回空。"""
     empty: Dict[str, Any] = {}
     try:
         import requests
 
-        headers = {
-            "User-Agent": "Mozilla/5.0",
-            "Accept-Encoding": "gzip, deflate",
-        }
         urls = (
             "https://openapi.twse.com.tw/v1/opendata/t187ap03_L",
             "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O",
         )
         for url in urls:
             try:
-                resp = requests.get(url, headers=headers, timeout=45)
+                resp = requests.get(url, headers=_openapi_headers(), timeout=45)
                 resp.raise_for_status()
                 data = resp.json()
             except Exception:
@@ -336,25 +340,268 @@ def _load_company_profile(sid: str) -> Dict[str, Any]:
                     "name": str(
                         item.get("公司簡稱")
                         or item.get("公司名稱")
+                        or item.get("CompanyAbbreviation")
                         or item.get("CompanyName")
                         or sid
                     ).strip(),
-                    "name_full": str(item.get("公司名稱") or "").strip(),
-                    "name_en": str(
-                        item.get("英文簡稱") or item.get("英文通訊地址") or ""
+                    "name_full": str(
+                        item.get("公司名稱") or item.get("CompanyName") or ""
                     ).strip(),
-                    "chairman": str(item.get("董事長") or "").strip(),
-                    "gm": str(item.get("總經理") or "").strip(),
+                    "name_en": str(
+                        item.get("英文簡稱")
+                        or item.get("英文通訊地址")
+                        or item.get("EnglishAbbreviation")
+                        or ""
+                    ).strip(),
+                    "chairman": str(
+                        item.get("董事長") or item.get("Chairman") or ""
+                    ).strip(),
+                    "gm": str(
+                        item.get("總經理") or item.get("GeneralManager") or ""
+                    ).strip(),
                     "founded": str(item.get("成立日期") or "").strip(),
                     "phone": str(item.get("總機電話") or "").strip(),
-                    "address": str(item.get("住址") or "").strip(),
+                    "fax": str(item.get("傳真機號碼") or "").strip(),
+                    "address": str(
+                        item.get("住址") or item.get("Address") or ""
+                    ).strip(),
                     "capital": capital,
                     "shares": shares,
                     "par": str(item.get("普通股每股面額") or "").strip(),
+                    "published": str(
+                        item.get("出表日期") or item.get("Date") or ""
+                    ).strip(),
+                    "source": "t187ap03",
                 }
     except Exception:
         return empty
     return empty
+
+
+def _load_balance_sheet(sid: str) -> Dict[str, Any]:
+    """OpenAPI 資產負債彙總 t187ap07：負債比／ROE 用官方合計欄；無應收／存貨明細。"""
+    empty: Dict[str, Any] = {}
+    try:
+        import requests
+
+        urls = (
+            "https://openapi.twse.com.tw/v1/opendata/t187ap07_L_ci",
+            "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap07_O_ci",
+        )
+        for url in urls:
+            try:
+                resp = requests.get(url, headers=_openapi_headers(), timeout=45)
+                resp.raise_for_status()
+                data = resp.json()
+            except Exception:
+                continue
+            if not isinstance(data, list):
+                continue
+            for item in data:
+                code = str(
+                    item.get("公司代號")
+                    or item.get("SecuritiesCompanyCode")
+                    or ""
+                ).strip()
+                if code != sid:
+                    continue
+                assets = _finite(item.get("資產總計"))
+                liab = _finite(item.get("負債總計"))
+                equity = _finite(item.get("權益總計"))
+                equity_p = _finite(item.get("歸屬於母公司業主之權益合計"))
+                ncl = _finite(item.get("非流動負債"))
+                book = _finite(item.get("每股參考淨值"))
+                capital_k = _finite(item.get("股本"))  # 千元
+                year = item.get("年度")
+                season = item.get("季別")
+                try:
+                    # 民國年 → 西元
+                    y_i = int(str(year).strip())
+                    if y_i < 1911:
+                        y_i += 1911
+                except (TypeError, ValueError):
+                    y_i = None
+                try:
+                    s_i = int(str(season).strip())
+                except (TypeError, ValueError):
+                    s_i = None
+                debt_pct = None
+                if assets and liab is not None and assets != 0:
+                    debt_pct = liab / assets * 100.0
+                ncl_eq_pct = None
+                if equity and ncl is not None and equity != 0:
+                    ncl_eq_pct = ncl / equity * 100.0
+                return {
+                    "year": y_i,
+                    "season": s_i,
+                    "assets": assets,
+                    "liabilities": liab,
+                    "equity": equity,
+                    "equity_parent": equity_p,
+                    "noncurrent_liab": ncl,
+                    "book_nav": book,
+                    "capital_yi": (capital_k / 1e5) if capital_k is not None else None,
+                    # 股本欄千元 → 億：/1e5
+                    "debt_ratio_pct": debt_pct,
+                    "ncl_equity_pct": ncl_eq_pct,
+                    "published": str(
+                        item.get("出表日期") or item.get("Date") or ""
+                    ).strip(),
+                    "source": "t187ap07",
+                }
+    except Exception:
+        return empty
+    return empty
+
+
+def _load_agm_event(sid: str, db_path: str) -> Dict[str, Any]:
+    """股東會：company_events（t187ap41 等官方）。"""
+    out: Dict[str, Any] = {}
+    if not db_path or not os.path.isfile(db_path):
+        return out
+    try:
+        con = sqlite3.connect(db_path, timeout=15.0)
+        try:
+            row = con.execute(
+                """
+                SELECT event_date, kind, title, source
+                FROM company_events
+                WHERE stock_id=? AND (kind LIKE '%會%' OR title LIKE '%會%')
+                ORDER BY REPLACE(CAST(event_date AS TEXT),'-','') DESC
+                LIMIT 1
+                """,
+                (sid,),
+            ).fetchone()
+        finally:
+            con.close()
+        if not row:
+            return out
+        return {
+            "date": _ymd(row[0]),
+            "kind": str(row[1] or "").strip(),
+            "title": str(row[2] or "").strip(),
+            "source": str(row[3] or "").strip(),
+        }
+    except Exception:
+        return out
+
+
+def _load_official_dividend(sid: str, db_path: str) -> Dict[str, Any]:
+    """最近一筆官方除息（TWT49U）；啟發式不上。"""
+    out: Dict[str, Any] = {}
+    if not db_path or not os.path.isfile(db_path):
+        return out
+    try:
+        con = sqlite3.connect(db_path, timeout=15.0)
+        try:
+            row = con.execute(
+                """
+                SELECT ex_date, kind, right_plus_div, source, updated_at
+                FROM ex_rights
+                WHERE stock_id=?
+                  AND kind IN ('息','權息')
+                  AND IFNULL(source,'') NOT LIKE 'heuristic%'
+                ORDER BY REPLACE(CAST(ex_date AS TEXT),'-','') DESC
+                LIMIT 1
+                """,
+                (sid,),
+            ).fetchone()
+        finally:
+            con.close()
+        if not row:
+            return out
+        return {
+            "ex_date": _ymd(row[0]),
+            "kind": str(row[1] or "").strip(),
+            "cash_div": _finite(row[2]),
+            "source": str(row[3] or "").strip(),
+            "updated_at": str(row[4] or "").strip(),
+        }
+    except Exception:
+        return out
+
+
+def _load_income_parent_ni(sid: str) -> Dict[str, Any]:
+    """OpenAPI 綜合損益：取「淨利歸屬於母公司業主」（ROE 用；≠合計淨利）。"""
+    empty: Dict[str, Any] = {}
+    try:
+        import requests
+
+        urls = (
+            "https://openapi.twse.com.tw/v1/opendata/t187ap06_L_ci",
+            "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap06_O_ci",
+        )
+        for url in urls:
+            try:
+                resp = requests.get(url, headers=_openapi_headers(), timeout=45)
+                resp.raise_for_status()
+                data = resp.json()
+            except Exception:
+                continue
+            if not isinstance(data, list):
+                continue
+            for item in data:
+                code = str(
+                    item.get("公司代號")
+                    or item.get("SecuritiesCompanyCode")
+                    or ""
+                ).strip()
+                if code != sid:
+                    continue
+                ni_p = _finite(
+                    item.get("淨利（淨損）歸屬於母公司業主")
+                    or item.get("淨利(淨損)歸屬於母公司業主")
+                )
+                ni = _finite(item.get("本期淨利（淨損）") or item.get("本期淨利(淨損)"))
+                return {
+                    "ni_parent": ni_p,
+                    "ni_total": ni,
+                    "published": str(
+                        item.get("出表日期") or item.get("Date") or ""
+                    ).strip(),
+                    "source": "t187ap06",
+                }
+    except Exception:
+        return empty
+    return empty
+
+
+def _roe_from_pack(
+    quarterly: Sequence[Dict[str, Any]],
+    bs: Dict[str, Any],
+    *,
+    ni_parent: Optional[float] = None,
+) -> Optional[float]:
+    """ROE＝該季累計「淨利歸母」／「母公司權益」。對齊 HT 總覽（非年化）。"""
+    eq = _finite(bs.get("equity_parent")) or _finite(bs.get("equity"))
+    if eq is None or eq == 0:
+        return None
+    ni = _finite(ni_parent)
+    if ni is None:
+        y, s = bs.get("year"), bs.get("season")
+        for q in quarterly or ():
+            try:
+                if int(q["year"]) == int(y) and int(q["season"]) == int(s):
+                    ni = _finite(q.get("net_income"))
+                    break
+            except (KeyError, TypeError, ValueError):
+                continue
+    if ni is None:
+        return None
+    return ni / eq * 100.0
+
+
+def _stamp_roc_day(raw: Any) -> str:
+    """出表／估值日 → 民國 yy/mm/dd；六碼出表日期也吃。"""
+    s = "".join(ch for ch in str(raw or "") if ch.isdigit())
+    if len(s) == 7:  # 1151121
+        try:
+            return f"{int(s[:3]):03d}/{s[3:5]}/{s[5:7]}"
+        except ValueError:
+            return s
+    if len(s) == 8:
+        return _roc_ymd(s)
+    return str(raw or "").strip()
 
 
 def load_value_fund_pack(stock_id: str, db_path: str = None) -> Dict[str, Any]:
@@ -369,11 +616,16 @@ def load_value_fund_pack(stock_id: str, db_path: str = None) -> Dict[str, Any]:
         "close": None,
         "book_from_pb": None,
         "company": {},
+        "balance": {},
+        "dividend": {},
+        "agm": {},
+        "roe_pct": None,
         "monthly": [],
         "quarterly": [],
         "single": {},
+        "sources": {},
         "note": "",
-        "omit": "ROE／負債比／應收週轉／存貨週轉：官方 OpenAPI 無欄 → —",
+        "omit": "應收／存貨週轉、業務比重、長期借款明細、會計年度月：OpenAPI 彙總無欄 → —",
     }
     if not sid or not path or not os.path.isfile(path):
         empty["note"] = "缺庫"
@@ -408,7 +660,7 @@ def load_value_fund_pack(stock_id: str, db_path: str = None) -> Dict[str, Any]:
             market = str(uni["market_type"] or "").strip()
         val = conn.execute(
             """
-            SELECT date, pe, pb, dividend_yield, source
+            SELECT date, pe, pb, dividend_yield, source, updated_at
             FROM daily_valuation
             WHERE stock_id=?
             ORDER BY REPLACE(CAST(date AS TEXT),'-','') DESC
@@ -452,8 +704,52 @@ def load_value_fund_pack(stock_id: str, db_path: str = None) -> Dict[str, Any]:
     company = _load_company_profile(sid)
     if company.get("name"):
         name = company["name"] or name
+    balance = _load_balance_sheet(sid)
+    income_ni = _load_income_parent_ni(sid)
+    dividend = _load_official_dividend(sid, path)
+    agm = _load_agm_event(sid, path)
+    roe_pct = (
+        _roe_from_pack(
+            quarterly, balance, ni_parent=income_ni.get("ni_parent")
+        )
+        if balance
+        else None
+    )
+    # 每股淨值優先官方資產負債「每股參考淨值」
+    if _finite(balance.get("book_nav")) is not None:
+        book = _finite(balance.get("book_nav"))
 
-    ok = bool(valuation or monthly or quarterly)
+    m_asof = ""
+    if monthly:
+        m_asof = str(monthly[0].get("yyyymm") or "")
+    q_asof = ""
+    if quarterly:
+        try:
+            q_asof = f"{int(quarterly[0]['year'])}Q{int(quarterly[0]['season'])}"
+        except (KeyError, TypeError, ValueError):
+            q_asof = ""
+
+    sources = {
+        "valuation_date": _ymd(valuation.get("date")),
+        "valuation_updated": str(valuation.get("updated_at") or ""),
+        "valuation_source": str(valuation.get("source") or ""),
+        "company_published": str(company.get("published") or ""),
+        "balance_published": str(balance.get("published") or ""),
+        "balance_season": (
+            f"{balance.get('year')}Q{balance.get('season')}"
+            if balance.get("year") and balance.get("season")
+            else ""
+        ),
+        "monthly_asof": m_asof,
+        "quarterly_asof": q_asof,
+        "dividend_ex": dividend.get("ex_date") or "",
+        "dividend_source": dividend.get("source") or "",
+        "agm_date": agm.get("date") or "",
+        "agm_source": agm.get("source") or "",
+        "income_published": str(income_ni.get("published") or ""),
+    }
+
+    ok = bool(valuation or monthly or quarterly or balance)
     return {
         "ok": ok,
         "stock_id": sid,
@@ -465,10 +761,15 @@ def load_value_fund_pack(stock_id: str, db_path: str = None) -> Dict[str, Any]:
             "pb": _finite(valuation.get("pb")),
             "dividend_yield": _finite(valuation.get("dividend_yield")),
             "source": str(valuation.get("source") or ""),
+            "updated_at": str(valuation.get("updated_at") or ""),
         },
         "close": close,
         "book_from_pb": book,
         "company": company,
+        "balance": balance,
+        "dividend": dividend,
+        "agm": agm,
+        "roe_pct": roe_pct,
         "monthly": monthly,
         "quarterly": quarterly,
         "single": {
@@ -478,6 +779,7 @@ def load_value_fund_pack(stock_id: str, db_path: str = None) -> Dict[str, Any]:
             "non_operating": non_single,
             "gross_profit": gp_single,
         },
+        "sources": sources,
         "note": "" if ok else "尚無官方本益／月營收／季報",
         "omit": empty["omit"],
     }
@@ -507,7 +809,7 @@ def _header_bar(
 ) -> int:
     """頂列：對齊 HT 高度；黃品牌＋白公司＋白標題＋白單位＋紅頁碼。"""
     f = _font(16)
-    f_brand = _font(16, bold=True)
+    f_brand = _font(16)
     brand = "WayneBot"
     y = 6
     _draw_left(draw, (8, y), brand, f_brand, YELLOW, anchor="lt")
@@ -560,6 +862,10 @@ def render_overview_png(pack: Dict[str, Any], out_path: str) -> str:
     )
     co = pack.get("company") or {}
     val = pack.get("valuation") or {}
+    bs = pack.get("balance") or {}
+    div = pack.get("dividend") or {}
+    agm = pack.get("agm") or {}
+    src = pack.get("sources") or {}
     q0 = (pack.get("quarterly") or [None])[0]
     f_lab = _font(HT_BODY_FONT)
     f_val = _font(HT_BODY_FONT)
@@ -570,25 +876,26 @@ def render_overview_png(pack: Dict[str, Any], out_path: str) -> str:
     n_co = 8
     box1 = (0, y0 + HT_PAD, W - 1, y0 + HT_PAD + n_co * row_h)
     draw.rectangle(box1, outline=GREEN, width=HT_GRID_W)
-    # 中線
     mid_x = W // 2
     draw.line((mid_x, box1[1], mid_x, box1[3]), fill=GREEN, width=HT_GRID_W)
 
     founded = _roc_ymd(co.get("founded")) or "—"
-    phone = _fmt_phone(co.get("phone")) or "—"
+    phone = _fmt_phone(co.get("phone")) or ""
+    fax = _fmt_phone(co.get("fax")) or ""
+    phone_s = "／".join(x for x in (phone, fax) if x) or "—"
     left_co = [
         ("股票名稱", pack.get("name") or "—"),
         ("創立日期", founded),
         ("董事長", co.get("chairman") or "—"),
-        ("電話", phone),
+        ("電話", phone_s),
         ("中文全名", co.get("name_full") or pack.get("name") or "—"),
         ("英文全名", co.get("name_en") or "—"),
         ("公司地址", co.get("address") or "—"),
-        ("業務比重", "—"),
+        ("業務比重", "—"),  # OpenAPI 無欄
     ]
     right_co = [
         ("股票代碼", pack.get("stock_id") or "—"),
-        ("會計年度月份", "—"),
+        ("會計年度月份", "—"),  # t187ap03 無欄
         ("總經理", co.get("gm") or "—"),
         ("", ""),
         ("", ""),
@@ -611,8 +918,8 @@ def render_overview_png(pack: Dict[str, Any], out_path: str) -> str:
 
     # 底：股東會／股利（左）＋獲利／估值（右）
     y2 = box1[3] + 20
-    capital_yi = None
-    if _finite(co.get("capital")) is not None:
+    capital_yi = _finite(bs.get("capital_yi"))
+    if capital_yi is None and _finite(co.get("capital")) is not None:
         capital_yi = float(co["capital"]) / 1e8
     gm = _finite(q0.get("gross_margin_pct")) if q0 else None
     opm = None
@@ -624,14 +931,33 @@ def render_overview_png(pack: Dict[str, Any], out_path: str) -> str:
     eps0 = _finite(q0.get("eps")) if q0 else None
     season0 = q0.get("season") if q0 else None
 
+    agm_when = "—"
+    if agm.get("date"):
+        agm_when = _roc_ymd(agm["date"]) or "—"
+    agm_place = co.get("address") or "—"
+    if agm.get("title") and "號" in str(agm.get("title")):
+        # title 常帶地址；有真地址列優先用公司住址
+        pass
+    ex_div = "—"
+    if div.get("ex_date"):
+        ex_div = _roc_ymd(div["ex_date"]) or "—"
+    cash_div = (
+        _fmt_m(div.get("cash_div"), digits=3)
+        if _finite(div.get("cash_div")) is not None
+        else "—"
+    )
+    debt = _finite(bs.get("debt_ratio_pct"))
+    roe = _finite(pack.get("roe_pct"))
+    book_nav = _finite(bs.get("book_nav")) or _finite(pack.get("book_from_pb"))
+
     left_bot = [
-        ("股東大會地點", co.get("address") or "—", YELLOW),
-        ("股東大會時間", "—", MUTED),
-        ("除權日期", "—", MUTED),
-        ("除息日期", "—", MUTED),
+        ("股東大會地點", agm_place, YELLOW if agm_place != "—" else MUTED),
+        ("股東大會時間", agm_when, GREEN if agm_when != "—" else MUTED),
+        ("除權日期", "—", MUTED),  # 最近官方列為息；無權則不上假
+        ("除息日期", ex_div, GREEN if ex_div != "—" else MUTED),
         ("盈配(元)", "—", MUTED),
         ("資配(元)", "—", MUTED),
-        ("現金股利(元)", "—", MUTED),
+        ("現金股利(元)", cash_div, YELLOW if cash_div != "—" else MUTED),
         (
             "股本(億)",
             _fmt_m(capital_yi) if capital_yi is not None else "—",
@@ -639,8 +965,8 @@ def render_overview_png(pack: Dict[str, Any], out_path: str) -> str:
         ),
         (
             "每股淨值(元)",
-            _fmt_m(pack.get("book_from_pb"), digits=2),
-            YELLOW,
+            _fmt_m(book_nav, digits=2),
+            YELLOW if book_nav is not None else MUTED,
         ),
     ]
     right_bot = [
@@ -657,9 +983,18 @@ def render_overview_png(pack: Dict[str, Any], out_path: str) -> str:
             YELLOW,
         ),
         ("股價淨值比", _fmt_m(val.get("pb")), YELLOW),
-        ("負債比率", "—", MUTED),
+        (
+            "負債比率",
+            f"{_fmt_pct(debt)}%" if debt is not None else "—",
+            YELLOW if debt is not None else MUTED,
+        ),
+        # OpenAPI 彙總無「長期借款」明細；非流動／權益≠HT「長期負債權益比」→ 不上混名
         ("長期負債權益比", "—", MUTED),
-        ("股東權益報酬率", "—", MUTED),
+        (
+            "股東權益報酬率",
+            f"{_fmt_pct(roe)}%" if roe is not None else "—",
+            YELLOW if roe is not None else MUTED,
+        ),
     ]
     lab_w2 = 140
     for i, (lab, v, col) in enumerate(left_bot):
@@ -684,11 +1019,26 @@ def render_overview_png(pack: Dict[str, Any], out_path: str) -> str:
         )
 
     note = pack.get("omit") or ""
+    # 來源＋更新時戳（台北語意的民國／西元日，標清欄位）
+    stamp_bits = []
+    if src.get("valuation_date"):
+        stamp_bits.append(f"本益日{_stamp_roc_day(src['valuation_date'])}")
+    if src.get("balance_published"):
+        stamp_bits.append(f"資產負債出表{_stamp_roc_day(src['balance_published'])}")
+    if src.get("balance_season"):
+        stamp_bits.append(str(src["balance_season"]))
+    if src.get("monthly_asof"):
+        stamp_bits.append(f"月營收{src['monthly_asof']}")
+    if src.get("quarterly_asof"):
+        stamp_bits.append(f"季報{src['quarterly_asof']}")
+    if src.get("dividend_ex"):
+        stamp_bits.append(f"除息{_stamp_roc_day(src['dividend_ex'])}")
+    stamp_line = "｜".join(stamp_bits) if stamp_bits else "來源時戳待同步"
     _draw_left(draw, (8, h - 28), note, f_small, AMBER, anchor="lt")
     _draw_left(
         draw,
         (8, h - 14),
-        "來源：TWSE/TPEx 官方｜估值≠買訊｜—＝無官方免驗證欄",
+        f"官方TWSE/TPEx｜{stamp_line}｜估值≠買訊",
         f_small,
         MUTED,
         anchor="lt",
@@ -835,14 +1185,13 @@ def render_monthly_png(pack: Dict[str, Any], out_path: str) -> str:
                 txt = f"{_fmt_m(e)}元" if e is not None else "—"
                 _draw_right(draw, cx_r, ty, txt, f_c, YELLOW if txt != "—" else MUTED)
 
-    _draw_left(
-        draw,
-        (8, h - 14),
-        "備註: 本表格因採取百萬元為計算單位, 四捨五入。紅＝正成長、青＝負成長。估值≠買訊",
-        f_note,
-        MUTED,
-        anchor="lt",
-    )
+    src = pack.get("sources") or {}
+    m_asof = src.get("monthly_asof") or ""
+    q_asof = src.get("quarterly_asof") or ""
+    foot = "備註: 百萬元四捨五入。紅＝正成長、青＝負成長。估值≠買訊"
+    if m_asof or q_asof:
+        foot = f"月營收截至{m_asof or '—'}｜季報{q_asof or '—'}｜{foot}"
+    _draw_left(draw, (8, h - 14), foot, f_note, MUTED, anchor="lt")
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
     img.save(out_path, "PNG", optimize=True)
     return out_path
@@ -968,14 +1317,16 @@ def render_quarterly_png(pack: Dict[str, Any], out_path: str) -> str:
     _draw_left(
         draw, (8, h - 28), pack.get("omit") or "", f_note, AMBER, anchor="lt"
     )
-    _draw_left(
-        draw,
-        (8, h - 14),
-        "單季＝累計差分（缺前期不上）｜來源官方綜合損益｜估值≠買訊",
-        f_note,
-        MUTED,
-        anchor="lt",
-    )
+    src = pack.get("sources") or {}
+    q_asof = src.get("quarterly_asof") or ""
+    bs_pub = _stamp_roc_day(src.get("balance_published")) if src.get("balance_published") else ""
+    bits = ["單季＝累計差分（缺前期不上）", "綜合損益官方"]
+    if q_asof:
+        bits.append(f"季報{q_asof}")
+    if bs_pub:
+        bits.append(f"資產負債出表{bs_pub}")
+    bits.append("估值≠買訊")
+    _draw_left(draw, (8, h - 14), "｜".join(bits), f_note, MUTED, anchor="lt")
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
     img.save(out_path, "PNG", optimize=True)
     return out_path
