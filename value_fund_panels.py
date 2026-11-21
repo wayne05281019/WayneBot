@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 """價值投資三圖：對齊轟天雷「表格式」可讀性（黑底／黃標／青格／紅漲青跌）。
 
+格線對齊 HT：只留外框／欄直欄／表頭下橫線；資料列之間不畫橫線；
+總覽上框只綠外框、無內格與中線；下半無框。
+
 只吃官方庫／OpenAPI 真數。
 - 負債比／ROE／每股參考淨值 ← OpenAPI 資產負債 t187ap07（由官方合計欄算出）
 - 除息／現金股利 ← 庫內 ex_rights（TWT49U 官方）
@@ -825,12 +828,7 @@ def _header_bar(
     _draw_left(
         draw, (rx + _text_w(f, unit_s) + gap, y), page_s, f, RED, anchor="lt"
     )
-    # 頂列底細線（HT 表頭分隔）
-    draw.line(
-        (8, HT_HEADER_H - 2, canvas_w - 8, HT_HEADER_H - 2),
-        fill=GRID,
-        width=HT_GRID_W,
-    )
+    # HT 頂列與表格之間無橫線；不另畫
     return HT_HEADER_H
 
 
@@ -872,12 +870,11 @@ def render_overview_png(pack: Dict[str, Any], out_path: str) -> str:
     f_small = _font(HT_NOTE_FONT)
     row_h = HT_ROW_H
 
-    # 上框：公司（綠細框、雙欄）
+    # 上框：公司（HT＝只綠外框，雙欄靠空白對齊，不畫內格／中線）
     n_co = 8
     box1 = (0, y0 + HT_PAD, W - 1, y0 + HT_PAD + n_co * row_h)
     draw.rectangle(box1, outline=GREEN, width=HT_GRID_W)
     mid_x = W // 2
-    draw.line((mid_x, box1[1], mid_x, box1[3]), fill=GREEN, width=HT_GRID_W)
 
     founded = _roc_ymd(co.get("founded")) or "—"
     phone = _fmt_phone(co.get("phone")) or ""
@@ -906,8 +903,6 @@ def render_overview_png(pack: Dict[str, Any], out_path: str) -> str:
     lab_w = 110
     for i, ((lab_l, v_l), (lab_r, v_r)) in enumerate(zip(left_co, right_co)):
         yy = box1[1] + i * row_h
-        if i > 0:
-            draw.line((0, yy, W - 1, yy), fill=GREEN, width=HT_GRID_W)
         ty = _row_mid_y(yy, row_h)
         if lab_l:
             _draw_left(draw, (8, ty), lab_l, f_lab, WHITE)
@@ -1096,11 +1091,15 @@ def render_monthly_png(pack: Dict[str, Any], out_path: str) -> str:
         pct_lab: str,
         rows: Sequence[Tuple[str, Optional[float], Optional[float]]],
     ) -> None:
-        """rows: (年月標籤, 月營收百萬, 比%)."""
+        """rows: (年月標籤, 月營收百萬, 比%)。
+        HT：欄間直欄線＋表頭下橫線；資料列之間不畫橫線（靠列距分開）。
+        """
         x0, y_t, x1, y_b = box
-        draw.rectangle(box, outline=GRID, width=HT_GRID_W)
         c1 = x0 + int((x1 - x0) * 0.28)
         c2 = x0 + int((x1 - x0) * 0.62)
+        # HT：欄直欄＋表頭下橫線；無整框上下橫線、無資料列橫線
+        draw.line((x0, y_t, x0, y_b), fill=GRID, width=HT_GRID_W)
+        draw.line((x1, y_t, x1, y_b), fill=GRID, width=HT_GRID_W)
         draw.line((c1, y_t, c1, y_b), fill=GRID, width=HT_GRID_W)
         draw.line((c2, y_t, c2, y_b), fill=GRID, width=HT_GRID_W)
         head_bot = y_t + row_h
@@ -1113,7 +1112,6 @@ def render_monthly_png(pack: Dict[str, Any], out_path: str) -> str:
             yy = head_bot + i * row_h
             if yy + row_h > y_b:
                 break
-            draw.line((x0, yy, x1, yy), fill=GRID, width=HT_GRID_W)
             ty2 = _row_mid_y(yy, row_h)
             _draw_left(draw, (x0 + 6, ty2), lab, f_c, YELLOW)
             _draw_right(draw, c2 - 8, ty2, _fmt_m(rev_m), f_c, YELLOW)
@@ -1151,7 +1149,7 @@ def render_monthly_png(pack: Dict[str, Any], out_path: str) -> str:
     _paint_table(left_box, pct_lab="上月比%", rows=left_rows)
     _paint_table(right_box, pct_lab="去年比%", rows=right_rows)
 
-    # 底：季營收累計
+    # 底：季營收累計（HT＝外框＋欄直線＋期別表頭下橫線；資料列不畫橫線）
     yq = table_bot + 4
     _draw_center(draw, W // 2, yq + 8, "季營收 (Q1-Q4 累計)", f_c, WHITE)
     yq += 20
@@ -1160,17 +1158,20 @@ def render_monthly_png(pack: Dict[str, Any], out_path: str) -> str:
     col_w = HT_COL_W
     q_box_top = yq
     q_box_bot = yq + q_rows * row_h
-    draw.rectangle((0, q_box_top, W - 1, q_box_bot), outline=GRID, width=HT_GRID_W)
-    xs = [label_w] + [label_w + col_w * (i + 1) for i in range(4)]
+    # HT 底表：欄直欄＋期別下橫線；不畫整框、不畫資料列橫線
+    xs = [0, label_w] + [label_w + col_w * (i + 1) for i in range(4)]
     for x in xs:
-        if x < W - 1:
+        if x <= W - 1:
             draw.line((x, q_box_top, x, q_box_bot), fill=GRID, width=HT_GRID_W)
+    draw.line(
+        (0, q_box_top + row_h, W - 1, q_box_top + row_h),
+        fill=GRID,
+        width=HT_GRID_W,
+    )
 
     row_labs = ["", "營業收入", "營益率", "業外比率", "每股盈餘"]
     for ri, lab in enumerate(row_labs):
         yy = q_box_top + ri * row_h
-        if ri > 0:
-            draw.line((0, yy, W - 1, yy), fill=GRID, width=HT_GRID_W)
         ty = _row_mid_y(yy, row_h)
         if lab:
             _draw_left(draw, (6, ty), lab, f_c, WHITE)
@@ -1317,23 +1318,24 @@ def render_quarterly_png(pack: Dict[str, Any], out_path: str) -> str:
     label_w = HT_LABEL_W
     col_w = HT_COL_W
     row_h = HT_ROW_H
-    # 兩大區塊：上4季＋下4季；區塊間雙細線（HT 實測）
+    # 兩大區塊：上4季＋下4季
+    # HT：每塊＝頂橫線＋期別下橫線＋欄直欄；資料列無橫線；塊間不另疊雙線
     block_h = n_metrics * row_h
     gap_mid = 14
     gw = HT_GRID_W
     for bi, block in enumerate(blocks):
         top = y0 + HT_PAD + bi * (block_h + gap_mid)
         bot = top + block_h
-        draw.rectangle((0, top, W - 1, bot), outline=GRID, width=gw)
-        xs = [label_w] + [label_w + col_w * (i + 1) for i in range(4)]
+        xs = [0, label_w] + [label_w + col_w * (i + 1) for i in range(4)]
         for x in xs:
-            if x >= W - 1:
+            if x > W - 1:
                 continue
             draw.line((x, top, x, bot), fill=GRID, width=gw)
+        draw.line((0, top, W - 1, top), fill=GRID, width=gw)
+        head_bot = top + row_h
+        draw.line((0, head_bot, W - 1, head_bot), fill=GRID, width=gw)
         for mi, (lab, kind) in enumerate(metrics):
             yy = top + mi * row_h
-            if mi > 0:
-                draw.line((0, yy, W - 1, yy), fill=GRID, width=gw)
             ty = _row_mid_y(yy, row_h)
             # HT：左欄標籤白字；數值黃（負成長／負業外＝青）
             _draw_left(draw, (6, ty), lab, f_c, WHITE)
@@ -1343,10 +1345,6 @@ def render_quarterly_png(pack: Dict[str, Any], out_path: str) -> str:
                 text, col = cell(block[ci], kind)
                 cx_r = min(W - 4, label_w + col_w * (ci + 1) - 10)
                 _draw_right(draw, cx_r, ty, text, f_c, col)
-        if bi == 0:
-            y_mid = bot + gap_mid // 2
-            draw.line((0, y_mid - 2, W - 1, y_mid - 2), fill=GRID, width=gw)
-            draw.line((0, y_mid + 2, W - 1, y_mid + 2), fill=GRID, width=gw)
 
     _draw_left(
         draw, (8, h - 28), pack.get("omit") or "", f_note, AMBER, anchor="lt"
