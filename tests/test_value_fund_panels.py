@@ -94,6 +94,14 @@ def test_parse_income_keeps_non_operating():
     assert abs(float(row["eps"]) - 5.40) < 1e-6
 
 
+def test_monthly_right_is_prev_year_not_same_rev():
+    """左＝今年月營收；右＝去年同月營收＋今年 yoy%（不准左右貼同一營收）。"""
+    from value_fund_panels import _prev_year_yyyymm
+
+    assert _prev_year_yyyymm("202610") == "202510"
+    assert _prev_year_yyyymm("202601") == "202501"
+
+
 def test_value_panels_render_6416(tmp_path):
     db = str(tmp_path / "vf.db")
     _seed_value_db(db)

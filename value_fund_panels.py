@@ -1048,8 +1048,15 @@ def render_overview_png(pack: Dict[str, Any], out_path: str) -> str:
     return out_path
 
 
+def _prev_year_yyyymm(yyyymm: str) -> str:
+    s = str(yyyymm or "")
+    if len(s) != 6 or not s.isdigit():
+        return ""
+    return f"{int(s[:4]) - 1}{s[4:]}"
+
+
 def render_monthly_png(pack: Dict[str, Any], out_path: str) -> str:
-    """對齊轟天雷「單月營收」：左 MoM、右 YoY；底季累計；字／格同季報密度。"""
+    """對齊轟天雷「單月營收」：左＝今年（上月比）、右＝去年同月營收＋去年比%；底季累計。"""
     h = H_MONTHLY
     img = Image.new("RGB", (W, h), BG)
     draw = ImageDraw.Draw(img)
@@ -1065,6 +1072,11 @@ def render_monthly_png(pack: Dict[str, Any], out_path: str) -> str:
     f_note = _font(HT_NOTE_FONT)
     row_h = HT_ROW_H
     months = list(pack.get("monthly") or [])
+    by_ym = {
+        str(m.get("yyyymm") or ""): m
+        for m in months
+        if str(m.get("yyyymm") or "").isdigit() and len(str(m.get("yyyymm"))) == 6
+    }
     show_n = 12
     show = months[:show_n]
 
@@ -1078,31 +1090,31 @@ def render_monthly_png(pack: Dict[str, Any], out_path: str) -> str:
     left_box = (0, table_top, mid - 2, table_bot)
     right_box = (mid + 2, table_top, W - 1, table_bot)
 
-    def _paint_side(box, *, pct_lab: str, pct_key: str) -> None:
+    def _paint_table(
+        box,
+        *,
+        pct_lab: str,
+        rows: Sequence[Tuple[str, Optional[float], Optional[float]]],
+    ) -> None:
+        """rows: (年月標籤, 月營收百萬, 比%)."""
         x0, y_t, x1, y_b = box
         draw.rectangle(box, outline=GRID, width=HT_GRID_W)
-        # 三欄：年月｜月營收｜比%
         c1 = x0 + int((x1 - x0) * 0.28)
         c2 = x0 + int((x1 - x0) * 0.62)
         draw.line((c1, y_t, c1, y_b), fill=GRID, width=HT_GRID_W)
         draw.line((c2, y_t, c2, y_b), fill=GRID, width=HT_GRID_W)
-        # 表頭列
         head_bot = y_t + row_h
         draw.line((x0, head_bot, x1, head_bot), fill=GRID, width=HT_GRID_W)
         ty = _row_mid_y(y_t, row_h)
         _draw_left(draw, (x0 + 6, ty), "年月", f_c, WHITE)
         _draw_left(draw, (c1 + 6, ty), "月營收", f_c, WHITE)
         _draw_left(draw, (c2 + 6, ty), pct_lab, f_c, WHITE)
-        for i, m in enumerate(show):
+        for i, (lab, rev_m, pct) in enumerate(rows):
             yy = head_bot + i * row_h
             if yy + row_h > y_b:
                 break
             draw.line((x0, yy, x1, yy), fill=GRID, width=HT_GRID_W)
             ty2 = _row_mid_y(yy, row_h)
-            yyyymm = str(m.get("yyyymm") or "")
-            lab = _month_label(yyyymm, index=i)
-            rev_m = _million_from_k(m.get("revenue"))
-            pct = _finite(m.get(pct_key))
             _draw_left(draw, (x0 + 6, ty2), lab, f_c, YELLOW)
             _draw_right(draw, c2 - 8, ty2, _fmt_m(rev_m), f_c, YELLOW)
             _draw_right(
@@ -1114,8 +1126,30 @@ def render_monthly_png(pack: Dict[str, Any], out_path: str) -> str:
                 _pct_color(pct),
             )
 
-    _paint_side(left_box, pct_lab="上月比%", pct_key="mom_pct")
-    _paint_side(right_box, pct_lab="去年比%", pct_key="yoy_pct")
+    left_rows: List[Tuple[str, Optional[float], Optional[float]]] = []
+    right_rows: List[Tuple[str, Optional[float], Optional[float]]] = []
+    for i, m in enumerate(show):
+        yyyymm = str(m.get("yyyymm") or "")
+        left_rows.append(
+            (
+                _month_label(yyyymm, index=i),
+                _million_from_k(m.get("revenue")),
+                _finite(m.get("mom_pct")),
+            )
+        )
+        # 右欄＝去年同月營收＋今年對去年的年增%（對齊 HT）
+        prev_ym = _prev_year_yyyymm(yyyymm)
+        prev = by_ym.get(prev_ym) or {}
+        right_rows.append(
+            (
+                _month_label(prev_ym, index=i) if prev_ym else "—",
+                _million_from_k(prev.get("revenue")),
+                _finite(m.get("yoy_pct")),
+            )
+        )
+
+    _paint_table(left_box, pct_lab="上月比%", rows=left_rows)
+    _paint_table(right_box, pct_lab="去年比%", rows=right_rows)
 
     # 底：季營收累計
     yq = table_bot + 4
