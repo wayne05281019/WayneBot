@@ -321,16 +321,23 @@ def _openapi_headers() -> Dict[str, str]:
 
 
 def _load_company_profile(sid: str) -> Dict[str, Any]:
-    """證交所 t187ap03／櫃買對應：有抓到才上，失敗回空。"""
+    """上市 t187ap03_L／櫃買 mopsfin_t187ap03_O／興櫃 mopsfin_t187ap03_R。"""
     empty: Dict[str, Any] = {}
     try:
         import requests
 
         urls = (
-            "https://openapi.twse.com.tw/v1/opendata/t187ap03_L",
-            "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O",
+            ("https://openapi.twse.com.tw/v1/opendata/t187ap03_L", "t187ap03_L"),
+            (
+                "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O",
+                "t187ap03_O",
+            ),
+            (
+                "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_R",
+                "t187ap03_R",
+            ),
         )
-        for url in urls:
+        for url, src in urls:
             try:
                 resp = requests.get(url, headers=_openapi_headers(), timeout=45)
                 resp.raise_for_status()
@@ -347,10 +354,15 @@ def _load_company_profile(sid: str) -> Dict[str, Any]:
                 ).strip()
                 if code != sid:
                     continue
-                capital = _finite(item.get("實收資本額") or item.get("實收資本額(元)"))
+                capital = _finite(
+                    item.get("實收資本額")
+                    or item.get("實收資本額(元)")
+                    or item.get("Paidin.Capital.NTDollars")
+                )
                 shares = _finite(
                     item.get("已發行普通股數或TDR原股發行股數")
                     or item.get("已發行普通股數")
+                    or item.get("IssueShares")
                 )
                 return {
                     "name": str(
@@ -365,6 +377,7 @@ def _load_company_profile(sid: str) -> Dict[str, Any]:
                     ).strip(),
                     "name_en": str(
                         item.get("英文簡稱")
+                        or item.get("Symbol")
                         or item.get("英文通訊地址")
                         or item.get("EnglishAbbreviation")
                         or ""
@@ -375,19 +388,31 @@ def _load_company_profile(sid: str) -> Dict[str, Any]:
                     "gm": str(
                         item.get("總經理") or item.get("GeneralManager") or ""
                     ).strip(),
-                    "founded": str(item.get("成立日期") or "").strip(),
-                    "phone": str(item.get("總機電話") or "").strip(),
-                    "fax": str(item.get("傳真機號碼") or "").strip(),
+                    "founded": str(
+                        item.get("成立日期")
+                        or item.get("DateOfIncorporation")
+                        or ""
+                    ).strip(),
+                    "phone": str(
+                        item.get("總機電話") or item.get("Telephone") or ""
+                    ).strip(),
+                    "fax": str(
+                        item.get("傳真機號碼") or item.get("Fax") or ""
+                    ).strip(),
                     "address": str(
                         item.get("住址") or item.get("Address") or ""
                     ).strip(),
                     "capital": capital,
                     "shares": shares,
-                    "par": str(item.get("普通股每股面額") or "").strip(),
+                    "par": str(
+                        item.get("普通股每股面額")
+                        or item.get("ParValueOfCommonStock")
+                        or ""
+                    ).strip(),
                     "published": str(
                         item.get("出表日期") or item.get("Date") or ""
                     ).strip(),
-                    "source": "t187ap03",
+                    "source": src,
                 }
     except Exception:
         return empty
@@ -566,31 +591,35 @@ def _load_official_dividend(sid: str, db_path: str) -> Dict[str, Any]:
 
 
 def _load_agm_openapi(sid: str) -> Dict[str, Any]:
-    """股東會地點／日期：t187ap41_L（無開會時刻欄 → 時間只留日）。"""
+    """股東會地點／日期：上市 t187ap41_L／櫃買 t187ap41_O（無時刻欄）。"""
     empty: Dict[str, Any] = {}
     try:
         import requests
 
-        resp = requests.get(
-            "https://openapi.twse.com.tw/v1/opendata/t187ap41_L",
-            headers=_openapi_headers(),
-            timeout=45,
+        urls = (
+            ("https://openapi.twse.com.tw/v1/opendata/t187ap41_L", "t187ap41_L"),
+            ("https://www.tpex.org.tw/openapi/v1/t187ap41_O", "t187ap41_O"),
         )
-        resp.raise_for_status()
-        data = resp.json()
-        if not isinstance(data, list):
-            return empty
-        for item in data:
-            code = str(item.get("公司代號") or "").strip()
-            if code != sid:
+        for url, src in urls:
+            try:
+                resp = requests.get(url, headers=_openapi_headers(), timeout=45)
+                resp.raise_for_status()
+                data = resp.json()
+            except Exception:
                 continue
-            return {
-                "date": _ymd(item.get("開會日期")),
-                "kind": str(item.get("股東常(臨時)會") or "").strip(),
-                "place": str(item.get("開會地點") or "").strip(),
-                "title": str(item.get("開會地點") or "").strip(),
-                "source": "t187ap41_L",
-            }
+            if not isinstance(data, list):
+                continue
+            for item in data:
+                code = str(item.get("公司代號") or "").strip()
+                if code != sid:
+                    continue
+                return {
+                    "date": _ymd(item.get("開會日期")),
+                    "kind": str(item.get("股東常(臨時)會") or "").strip(),
+                    "place": str(item.get("開會地點") or "").strip(),
+                    "title": str(item.get("開會地點") or "").strip(),
+                    "source": src,
+                }
     except Exception:
         return empty
     return empty
@@ -703,7 +732,8 @@ def load_value_fund_pack(stock_id: str, db_path: str = None) -> Dict[str, Any]:
         "omit": (
             "應收／存貨週轉／長期借款：OpenAPI／MOPS 一般業彙總無明細 "
             "（要 XBRL／財報附註）；業務比重：年報營運概況；"
-            "會計年度月／股東會時刻：OpenAPI 無欄 → —"
+            "會計年度月／股東會時刻：OpenAPI 無欄；"
+            "興櫃無本益／無 t187ap07 資產負債彙總 → —"
         ),
     }
     if not sid or not path or not os.path.isfile(path):
