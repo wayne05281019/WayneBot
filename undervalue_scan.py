@@ -177,28 +177,67 @@ def _median(vals: Sequence[float]) -> Optional[float]:
 
 def _load_latest_pe_map(conn: sqlite3.Connection, as_of: str) -> Dict[str, float]:
     """官方 daily_valuation.pe：每檔 as_of 當日或之前最新一筆；無真數不上。"""
+    packs = _load_latest_pe_packs(conn, as_of)
+    return {sid: float(p["pe"]) for sid, p in packs.items() if p.get("pe") is not None}
+
+
+def _load_latest_pe_packs(
+    conn: sqlite3.Connection, as_of: str
+) -> Dict[str, Dict[str, Any]]:
+    """官方本益包：pe＋date；之後再用市場別做新鮮度閘。"""
     day = _ymd(as_of)
-    out: Dict[str, float] = {}
+    out: Dict[str, Dict[str, Any]] = {}
     if not day:
         return out
     rows = conn.execute(
         """
-        SELECT stock_id, pe FROM daily_valuation
+        SELECT stock_id, pe, date FROM daily_valuation
         WHERE REPLACE(CAST(date AS TEXT),'-','')<=?
           AND pe IS NOT NULL AND pe > 0 AND pe < ?
         ORDER BY date DESC
         """,
         (day, PE_MAX),
     ).fetchall()
-    for sid, pe in rows:
+    for sid, pe, pe_date in rows:
         code = str(sid or "").strip()
         if not code or code in out:
             continue
         v = _finite(pe)
         if v is None or v < PE_MIN:
             continue
-        out[code] = float(v)
+        out[code] = {"pe": float(v), "date": _ymd(pe_date)}
     return out
+
+
+def _pe_fresh_for_scan(pe_date: str, as_of: str, market: str) -> bool:
+    """低估掃描本益必須貼 as_of；過舊不上（對齊復原漏斗，不准用 11/09 本益冒充盤後）。"""
+    try:
+        from recovery_funnel import _pe_fresh_ok
+
+        return bool(_pe_fresh_ok(pe_date, as_of, market))
+    except Exception:
+        # 備援：至少要求同日
+        return _ymd(pe_date) == _ymd(as_of) and len(_ymd(as_of)) == 8
+
+
+def _latest_cum_eps_positive(conn: sqlite3.Connection, sid: str) -> bool:
+    """最新一季官方累計 EPS＞0＝實質獲利；缺列／≤0 不上低估。"""
+    try:
+        row = conn.execute(
+            """
+            SELECT eps FROM quarterly_income
+            WHERE stock_id=?
+            ORDER BY year DESC, season DESC
+            LIMIT 1
+            """,
+            (str(sid).strip(),),
+        ).fetchone()
+    except sqlite3.Error:
+        return False
+    if row is None:
+        return False
+    v = _finite(row[0] if not isinstance(row, sqlite3.Row) else row["eps"])
+    return v is not None and v > 0.0
 
 
 def _own_pe_series(
@@ -546,7 +585,12 @@ def run_undervalue_scan(
     try:
         from undervalue_growth import enrich_growth_row
 
-        pe_map = _load_latest_pe_map(conn, ymd)
+        pe_packs = _load_latest_pe_packs(conn, ymd)
+        pe_map = {
+            sid: float(p["pe"])
+            for sid, p in pe_packs.items()
+            if p.get("pe") is not None
+        }
         if not pe_map:
             empty["note"] = "無官方本益"
             return empty
@@ -562,6 +606,13 @@ def run_undervalue_scan(
             if sid not in meta:
                 continue
             if is_hard_excluded(sid):
+                continue
+            mkt = str(meta[sid].get("market_type") or "").strip()
+            pe_date = str((pe_packs.get(sid) or {}).get("date") or "")
+            if not _pe_fresh_for_scan(pe_date, ymd, mkt):
+                continue
+            # 實質獲利：最新官方累計 EPS＞0；虧損／缺季報不上
+            if not _latest_cum_eps_positive(conn, sid):
                 continue
             # 硬濾：最新月營收 YoY ≥ +15%（無 YoY 不上；不准假成長）
             yoy = meta[sid].get("yoy_pct")

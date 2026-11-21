@@ -1,7 +1,7 @@
 """
 WayneBot Telegram 操作層
 - 兩排主選單（輸入列旁邊四格鍵盤圖示）；直立式不再重複主選單按鈕
-- 打股票代號 → 上市／上櫃／興櫃一律高低溫度卡→結構圖→大量撐壓圖→當天走勢（開→收）；一次一張、好了就送。介紹圖改圖下可點（不自動塞）。點開高畫質。完整圖下鈕（介紹圖／產業／報導／籌碼／營收／高低導航圖／K線／觀察／記買入）只掛最後一張當天走勢；中間張不要重複鍵盤。導航不塞進自動相簿、不送合成三合一
+- 打股票代號 → 上市／上櫃／興櫃一律高低溫度卡→結構圖→大量撐壓圖→當天走勢（開→收）；一次一張、好了就送。介紹圖改圖下可點（不自動塞）。點開高畫質。完整圖下鈕（介紹圖／產業／報導／籌碼／價值／高低導航圖／K線／觀察／記買入）只掛最後一張當天走勢；中間張不要重複鍵盤。導航不塞進自動相簿、不送合成三合一
 - 勝率買點 / 海選 / 當沖 / 隔日沖 / 壓撐觀察 / 剛脫離零 / 洞燭先機 / 持股 / 加入觀察 / 資金 / 連買區
 """
 from __future__ import annotations
@@ -1672,7 +1672,7 @@ class WayneTelegramBot:
         ]
 
     def _pressure_hub_keyboard(self, code: str, *, em: bool = False):
-        """三張之後圖下鈕：介紹／產業／導航／營收／K線自選，不要一次全塞。"""
+        """三張之後圖下鈕：介紹／產業／導航／價值／K線自選，不要一次全塞。"""
         c = str(code or "").strip()[:6]
         k_url = ""
         try:
@@ -1707,9 +1707,9 @@ class WayneTelegramBot:
             from universe import is_etf_asset
 
             if not is_etf_asset(stock_id=c):
-                row2.append(InlineKeyboardButton("營收", callback_data=f"f:{c}"))
+                row2.append(InlineKeyboardButton("價值", callback_data=f"f:{c}"))
         except Exception:
-            row2.append(InlineKeyboardButton("營收", callback_data=f"f:{c}"))
+            row2.append(InlineKeyboardButton("價值", callback_data=f"f:{c}"))
         row2.extend(
             [
                 InlineKeyboardButton(MENU_BTN_WATCH, callback_data=f"w:{c}"),
@@ -2916,7 +2916,7 @@ class WayneTelegramBot:
             top.append(InlineKeyboardButton(news_label[:16], url=news_url))
         listed = [InlineKeyboardButton("籌碼", callback_data=f"h:{c}")]
         if not etf:
-            listed.append(InlineKeyboardButton("營收", callback_data=f"f:{c}"))
+            listed.append(InlineKeyboardButton("價值", callback_data=f"f:{c}"))
         return InlineKeyboardMarkup([top[:3], listed, nav_k[:3], scenario_row, actions])
 
     def _stock_action_row(self, code: str, name: str = "", idx: int = 0):
@@ -9029,7 +9029,7 @@ class WayneTelegramBot:
         hints = {
             "card": "看這檔：請先打代號（例 2330、0050、00631L、00981A）或點觀察清單。上市／上櫃／興櫃一律高低溫度卡、結構圖、大量撐壓圖、當天走勢；介紹圖在圖下可點。",
             "chips": "籌碼：請先選一檔。打名稱或代號，或點下面觀察清單。",
-            "fund": "營收毛利：請先選一檔。打名稱或代號，或點下面觀察清單。",
+            "fund": "價值基本面：請先選一檔。打名稱或代號，或點下面觀察清單。",
             "industry": "產業說明：請先選一檔。會送一張圖卡。同業＝同一產業鏈才比；跨族檔另標他還有的鏈。",
             "buy": "記買入：請先選一檔，或直接打「2330 1 500」（代號 張數 價格）。",
         }
@@ -9157,18 +9157,58 @@ class WayneTelegramBot:
         from fundamentals import format_fundamentals_html
 
         # 按鈕／指令路徑只讀庫，不跑全市場 sync（那會卡死整機；交給盤後流水線）。
+        # 價值三圖＝總覽／月營收／季報；只吃官方欄，不准造假。
         code = str(code or "").strip()
         hits = lookup_stocks(self.db_path, code)
-        if self._hit_is_emerging(code, hits):
+        uid = str(self._uid_from_message(message) or "0")
+        em = self._hit_is_emerging(code, hits)
+        if em:
             await message.reply_html(
                 self._em_no_listed_html(code, hits),
                 reply_markup=self._hub_keyboard(code, em=True),
                 disable_web_page_preview=True,
             )
             return
+        if hits:
+            code = str(hits[0].get("stock_id") or code).strip()
+
+        def _paint():
+            from value_fund_panels import render_value_fund_panels
+
+            return render_value_fund_panels(
+                code, self.db_path, self.charts_dir, uid=uid
+            )
+
+        painted = None
+        try:
+            painted = await asyncio.to_thread(_paint)
+        except Exception:
+            logger.exception("價值三圖失敗 code=%s", code)
+            painted = None
+        paths = list((painted or {}).get("paths") or [])
+        caps = ("價值・總覽", "價值・月營收", "價值・季報")
+        sent = 0
+        for i, pth in enumerate(paths):
+            if not pth or not os.path.isfile(pth):
+                continue
+            try:
+                send_path = self._prepare_lookup_album_photo(pth)
+                with open(send_path, "rb") as f:
+                    await message.reply_photo(
+                        photo=f,
+                        caption=f"{html_escape(code)}　{caps[i] if i < len(caps) else '價值'}",
+                        reply_markup=self._hub_keyboard(code, em=em)
+                        if i == len(paths) - 1
+                        else None,
+                    )
+                sent += 1
+            except Exception:
+                logger.exception("價值圖送出失敗 code=%s i=%s", code, i)
+        if sent:
+            return
         html = await asyncio.to_thread(format_fundamentals_html, code, self.db_path)
         await message.reply_html(
-            html, reply_markup=self._hub_keyboard(code), disable_web_page_preview=True
+            html, reply_markup=self._hub_keyboard(code, em=em), disable_web_page_preview=True
         )
 
     async def industry_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):

@@ -110,6 +110,7 @@ def ensure_fundamentals_tables(db_path: str) -> None:
             gross_profit REAL DEFAULT 0,
             gross_margin_pct REAL DEFAULT 0,
             operating_income REAL DEFAULT 0,
+            non_operating REAL,
             net_income REAL DEFAULT 0,
             eps REAL DEFAULT 0,
             published_roc TEXT DEFAULT '',
@@ -118,6 +119,10 @@ def ensure_fundamentals_tables(db_path: str) -> None:
         );
         """
     )
+    # 舊庫補營業外（官方綜合損益欄）；無真數保持 NULL，不准填 0 假成無業外
+    cols = {str(r[1]) for r in cur.execute("PRAGMA table_info(quarterly_income)")}
+    if "non_operating" not in cols:
+        cur.execute("ALTER TABLE quarterly_income ADD COLUMN non_operating REAL")
     conn.commit()
     conn.close()
 
@@ -526,6 +531,10 @@ def parse_mops_income_html(
                 ):
                     continue
             margin = round(gp / revenue * 100.0, 2) if has_gross and revenue else 0.0
+            non_op_raw = _pick_cell(row, "營業外收入及支出")
+            non_op = _num(non_op_raw) if non_op_raw not in ("", None) else None
+            if non_op_raw in ("", None) or str(non_op_raw).strip() in ("", "-", "--", "－"):
+                non_op = None
             seen.add(sid)
             out.append(
                 {
@@ -539,6 +548,7 @@ def parse_mops_income_html(
                     "gross_profit": gp if has_gross else 0.0,
                     "gross_margin_pct": margin,
                     "operating_income": op,
+                    "non_operating": non_op,
                     "net_income": net,
                     "eps": eps,
                     "published_roc": "",
@@ -657,6 +667,9 @@ def parse_income_row(item: dict, market: str) -> Optional[Dict[str, Any]]:
     revenue = _num(item.get("營業收入"))
     gp = _num(item.get("營業毛利（毛損）淨額") or item.get("營業毛利（毛損）"))
     margin = round(gp / revenue * 100.0, 2) if revenue else 0.0
+    non_raw = item.get("營業外收入及支出")
+    non_s = str(non_raw if non_raw is not None else "").strip()
+    non_operating = None if non_s in ("", "-", "--", "－") else _num(non_raw)
     return {
         "stock_id": sid,
         "year": year,
@@ -668,6 +681,7 @@ def parse_income_row(item: dict, market: str) -> Optional[Dict[str, Any]]:
         "gross_profit": gp,
         "gross_margin_pct": margin,
         "operating_income": _num(item.get("營業利益（損失）")),
+        "non_operating": non_operating,
         "net_income": _num(item.get("本期淨利（淨損）") or item.get("淨利（淨損）歸屬於母公司業主")),
         "eps": _num(item.get("基本每股盈餘（元）")),
         "published_roc": str(item.get("出表日期") or item.get("Date") or "").strip(),
@@ -719,19 +733,22 @@ def _upsert_income(conn: sqlite3.Connection, rows: List[Dict[str, Any]]) -> int:
             """
             INSERT INTO quarterly_income (
                 stock_id, year, season, stock_name, market, revenue, cogs, gross_profit,
-                gross_margin_pct, operating_income, net_income, eps, published_roc, updated_at
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                gross_margin_pct, operating_income, non_operating, net_income, eps,
+                published_roc, updated_at
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(stock_id, year, season) DO UPDATE SET
                 stock_name=excluded.stock_name, market=excluded.market, revenue=excluded.revenue,
                 cogs=excluded.cogs, gross_profit=excluded.gross_profit,
                 gross_margin_pct=excluded.gross_margin_pct, operating_income=excluded.operating_income,
+                non_operating=excluded.non_operating,
                 net_income=excluded.net_income, eps=excluded.eps,
                 published_roc=excluded.published_roc, updated_at=excluded.updated_at;
             """,
             (
                 r["stock_id"], r["year"], r["season"], r["stock_name"], r["market"],
                 r["revenue"], r["cogs"], r["gross_profit"], r["gross_margin_pct"],
-                r["operating_income"], r["net_income"], r["eps"], r["published_roc"], now,
+                r["operating_income"], r.get("non_operating"), r["net_income"], r["eps"],
+                r["published_roc"], now,
             ),
         )
         n += 1
@@ -2293,17 +2310,45 @@ def format_fundamentals_html(stock_id: str, db_path: str = None) -> str:
         if prev and prev.get("gross_margin_pct") is not None:
             diff = q["gross_margin_pct"] - prev["gross_margin_pct"]
             gm_note = f"（較{prev_lab} {diff:+.1f}pt）"
-        blocks.append(
-            section(
-                kv_compact("季報", q_lab),
-                kv_compact("季營收", format_yi(q.get("revenue") or 0)),
-                kv_compact("毛利", format_yi(q.get("gross_profit") or 0)),
-                kv_compact("毛利率", f"{q['gross_margin_pct']:.1f}%{gm_note}"),
-                kv_compact("營益率", f"{(q['operating_income'] / q['revenue'] * 100.0) if q.get('revenue') else 0:.1f}%"),
+        opm = (
+            (q["operating_income"] / q["revenue"] * 100.0) if q.get("revenue") else 0.0
+        )
+        q_bits = [
+            kv_compact("季報", q_lab),
+            kv_compact("季營收", format_yi(q.get("revenue") or 0)),
+            kv_compact("毛利", format_yi(q.get("gross_profit") or 0)),
+            kv_compact("毛利率", f"{q['gross_margin_pct']:.1f}%{gm_note}"),
+            kv_compact("營益率", f"{opm:.1f}%"),
+        ]
+        if q.get("non_operating") is not None:
+            q_bits.append(kv_compact("營業外", format_yi(q.get("non_operating") or 0)))
+        q_bits.extend(
+            [
                 kv_compact("EPS", f"{q['eps']:.2f}"),
                 kv_compact("稅後淨利", format_yi(q.get("net_income") or 0)),
-            )
+            ]
         )
+        blocks.append(section(*q_bits))
+    try:
+        from official_snapshots import latest_valuation
+
+        val = latest_valuation(sid, path) or {}
+        if val.get("pe") is not None or val.get("pb") is not None:
+            vbits = []
+            if val.get("date"):
+                vbits.append(kv_compact("本益資料日", str(val.get("date"))))
+            if val.get("pe") is not None:
+                vbits.append(kv_compact("本益比", f"{float(val['pe']):.2f}"))
+            if val.get("pb") is not None:
+                vbits.append(kv_compact("淨值比", f"{float(val['pb']):.2f}"))
+            if val.get("dividend_yield") is not None:
+                vbits.append(
+                    kv_compact("殖利率", f"{float(val['dividend_yield']):.2f}%")
+                )
+            if vbits:
+                blocks.append(section(*vbits))
+    except Exception:
+        pass
     try:
         from industry_brief import stock_peer_plain_rows
 
