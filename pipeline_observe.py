@@ -597,8 +597,22 @@ def _join_sid_labels(items: Sequence[Dict[str, Any]], *, limit: int = 12) -> str
             str(it.get("name") or ""),
             days=it.get("days"),
         )
-        if lab:
-            labels.append(lab)
+        if not lab:
+            continue
+        try:
+            from screen_fund_annotate import fund_side_paren_from_item
+
+            paren = fund_side_paren_from_item(it)
+        except Exception:
+            paren = ""
+        if paren:
+            # 括註貼代號後、天數前：2330台積電(YoY+25%｜毛45%)·3天
+            if "·" in lab:
+                head, tail = lab.split("·", 1)
+                lab = f"{head}{paren}·{tail}"
+            else:
+                lab = f"{lab}{paren}"
+        labels.append(lab)
     if not labels:
         return "今日無"
     more = len(items) - len(labels)
@@ -838,6 +852,8 @@ def build_combo_screen(
 
     base["lists"] = lists
     base["combo"] = True
+    if path:
+        base["_db_path"] = path
     # 復原路漏斗：優先讀已落檔；缺則現場算一輪（按鍵當下對齊現況）
     try:
         from recovery_funnel import load_recovery_run, run_recovery_funnel
@@ -856,7 +872,11 @@ def build_combo_screen(
     return base
 
 
-def format_combo_screen_html(payload: Dict[str, Any]) -> str:
+def format_combo_screen_html(
+    payload: Dict[str, Any],
+    *,
+    db_path: str = "",
+) -> str:
     """綜合篩選：復原路兩欄優先，再附各節點真名單／對質；不准合成總分榜。"""
     from html import escape
     from tg_layout import join_dashed, title_line
@@ -880,6 +900,20 @@ def format_combo_screen_html(payload: Dict[str, Any]) -> str:
     today = _zh(payload.get("today") or "")
     summ = payload.get("summary") or {}
     lists = payload.get("lists") or {}
+    # 組字時補官方 YoY／毛利括註（只顯示，不改節點名單）
+    fund_db = str(db_path or payload.get("_db_path") or "").strip()
+    if fund_db and isinstance(lists, dict):
+        try:
+            from screen_fund_annotate import hydrate_items_fund_side
+
+            for pack in lists.values():
+                if not isinstance(pack, dict):
+                    continue
+                items = pack.get("items")
+                if isinstance(items, list) and items:
+                    hydrate_items_fund_side(items, fund_db)
+        except Exception:
+            pass
     blocks: List[str] = []
     if head:
         blocks.append(head)

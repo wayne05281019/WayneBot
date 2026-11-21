@@ -2662,6 +2662,15 @@ def _stock_card_html(
         body.append(_card_kv("型態", html_escape(pat)))
     if notices:
         body.append(_card_kv("注意", "　".join(notices)))
+    try:
+        from screen_fund_annotate import fund_side_note_from_item
+
+        fund_note = fund_side_note_from_item(item)
+    except Exception:
+        fund_note = ""
+    if fund_note:
+        # 顯示旁註：官方 YoY／毛利；缺就不印，不准假「—」。
+        body.append(_card_kv("基本", html_escape(fund_note)))
     profit_val = _line_profit_value(item)
     if profit_val:
         body.append(_card_kv("獲利", html_escape(profit_val)))
@@ -2845,6 +2854,7 @@ def format_screening_payload(
     market_html: str = "",
     title: str = "WayneBot 海選",
     specs: Optional[Sequence] = None,
+    db_path: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """每個分類一則訊息；標題由左邊小動圖 + 分類名的貼紙呈現。
 
@@ -2852,8 +2862,17 @@ def format_screening_payload(
     手動海選同一欄。還在零只觀察、不單獨成桶。周帶量等仍計算、不進畫面。
     黃金買點沒檔也留欄（寫今日沒有）。
     market_html：有內容時插在第一則當大盤狀況。
+    db_path：有庫時出卡前補官方 YoY／毛利旁註（只顯示，不改選股）。
     """
     results = drop_non_equity_picks(results)
+    path = str(db_path or "").strip()
+    if path:
+        try:
+            from screen_fund_annotate import hydrate_screen_results_fund_notes
+
+            hydrate_screen_results_fund_notes(results, path)
+        except Exception:
+            pass
     payload: List[Dict[str, Any]] = []
     specs = list(specs) if specs is not None else list(
         MORNING_PUSH_SPECS if morning else SCREEN_PUSH_SPECS
@@ -3312,6 +3331,14 @@ def _assemble_screening_from_results(
     except Exception:
         logger = __import__("logging").getLogger(__name__)
         logger.exception("海選出卡補日K略過 as_of=%s", as_of)
+    # 出卡前補官方 YoY／毛利旁註（只顯示，不改桶選）
+    try:
+        from screen_fund_annotate import hydrate_screen_results_fund_notes
+
+        hydrate_screen_results_fund_notes(results, path)
+    except Exception:
+        logger = __import__("logging").getLogger(__name__)
+        logger.exception("海選出卡補基本面旁註略過")
     outlook = ""
     if not light:
         try:
@@ -3337,7 +3364,7 @@ def _assemble_screening_from_results(
         except Exception:
             outlook = ""
     payload = format_screening_payload(
-        results, as_of, morning=bool(morning), market_html=outlook
+        results, as_of, morning=bool(morning), market_html=outlook, db_path=path
     )
     report_parts = []
     if outlook:
@@ -3654,7 +3681,11 @@ def execute_full_screening(
     except Exception:
         outlook = ""
     payload = format_screening_payload(
-        results, target_date, morning=is_morning, market_html=outlook
+        results,
+        target_date,
+        morning=is_morning,
+        market_html=outlook,
+        db_path=engine.db_path,
     )
     report_parts = []
     if outlook:
