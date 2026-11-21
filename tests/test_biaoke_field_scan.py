@@ -2136,3 +2136,134 @@ def test_biaoke_week_link_on_dongzhu_page(tmp_path, monkeypatch):
     assert "不是買訊" in html or "切入只認黃金買點" in html
     # 推薦買點邏輯未被本週聯動改成亂標
     assert "不准發明切入" not in html
+
+
+def _seed_dongzhu_fund_ref(db: str, sid: str = "6257") -> None:
+    """官方季毛利／月營收 YoY／證交所本益；只寫庫、不觸網。"""
+    from fundamentals import ensure_fundamentals_tables
+    from official_snapshots import ensure_schema
+
+    ensure_fundamentals_tables(db)
+    ensure_schema(db)
+    conn = sqlite3.connect(db)
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO quarterly_income "
+            "(stock_id, year, season, stock_name, market, revenue, cogs, "
+            "gross_profit, gross_margin_pct, operating_income, net_income, eps, "
+            "published_roc, updated_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                sid,
+                2026,
+                2,
+                sid,
+                "TW",
+                1000000.0,
+                650000.0,
+                350000.0,
+                35.2,
+                200000.0,
+                150000.0,
+                1.20,
+                "",
+                "t",
+            ),
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO monthly_revenue "
+            "(stock_id, yyyymm, stock_name, market, industry, revenue, "
+            "revenue_prev_month, revenue_prev_year, mom_pct, yoy_pct, "
+            "ytd_revenue, ytd_prev_year, ytd_yoy_pct, published_roc, updated_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                sid,
+                "202609",
+                sid,
+                "TW",
+                "",
+                120000.0,
+                0,
+                0,
+                5.0,
+                12.3,
+                0,
+                0,
+                0,
+                "",
+                "t",
+            ),
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO daily_valuation "
+            "(stock_id, date, pe, pb, dividend_yield, source, updated_at) "
+            "VALUES (?,?,?,?,?,?,?)",
+            (sid, "20260917", 28.98, 2.10, 1.5, "twse_bwibbu", "t"),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_dongzhu_fund_ref_lines_seeded_phone_fit(tmp_path, monkeypatch):
+    """有官方欄才出「參考」；缺省略；≤18 字、不發明買訊。"""
+    import re
+
+    from tg_layout import reflow_telegram_html
+
+    from biaoke_field_scan import (
+        _dongzhu_fund_ref_lines,
+        _stock_line,
+        dongzhu_hold_page,
+        rotation_screen_block,
+    )
+
+    db = str(tmp_path / "fund_ref.db")
+    _seed(db)
+    empty = _dongzhu_fund_ref_lines("6257", db)
+    assert empty == []
+
+    _seed_dongzhu_fund_ref(db, "6257")
+    called = {"n": 0}
+
+    def _boom(*_a, **_k):
+        called["n"] += 1
+        raise AssertionError("fund ref 不准 ensure／同步網路")
+
+    monkeypatch.setattr("fundamentals.ensure_stock_fundamentals", _boom, raising=False)
+    lines = _dongzhu_fund_ref_lines("6257", db)
+    assert called["n"] == 0
+    blob = "\n".join(lines)
+    assert any(x.startswith("參考") and "毛利率" in x for x in lines)
+    assert any(x.startswith("參考") and "營收YoY" in x for x in lines)
+    assert any(x.startswith("參考") and "證交所本益" in x for x in lines)
+    assert "可買" not in blob and "買訊" not in blob and "leave_zero" not in blob
+    for ln in lines:
+        assert len(ln) <= 18
+        assert not re.search(r"\d,$", ln)
+
+    stock = _stock_line(
+        {"sid": "6257", "name": "矽格", "role": "次級", "vs20": -12.0},
+        1,
+        "先機",
+        db_path=db,
+    )
+    assert "參考" in stock and "毛利率" in stock and "證交所本益" in stock
+    assert "可買" not in stock
+
+    monkeypatch.setattr("biaoke_field_scan._cap", lambda *_a, **_k: "20260917")
+    hold = dongzhu_hold_page(db, "6257")
+    phone = reflow_telegram_html(hold)
+    assert "參考" in phone and "毛利率" in phone
+    assert "營收YoY" in phone and "證交所本益" in phone
+    for ln in phone.split("\n"):
+        s = ln.strip()
+        plain = re.sub(r"<[^>]+>", "", s)
+        if "參考" in plain:
+            assert len(plain) <= 18
+            assert not re.search(r"\d,$", plain)
+    # 海選 footer 不准改成夾基本面參考
+    footer = rotation_screen_block(db)
+    assert "毛利率" not in footer
+    assert "證交所本益" not in footer
+    assert "營收YoY" not in footer
