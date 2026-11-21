@@ -2045,8 +2045,13 @@ def glance_fundamentals_plain(
     db_path: str = None,
     *,
     skip_ensure: bool = False,
+    dense: bool = False,
 ) -> list:
-    """[(標籤, 值), ...] 給第一眼圖／文字共用。金額一律億元，不再顯示 MoM/YoY％。
+    """[(標籤, 值), ...] 給第一眼圖／文字共用。金額一律億元。
+
+    dense=False（預設＝改版後）：介紹卡一瞥——近 2 月營收＋最新季 EPS／毛利率＋估值／資券；
+    長表改走「價值」三圖，避免與價值圖重複互壓。
+    dense=True：改版前完整基本面列（對比用）。
 
     skip_ensure=True：查股已在 paint 外 ensure（或薄檔期已放行近月），
     這裡不准再同步重抓全市場堵出圖。
@@ -2106,9 +2111,12 @@ def glance_fundamentals_plain(
         for lab, val in split.get("bottom") or []:
             rows.append((lab, val))
     else:
-        # 上市櫃短窗：維持舊近窗列
+        # 上市櫃：改版後近 2 月；dense 近 4／興櫃 6
         if months:
-            win_n = 6 if emerging else 4
+            if dense:
+                win_n = 6 if emerging else 4
+            else:
+                win_n = 2
             rows.extend(monthly_revenue_window_rows(months, limit=win_n))
         elif m:
             rows.extend(monthly_revenue_window_rows([m], limit=1))
@@ -2116,7 +2124,7 @@ def glance_fundamentals_plain(
         # 月彙季不准再用 format_season_zh（會把單季 3 誤標成「前三季」）。
         if q_from_m and not q:
             by_key = {(int(x["year"]), int(x["season"])): x for x in q_from_m}
-            show = q_from_m[:8]
+            show = q_from_m[:8] if dense else q_from_m[:1]
             for i, qq in enumerate(show):
                 y, s = int(qq["year"]), int(qq["season"])
                 rev = float(qq.get("revenue") or 0)
@@ -2160,12 +2168,16 @@ def glance_fundamentals_plain(
                 q_lab = f"{q['year']}Q{q['season']}"
             # 季營收＝綜合損益營業收入；與毛利／毛利率／EPS 同一列來源
             rows.append(("季營收", f"{q_lab}　{format_yi(rev)}"))
-            if float(q.get("gross_profit") or 0) or float(q.get("gross_margin_pct") or 0):
-                rows.append(("毛利", format_yi(q.get("gross_profit") or 0)))
-                rows.append(("毛利率", f"{float(q['gross_margin_pct']):.1f}%"))
-            if rev:
-                rows.append(("營益率", f"{opm:.1f}%"))
-                rows.append(("淨利率", f"{npm:.1f}%"))
+            if dense:
+                if float(q.get("gross_profit") or 0) or float(q.get("gross_margin_pct") or 0):
+                    rows.append(("毛利", format_yi(q.get("gross_profit") or 0)))
+                    rows.append(("毛利率", f"{float(q['gross_margin_pct']):.1f}%"))
+                if rev:
+                    rows.append(("營益率", f"{opm:.1f}%"))
+                    rows.append(("淨利率", f"{npm:.1f}%"))
+            else:
+                if float(q.get("gross_margin_pct") or 0) or float(q.get("gross_profit") or 0):
+                    rows.append(("毛利率", f"{float(q['gross_margin_pct']):.1f}%"))
             rows.append(("EPS", f"{float(q['eps']):.2f}"))
         elif emerging and (months or m):
             rows.append(("季毛利／EPS", "觀測站尚未見此檔綜合損益列"))
@@ -2185,6 +2197,8 @@ def glance_fundamentals_plain(
         rows.extend(stock_peer_plain_rows(sid, path))
     except Exception:
         pass
+    if not dense and not emerging and rows:
+        rows.append(("價值", "點圖下「價值」看總覽／月營收／季報三張"))
     if not rows:
         if emerging:
             rows.append(("基本面", "興櫃月營收尚未同步到庫（櫃買 OpenAPI）"))

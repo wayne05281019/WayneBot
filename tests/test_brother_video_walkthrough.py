@@ -122,7 +122,7 @@ def test_help_script_ready_for_brother_video():
     assert HELP_TOPICS == {}
     hub = WayneTelegramBot.__new__(WayneTelegramBot)._hub_keyboard("2330")
     texts = [b.text for r in hub.inline_keyboard for b in r]
-    assert "籌碼" in texts and "營收" in texts
+    assert "籌碼" in texts and "價值" in texts
     assert "產業" in texts
     assert "高低導航圖" in texts
     assert "K線" in texts
