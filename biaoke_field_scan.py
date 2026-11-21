@@ -4195,6 +4195,131 @@ def _face_already_in_title(title: str, face: str) -> bool:
     return False
 
 
+def _dongzhu_season_stamp(year: Any, season: Any) -> str:
+    """季報時戳：短到能跟「參考」同氣泡一行。"""
+    try:
+        y, s = int(year), int(season)
+    except (TypeError, ValueError):
+        return ""
+    if y <= 0 or s <= 0:
+        return ""
+    yy = y % 100
+    if s == 1:
+        return f"{yy}Q1"
+    if s == 2:
+        return f"{yy}上半年"
+    if s == 3:
+        return f"{yy}前三季"
+    if s == 4:
+        return f"{yy}全年"
+    return f"{yy}Q{s}"
+
+
+def _dongzhu_month_stamp(yyyymm: Any) -> str:
+    raw = str(yyyymm or "").replace("-", "")[:6]
+    if len(raw) != 6 or not raw.isdigit():
+        return ""
+    return f"{int(raw[4:6])}月"
+
+
+def _dongzhu_phone_fit(*candidates: str) -> str:
+    """選第一條 ≤18 字；都超長才退最後一條（呼叫端已壓短）。"""
+    last = ""
+    for raw in candidates:
+        s = str(raw or "").strip()
+        if not s:
+            continue
+        last = s
+        if len(s) <= 18:
+            return s
+    return last
+
+
+def _dongzhu_fund_ref_lines(sid: str, db_path: str) -> List[str]:
+    """洞燭名單／持有頁：官方毛利率／營收YoY／證交所本益「參考」列。
+
+    非買訊。只讀庫、不准 ensure／同步網路。缺欄就省略整列。
+    """
+    sid_s = str(sid or "").strip()
+    path = str(db_path or "").strip()
+    if not sid_s or not path:
+        return []
+    out: List[str] = []
+    q = None
+    m = None
+    try:
+        from fundamentals import get_latest_income, get_latest_monthly
+
+        try:
+            q = get_latest_income(path, sid_s)
+        except Exception:
+            q = None
+        try:
+            m = get_latest_monthly(path, sid_s)
+        except Exception:
+            m = None
+    except Exception:
+        q = None
+        m = None
+    if q:
+        try:
+            gm = float(q.get("gross_margin_pct") or 0)
+            gp = float(q.get("gross_profit") or 0)
+        except (TypeError, ValueError):
+            gm, gp = 0.0, 0.0
+        if gm == gm and (gm or gp):  # NaN 不上；無毛利／毛利率也不上
+            stamp = _dongzhu_season_stamp(q.get("year"), q.get("season"))
+            gm_s = f"{gm:.1f}%"
+            line = _dongzhu_phone_fit(
+                f"參考{stamp}毛利率{gm_s}" if stamp else "",
+                f"參考毛利率{gm_s}",
+            )
+            if line:
+                out.append(line)
+    if m is not None and m.get("yoy_pct") is not None:
+        try:
+            yoy = float(m.get("yoy_pct"))
+        except (TypeError, ValueError):
+            yoy = None
+        if yoy is not None and yoy == yoy:
+            stamp = _dongzhu_month_stamp(m.get("yyyymm"))
+            # 大％壓整數，避免拆數字／超 18 字
+            yoy_s = f"{yoy:+.0f}%" if abs(yoy) >= 100 else f"{yoy:+.1f}%"
+            line = _dongzhu_phone_fit(
+                f"參考{stamp}營收YoY{yoy_s}" if stamp else "",
+                f"參考營收YoY{yoy_s}",
+            )
+            if line:
+                out.append(line)
+    val = None
+    try:
+        from official_snapshots import latest_valuation
+
+        val = latest_valuation(sid_s, path)
+    except Exception:
+        val = None
+    if val and val.get("pe") is not None:
+        try:
+            pe = float(val.get("pe"))
+        except (TypeError, ValueError):
+            pe = None
+        if pe is not None and pe == pe:
+            d = str(val.get("date") or "").replace("-", "")[:8]
+            day_stamp = (
+                f"{int(d[4:6])}/{int(d[6:8])}" if len(d) == 8 and d.isdigit() else ""
+            )
+            pe_s = f"{pe:.2f}"
+            pe_short = f"{pe:.1f}"
+            line = _dongzhu_phone_fit(
+                f"參考{day_stamp}證交所本益{pe_s}" if day_stamp else "",
+                f"參考證交所本益{pe_s}",
+                f"參考證交所本益{pe_short}",
+            )
+            if line:
+                out.append(line)
+    return out
+
+
 def _stock_line(
     item: Dict[str, Any],
     idx: int,
@@ -4202,6 +4327,7 @@ def _stock_line(
     *,
     compact: bool = True,
     held: bool = False,
+    db_path: Optional[str] = None,
 ) -> str:
     del compact
     from stock_links import html_stock_anchor
@@ -4229,6 +4355,9 @@ def _stock_line(
         rows.append(f"距20高 {html_face(_pct(float(vs20)))}")
     if vs60 is not None:
         rows.append(f"距60高 {html_face(_pct(float(vs60)))}")
+    sid = str(item.get("sid") or "").strip()
+    if db_path and sid:
+        rows.extend(_esc(x) for x in _dongzhu_fund_ref_lines(sid, str(db_path)))
     return "\n".join(rows)
 
 
@@ -4487,6 +4616,7 @@ def _stock_blocks(
     *,
     compact: bool = True,
     held_sids: Optional[Sequence[str]] = None,
+    db_path: Optional[str] = None,
 ) -> str:
     held = {str(x) for x in (held_sids or ()) if str(x)}
     rows = [
@@ -4496,6 +4626,7 @@ def _stock_blocks(
             tag,
             compact=compact,
             held=str(item.get("sid") or "") in held,
+            db_path=db_path,
         )
         for i, item in enumerate(items, start=1)
     ]
@@ -4590,6 +4721,9 @@ def dongzhu_hold_page(
         px_rows.append(_esc(f"距60高 {_pct(float(data['vs60']))}"))
     if px_rows:
         blocks.append(_blk(*px_rows))
+    fund_ref = _dongzhu_fund_ref_lines(str(data.get("sid") or sid), db_path)
+    if fund_ref:
+        blocks.append(_blk(*(_esc(x) for x in fund_ref)))
     flow = data.get("flow") or {}
     if flow.get("shares") or flow.get("nets"):
         blocks.append(
@@ -4756,6 +4890,7 @@ def dongzhu_page(
                     tag,
                     compact=True,
                     held=str(item.get("sid") or "") in set(held_sids),
+                    db_path=db_path,
                 )
             )
         rec_rows.append("\n\n".join(rec_bits))
