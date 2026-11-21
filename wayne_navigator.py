@@ -499,6 +499,7 @@ def try_glance_memo(
         fund_fp = stock_fundamentals_fingerprint(dbp, stock_id)
     except Exception:
         fund_fp = ()
+    # 須與 render_first_glance_png 指紋同版；暖路徑預設 slim（dense=False）
     memo_key = (
         "glance",
         str(stock_id or ""),
@@ -507,7 +508,8 @@ def try_glance_memo(
         fund_fp,
         int(GLANCE_PNG_DPI),
         int(LOOKUP_JPEG_QUALITY),
-        "match-card-076-fund-rev2line-v80-qrev-q-eps",
+        "match-card-076-fund-rev2line-v81-glance-slim",
+        "slim",
     )
     return _lookup_render_memo_get(memo_key, save_path) or ""
 
@@ -5388,6 +5390,7 @@ def render_first_glance_png(
     ohlc=None,
     *,
     fundamentals_ready: bool = False,
+    fundamentals_dense: bool = False,
 ) -> str:
     """介紹卡外框＝勝率買點高低卡（H×0.076）。內文回流、字不壓線。180日導航改獨立鈕。
 
@@ -5420,7 +5423,8 @@ def render_first_glance_png(
         fund_fp,
         int(GLANCE_PNG_DPI),
         int(LOOKUP_JPEG_QUALITY),
-        "match-card-076-fund-rev2line-v80-qrev-q-eps",
+        "match-card-076-fund-rev2line-v81-glance-slim",
+        "dense" if fundamentals_dense else "slim",
     )
     hit = _lookup_render_memo_get(memo_key, save_path)
     if hit:
@@ -5438,7 +5442,10 @@ def render_first_glance_png(
 
         # fundamentals_ready：paint 外已 ensure／薄檔期已放行；這裡 skip 同步全抓，畫質不變。
         fund_rows = glance_fundamentals_plain(
-            stock_id, dbp, skip_ensure=bool(fundamentals_ready)
+            stock_id,
+            dbp,
+            skip_ensure=bool(fundamentals_ready),
+            dense=bool(fundamentals_dense),
         )
         fund_split = glance_fund_split_layout(stock_id, dbp)
     except Exception:

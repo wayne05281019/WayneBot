@@ -128,7 +128,7 @@ def test_em_hub_keeps_nav_kline_and_actions():
     assert "加入觀察" in labels
     assert "記買入" in labels
     assert "籌碼" not in labels
-    assert "營收" not in labels
+    assert "價值" not in labels
     urls = [b.url for r in kb.inline_keyboard for b in r if b.url]
     assert urls and "technical-analysis" in urls[0]
     assert "period=d" in urls[0]
@@ -143,7 +143,7 @@ def test_listed_hub_keeps_nav_kline_and_rest():
     assert "情境預估" in labels
     assert "產業" in labels
     assert "籌碼" in labels
-    assert "營收" in labels
+    assert "價值" in labels
     assert "加入觀察" in labels
     assert "記買入" in labels
     assert all(len(r) <= 3 for r in kb.inline_keyboard)

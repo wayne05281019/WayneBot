@@ -64,8 +64,10 @@ def test_listed_qrev_uses_income_not_short_monthly(tmp_path, monkeypatch):
     assert format_yi(141226994.0) in by["季營收"]
     assert "608.85" not in by["季營收"]
     assert "前三季" in by["季營收"]
-    assert by.get("毛利") == format_yi(48682931.0)
+    # slim 介紹卡：毛利率＋營益率（毛利金額改走價值三圖 dense）
+    assert "毛利" not in by
     assert "34.5%" in (by.get("毛利率") or "")
+    assert "營益率" in by
     assert by.get("EPS") == "82.92"
     # 不准再多一列「季報（綜合損益）」空殼
     assert "季報" not in by
