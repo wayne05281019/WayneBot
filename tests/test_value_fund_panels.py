@@ -114,8 +114,18 @@ def test_value_panels_render_6416(tmp_path):
     out = render_value_fund_panels("6416", db, str(tmp_path / "charts"), uid="t")
     assert out["ok"] is True
     assert len(out["paths"]) == 3
+    from PIL import Image
+    from value_fund_panels import W, H_MONTHLY
+
     for p in out["paths"]:
         assert os.path.isfile(p) and os.path.getsize(p) > 1000
+        im = Image.open(p)
+        assert im.size[0] == W
+        assert im.size[0] > im.size[1]  # 橫向：點開打橫看
+        # Pro Max 橫拿 ≈2.17；允許內容略矮
+        assert im.size[0] / float(im.size[1]) >= 2.0
+        im.close()
+    assert H_MONTHLY >= 1000
 
 
 def test_undervalue_rejects_stale_pe_and_loss(tmp_path, monkeypatch):

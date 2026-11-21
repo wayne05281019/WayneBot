@@ -9186,7 +9186,9 @@ class WayneTelegramBot:
             logger.exception("價值三圖失敗 code=%s", code)
             painted = None
         paths = list((painted or {}).get("paths") or [])
+        # 點開＝全螢幕橫圖；caption 提示打橫看（Pro Max 橫拿最清楚）
         caps = ("價值・總覽", "價值・月營收", "價值・季報")
+        tip = "｜點開打橫看"
         sent = 0
         for i, pth in enumerate(paths):
             if not pth or not os.path.isfile(pth):
@@ -9196,7 +9198,11 @@ class WayneTelegramBot:
                 with open(send_path, "rb") as f:
                     await message.reply_photo(
                         photo=f,
-                        caption=f"{html_escape(code)}　{caps[i] if i < len(caps) else '價值'}",
+                        caption=(
+                            f"{html_escape(code)}　"
+                            f"{caps[i] if i < len(caps) else '價值'}"
+                            f"{tip if i == 0 else ''}"
+                        ),
                         reply_markup=self._hub_keyboard(code, em=em)
                         if i == len(paths) - 1
                         else None,

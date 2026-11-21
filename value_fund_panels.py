@@ -42,20 +42,20 @@ CYAN = (0, 220, 220)  # 負％（略亮於格線以便閱讀）
 MUTED = (160, 160, 160)
 AMBER = (255, 200, 60)
 
-# 對齊 HT 顯示寬（截圖約 1140–1440）：用 1440 畫布＝2880 視網膜的一半
-# 話筒縮圖接近 1:1，格線 1px 不會被 Telegram 糊掉；比例與 2880 版相同
-# 字用粗體無襯線＋列中錨點（PIL 預設基線會讓字沉底）
-W = 1440
-H_OVERVIEW = 820
-H_MONTHLY = 720
-H_QUARTERLY = 720
-HT_LABEL_W = 241
-HT_COL_W = 299
-HT_ROW_H = 32
-HT_HEADER_H = 28
-HT_PAD = 4
-HT_BODY_FONT = 28  # 字高／列高 ≈0.84
-HT_NOTE_FONT = 14
+# 話筒點開全螢幕＝橫向看（iPhone Pro Max 橫拿 ≈19.5:9＝2.17:1）
+# 畫布對這個比例；像素夠大，點開打橫才清楚。格線 1px；字粗體＋列中錨點。
+W = 2400
+H_OVERVIEW = 1106  # 2400/2.17
+H_MONTHLY = 1106
+H_QUARTERLY = 1106
+_HT_SCALE = W / 1440.0  # 相對舊 1440 版等比放大
+HT_LABEL_W = int(round(241 * _HT_SCALE))
+HT_COL_W = int(round(299 * _HT_SCALE))
+HT_ROW_H = int(round(32 * _HT_SCALE))
+HT_HEADER_H = int(round(28 * _HT_SCALE))
+HT_PAD = max(4, int(round(4 * _HT_SCALE)))
+HT_BODY_FONT = int(round(28 * _HT_SCALE))  # 字高／列高 ≈0.84
+HT_NOTE_FONT = int(round(14 * _HT_SCALE))
 HT_GRID_W = 1
 # 滾動窗：月表左右各 N 列（最新在上）；季表單季 N 季（左新右舊，兩塊各 4）
 HT_MONTHLY_ROWS = 12
@@ -928,8 +928,9 @@ def _header_bar(
     canvas_w: int = W,
 ) -> int:
     """頂列：對齊 HT 高度；黃品牌＋白公司＋白標題＋白單位＋紅頁碼。"""
-    f = _font(16)
-    f_brand = _font(16)
+    head_fs = max(16, int(round(16 * _HT_SCALE)))
+    f = _font(head_fs)
+    f_brand = _font(head_fs)
     brand = "WayneBot"
     y = 6
     _draw_left(draw, (8, y), brand, f_brand, YELLOW, anchor="lt")
@@ -1155,10 +1156,11 @@ def render_overview_png(pack: Dict[str, Any], out_path: str) -> str:
     if src.get("dividend_ex"):
         stamp_bits.append(f"除息{_stamp_roc_day(src['dividend_ex'])}")
     stamp_line = "｜".join(stamp_bits) if stamp_bits else "來源時戳待同步"
-    _draw_left(draw, (8, h - 28), note, f_small, AMBER, anchor="lt")
+    foot_gap = max(14, int(round(14 * _HT_SCALE)))
+    _draw_left(draw, (8, h - foot_gap * 2), note, f_small, AMBER, anchor="lt")
     _draw_left(
         draw,
-        (8, h - 14),
+        (8, h - foot_gap),
         f"官方TWSE/TPEx｜{stamp_line}｜估值≠買訊",
         f_small,
         MUTED,
@@ -1351,7 +1353,8 @@ def render_monthly_png(pack: Dict[str, Any], out_path: str) -> str:
     foot = "備註: 百萬元四捨五入。紅＝正成長、青＝負成長。估值≠買訊"
     if m_asof or q_asof:
         foot = f"月營收截至{m_asof or '—'}｜季報{q_asof or '—'}｜{foot}"
-    _draw_left(draw, (8, h - 14), foot, f_note, MUTED, anchor="lt")
+    foot_gap = max(14, int(round(14 * _HT_SCALE)))
+    _draw_left(draw, (8, h - foot_gap), foot, f_note, MUTED, anchor="lt")
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
     img.save(out_path, "PNG", optimize=True)
     return out_path
@@ -1446,7 +1449,7 @@ def render_quarterly_png(pack: Dict[str, Any], out_path: str) -> str:
     # 兩大區塊：上4季＋下4季
     # HT：每塊＝頂橫線＋期別下橫線＋欄直欄；資料列無橫線；塊間不另疊雙線
     block_h = n_metrics * row_h
-    gap_mid = 14
+    gap_mid = max(14, int(round(14 * _HT_SCALE)))
     gw = HT_GRID_W
     for bi, block in enumerate(blocks):
         top = y0 + HT_PAD + bi * (block_h + gap_mid)
@@ -1471,8 +1474,9 @@ def render_quarterly_png(pack: Dict[str, Any], out_path: str) -> str:
                 cx_r = min(W - 4, label_w + col_w * (ci + 1) - 10)
                 _draw_right(draw, cx_r, ty, text, f_c, col)
 
+    foot_gap = max(14, int(round(14 * _HT_SCALE)))
     _draw_left(
-        draw, (8, h - 28), pack.get("omit") or "", f_note, AMBER, anchor="lt"
+        draw, (8, h - foot_gap * 2), pack.get("omit") or "", f_note, AMBER, anchor="lt"
     )
     src = pack.get("sources") or {}
     q_asof = src.get("quarterly_asof") or ""
@@ -1483,7 +1487,7 @@ def render_quarterly_png(pack: Dict[str, Any], out_path: str) -> str:
     if bs_pub:
         bits.append(f"資產負債出表{bs_pub}")
     bits.append("估值≠買訊")
-    _draw_left(draw, (8, h - 14), "｜".join(bits), f_note, MUTED, anchor="lt")
+    _draw_left(draw, (8, h - foot_gap), "｜".join(bits), f_note, MUTED, anchor="lt")
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
     img.save(out_path, "PNG", optimize=True)
     return out_path
