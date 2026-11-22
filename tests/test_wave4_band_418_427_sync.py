@@ -66,10 +66,20 @@ def test_wave4_ladder_and_preds_from_live_db():
         import pytest
 
         pytest.skip("no local wayne_market.db")
+    # 題旨 cap 跟加權已收／最新他文走；庫內若已有 11/20 修正目標，後文壓前文＝波浪4不再當令
     now = datetime(2026, 11, 16, 13, 20, tzinfo=ZoneInfo("Asia/Taipei"))
     pack = _build_live_pack(str(db), now=now)
-    assert "波浪4帶" in str(pack.get("thesis") or "")
+    thesis = str(pack.get("thesis") or "")
     wait = str(pack.get("wait_struct") or "")
+    ladder = _wave_now_ladder(pack)
+    if "修正目標35000" in thesis or "35000～35500" in thesis:
+        assert "波浪4帶" not in thesis
+        assert "35,000" in wait and "35,500" in wait
+        assert "非買訊" in wait
+        assert "修正目標35000～35500" in str(ladder.get("chain") or "")
+        assert "波浪4帶" not in str(ladder.get("one_line") or "")
+        return
+    assert "波浪4帶" in thesis
     assert "41,800" in wait and "42,700" in wait
     assert "1 4重疊" in wait
     assert "非買訊" in wait
@@ -80,7 +90,6 @@ def test_wave4_ladder_and_preds_from_live_db():
     assert abs(roles.get("回測最低", 0) - 41800.0) < 0.6
     assert abs(roles.get("回測平均", 0) - 42250.0) < 0.6
     assert abs(roles.get("回測上沿", 0) - 42700.0) < 0.6
-    ladder = _wave_now_ladder(pack)
     assert "波浪4帶" in str(ladder.get("chain") or "")
     assert "波浪4帶" in str(ladder.get("one_line") or "")
     assert "止跌確認・已過C3下降壓" not in str(ladder.get("one_line") or "")
