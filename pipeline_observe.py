@@ -135,6 +135,43 @@ def _ids_from_bucket(results: Dict[str, Any], key: str) -> List[str]:
     return out
 
 
+def _items_from_bucket(results: Dict[str, Any], key: str, *, limit: int = 24) -> List[Dict[str, Any]]:
+    """海選桶 → {sid, name}；只取真代號，不准假造。"""
+    out: List[Dict[str, Any]] = []
+    for r in results.get(key) or []:
+        if isinstance(r, dict):
+            sid = str(r.get("stock_id") or r.get("code") or "").strip()
+            name = str(r.get("stock_name") or r.get("name") or "").strip()
+        else:
+            sid = str(r or "").strip()
+            name = ""
+        if not sid:
+            continue
+        out.append({"sid": sid, "name": name})
+        if len(out) >= max(0, int(limit)):
+            break
+    return out
+
+
+def _load_screen_res(db_path: str, desk: str) -> Dict[str, Any]:
+    """基準日海選 morning→evening；無 session＝{}。"""
+    path = str(db_path or "").strip()
+    day = _ymd(desk)
+    if not path or not day:
+        return {}
+    try:
+        from screen_sessions import load_session_results, screen_session_has_data
+
+        if not screen_session_has_data(path, day):
+            return {}
+        res = load_session_results(path, day, "morning") or {}
+        if not any(res.values()):
+            res = load_session_results(path, day, "evening") or {}
+        return res if isinstance(res, dict) else {}
+    except Exception:
+        return {}
+
+
 def build_pipeline_observe(
     db_path: str,
     *,
@@ -755,7 +792,11 @@ def build_combo_screen(
     desk = _ymd(base.get("desk_as_of") or "")
     lists: Dict[str, Any] = {}
 
-    # 進場可執行：勝率買點 roster（含名）
+    # 海選桶（剛離零／紅箭可進場臉只認此過關集合）
+    screen_res = _load_screen_res(path, desk) if path and desk else {}
+    screen_lz_ids = set(_ids_from_bucket(screen_res, "leave_zero"))
+
+    # 進場可執行：勝率買點 roster（含名）；集合可≠海選離零 → 標題誠實
     wr_items: List[Dict[str, Any]] = []
     wr_as = desk
     try:
@@ -776,29 +817,51 @@ def build_combo_screen(
     except Exception:
         if path:
             wr_as, wr_items = _live_judge_pack(path, "winrate_buypoint", desk, limit=24)
-    lists["winrate"] = {"as_of": wr_as, "items": wr_items, "buy_ok": True}
+    wr_ids = {str(it.get("sid") or "") for it in wr_items if it.get("sid")}
+    wr_same_as_screen = bool(wr_ids) and wr_ids <= screen_lz_ids and bool(screen_lz_ids)
+    wr_diff = bool(wr_ids) and wr_ids != screen_lz_ids
+    lists["winrate"] = {
+        "as_of": wr_as,
+        "items": wr_items,
+        # 勝率是獨立軌：有檔＝勝率臉，不准冒充「海選離零可進場」
+        "buy_ok": bool(wr_same_as_screen),
+        "face": "可進場" if wr_same_as_screen else ("勝率軌≠海選離零" if wr_diff else "勝率軌"),
+        "source": "winrate_roster",
+        "vs_screen_lz": "same" if wr_same_as_screen else ("diff" if wr_diff else "empty"),
+    }
 
-    # 剛離零／紅箭：live_judge 真落檔；紅箭無 kind 時退海選桶
-    lz_as, lz = _live_judge_pack(path, "leave_zero", desk, limit=24) if path else ("", [])
+    # 剛離零：優先海選 leave_zero 桶（過閘才可進場臉）；雷達只觀察
+    lz = _items_from_bucket(screen_res, "leave_zero", limit=24)
+    lz_as = desk if lz else ""
+    lz_source = "screen"
+    if not lz and path:
+        lz_as, lz = _live_judge_pack(path, "leave_zero", desk, limit=24)
+        lz_source = "radar" if lz else ""
+    lists["leave_zero"] = {
+        "as_of": lz_as or desk,
+        "items": lz,
+        "buy_ok": bool(lz) and lz_source == "screen",
+        "face": "可進場" if (lz and lz_source == "screen") else "雷達／觀察",
+        "source": lz_source or "none",
+    }
+
+    # 紅箭：live_judge → 退海選桶；有檔＝確認紅箭可進場臉
     ma_as, ma = (
         _live_judge_pack(path, "ma60_lower", desk, limit=24) if path else ("", [])
     )
+    ma_source = "radar" if ma else ""
     if not ma and path and desk:
-        try:
-            from screen_sessions import load_session_results, screen_session_has_data
-
-            if screen_session_has_data(path, desk):
-                res = load_session_results(path, desk, "morning") or {}
-                if not any(res.values()):
-                    res = load_session_results(path, desk, "evening") or {}
-                for sid in _ids_from_bucket(res, "ma60_lower"):
-                    ma.append({"sid": sid, "name": ""})
-                if ma:
-                    ma_as = desk
-        except Exception:
-            pass
-    lists["leave_zero"] = {"as_of": lz_as or desk, "items": lz, "buy_ok": True}
-    lists["ma60_lower"] = {"as_of": ma_as or desk, "items": ma, "buy_ok": True}
+        ma = _items_from_bucket(screen_res, "ma60_lower", limit=24)
+        if ma:
+            ma_as = desk
+            ma_source = "screen"
+    lists["ma60_lower"] = {
+        "as_of": ma_as or desk,
+        "items": ma,
+        "buy_ok": bool(ma),
+        "face": "可進場" if ma else "觀察非買",
+        "source": ma_source or "none",
+    }
 
     # 低估★（估值≠買訊）
     uv_items: List[Dict[str, Any]] = []
@@ -830,9 +893,11 @@ def build_combo_screen(
         "as_of": uv_as or desk,
         "items": uv_items,
         "buy_ok": False,
+        "face": "觀察非買",
     }
 
     # 連買：外資／投信／雙買各取最長天數前幾檔；算不出再退 live_judge 樣本
+    # as_of≪desk → 籌碼舊日，醒目標舊，不當日選股臉
     for kind, key, lj_kind in (
         ("foreign", "streak_foreign", "streak_foreign"),
         ("trust", "streak_trust", "streak_trust"),
@@ -843,10 +908,14 @@ def build_combo_screen(
         )
         if not items and path:
             chip_as, items = _live_judge_pack(path, lj_kind, desk, limit=8)
+        chip_day = _ymd(chip_as) or ""
+        stale_chip = bool(desk and chip_day and chip_day < desk)
         lists[key] = {
             "as_of": chip_as or desk,
             "items": items,
             "buy_ok": False,
+            "face": "籌碼舊日・觀察" if stale_chip else "觀察非買",
+            "stale": stale_chip,
             "kind": kind,
         }
 
@@ -931,25 +1000,50 @@ def format_combo_screen_html(
     def _sec(title: str, key: str, *, note: str = "") -> None:
         pack = lists.get(key) or {}
         items = list(pack.get("items") or [])
-        buy = "可進場" if pack.get("buy_ok") else "觀察非買"
-        head = f"<b>{escape(title)}</b>〔{escape(buy)}〕 n={len(items)}"
+        face = str(pack.get("face") or "").strip()
+        if not face:
+            face = "可進場" if pack.get("buy_ok") else "觀察非買"
+        head = f"<b>{escape(title)}</b>〔{escape(face)}〕 n={len(items)}"
         as_raw = _ymd(pack.get("as_of") or "")
         if as_raw:
             head += f"｜{_zh(as_raw)}"
+            if pack.get("stale"):
+                head += "｜⚠籌碼舊日≠基準"
         body = _join_sid_labels(items, limit=12)
         chunk = head + "\n" + escape(body)
         if note:
             chunk += "\n" + escape(note)
         blocks.append(chunk)
 
-    # 名單在前：使用者按這顆就是要看股票
-    _sec("進場｜勝率買點", "winrate", note="母閘剛離零＋出圖確認")
-    _sec("進場｜剛離零", "leave_zero", note="當日雷達落檔")
+    # 名單在前：使用者按這顆就是要看股票；臉標不准與復原路真可買互打
+    wr_pack = lists.get("winrate") or {}
+    wr_note = (
+        "勝率軌≠海選離零；復原路真可買另過估值硬閘"
+        if str(wr_pack.get("vs_screen_lz") or "") == "diff"
+        else "母閘剛離零＋出圖確認（與海選離零同集合才標可進場）"
+    )
+    lz_pack = lists.get("leave_zero") or {}
+    lz_src = str(lz_pack.get("source") or "")
+    lz_note = (
+        "海選 leave_zero 桶過閘"
+        if lz_src == "screen"
+        else (
+            "雷達窄母體≠海選離零；只觀察不准進場臉"
+            if lz_src == "radar"
+            else "今日無海選離零／雷達"
+        )
+    )
+    _sec("進場｜勝率買點", "winrate", note=wr_note)
+    _sec(
+        "進場｜剛離零" if lz_src == "screen" else "觀察｜剛離零雷達",
+        "leave_zero",
+        note=lz_note,
+    )
     _sec("進場｜紅箭確認", "ma60_lower", note="未確認紅箭不算買訊")
     _sec("觀察｜低估★", "undervalue_star", note="估值≠買訊")
-    _sec("觀察｜連買外資最長", "streak_foreign")
-    _sec("觀察｜連買投信最長", "streak_trust")
-    _sec("觀察｜連買雙買最長", "streak_both")
+    _sec("觀察｜連買外資最長", "streak_foreign", note="籌碼日≠基準＝舊日觀察")
+    _sec("觀察｜連買投信最長", "streak_trust", note="籌碼日≠基準＝舊日觀察")
+    _sec("觀察｜連買雙買最長", "streak_both", note="籌碼日≠基準＝舊日觀察")
 
     issues: Sequence[LayerIssue] = payload.get("issues") or []
     if issues:
@@ -967,6 +1061,8 @@ def format_combo_screen_html(
         blocks.append("<b>節點狀態</b> " + escape("｜".join(layer_bits)))
 
     blocks.append(
-        "<i>各節點分開列，不准合成總分榜。進場只認勝率買點／剛離零與已確認紅箭；低估・連買只觀察。</i>"
+        "<i>各節點分開列，不准合成總分榜。"
+        "可進場臉只認海選離零／確認紅箭／與海選同集合之勝率；"
+        "雷達・勝率異集合・低估・連買只觀察。復原路真可買另過估值硬閘。</i>"
     )
     return join_dashed(*blocks)

@@ -321,26 +321,40 @@ def _load_frames(
             params.append(lo)
         for table in ("daily_quotes", "emerging_quotes"):
             try:
-                df = pd.read_sql_query(
-                    f"""
-                    SELECT stock_id, stock_name, date, open, high, low, close, volume
-                    FROM {table}
-                    WHERE stock_id IN ({placeholders}) AND close > 0{extra}
-                    ORDER BY stock_id, date
-                    """,
-                    conn,
-                    params=params,
-                )
+                try:
+                    df = pd.read_sql_query(
+                        f"""
+                        SELECT stock_id, stock_name, date, open, high, low, close, volume, turnover_k
+                        FROM {table}
+                        WHERE stock_id IN ({placeholders}) AND close > 0{extra}
+                        ORDER BY stock_id, date
+                        """,
+                        conn,
+                        params=params,
+                    )
+                except Exception:
+                    df = pd.read_sql_query(
+                        f"""
+                        SELECT stock_id, stock_name, date, open, high, low, close, volume
+                        FROM {table}
+                        WHERE stock_id IN ({placeholders}) AND close > 0{extra}
+                        ORDER BY stock_id, date
+                        """,
+                        conn,
+                        params=params,
+                    )
             except Exception:
                 continue
             if df is None or df.empty:
                 continue
             df["date"] = df["date"].astype(str).str.replace("-", "", regex=False).str[:8]
+            from vol_zone_chart import heal_ohlc_volume_column
+
             for sid, g in df.groupby("stock_id", sort=False):
                 key = str(sid)
                 if key in frames:
                     continue  # 已有上市櫃就不用興櫃撞號
-                g = g.reset_index(drop=True)
+                g = heal_ohlc_volume_column(g.reset_index(drop=True))
                 if str(g["date"].iloc[-1] or "")[:8] != as_of:
                     continue
                 frames[key] = g

@@ -116,6 +116,43 @@ def test_format_recovery_two_columns():
     assert "真可買" in html and "復原觀察" in html
     assert "6115" in html and "9907" in html
     assert "不准總分" in html
+    assert "尚等買點／還在零" in html
+
+
+def test_format_recovery_observe_entry_blocked_not_wait_buy():
+    """已有買訊但估值閘擋 → 不准寫成「尚等買點／還在零」。"""
+    html = format_recovery_funnel_html(
+        {
+            "as_of": "20261117",
+            "regime": "bear",
+            "twii": {"date": "20261117", "c": 38000.0},
+            "buy_ok": [],
+            "observe": [
+                {
+                    "sid": "2317",
+                    "name": "鴻海",
+                    "entry": ["leave_zero", "winrate"],
+                    "labels": ["首日"],
+                    "reasons": ["本益落後"],
+                    "signals": ["leave_zero", "winrate"],
+                },
+                {
+                    "sid": "2476",
+                    "name": "鉅祥",
+                    "entry": [],
+                    "labels": [],
+                    "reasons": [],
+                    "signals": ["undervalue_star"],
+                },
+            ],
+            "punish_n": 0,
+        }
+    )
+    assert "已有買訊・估值／硬閘擋" in html
+    assert "已有買訊被估值閘擋≠尚等買點" in html
+    banner = html.split("復原觀察")[1].split("\n")[0]
+    assert "尚等買點／還在零" not in banner or "已有買訊" in banner
+    assert "連買／估值等觀察" in html
 
 
 def test_punish_active_window(tmp_path: Path):

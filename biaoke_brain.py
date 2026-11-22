@@ -354,7 +354,11 @@ def volume_first_price(
     選核＝``vol_zone_chart.pick_vol_zone_core``（與 ``find_volume_zone`` 同窗）。
     有 ``ex_events`` 才切除權；沒有＝現況結構路徑。不是買訊。
     """
-    from vol_zone_chart import _scale_cut_date, pick_vol_zone_core
+    from vol_zone_chart import (
+        _scale_cut_date,
+        heal_volume_series_to_lots,
+        pick_vol_zone_core,
+    )
 
     lb = max(int(lookback or 0), 1)
     raw = list(bars or [])
@@ -367,7 +371,9 @@ def volume_first_price(
     highs = [float(r.get("high") or 0) for r in raw]
     lows = [float(r.get("low") or 0) for r in raw]
     closes = [float(r.get("close") or 0) for r in raw]
-    vols = [float(r.get("volume") or 0) for r in raw]
+    raw_vols = [float(r.get("volume") or 0) for r in raw]
+    turns = [r.get("turnover_k") for r in raw]
+    vols = heal_volume_series_to_lots(raw_vols, closes=closes, turnovers_k=turns)
     skippable = [_volume_first_bar_skippable(r) for r in raw]
     cut = _scale_cut_date(ex_events, last.get("date")) if ex_events else ""
     zone = pick_vol_zone_core(

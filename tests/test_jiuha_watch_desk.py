@@ -25,6 +25,8 @@ def test_tomorrow_checks_are_intraday_only():
     assert all(c.get("intraday") is True for c in checks)
     assert any(c["id"] == "T_open15_vol" for c in checks)
     assert any(c["id"] == "T_escape_follow" for c in checks)
+    assert any(c["id"] == "T_tx_proxy" for c in checks)
+    assert any(c["id"] == "T_l0_survive" for c in checks)
     assert not any("融資餘額" in (c.get("watch") or "") for c in checks)
 
 
@@ -46,9 +48,9 @@ def test_watch_desk_from_market_db(tmp_path):
     assert desk.get("not_buy_signal") is True
     assert desk.get("tomorrow_intraday")
     md = render_watch_desk_markdown(desk)
-    assert "明日盤中要注意" in md
-    assert "盤後對質欄" in md
+    assert "明天盤中這樣看" in md
     assert "非買訊" in md
+    assert "今天" in md
     out = write_watch_desk_artifacts(
         market_db=str(db), out_dir=str(tmp_path), asof="20261120"
     )
@@ -72,3 +74,22 @@ def test_menu_slot_jiuha_row3():
 
     assert MENU_LAYOUT_VERSION == "42"
     assert MENU_ROW3[1] == MENU_BTN_JIUHA
+
+
+def test_concrete_omits_empty_otc_and_has_numbers(tmp_path):
+    db = Path("/workspace/data/wayne_market.db")
+    if not db.is_file():
+        return
+    desk = build_watch_desk(str(db), asof="20261120")
+    c = desk.get("concrete") or {}
+    assert c.get("twii_close") is not None
+    assert c.get("twii_vol_wan") is not None
+    # 補洞後同日櫃買才出；若仍缺則 otc_ok=False 且畫面不准硬塞空白櫃買卡
+    if c.get("otc_ok"):
+        assert c.get("otc_close") is not None
+        assert c.get("otc_rel_pp") is not None
+    md = render_watch_desk_markdown(desk)
+    assert "具體數字" in md
+    assert "1708" in md or "成交量" in md
+    if not c.get("otc_ok"):
+        assert "櫃買收" not in md

@@ -92,6 +92,137 @@ _STOCK_TREND_RAIL_HALO = 0.55
 _STOCK_TREND_LABEL_FS = 7.4
 _STOCK_TREND_LABEL_FS_MIN = 6.4
 
+# daily_quotes.volume 單位＝張。2330 等歷史列曾誤存「成交股數」→ raw max 永遠贏、量標誤寫「…張」。
+# turnover_k（千元）÷收盤 ≈ 張；ratio≫1 才治癒。不准改開高低收／黃金買點。
+_VOLUME_SHARE_RATIO_GATE = 50.0
+_VOLUME_SHARE_ABS_LOTS_FALLBACK = 5_000_000.0  # 無成交金額時：≥500萬幾乎不可能是真「張」
+
+
+def volume_lots_healed(
+    volume: Any,
+    *,
+    close: Any = None,
+    turnover_k: Any = None,
+) -> float:
+    """把誤存股數的 volume 還原成張；已是張則原樣回。
+
+    優先：turnover_k／close 估張，且 volume／估張 ≥ 50 → 用估張。
+    備援：無金額且 volume ≥ 500萬 → ÷1000（台股單日真張幾乎不會到這級）。
+    """
+    try:
+        v = float(volume or 0)
+    except (TypeError, ValueError):
+        return 0.0
+    if not (v > 0) or v != v:
+        return 0.0
+    try:
+        px = float(close or 0)
+    except (TypeError, ValueError):
+        px = 0.0
+    try:
+        tk = float(turnover_k or 0)
+    except (TypeError, ValueError):
+        tk = 0.0
+    if px > 0 and tk > 0:
+        est = tk / px
+        if est > 0 and (v / est) >= float(_VOLUME_SHARE_RATIO_GATE):
+            return float(max(1, int(round(est))))
+    if v >= float(_VOLUME_SHARE_ABS_LOTS_FALLBACK):
+        return float(max(1, int(round(v / 1000.0))))
+    return float(v)
+
+
+def heal_volume_series_to_lots(
+    volumes: Sequence[Any],
+    *,
+    closes: Optional[Sequence[Any]] = None,
+    turnovers_k: Optional[Sequence[Any]] = None,
+) -> List[float]:
+    """逐根治癒量為張（給 find_volume_zone／numpy 掃檔）。"""
+    n = len(volumes or [])
+    out: List[float] = []
+    for i in range(n):
+        c = closes[i] if closes is not None and i < len(closes) else None
+        tk = turnovers_k[i] if turnovers_k is not None and i < len(turnovers_k) else None
+        out.append(volume_lots_healed(volumes[i], close=c, turnover_k=tk))
+    return out
+
+
+def heal_ohlc_volume_column(df: pd.DataFrame) -> pd.DataFrame:
+    """就地把 DataFrame 的 volume 欄治癒成張（有 turnover_k 才用金額尺）。"""
+    if df is None or getattr(df, "empty", True) or "volume" not in df.columns:
+        return df
+    closes = (
+        pd.to_numeric(df["close"], errors="coerce").tolist()
+        if "close" in df.columns
+        else None
+    )
+    turns = (
+        pd.to_numeric(df["turnover_k"], errors="coerce").tolist()
+        if "turnover_k" in df.columns
+        else None
+    )
+    vols = pd.to_numeric(df["volume"], errors="coerce").fillna(0.0).tolist()
+    healed = heal_volume_series_to_lots(vols, closes=closes, turnovers_k=turns)
+    out = df.copy()
+    out["volume"] = healed
+    return out
+
+
+def scrub_daily_quotes_share_volumes(
+    db_path: str,
+    *,
+    since_ymd: str = "20200101",
+    ratio_gate: float = _VOLUME_SHARE_RATIO_GATE,
+) -> Dict[str, Any]:
+    """離線把 daily_quotes 誤存股數的 volume 改成張（UPDATE；Render／本機可重跑）。
+
+    只改 volume，不准動開高低收。回傳 {n, stocks}。
+    """
+    path = str(db_path or "").strip()
+    since = str(since_ymd or "").replace("-", "")[:8]
+    if not path or not os.path.isfile(path) or len(since) != 8:
+        return {"n": 0, "stocks": []}
+    gate = float(ratio_gate or _VOLUME_SHARE_RATIO_GATE)
+    conn = sqlite3.connect(path, timeout=60.0)
+    try:
+        conn.execute("PRAGMA busy_timeout=20000;")
+        rows = conn.execute(
+            """
+            SELECT stock_id, date, volume, close, turnover_k
+            FROM daily_quotes
+            WHERE replace(date,'-','') >= ?
+              AND volume > 0 AND close > 0 AND turnover_k > 0
+              AND (1.0 * volume) / (turnover_k / close) >= ?
+            """,
+            (since, gate),
+        ).fetchall()
+        n = 0
+        stocks: set = set()
+        for sid, d, vol, close, tk in rows:
+            healed = volume_lots_healed(vol, close=close, turnover_k=tk)
+            try:
+                old = float(vol or 0)
+            except (TypeError, ValueError):
+                old = 0.0
+            if abs(healed - old) < 0.5:
+                continue
+            conn.execute(
+                """
+                UPDATE daily_quotes
+                SET volume = ?
+                WHERE stock_id = ? AND date = ?
+                """,
+                (int(round(healed)), str(sid), str(d)),
+            )
+            n += 1
+            stocks.add(str(sid))
+        if n:
+            conn.commit()
+        return {"n": int(n), "stocks": sorted(stocks)}
+    finally:
+        conn.close()
+
 
 def lookup_vol_ensure_days(
     *,
@@ -1175,7 +1306,7 @@ def load_official_ohlc(stock_id: str, db_path: str, days: int = 120) -> pd.DataF
         try:
             df = pd.read_sql_query(
                 """
-                SELECT date, stock_name, open, high, low, close, volume
+                SELECT date, stock_name, open, high, low, close, volume, turnover_k
                 FROM daily_quotes
                 WHERE stock_id = ?
                 ORDER BY date DESC
@@ -1185,7 +1316,21 @@ def load_official_ohlc(stock_id: str, db_path: str, days: int = 120) -> pd.DataF
                 params=(sid, lim),
             )
         except Exception:
-            df = pd.DataFrame()
+            # 舊庫無 turnover_k：退回無金額（仍可用 ≥500萬÷1000 治癒）
+            try:
+                df = pd.read_sql_query(
+                    """
+                    SELECT date, stock_name, open, high, low, close, volume
+                    FROM daily_quotes
+                    WHERE stock_id = ?
+                    ORDER BY date DESC
+                    LIMIT ?
+                    """,
+                    conn,
+                    params=(sid, lim),
+                )
+            except Exception:
+                df = pd.DataFrame()
     finally:
         conn.close()
     source = "daily_quotes"
@@ -1199,7 +1344,16 @@ def load_official_ohlc(stock_id: str, db_path: str, days: int = 120) -> pd.DataF
         if em is not None and not em.empty:
             keep = [
                 c
-                for c in ("date", "stock_name", "open", "high", "low", "close", "volume")
+                for c in (
+                    "date",
+                    "stock_name",
+                    "open",
+                    "high",
+                    "low",
+                    "close",
+                    "volume",
+                    "turnover_k",
+                )
                 if c in em.columns
             ]
             df = em[keep].copy()
@@ -1214,6 +1368,8 @@ def load_official_ohlc(stock_id: str, db_path: str, days: int = 120) -> pd.DataF
         .drop(columns="_d")
         .reset_index(drop=True)
     )
+    # 股／張混用治癒（2330 歷史段）；只改 volume，不准動開高低收
+    df = heal_ohlc_volume_column(df)
     # 與高低卡同源：只到庫內最後完整收盤日。未齊日（例盤中只寫到兩檔）
     # 不准進結構／大量區，否則兩圖最後收盤日會分叉。
     # 興櫃：上市櫃未齊但 emerging_quotes 該日已全日（≥MIN_EM）→ 准用興櫃完整日，
@@ -1508,12 +1664,21 @@ def find_volume_zone(
     skippable = [_vol_zone_bar_skippable(work, i, halt) for i in range(n)]
     last_d = _bar_ymd(work["date"].iloc[-1])
     cut = _scale_cut_date(ex_events, last_d)
+    closes = list(pd.to_numeric(work["close"], errors="coerce").fillna(0.0).tolist())
+    raw_vols = list(pd.to_numeric(work["volume"], errors="coerce").fillna(0.0).tolist())
+    turns = (
+        list(pd.to_numeric(work["turnover_k"], errors="coerce").fillna(0.0).tolist())
+        if "turnover_k" in work.columns
+        else None
+    )
+    # 防衛：呼叫端若未先 heal_ohlc_volume_column，選核仍不准拿股數贏張
+    vols = heal_volume_series_to_lots(raw_vols, closes=closes, turnovers_k=turns)
     return pick_vol_zone_core(
         dates=list(work["date"].tolist()),
         highs=list(pd.to_numeric(work["high"], errors="coerce").fillna(0.0).tolist()),
         lows=list(pd.to_numeric(work["low"], errors="coerce").fillna(0.0).tolist()),
-        closes=list(pd.to_numeric(work["close"], errors="coerce").fillna(0.0).tolist()),
-        vols=list(pd.to_numeric(work["volume"], errors="coerce").fillna(0.0).tolist()),
+        closes=closes,
+        vols=vols,
         skippable=skippable,
         lookback=lookback,
         ex_cut_ymd=cut or "",

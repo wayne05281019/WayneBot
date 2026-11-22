@@ -1972,6 +1972,20 @@ def run_web():
                 logger.info("啟動法人近窗重抓（蓋股當張）：%s", bf)
                 rb = rebake_share_as_lot_chip_dates(get_db_path(), since_ymd="20260101")
                 logger.info("啟動法人殘值日重抓：%s", rb)
+                try:
+                    from vol_zone_chart import scrub_daily_quotes_share_volumes
+
+                    vol_scrub = scrub_daily_quotes_share_volumes(
+                        get_db_path(), since_ymd="20200101"
+                    )
+                    if int(vol_scrub.get("n") or 0):
+                        logger.warning(
+                            "啟動日K量股→張治癒 %s 列 stocks=%s",
+                            vol_scrub.get("n"),
+                            vol_scrub.get("stocks"),
+                        )
+                except Exception:
+                    logger.exception("啟動日K量股→張治癒失敗")
             except Exception:
                 logger.exception("啟動法人近窗重抓失敗")
             try:

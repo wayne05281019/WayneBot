@@ -1492,7 +1492,8 @@ def _key_cats(legends: List[Legend]) -> List[str]:
         elif any(x.startswith("20高") or "接近" in x for x in labs):
             cats.append("導航箭頭")
         else:
-            cats.append("訊號・買賣")
+            # 2026-11-22：不准叫「買賣」——真買點只認藍▲紅框；此列含量能／觀察箭頭
+            cats.append("訊號・標記")
     return cats
 
 
