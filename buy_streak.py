@@ -267,6 +267,67 @@ def format_stock_html(row: StreakRow, kind: str, db_path: Optional[str] = None) 
     return "\n".join(lines)
 
 
+def desk_quote_ymd(db_path: Optional[str], *, now=None) -> str:
+    """現貨齊庫日（YYYYMMDD）；拿來跟籌碼日比舊不舊。"""
+    path = str(db_path or "").strip()
+    if not path:
+        return ""
+    try:
+        from import_health import latest_complete_quote_date
+
+        ymd = str(latest_complete_quote_date(path, now=now) or "").replace("-", "")[:8]
+        if len(ymd) == 8:
+            return ymd
+    except Exception:
+        pass
+    try:
+        from trading_calendar import resolve_screen_as_of
+
+        ymd = str(resolve_screen_as_of(path, now=now) or "").replace("-", "")[:8]
+        if len(ymd) == 8:
+            return ymd
+    except Exception:
+        pass
+    return ""
+
+
+def chip_stale_vs_desk(
+    chip_as_of: str, desk_as_of: str
+) -> bool:
+    """籌碼日嚴格早於現貨齊庫日＝舊日；只觀察不當日選股臉。"""
+    chip = str(chip_as_of or "").replace("-", "")[:8]
+    desk = str(desk_as_of or "").replace("-", "")[:8]
+    return bool(desk and chip and len(chip) == 8 and len(desk) == 8 and chip < desk)
+
+
+def chip_stale_warn_html(
+    chip_as_of: str,
+    db_path: Optional[str] = None,
+    *,
+    now=None,
+    desk_as_of: Optional[str] = None,
+) -> str:
+    """籌碼舊於現貨齊庫 → 醒目警告句；否則空字。"""
+    chip = str(chip_as_of or "").replace("-", "")[:8]
+    desk = str(desk_as_of or "").replace("-", "")[:8] or desk_quote_ymd(
+        db_path, now=now
+    )
+    if not chip_stale_vs_desk(chip, desk):
+        return ""
+    try:
+        from trading_calendar import format_trading_date_zh
+
+        chip_s = format_trading_date_zh(chip)
+        desk_s = format_trading_date_zh(desk)
+    except Exception:
+        chip_s = f"{chip[:4]}/{chip[4:6]}/{chip[6:8]}" if len(chip) == 8 else chip
+        desk_s = f"{desk[:4]}/{desk[4:6]}/{desk[6:8]}" if len(desk) == 8 else desk
+    return (
+        f"⚠️ 籌碼舊日：截至 {chip_s}（現貨已到 {desk_s}），"
+        "只觀察、不當日選股。"
+    )
+
+
 def format_list_html(
     snap: StreakSnapshot,
     days: int,
@@ -291,11 +352,13 @@ def format_list_html(
     if mkt:
         title += f"　{mkt}"
     title += "</b>"
+    stale = chip_stale_warn_html(as_of, db_path)
     head = (
         f"{title}\n"
         f"共 {total} 檔\n"
         f"截至 {as_of_s}　官方籌碼\n"
-        f"剛好連買 {days} 天（不是以上）\n"
+        + (f"<i>{stale}</i>\n" if stale else "")
+        + f"剛好連買 {days} 天（不是以上）\n"
         "股名＝看這檔；旁「籌碼」核對法人買賣超。\n"
         "按鈕只在這則訊息下面；輸入列維持兩排主選單。"
     )

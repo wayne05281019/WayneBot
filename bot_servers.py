@@ -2775,19 +2775,34 @@ class WayneTelegramBot:
         except Exception:
             as_of_s = f"{as_of[:4]}/{as_of[4:6]}/{as_of[6:8]}" if len(as_of) == 8 else (as_of or "—")
         title = f"<b>{KIND_LABEL.get(kind, kind)} · 上市櫃</b>"
+        stale_line = ""
+        try:
+            from buy_streak import chip_stale_warn_html
+
+            stale_line = chip_stale_warn_html(as_of, self.db_path)
+        except Exception:
+            stale_line = ""
         if not days:
+            body = f"{title}\n截至 {as_of_s}。目前沒有連續買超 2 天以上的股票。"
+            if stale_line:
+                body += f"\n<i>{stale_line}</i>"
             await self._streak_send_step(
                 message,
-                f"{title}\n截至 {as_of_s}。目前沒有連續買超 2 天以上的股票。",
+                body,
                 inline=self._streak_kind_inline(MARKET_ALL),
             )
             self._pending[actor] = f"fbuy:kind:{MARKET_ALL}"
             return
-        await self._streak_send_step(
-            message,
+        body = (
             f"{title}\n"
             f"截至 {as_of_s} 官方籌碼。目前最長 <b>{snap.max_days}</b> 天。\n"
-            "請點訊息下方天數。名單是「剛好連買這麼多天」（不是以上）。",
+        )
+        if stale_line:
+            body += f"<i>{stale_line}</i>\n"
+        body += "請點訊息下方天數。名單是「剛好連買這麼多天」（不是以上）。"
+        await self._streak_send_step(
+            message,
+            body,
             inline=self._streak_days_inline(kind, market, days),
         )
 
