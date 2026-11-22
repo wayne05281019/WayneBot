@@ -479,15 +479,55 @@ def _collect_signal_maps(
     signals: Dict[str, Set[str]] = {}
     names: Dict[str, str] = {}
 
+    def _norm_sid_name(it: Any) -> Tuple[str, str]:
+        """海選桶列可能是 dict（stock_id／stock_name）或純代號；不准把整列 str(dict) 當 sid。"""
+        if isinstance(it, dict):
+            raw = it.get("sid") if it.get("sid") not in (None, "") else it.get("stock_id")
+            # sid 欄若誤塞整列 dict（舊寫法 str(row)），再抽一次
+            if isinstance(raw, dict):
+                sid = str(raw.get("stock_id") or raw.get("sid") or "").strip()
+                nm = str(
+                    it.get("name")
+                    or it.get("stock_name")
+                    or raw.get("stock_name")
+                    or raw.get("name")
+                    or ""
+                ).strip()
+            else:
+                sid = str(raw or "").strip()
+                nm = str(it.get("name") or it.get("stock_name") or "").strip()
+                # 防衛：曾把 dict 列 str() 成 "{'stock_id': '1304', ...}"
+                if sid.startswith("{") and "stock_id" in sid:
+                    try:
+                        import ast
+
+                        d = ast.literal_eval(sid)
+                        if isinstance(d, dict):
+                            sid = str(d.get("stock_id") or d.get("sid") or "").strip()
+                            if not nm:
+                                nm = str(d.get("stock_name") or d.get("name") or "").strip()
+                    except Exception:
+                        sid = ""
+            return sid, nm
+        sid = str(it or "").strip()
+        if sid.startswith("{") and "stock_id" in sid:
+            try:
+                import ast
+
+                d = ast.literal_eval(sid)
+                if isinstance(d, dict):
+                    return (
+                        str(d.get("stock_id") or d.get("sid") or "").strip(),
+                        str(d.get("stock_name") or d.get("name") or "").strip(),
+                    )
+            except Exception:
+                return "", ""
+        return sid, ""
+
     def _ingest(sig: str, items: Sequence[Any]) -> None:
         for it in items or []:
-            if isinstance(it, dict):
-                sid = str(it.get("sid") or it.get("stock_id") or "").strip()
-                nm = str(it.get("name") or it.get("stock_name") or "").strip()
-            else:
-                sid = str(it or "").strip()
-                nm = ""
-            if not sid:
+            sid, nm = _norm_sid_name(it)
+            if not sid or sid.startswith("{"):
                 continue
             signals.setdefault(sid, set()).add(sig)
             if nm:
@@ -525,11 +565,8 @@ def _collect_signal_maps(
                 res = load_session_results(db_path, desk, "morning") or {}
                 if not any(res.values()):
                     res = load_session_results(db_path, desk, "evening") or {}
-                ma = [
-                    {"sid": str(s), "name": ""}
-                    for s in (res.get("ma60_lower") or [])
-                    if str(s or "").strip()
-                ]
+                # 桶列可能是 dict 或代號；交給 _ingest 正規化，不准 str(dict) 當 sid
+                ma = list(res.get("ma60_lower") or [])
         except Exception:
             pass
     _ingest("ma60_lower", ma)
@@ -574,10 +611,8 @@ def _collect_signal_maps(
             res = load_session_results(db_path, desk, "morning") or {}
             if not any(res.values()):
                 res = load_session_results(db_path, desk, "evening") or {}
-            _ingest(
-                "golden_buy",
-                [{"sid": str(s), "name": ""} for s in (res.get("golden_buy") or [])],
-            )
+            # 海選 golden_buy 列＝dict（stock_id／stock_name／close…）；交給 _ingest
+            _ingest("golden_buy", res.get("golden_buy") or [])
     except Exception:
         pass
 
@@ -1021,10 +1056,46 @@ def format_recovery_funnel_html(payload: Dict[str, Any]) -> str:
     def _fmt_rows(rows: Sequence[Dict[str, Any]], limit: int = 12) -> str:
         parts = []
         for r in list(rows)[:limit]:
-            sid = escape(str(r.get("sid") or ""))
-            name = escape(str(r.get("name") or ""))
-            labs = "・".join(str(x) for x in (r.get("labels") or [])[:3])
-            entry = "/".join(str(x) for x in (r.get("entry") or [])[:3])
+            raw_sid = r.get("sid") if r.get("sid") not in (None, "") else r.get("stock_id")
+            if isinstance(raw_sid, dict):
+                sid = escape(str(raw_sid.get("stock_id") or raw_sid.get("sid") or ""))
+                name = escape(
+                    str(
+                        r.get("name")
+                        or raw_sid.get("stock_name")
+                        or raw_sid.get("name")
+                        or ""
+                    )
+                )
+            else:
+                sid_s = str(raw_sid or "").strip()
+                # 防衛：舊列 sid 誤為 "{'stock_id': …}" 字串
+                if sid_s.startswith("{") and "stock_id" in sid_s:
+                    try:
+                        import ast
+
+                        d = ast.literal_eval(sid_s)
+                        if isinstance(d, dict):
+                            sid = escape(str(d.get("stock_id") or d.get("sid") or ""))
+                            name = escape(
+                                str(
+                                    r.get("name")
+                                    or d.get("stock_name")
+                                    or d.get("name")
+                                    or ""
+                                )
+                            )
+                        else:
+                            sid, name = "", escape(str(r.get("name") or ""))
+                    except Exception:
+                        sid, name = "", escape(str(r.get("name") or ""))
+                else:
+                    sid = escape(sid_s)
+                    name = escape(str(r.get("name") or ""))
+            if not sid:
+                continue
+            labs = "・".join(str(x) for x in (r.get("labels") or [])[:3] if not isinstance(x, dict))
+            entry = "/".join(str(x) for x in (r.get("entry") or [])[:3] if not isinstance(x, dict))
             bit = f"{sid} {name}".strip()
             if entry:
                 bit += f"〔{escape(entry)}〕"
