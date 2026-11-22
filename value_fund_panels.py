@@ -1198,7 +1198,7 @@ def render_overview_png(pack: Dict[str, Any], out_path: str) -> str:
         (
             "每股純益(元)",
             (
-                f"{_fmt_m(eps0)}({season0}Q)"
+                f"{_fmt_m(eps0)} ({season0}Q)"
                 if season0 is not None and eps0 is not None
                 else "—"
             ),
