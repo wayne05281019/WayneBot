@@ -62,6 +62,18 @@ def test_progress_page_is_independent():
     assert "量先價行" in html
     assert "量價背離" in html
     assert "不是買訊" not in html
+    # 話筒臉＝飆大（舊「飆客獨立區」標題會跟主選單鍵錯位）
+    assert "<b>飆大</b>" in html
+    assert "飆客獨立區" not in html
+
+
+def test_search_titles_use_biaoda_not_legacy_biaoke_zone():
+    html = search_biaoke("勤誠")
+    assert "飆大公開文" in html or "勤誠" in html
+    assert "飆客公開文" not in html
+    ye = search_biaoke("去年年底")
+    assert "飆大　2025" in ye
+    assert "飆客　2025" not in ye
 
 
 def test_welcome_teaches_chat_not_a_menu():

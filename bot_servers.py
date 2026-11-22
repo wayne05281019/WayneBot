@@ -3548,9 +3548,12 @@ class WayneTelegramBot:
             return parts
         as_of = result.get("as_of") or result.get("date") or ""
         if str(result.get("universe") or "").upper() == "EM":
+            # 興櫃與上市櫃同一套進場欄：黃金買點＋紅箭確認；還在零只併進黃金買點欄觀察。
+            # 不准漏 ma60_lower（execute 有算、EMERGING_PUSH_SPECS 有欄）。
             return format_screening_payload(
                 {
                     "leave_zero": result.get("leave_zero") or [],
+                    "ma60_lower": result.get("ma60_lower") or [],
                     "golden_buy": result.get("golden_buy") or [],
                 },
                 as_of,
@@ -6655,10 +6658,15 @@ class WayneTelegramBot:
         """大盤專頁：庫內結構 + 盤中 MIS 指數（不寫庫）。"""
         own_wait = False
         if wait_h is None and status is None:
+            # v34：遠／近／超近改走「波浪位階」；大盤只讀指數＋盤後對照圖。
             wait_h = await self._start_plain_wait(
                 message,
                 text_fn=lambda s: self._wait_bubble(
-                    "大盤進行中", s, now="讀指數", rest="遠／近／超近窗", fill_sec=20.0
+                    "大盤進行中",
+                    s,
+                    now="讀指數",
+                    rest="盤後對照圖",
+                    fill_sec=20.0,
                 ),
             )
             own_wait = True
@@ -7883,7 +7891,7 @@ class WayneTelegramBot:
                 return
             if not parts:
                 await message.reply_text(
-                    "飆客區讀取失敗。", reply_markup=self._biaoke_reply_menu(uid)
+                    "飆大讀取失敗。", reply_markup=self._biaoke_reply_menu(uid)
                 )
                 delivered = True
                 return
@@ -8763,7 +8771,11 @@ class WayneTelegramBot:
         wait_h = await self._start_plain_wait(
             update.message,
             text_fn=lambda s: self._wait_bubble(
-                "大盤進行中", s, now="讀指數", rest="日K", fill_sec=20.0
+                "大盤進行中",
+                s,
+                now="讀指數",
+                rest="盤後對照圖",
+                fill_sec=20.0,
             ),
         )
         try:

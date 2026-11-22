@@ -394,7 +394,7 @@ def format_biaoke_welcome_html() -> str:
 def format_biaoke_desk_html() -> str:
     span = html_escape(corpus_span())
     return (
-        "<b>飆客獨立區</b>\n"
+        "<b>飆大</b>\n"
         "這區跟海選／高低卡無關，也不改黃金買點。來源是 CMoney「期股多空雙飆客」公開發文"
         f"（{span}）。\n"
         "\n"
@@ -439,11 +439,11 @@ def search_biaoke(ask: str, *, limit: int = 6, db_path: Optional[str] = None) ->
     blob = load_corpus(db_path if db_path is not None else _default_db_path())
     posts: List[Dict[str, Any]] = list(blob.get("posts") or [])
     start, end = "", "9999"
-    title = f"飆客公開文　{html_escape(q)}"
+    title = f"飆大公開文　{html_escape(q)}"
     year_end = bool(_YEAR_END.search(q))
     if year_end:
         start, end = "2025-11-15", "2026-01-20"
-        title = "飆客　2025 年底～2026 年初在做什麼"
+        title = "飆大　2025 年底～2026 年初在做什麼"
         head = (
             "當時主戰場是<b>記憶體</b>。"
             "12/17 起布局（群聯／華邦電量價到整理末端，盯美光財報）；"
