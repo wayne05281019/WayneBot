@@ -291,6 +291,80 @@ def _headline(pack: Dict[str, Any]) -> str:
     return "震盪日・看量與櫃買相對"
 
 
+def plain_today_line(desk: Dict[str, Any]) -> str:
+    """手機白話一句：今天發生什麼（不准買訊口吻）。"""
+    d = desk.get("daily") or {}
+    tw = d.get("twii") or {}
+    chg = tw.get("chg_pct")
+    labs = desk.get("structure_labels") or []
+    bits: List[str] = []
+    if chg is not None:
+        if chg <= -3:
+            bits.append(f"大盤大跌 {_fmt_num(chg)}%")
+        elif chg <= -1:
+            bits.append(f"大盤偏弱 {_fmt_num(chg)}%")
+        elif chg >= 3:
+            bits.append(f"大盤大漲 {_fmt_num(chg)}%")
+        elif chg >= 1:
+            bits.append(f"大盤偏強 {_fmt_num(chg)}%")
+        else:
+            bits.append(f"大盤震盪 {_fmt_num(chg)}%")
+    for lab in labs:
+        if "融資跌更快" in lab or "去槓桿有進度" in lab:
+            bits.append("融資掉得比指數快＝洗籌碼有在進行")
+        elif "清算不足" in lab:
+            bits.append("指數跌但融資沒更快掉＝還沒洗乾淨")
+        elif "縮量反彈" in lab:
+            bits.append("漲但量不夠＝先當反彈不是翻多")
+        elif "帶量上攻" in lab:
+            bits.append("漲且有量＝比較像有人真的在買")
+        elif "爆量下跌" in lab:
+            bits.append("跌且爆量＝恐慌或出貨要再辨")
+        elif "櫃買相對強" in lab:
+            bits.append("櫃買比加權強")
+        elif "櫃買弱" in lab:
+            bits.append("櫃買比加權弱＝壓力較大")
+        elif "台幣偏升" in lab:
+            bits.append("台幣偏升（資金面偏暖的訊號之一）")
+        elif "台幣偏貶" in lab:
+            bits.append("台幣偏貶（資金面偏壓的訊號之一）")
+    if not bits:
+        bits.append(desk.get("headline") or "今天沒觸發明確標籤")
+    # 最多兩句，手機一眼
+    return "；".join(bits[:2])
+
+
+def plain_tomorrow_rows(checks: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+    """明天盤中：時段＋一句白話（去掉原則代號與長句）。"""
+    table = {
+        "T_l0_survive": ("開盤前", "先問：停損／最多虧多少設好了嗎"),
+        "T_open15_vol": ("09:00–09:15", "開盤有沒有量？量縮鎖死就先別急"),
+        "T_escape_follow": ("09:00–10:30", "昨縮量漲的話：今早有沒有補量"),
+        "T_am_vol_pace": ("午前", "若大漲，累計量有沒有跟上"),
+        "T_level_probe": ("碰到前高／頸線時", "刺穿後有沒有立刻被打回"),
+        "T_otc_rel": ("盤中", "櫃買是不是比加權更弱"),
+        "T_fx_lead": ("盤中", "台幣升還是貶（升偏暖、貶偏壓）"),
+        "T_tx_proxy": ("盤中", "期貨有沒有跟著、還是只有現貨虛漲"),
+        "T_lever_etf_proxy": ("盤中", "正二／槓桿ETF是急殺無量還是有換手"),
+    }
+    out: List[Dict[str, str]] = []
+    seen = set()
+    for c in checks or []:
+        cid = str(c.get("id") or "")
+        if cid in seen:
+            continue
+        seen.add(cid)
+        if cid in table:
+            when, line = table[cid]
+        else:
+            when = str(c.get("when") or "")[:12]
+            line = str(c.get("watch") or "")[:28]
+        out.append({"when": when, "line": line, "id": cid})
+        if len(out) >= 6:
+            break
+    return out
+
+
 def _fmt_num(v: Any, n: int = 2) -> str:
     if v is None:
         return "—"
@@ -302,53 +376,38 @@ def _fmt_num(v: Any, n: int = 2) -> str:
 
 def render_watch_desk_markdown(desk: Dict[str, Any]) -> str:
     if not desk.get("ok"):
-        return f"# 啾哈觀盤桌（非買訊）\n\n缺資料：{desk.get('note')}\n"
+        return f"# 啾哈觀盤（非買訊）\n\n缺資料：{desk.get('note')}\n"
     d = desk.get("daily") or {}
     tw = d.get("twii") or {}
     otc = d.get("otc") or {}
-    mg = d.get("margin") or {}
     fx = d.get("usdtwd") or {}
     lines = [
-        f"# 啾哈觀盤桌 {desk.get('asof')}（非買訊）",
+        f"# 啾哈觀盤 {desk.get('asof')}（非買訊）",
         "",
-        f"**今日盤後一句：** {desk.get('headline')}",
+        f"**今天：** {plain_today_line(desk)}",
         "",
-        "## 今日盤後（官方柱）",
-        f"- 加權收 {_fmt_num(tw.get('close'))}（{_fmt_num(tw.get('chg_pct'))}%），量／5日均 {_fmt_num(tw.get('vol_vs_5'))}、／20日均 {_fmt_num(tw.get('vol_vs_20'))}",
-        f"- 櫃買 {_fmt_num(otc.get('close'))}（{_fmt_num(otc.get('chg_pct'))}%），相對加權 {_fmt_num(otc.get('rel_vs_twii_pp'))} pp",
-        f"- 融資變動 {_fmt_num(mg.get('chg_pct_vs_prev_row'))}%，速度差 {_fmt_num(mg.get('speed_gap_pp'))} pp（融資日 {mg.get('asof') or '—'}）",
-        f"- 美金台幣 {_fmt_num(fx.get('close'), 3)}（{_fmt_num(fx.get('chg_pct'), 3)}%）{'［落後］' if fx.get('stale') else ''}",
+        "## 數字",
+        f"- 加權 {_fmt_num(tw.get('close'))}（{_fmt_num(tw.get('chg_pct'))}%）",
+        f"- 量／五日 {_fmt_num(tw.get('vol_vs_5'))}×",
+        f"- 櫃買相對 {_fmt_num(otc.get('rel_vs_twii_pp'))} 百分點",
+        f"- 台幣 {_fmt_num(fx.get('close'), 3)}{'［落後］' if fx.get('stale') else ''}",
         "",
-        "## 結構標籤",
+        "## 明天盤中這樣看",
     ]
-    labs = desk.get("structure_labels") or []
-    lines.extend(f"- {x}" for x in labs) if labs else lines.append("- （未觸發）")
-    lines += ["", "## 明日盤中要注意（可當場觀察、可應對）"]
-    lines.append("只列盤中看得見的燈；融資／法人 OI 日結不放這裡當唯一鈕。")
-    for i, c in enumerate(desk.get("tomorrow_intraday") or [], 1):
-        lines.append(
-            f"{i}. **{c.get('when')}**｜{c.get('watch')} → {c.get('how')}（{c.get('principle')}）"
-        )
-        lines.append(f"   - 資料：{c.get('data_hint')}")
-    lines += ["", "## 盤後對質欄（明早不要等它才動）"]
-    for a in desk.get("after_close_audit_only") or []:
-        lines.append(
-            f"- `{a['id']}` {a['title']}：{a['why_not_intraday']} → {a['use']}"
-        )
-    miss = d.get("missing_official") or []
-    if miss:
-        lines += ["", "## 官方缺欄（不准假填）"]
-        lines.extend(f"- {x}" for x in miss)
+    for i, r in enumerate(plain_tomorrow_rows(desk.get("tomorrow_intraday") or []), 1):
+        lines.append(f"{i}. {r.get('when')}｜{r.get('line')}")
     lines += [
         "",
-        "估值／結構觀察 ≠ 買訊。切入仍只認已量化過關的高低卡規則。",
+        "融資餘額、空單口數＝收盤後才更新，明早先看上面。",
+        "",
+        "觀察 ≠ 買訊。切入仍只認已量化過關的高低卡。",
         "",
     ]
     return "\n".join(lines)
 
 
 def render_watch_desk_png(desk: Dict[str, Any], path: str) -> str:
-    """手機寬長圖：上盤後結構，下明日盤中檢查點。"""
+    """手機白話卡：今天一句＋四大數字＋一條走勢＋明天時段（大字、不擠）。"""
     if not desk.get("ok"):
         return ""
     import matplotlib
@@ -358,197 +417,282 @@ def render_watch_desk_png(desk: Dict[str, Any], path: str) -> str:
     from matplotlib.patches import FancyBboxPatch
 
     asof = desk.get("asof") or ""
+    asof_slash = f"{asof[4:6]}/{asof[6:8]}" if len(asof) == 8 else asof
     d = desk.get("daily") or {}
     tw = d.get("twii") or {}
+    otc = d.get("otc") or {}
+    fx = d.get("usdtwd") or {}
     series = desk.get("series") or {}
     twii_s = series.get("twii") or []
-    otc_s = series.get("otc") or []
-    fx_s = series.get("usdtwd") or []
-    checks = desk.get("tomorrow_intraday") or []
-    labs = desk.get("structure_labels") or []
+    plain = plain_today_line(desk)
+    rows = plain_tomorrow_rows(desk.get("tomorrow_intraday") or [])
 
-    # 手機對話框寬：高一點塞檢查點
-    fig_w, fig_h, dpi = 9.0, 14.2, 140
-    fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi, facecolor="#0f1115")
-    # header
+    # 台股慣例：紅漲綠跌
+    chg = tw.get("chg_pct")
+    up = chg is not None and chg >= 0
+    chg_color = "#c62828" if up else "#2e7d32"
+
+    bg = "#f7f5f0"
+    ink = "#1a1a1a"
+    mute = "#5c5c5c"
+    card = "#ffffff"
+    line_c = "#c62828" if up else "#2e7d32"
+
+    fig_w, fig_h, dpi = 9.0, 16.0, 150
+    fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi, facecolor=bg)
+
+    # 標題
     fig.text(
-        0.04,
+        0.05,
         0.975,
-        f"啾哈觀盤桌 {asof}（非買訊）",
-        color="#f2f2f2",
-        fontproperties=_fp(22, "bold"),
+        f"啾哈觀盤  {asof_slash}",
+        color=ink,
+        fontproperties=_fp(28, "bold"),
         ha="left",
         va="top",
     )
     fig.text(
-        0.04,
-        0.948,
-        f"今日盤後：{desk.get('headline')}",
-        color="#c8d0dc",
-        fontproperties=_fp(14),
-        ha="left",
-        va="top",
-    )
-    # metrics strip
-    def _fmt(v, n=2):
-        if v is None:
-            return "—"
-        try:
-            return f"{float(v):.{n}f}"
-        except (TypeError, ValueError):
-            return str(v)
-
-    otc_rel = (d.get("otc") or {}).get("rel_vs_twii_pp")
-    metric = (
-        f"加權 {_fmt(tw.get('close'))}（{_fmt(tw.get('chg_pct'))}%）  "
-        f"量/5日 {_fmt(tw.get('vol_vs_5'))}  "
-        f"櫃買相對 {_fmt(otc_rel)}pp  "
-        f"台幣 {_fmt((d.get('usdtwd') or {}).get('close'), 3)}"
-    )
-    fig.text(
-        0.04,
-        0.922,
-        metric,
-        color="#9aa7b8",
-        fontproperties=_fp(11),
-        ha="left",
+        0.95,
+        0.975,
+        "非買訊",
+        color=mute,
+        fontproperties=_fp(16, "bold"),
+        ha="right",
         va="top",
     )
 
-    def _dates(xs):
-        return [str(x.get("date") or "")[-4:] for x in xs]
-
-    # axes: TWII close, vol, OTC/TWII, FX
-    ax1 = fig.add_axes([0.08, 0.68, 0.84, 0.18])
-    ax2 = fig.add_axes([0.08, 0.54, 0.84, 0.11])
-    ax3 = fig.add_axes([0.08, 0.40, 0.40, 0.11])
-    ax4 = fig.add_axes([0.54, 0.40, 0.38, 0.11])
-    for ax in (ax1, ax2, ax3, ax4):
-        ax.set_facecolor("#171a21")
-        ax.tick_params(colors="#8b95a5", labelsize=8)
-        for sp in ax.spines.values():
-            sp.set_color("#2a3140")
-
-    if twii_s:
-        closes = [x.get("c") for x in twii_s]
-        ax1.plot(range(len(closes)), closes, color="#5b9cff", lw=1.8)
-        ax1.set_xticks(range(len(closes)))
-        ax1.set_xticklabels(_dates(twii_s), rotation=45, ha="right")
-        ax1.set_title("加權收盤（近窗）", color="#d7dee8", fontproperties=_fp(12, "bold"), loc="left")
-        vols = [x.get("v") or 0 for x in twii_s]
-        colors = []
-        for i, x in enumerate(twii_s):
-            if i == 0 or x.get("c") is None or twii_s[i - 1].get("c") is None:
-                colors.append("#6b7380")
-            else:
-                colors.append("#e85d5d" if x["c"] >= twii_s[i - 1]["c"] else "#3ecf8e")
-        ax2.bar(range(len(vols)), vols, color=colors, width=0.8)
-        ax2.set_xticks(range(len(vols)))
-        ax2.set_xticklabels(_dates(twii_s), rotation=45, ha="right")
-        ax2.set_title("成交量", color="#d7dee8", fontproperties=_fp(12, "bold"), loc="left")
-
-    # OTC relative if both aligned by date
-    tw_map = {x["date"]: x.get("c") for x in twii_s if x.get("c") is not None}
-    otc_rel = []
-    otc_dates = []
-    prev_t = prev_o = None
-    for o in otc_s:
-        t = tw_map.get(o["date"])
-        if t is None or o.get("c") is None:
-            continue
-        if prev_t and prev_o:
-            t_chg = (t - prev_t) / abs(prev_t) * 100
-            o_chg = (o["c"] - prev_o) / abs(prev_o) * 100
-            otc_rel.append(o_chg - t_chg)
-            otc_dates.append(o["date"])
-        prev_t, prev_o = t, o["c"]
-    if otc_rel:
-        ax3.bar(
-            range(len(otc_rel)),
-            otc_rel,
-            color=["#3ecf8e" if v >= 0 else "#e85d5d" for v in otc_rel],
-            width=0.8,
-        )
-        ax3.axhline(0, color="#445066", lw=0.8)
-        ax3.set_xticks(range(len(otc_rel)))
-        ax3.set_xticklabels([d[-4:] for d in otc_dates], rotation=45, ha="right")
-    ax3.set_title("櫃買−加權（pp）", color="#d7dee8", fontproperties=_fp(11, "bold"), loc="left")
-
-    if fx_s:
-        fxc = [x.get("c") for x in fx_s]
-        ax4.plot(range(len(fxc)), fxc, color="#f0c14b", lw=1.6)
-        ax4.set_xticks(range(len(fxc)))
-        ax4.set_xticklabels(_dates(fx_s), rotation=45, ha="right")
-    ax4.set_title("美金台幣", color="#d7dee8", fontproperties=_fp(11, "bold"), loc="left")
-
-    # labels box
-    lab_ax = fig.add_axes([0.08, 0.335, 0.84, 0.05])
-    lab_ax.set_xlim(0, 1)
-    lab_ax.set_ylim(0, 1)
-    lab_ax.axis("off")
-    lab_ax.add_patch(
+    # 今天一句（大框）
+    ax_head = fig.add_axes([0.05, 0.82, 0.90, 0.12])
+    ax_head.set_xlim(0, 1)
+    ax_head.set_ylim(0, 1)
+    ax_head.axis("off")
+    ax_head.add_patch(
         FancyBboxPatch(
             (0, 0),
             1,
             1,
-            boxstyle="round,pad=0.01,rounding_size=0.02",
-            facecolor="#1b2130",
-            edgecolor="#2f3a4d",
-            transform=lab_ax.transAxes,
+            boxstyle="round,pad=0.012,rounding_size=0.03",
+            facecolor=card,
+            edgecolor="#e0dcd3",
+            linewidth=1.5,
+            transform=ax_head.transAxes,
         )
     )
-    lab_txt = "結構：" + ("／".join(labs[:3]) if labs else "（未觸發明確標籤）")
-    lab_ax.text(0.02, 0.5, lab_txt, color="#e6ebf2", fontproperties=_fp(12), va="center")
-
-    # tomorrow checks panel
-    chk_ax = fig.add_axes([0.08, 0.04, 0.84, 0.28])
-    chk_ax.set_xlim(0, 1)
-    chk_ax.set_ylim(0, 1)
-    chk_ax.axis("off")
-    chk_ax.add_patch(
-        FancyBboxPatch(
-            (0, 0),
-            1,
-            1,
-            boxstyle="round,pad=0.01,rounding_size=0.02",
-            facecolor="#141821",
-            edgecolor="#3a465c",
-            transform=chk_ax.transAxes,
-        )
-    )
-    chk_ax.text(
-        0.03,
-        0.94,
-        "明日盤中要注意（當場可觀察）",
-        color="#7ec8ff",
+    ax_head.text(
+        0.04,
+        0.78,
+        "今天盤後一句",
+        color=mute,
         fontproperties=_fp(14, "bold"),
         va="top",
     )
-    chk_ax.text(
-        0.03,
-        0.86,
-        "融資／法人OI日結＝盤後對質，不是明早唯一應對鈕",
-        color="#8b95a5",
-        fontproperties=_fp(10),
+    # 手動換行：約 16 全形字
+    def _wrap(s: str, n: int = 16) -> str:
+        s = str(s or "")
+        if len(s) <= n:
+            return s
+        parts = []
+        while s:
+            parts.append(s[:n])
+            s = s[n:]
+        return "\n".join(parts[:3])
+
+    ax_head.text(
+        0.04,
+        0.48,
+        _wrap(plain, 17),
+        color=ink,
+        fontproperties=_fp(20, "bold"),
+        va="top",
+        linespacing=1.35,
+    )
+
+    # 四大數字
+    def _chip(ax, title, value, sub, value_color=ink):
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        ax.axis("off")
+        ax.add_patch(
+            FancyBboxPatch(
+                (0, 0),
+                1,
+                1,
+                boxstyle="round,pad=0.02,rounding_size=0.04",
+                facecolor=card,
+                edgecolor="#e0dcd3",
+                linewidth=1.2,
+                transform=ax.transAxes,
+            )
+        )
+        ax.text(0.08, 0.78, title, color=mute, fontproperties=_fp(13, "bold"), va="top")
+        ax.text(
+            0.08,
+            0.42,
+            value,
+            color=value_color,
+            fontproperties=_fp(22, "bold"),
+            va="center",
+        )
+        if sub:
+            ax.text(0.08, 0.14, sub, color=mute, fontproperties=_fp(12), va="bottom")
+
+    fx_chg = fx.get("chg_pct")
+    # USDTWD 升＝台幣貶
+    fx_plain = "—"
+    fx_col = ink
+    if fx_chg is not None:
+        if fx_chg > 0.05:
+            fx_plain = "台幣偏貶"
+            fx_col = "#2e7d32"  # 資金偏壓用綠字警示區分漲跌色
+        elif fx_chg < -0.05:
+            fx_plain = "台幣偏升"
+            fx_col = "#c62828"
+        else:
+            fx_plain = "台幣持平"
+
+    otc_rel = otc.get("rel_vs_twii_pp")
+    otc_plain = "—"
+    if otc_rel is not None:
+        otc_plain = "櫃買較強" if otc_rel > 0.3 else ("櫃買較弱" if otc_rel < -0.3 else "差不多")
+
+    chips = [
+        (
+            0.05,
+            "加權",
+            f"{_fmt_num(tw.get('close'), 0)}",
+            f"{_fmt_num(chg)}%",
+            chg_color,
+        ),
+        (
+            0.28,
+            "量（vs五日）",
+            f"{_fmt_num(tw.get('vol_vs_5'))}×",
+            "＞1＝量比平常大" if (tw.get("vol_vs_5") or 0) >= 1 else "＜1＝量偏縮",
+            ink,
+        ),
+        (
+            0.51,
+            "櫃買相對",
+            otc_plain,
+            f"{_fmt_num(otc_rel)} 百分點" if otc_rel is not None else "缺官方柱",
+            ink,
+        ),
+        (
+            0.74,
+            "台幣",
+            fx_plain,
+            f"匯率 {_fmt_num(fx.get('close'), 3)}"
+            + (" 落後" if fx.get("stale") else ""),
+            fx_col,
+        ),
+    ]
+    for x0, title, val, sub, vc in chips:
+        ax = fig.add_axes([x0, 0.68, 0.21, 0.12])
+        _chip(ax, title, val, sub, vc)
+
+    # 一條加權走勢（大）
+    ax_c = fig.add_axes([0.08, 0.42, 0.84, 0.22])
+    ax_c.set_facecolor(card)
+    for sp in ax_c.spines.values():
+        sp.set_color("#e0dcd3")
+    ax_c.tick_params(colors=mute, labelsize=11)
+    ax_c.set_title(
+        "加權近況（一眼看方向）",
+        color=ink,
+        fontproperties=_fp(15, "bold"),
+        loc="left",
+        pad=8,
+    )
+    if twii_s:
+        closes = [x.get("c") for x in twii_s if x.get("c") is not None]
+        xs = list(range(len(closes)))
+        ax_c.plot(xs, closes, color=line_c, lw=2.6)
+        ax_c.fill_between(xs, closes, min(closes), color=line_c, alpha=0.08)
+        # 只標首尾日期，避免擠
+        if len(twii_s) >= 2:
+            d0 = str(twii_s[0].get("date") or "")
+            d1 = str(twii_s[-1].get("date") or "")
+            ax_c.set_xticks([0, len(closes) - 1])
+            ax_c.set_xticklabels(
+                [
+                    f"{d0[4:6]}/{d0[6:8]}" if len(d0) == 8 else d0,
+                    f"{d1[4:6]}/{d1[6:8]}" if len(d1) == 8 else d1,
+                ],
+                fontproperties=_fp(12),
+            )
+        ax_c.yaxis.set_major_formatter(
+            plt.FuncFormatter(lambda v, _: f"{v:,.0f}")
+        )
+        for lab in ax_c.get_yticklabels():
+            lab.set_fontproperties(_fp(11))
+
+    # 明天清單
+    ax_t = fig.add_axes([0.05, 0.04, 0.90, 0.34])
+    ax_t.set_xlim(0, 1)
+    ax_t.set_ylim(0, 1)
+    ax_t.axis("off")
+    ax_t.add_patch(
+        FancyBboxPatch(
+            (0, 0),
+            1,
+            1,
+            boxstyle="round,pad=0.012,rounding_size=0.03",
+            facecolor=card,
+            edgecolor="#e0dcd3",
+            linewidth=1.5,
+            transform=ax_t.transAxes,
+        )
+    )
+    ax_t.text(
+        0.04,
+        0.94,
+        "明天盤中這樣看（當場看得出才列）",
+        color=ink,
+        fontproperties=_fp(18, "bold"),
         va="top",
     )
-    y = 0.78
-    for i, c in enumerate(checks[:6], 1):
-        line1 = f"{i}. {c.get('when')}｜{c.get('watch')}"
-        line2 = f"   → {c.get('how')}"
-        chk_ax.text(0.03, y, line1, color="#f0f3f7", fontproperties=_fp(10, "bold"), va="top")
-        y -= 0.075
-        chk_ax.text(0.03, y, line2, color="#aeb8c6", fontproperties=_fp(9), va="top")
-        y -= 0.055
-        if y < 0.06:
-            break
+    ax_t.text(
+        0.04,
+        0.84,
+        "融資餘額、空單口數＝收盤後才更新，明早先看下面",
+        color=mute,
+        fontproperties=_fp(13),
+        va="top",
+    )
+    y = 0.72
+    for i, r in enumerate(rows[:6], 1):
+        ax_t.text(
+            0.04,
+            y,
+            f"{i}",
+            color="#c62828",
+            fontproperties=_fp(18, "bold"),
+            va="top",
+        )
+        ax_t.text(
+            0.10,
+            y,
+            r.get("when") or "",
+            color=mute,
+            fontproperties=_fp(15, "bold"),
+            va="top",
+        )
+        ax_t.text(
+            0.38,
+            y,
+            r.get("line") or "",
+            color=ink,
+            fontproperties=_fp(16, "bold"),
+            va="top",
+        )
+        y -= 0.11
 
     fig.text(
-        0.04,
+        0.05,
         0.012,
-        "觀察 ≠ 買訊｜切入只認已量化過關高低卡",
-        color="#6b7380",
-        fontproperties=_fp(9),
+        "觀察用，不是買訊。怎麼買仍看高低卡已過關規則。",
+        color=mute,
+        fontproperties=_fp(12),
         ha="left",
         va="bottom",
     )
@@ -585,18 +729,18 @@ def append_fuse_log(desk: Dict[str, Any], out_dir: str) -> str:
 
 def _phone_caption(desk: Dict[str, Any]) -> str:
     if not desk.get("ok"):
-        return "啾哈觀盤桌暫時組不出（非買訊）。"
+        return "啾哈觀盤暫時組不出（非買訊）。"
     asof = desk.get("asof") or ""
-    head = desk.get("headline") or ""
-    checks = desk.get("tomorrow_intraday") or []
-    tips = "／".join(str(c.get("when") or "") for c in checks[:3] if c.get("when"))
+    asof_slash = f"{asof[4:6]}/{asof[6:8]}" if len(asof) == 8 else asof
     lines = [
-        f"啾哈觀盤桌 {asof}（非買訊）",
-        f"今日盤後：{head}",
+        f"啾哈觀盤 {asof_slash}（非買訊）",
+        plain_today_line(desk),
     ]
-    if tips:
-        lines.append(f"明日盤中先看：{tips}")
-    lines.append("融資／法人OI日結＝盤後對質，不是明早唯一鈕。")
+    rows = plain_tomorrow_rows(desk.get("tomorrow_intraday") or [])
+    if rows:
+        tip = "；".join(f"{r['when']} {r['line']}" for r in rows[:3])
+        lines.append(f"明天先看：{tip}")
+    lines.append("融資／空單口數收盤後才更新。")
     return "\n".join(lines)
 
 
@@ -673,6 +817,8 @@ __all__ = [
     "build_after_close_audit_only",
     "build_tomorrow_intraday_checks",
     "build_watch_desk",
+    "plain_today_line",
+    "plain_tomorrow_rows",
     "render_watch_desk_markdown",
     "render_watch_desk_png",
     "run_jiuha_daily_fuse",

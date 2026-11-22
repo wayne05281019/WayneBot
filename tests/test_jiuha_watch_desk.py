@@ -48,9 +48,9 @@ def test_watch_desk_from_market_db(tmp_path):
     assert desk.get("not_buy_signal") is True
     assert desk.get("tomorrow_intraday")
     md = render_watch_desk_markdown(desk)
-    assert "明日盤中要注意" in md
-    assert "盤後對質欄" in md
+    assert "明天盤中這樣看" in md
     assert "非買訊" in md
+    assert "今天" in md
     out = write_watch_desk_artifacts(
         market_db=str(db), out_dir=str(tmp_path), asof="20261120"
     )
