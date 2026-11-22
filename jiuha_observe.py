@@ -97,6 +97,13 @@ PRINCIPLES: List[Dict[str, Any]] = [
         "evidence": ["188178992"],
         "observe": "turnover_authenticity",
     },
+    {
+        "id": "P11_domestic_etf_regime",
+        "title": "內資／ETF／官股體質質變",
+        "rule": "恐慌期官股與大眾 ETF 逆勢布局屬紀律均值回歸敘事；軋空／擠壓反彈要對外資空單是否認錯回補，不是只看點數。",
+        "evidence": ["180121967", "181014061", "181896104"],
+        "observe": "domestic_etf_regime",
+    },
 ]
 
 
@@ -483,6 +490,7 @@ def compute_daily_structure(
     focus.append("若反彈：是否帶量；縮量大漲當逃命窗而非追高證成")
     focus.append("台幣＋外資現貨／期貨是否同向改善（缺官方列則標缺）")
     focus.append("正二／槓桿相關融資：停加或轉減才是狀態切換")
+    focus.append("內資／ETF／官股是否在恐慌日逆勢承接（體質質變敘事）")
     if any("假突破" in (x or "") for x in labels) or (
         chg is not None and chg < -2 and vol_vs_5 and vol_vs_5 >= 1.3
     ):
@@ -548,7 +556,8 @@ def build_alignment_report(
     limit_posts: int = 80,
 ) -> Dict[str, Any]:
     posts = load_jiuha_mains(corpus_db)[:limit_posts]
-    twii = load_index_bars(market_db, "TWII", limit=400)
+    # 語料可跨兩年以上；400 根不夠蓋到最早主文
+    twii = load_index_bars(market_db, "TWII", limit=900)
     rows = [align_post_to_bar(p, twii) for p in posts]
     return {
         "author": AUTHOR_NAME,

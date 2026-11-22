@@ -15,7 +15,9 @@ from jiuha_observe import (
 
 
 def test_principles_have_evidence():
-    assert len(PRINCIPLES) >= 8
+    assert len(PRINCIPLES) >= 10
+    ids = {p["id"] for p in PRINCIPLES}
+    assert "P11_domestic_etf_regime" in ids
     for p in PRINCIPLES:
         assert p["id"] and p["title"] and p["rule"]
         assert p["evidence"], p["id"]
