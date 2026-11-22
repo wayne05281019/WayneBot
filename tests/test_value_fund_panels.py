@@ -258,6 +258,67 @@ def test_business_mix_parse_from_html(monkeypatch):
     assert got.get("text") == "銅箔基板／黏合片／多層壓合板"
 
 
+def test_ymd_accepts_roc_seven_digits():
+    """櫃買股東會日常是民國七碼；要轉西元才能顯示 115/05/25。"""
+    from value_fund_panels import _roc_ymd, _ymd
+
+    assert _ymd("1150525") == "20260525"
+    assert _roc_ymd("1150525") == "115/05/25"
+    assert _roc_ymd("20260525") == "115/05/25"
+
+
+def test_mops_non_op_fills_single_when_db_null(tmp_path, monkeypatch):
+    """上櫃庫內業外 NULL 時，mops_extra 單季數要進畫面並 COALESCE 寫回。"""
+    import value_fund_panels as vfp
+
+    db = str(tmp_path / "non.db")
+    _seed_value_db(db)
+    con = sqlite3.connect(db)
+    try:
+        con.execute(
+            "UPDATE quarterly_income SET non_operating=NULL "
+            "WHERE stock_id='6416' AND season IN (2,3)"
+        )
+        con.commit()
+    finally:
+        con.close()
+
+    def _fake_extra(sid, quarters, *, db_path=""):
+        return {
+            "fiscal_month": 12,
+            "lt_loan_equity_pct": 10.0,
+            "business_mix": None,
+            "ar_turn": {(2026, 3): 1.1},
+            "inv_turn": {(2026, 3): 2.2},
+            "non_op_q": {(2026, 2): 51.0, (2026, 3): 16.0},
+            "non_op_ytd": {(2026, 2): 100.0, (2026, 3): 116.0},
+            "source": "test",
+        }
+
+    monkeypatch.setattr(vfp, "_load_mops_fund_extras", _fake_extra)
+    monkeypatch.setattr(
+        vfp, "_load_mops_business_mix", lambda sid: {"text": "測試業", "source": "t"}
+    )
+    monkeypatch.setattr(vfp, "_load_company_profile", lambda sid: {})
+    monkeypatch.setattr(vfp, "_load_balance_sheet", lambda sid: {})
+    monkeypatch.setattr(vfp, "_load_income_parent_ni", lambda sid: {})
+    monkeypatch.setattr(vfp, "_load_agm_openapi", lambda sid: {})
+    pack = load_value_fund_pack("6416", db)
+    non = pack["single"]["non_operating"]
+    assert non.get((2026, 2)) == 51.0
+    assert non.get((2026, 3)) == 16.0
+    con = sqlite3.connect(db)
+    try:
+        rows = con.execute(
+            "SELECT season, non_operating FROM quarterly_income "
+            "WHERE stock_id='6416' AND year=2026 AND season IN (2,3) "
+            "ORDER BY season"
+        ).fetchall()
+    finally:
+        con.close()
+    assert rows == [(2, 100.0), (3, 116.0)]
+
+
 def test_undervalue_rejects_stale_pe_and_loss(tmp_path, monkeypatch):
     from undervalue_scan import RULE_PHONE
 

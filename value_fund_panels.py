@@ -264,7 +264,15 @@ def _row_mid_y(row_top: int, row_h: int = HT_ROW_H) -> int:
 
 
 def _ymd(raw: Any) -> str:
-    return "".join(ch for ch in str(raw or "") if ch.isdigit())[:8]
+    """西元 YYYYMMDD；櫃買／OpenAPI 常給民國七碼（1150525）→ 轉西元。"""
+    s = "".join(ch for ch in str(raw or "") if ch.isdigit())
+    if len(s) == 7:
+        try:
+            y, m, d = int(s[:3]) + 1911, int(s[3:5]), int(s[5:7])
+            return f"{y:04d}{m:02d}{d:02d}"
+        except ValueError:
+            return ""
+    return s[:8]
 
 
 def _finite(raw: Any) -> Optional[float]:
@@ -287,7 +295,13 @@ def _roc_ym(yyyymm: str) -> str:
 
 
 def _roc_ymd(raw: Any) -> str:
-    """YYYYMMDD／YYYY-MM-DD → 民國 yy/mm/dd；缺則原字或空。"""
+    """YYYYMMDD／民國七碼／YYYY-MM-DD → 民國 yy/mm/dd；缺則原字或空。"""
+    digits = "".join(ch for ch in str(raw or "") if ch.isdigit())
+    if len(digits) == 7:
+        try:
+            return f"{int(digits[:3]):03d}/{digits[3:5]}/{digits[5:7]}"
+        except ValueError:
+            return str(raw or "").strip()
     s = _ymd(raw)
     if len(s) != 8:
         return str(raw or "").strip()
@@ -928,6 +942,8 @@ def _mops_extra_cache_get(
             "lt_loan_equity_pct": _finite(raw.get("lt_loan_equity_pct")),
             "ar_turn": _turns_from_json(raw.get("ar_turn")),
             "inv_turn": _turns_from_json(raw.get("inv_turn")),
+            "non_op_q": _turns_from_json(raw.get("non_op_q")),
+            "non_op_ytd": _turns_from_json(raw.get("non_op_ytd")),
             "business_mix": raw.get("business_mix"),
             "source": str(raw.get("source") or "") + ",cache",
         }
@@ -949,6 +965,8 @@ def _mops_extra_cache_put(
                 "lt_loan_equity_pct": payload.get("lt_loan_equity_pct"),
                 "ar_turn": _turns_to_json(payload.get("ar_turn") or {}),
                 "inv_turn": _turns_to_json(payload.get("inv_turn") or {}),
+                "non_op_q": _turns_to_json(payload.get("non_op_q") or {}),
+                "non_op_ytd": _turns_to_json(payload.get("non_op_ytd") or {}),
                 "business_mix": payload.get("business_mix"),
                 "source": payload.get("source") or "",
             },
@@ -990,6 +1008,8 @@ def _load_mops_fund_extras(
         "lt_loan_equity_pct": None,
         "ar_turn": {},  # (y,s) -> float
         "inv_turn": {},
+        "non_op_q": {},  # 單季營業外（mopsov 本季欄）
+        "non_op_ytd": {},  # 累計營業外（寫回 quarterly_income 用）
         "business_mix": None,
         "source": "",
     }
@@ -1006,7 +1026,7 @@ def _load_mops_fund_extras(
             continue
     if not keys:
         return out
-    asof_key = ",".join(f"{y}Q{s}" for y, s in keys)
+    asof_key = "v2:" + ",".join(f"{y}Q{s}" for y, s in keys)
     ymd = _taipei_ymd()
     cached = _mops_extra_cache_get(db_path, sid, asof_key, ymd) if db_path else None
     if cached and (cached.get("ar_turn") or cached.get("fiscal_month") is not None):
@@ -1025,6 +1045,15 @@ def _load_mops_fund_extras(
             sources.append(str(bs.get("source") or ""))
         if inc:
             sources.append(str(inc.get("source") or ""))
+            nq = _finite(inc.get("non_q"))
+            ny = _finite(inc.get("non_ytd"))
+            if nq is not None:
+                out["non_op_q"][(y, s)] = nq
+            if ny is not None:
+                out["non_op_ytd"][(y, s)] = ny
+            elif s == 1 and nq is not None:
+                # Q1 累計＝本季
+                out["non_op_ytd"][(y, s)] = nq
         if not bs:
             continue
         end_recv = _recv_total(bs.get("ar_end"), bs.get("notes_end"))
@@ -1419,6 +1448,59 @@ def load_value_fund_pack(stock_id: str, db_path: str = None) -> Dict[str, Any]:
                 if mops_extra.get("source")
                 else src_biz
             )
+
+    # 庫內業外 NULL（上櫃 OpenAPI 常漏）→ mopsov 本季／累計補畫面，並 COALESCE 寫回
+    non_q_map = mops_extra.get("non_op_q") or {}
+    non_ytd_map = mops_extra.get("non_op_ytd") or {}
+    if non_q_map:
+        for k, v in non_q_map.items():
+            if non_single.get(k) is None and _finite(v) is not None:
+                non_single[k] = float(v)
+    if non_ytd_map and path:
+        try:
+            from fundamentals import _upsert_income, ensure_fundamentals_tables
+
+            ensure_fundamentals_tables(path)
+            heal_rows: List[Dict[str, Any]] = []
+            by_qs = {
+                (int(q["year"]), int(q["season"])): q for q in (quarterly or [])
+            }
+            for (y, s), ny in non_ytd_map.items():
+                q = by_qs.get((y, s))
+                if not q:
+                    continue
+                if _finite(q.get("non_operating")) is not None:
+                    continue
+                if _finite(ny) is None:
+                    continue
+                heal_rows.append(
+                    {
+                        "stock_id": sid,
+                        "year": y,
+                        "season": s,
+                        "stock_name": q.get("stock_name") or name,
+                        "market": q.get("market") or market or "",
+                        "revenue": q.get("revenue"),
+                        "cogs": q.get("cogs"),
+                        "gross_profit": q.get("gross_profit"),
+                        "gross_margin_pct": q.get("gross_margin_pct"),
+                        "operating_income": q.get("operating_income"),
+                        "non_operating": float(ny),
+                        "net_income": q.get("net_income"),
+                        "eps": q.get("eps"),
+                        "published_roc": q.get("published_roc") or "",
+                    }
+                )
+                q["non_operating"] = float(ny)
+            if heal_rows:
+                con_h = sqlite3.connect(path, timeout=30.0)
+                try:
+                    _upsert_income(con_h, heal_rows)
+                    con_h.commit()
+                finally:
+                    con_h.close()
+        except Exception:
+            pass
 
     omit_bits: List[str] = []
     if not mops_extra.get("business_mix"):
