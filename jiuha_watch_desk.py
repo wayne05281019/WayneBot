@@ -895,18 +895,27 @@ def render_watch_desk_png(desk: Dict[str, Any], path: str) -> str:
     ax_k.set_title("加權日K＋量（近窗）", color=ink, fontproperties=_fp(14, "bold"), loc="left", pad=6)
 
     if twii_s:
+        closes_line = []
         for i, b in enumerate(twii_s):
             o, h, l, cl = b.get("o"), b.get("h"), b.get("l"), b.get("c")
             if cl is None:
+                closes_line.append(None)
                 continue
+            closes_line.append(cl)
             stamp = bool(b.get("stamp")) or _is_stamp_bar(o, h, l, cl)
-            col = red if (o is None or cl >= o) else green
-            if stamp or o is None or h is None or l is None:
-                ax_k.plot([i], [cl], marker="o", color=col, markersize=4)
+            prev_c = twii_s[i - 1].get("c") if i > 0 else None
+            # 漲跌色：有開盤用開收；戳記日用昨收比
+            if stamp:
+                col = red if (prev_c is None or cl >= prev_c) else green
             else:
-                ax_k.add_line(Line2D([i, i], [l, h], color=col, lw=1.1))
+                col = red if (o is None or cl >= o) else green
+            if stamp or o is None or h is None or l is None:
+                # 戳記：畫收盤點，不發明高低
+                ax_k.plot([i], [cl], marker="D", color=col, markersize=5, zorder=5)
+            else:
+                ax_k.add_line(Line2D([i, i], [l, h], color=col, lw=1.2, zorder=3))
                 body_lo = min(o, cl)
-                body_h = abs(cl - o) or (h - l) * 0.02 or 1.0
+                body_h = abs(cl - o) or max((h - l) * 0.02, 1.0)
                 ax_k.add_patch(
                     Rectangle(
                         (i - 0.32, body_lo),
@@ -915,10 +924,16 @@ def render_watch_desk_png(desk: Dict[str, Any], path: str) -> str:
                         facecolor=col,
                         edgecolor=col,
                         linewidth=0.6,
+                        zorder=4,
                     )
                 )
             vol = b.get("v") or 0
             ax_v.bar(i, vol, width=0.7, color=col, alpha=0.85)
+        # 收盤連線（含戳記日）讓落點不孤懸
+        xs = [i for i, v in enumerate(closes_line) if v is not None]
+        ys = [closes_line[i] for i in xs]
+        if len(xs) >= 2:
+            ax_k.plot(xs, ys, color="#666666", lw=1.0, alpha=0.55, zorder=2)
         ax_k.set_xlim(-0.8, len(twii_s) - 0.2)
         # 首中尾日期
         ticks = [0, len(twii_s) // 2, len(twii_s) - 1]
@@ -954,29 +969,24 @@ def render_watch_desk_png(desk: Dict[str, Any], path: str) -> str:
             for sp in ax_o.spines.values():
                 sp.set_color("#ddd7cb")
             ax_o.tick_params(colors=mute, labelsize=9)
-            ax_o.set_title("櫃買相對加權（百分點）", color=ink, fontproperties=_fp(12, "bold"), loc="left")
-            tw_map = {x["date"]: x.get("c") for x in twii_s if x.get("c") is not None}
-            rel, rdates = [], []
-            prev_t = prev_o = None
-            for o in otc_s:
-                t = tw_map.get(o["date"])
-                if t is None or o.get("c") is None:
-                    continue
-                if prev_t and prev_o:
-                    t_chg = (t - prev_t) / abs(prev_t) * 100
-                    o_chg = (o["c"] - prev_o) / abs(prev_o) * 100
-                    rel.append(o_chg - t_chg)
-                    rdates.append(o["date"])
-                prev_t, prev_o = t, o["c"]
-            if rel:
-                cols = [red if v >= 0 else green for v in rel]
-                ax_o.bar(range(len(rel)), rel, color=cols, width=0.75)
-                ax_o.axhline(0, color="#bbb", lw=0.8)
-                ax_o.set_xticks([0, len(rel) - 1])
+            ax_o.set_title(
+                f"櫃買收盤（昨相對 {c.get('otc_rel_pp'):+.2f}百分點）",
+                color=ink,
+                fontproperties=_fp(12, "bold"),
+                loc="left",
+            )
+            oc = [x.get("c") for x in otc_s if x.get("c") is not None]
+            if oc:
+                ax_o.plot(range(len(oc)), oc, color="#1565c0", lw=2.0)
+                ax_o.fill_between(range(len(oc)), oc, min(oc), color="#1565c0", alpha=0.08)
+                d0 = str(otc_s[0].get("date") or "")
+                d1 = str(otc_s[-1].get("date") or "")
+                ax_o.set_xticks([0, len(oc) - 1])
                 ax_o.set_xticklabels(
-                    [f"{rdates[0][4:6]}/{rdates[0][6:8]}", f"{rdates[-1][4:6]}/{rdates[-1][6:8]}"],
+                    [f"{d0[4:6]}/{d0[6:8]}", f"{d1[4:6]}/{d1[6:8]}"],
                     fontproperties=_fp(10),
                 )
+                ax_o.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f"{v:.1f}"))
         if have_fx:
             x0, w = boxes[idx] if idx < len(boxes) else (0.51, 0.41)
             ax_f = fig.add_axes([x0, y_small, w, 0.11])
