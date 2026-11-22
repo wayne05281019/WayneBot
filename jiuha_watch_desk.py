@@ -529,12 +529,57 @@ def render_watch_desk_png(desk: Dict[str, Any], path: str) -> str:
     return path
 
 
+def _fuse_log_path(out_dir: Path) -> Path:
+    return out_dir / "desk_fuse_log.jsonl"
+
+
+def append_fuse_log(desk: Dict[str, Any], out_dir: str) -> str:
+    """每日融會紀要：可重畫、可追加，不准當買訊。"""
+    outp = Path(out_dir)
+    outp.mkdir(parents=True, exist_ok=True)
+    path = _fuse_log_path(outp)
+    row = {
+        "fused_at_taipei": datetime.now(TAIPEI).isoformat(),
+        "asof": desk.get("asof"),
+        "headline": desk.get("headline"),
+        "structure_labels": desk.get("structure_labels") or [],
+        "tomorrow_ids": [c.get("id") for c in (desk.get("tomorrow_intraday") or [])],
+        "missing_official": (desk.get("daily") or {}).get("missing_official") or [],
+        "not_buy_signal": True,
+    }
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    latest = outp / "desk_fuse_latest.json"
+    latest.write_text(json.dumps(row, ensure_ascii=False, indent=2), encoding="utf-8")
+    return str(path)
+
+
+def _phone_caption(desk: Dict[str, Any]) -> str:
+    if not desk.get("ok"):
+        return "啾哈觀盤桌暫時組不出（非買訊）。"
+    asof = desk.get("asof") or ""
+    head = desk.get("headline") or ""
+    checks = desk.get("tomorrow_intraday") or []
+    tips = "／".join(str(c.get("when") or "") for c in checks[:3] if c.get("when"))
+    lines = [
+        f"啾哈觀盤桌 {asof}（非買訊）",
+        f"今日盤後：{head}",
+    ]
+    if tips:
+        lines.append(f"明日盤中先看：{tips}")
+    lines.append("融資／法人OI日結＝盤後對質，不是明早唯一鈕。")
+    return "\n".join(lines)
+
+
 def write_watch_desk_artifacts(
     *,
     market_db: str = str(DEFAULT_MARKET),
     out_dir: str = str(DEFAULT_OUT),
     asof: str = "",
+    png_path: str = "",
+    fuse_log: bool = True,
 ) -> Dict[str, Any]:
+    """產出觀盤桌。每次呼叫重算＋重畫（圖不准一成不變鎖死）。"""
     outp = Path(out_dir)
     outp.mkdir(parents=True, exist_ok=True)
     desk = build_watch_desk(market_db, asof=asof)
@@ -542,28 +587,65 @@ def write_watch_desk_artifacts(
     md = render_watch_desk_markdown(desk)
     md_path = outp / f"watch_desk_{stamp}.md"
     json_path = outp / f"watch_desk_{stamp}.json"
-    png_path = outp / f"watch_desk_{stamp}.png"
+    target_png = Path(png_path) if png_path else (outp / f"watch_desk_{stamp}.png")
+    target_png.parent.mkdir(parents=True, exist_ok=True)
     md_path.write_text(md, encoding="utf-8")
     json_path.write_text(json.dumps(desk, ensure_ascii=False, indent=2), encoding="utf-8")
     png = ""
     if desk.get("ok"):
-        png = render_watch_desk_png(desk, str(png_path))
+        try:
+            if target_png.is_file():
+                target_png.unlink()
+        except OSError:
+            pass
+        png = render_watch_desk_png(desk, str(target_png))
+    log_path = ""
+    if fuse_log and desk.get("ok"):
+        log_path = append_fuse_log(desk, str(outp))
     return {
         "ok": bool(desk.get("ok")),
         "asof": stamp,
         "md": str(md_path),
         "json": str(json_path),
-        "png": png or str(png_path),
+        "png": png or str(target_png),
+        "fuse_log": log_path,
         "n_tomorrow_intraday": len(desk.get("tomorrow_intraday") or []),
         "desk": desk,
+        "caption": _phone_caption(desk),
     }
 
 
+def run_jiuha_daily_fuse(
+    *,
+    market_db: str = str(DEFAULT_MARKET),
+    out_dir: str = str(DEFAULT_OUT),
+    charts_dir: str = "",
+) -> Dict[str, Any]:
+    """盤後融會：依最新官方柱重算觀盤桌＋追加融會日誌（圖每次重畫）。"""
+    res = write_watch_desk_artifacts(
+        market_db=market_db,
+        out_dir=out_dir,
+        fuse_log=True,
+    )
+    if charts_dir and res.get("ok"):
+        stamp = res.get("asof") or "na"
+        dest = Path(charts_dir) / "jiuha" / f"watch_desk_{stamp}.png"
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        src = Path(res.get("png") or "")
+        if src.is_file():
+            dest.write_bytes(src.read_bytes())
+            res["charts_png"] = str(dest)
+            res["png"] = str(dest)
+    return res
+
+
 __all__ = [
+    "append_fuse_log",
     "build_after_close_audit_only",
     "build_tomorrow_intraday_checks",
     "build_watch_desk",
     "render_watch_desk_markdown",
     "render_watch_desk_png",
+    "run_jiuha_daily_fuse",
     "write_watch_desk_artifacts",
 ]

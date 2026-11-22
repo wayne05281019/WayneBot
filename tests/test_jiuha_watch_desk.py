@@ -8,6 +8,7 @@ from jiuha_watch_desk import (
     build_tomorrow_intraday_checks,
     build_watch_desk,
     render_watch_desk_markdown,
+    run_jiuha_daily_fuse,
     write_watch_desk_artifacts,
 )
 
@@ -24,7 +25,6 @@ def test_tomorrow_checks_are_intraday_only():
     assert all(c.get("intraday") is True for c in checks)
     assert any(c["id"] == "T_open15_vol" for c in checks)
     assert any(c["id"] == "T_escape_follow" for c in checks)
-    # 融資速度差不准混進盤中應對清單
     assert not any("融資餘額" in (c.get("watch") or "") for c in checks)
 
 
@@ -56,3 +56,19 @@ def test_watch_desk_from_market_db(tmp_path):
     assert Path(out["md"]).is_file()
     assert Path(out["png"]).is_file()
     assert Path(out["png"]).stat().st_size > 1000
+    assert "非買訊" in (out.get("caption") or "")
+    assert Path(tmp_path / "desk_fuse_latest.json").is_file()
+    fused = run_jiuha_daily_fuse(
+        market_db=str(db),
+        out_dir=str(tmp_path / "fuse"),
+        charts_dir=str(tmp_path / "charts"),
+    )
+    assert fused.get("ok") is True
+    assert Path(fused["png"]).is_file()
+
+
+def test_menu_slot_jiuha_row3():
+    from bot_servers import MENU_BTN_JIUHA, MENU_LAYOUT_VERSION, MENU_ROW3
+
+    assert MENU_LAYOUT_VERSION == "42"
+    assert MENU_ROW3[1] == MENU_BTN_JIUHA

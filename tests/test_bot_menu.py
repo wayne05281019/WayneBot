@@ -44,7 +44,7 @@ def test_reply_menu_is_two_rows_not_three():
     assert MENU_BTN_AI == "AI倉"
     assert MENU_BTN_WINRATE == "勝率買點"
     assert MENU_BTN_WATCH == "加入觀察"
-    assert MENU_LAYOUT_VERSION == "41"
+    assert MENU_LAYOUT_VERSION == "42"
     from bot_servers import MENU_BTN_CHONG, MENU_BTN_WAVE_STATUS
 
     bot = WayneTelegramBot.__new__(WayneTelegramBot)

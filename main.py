@@ -1143,6 +1143,22 @@ def catch_up_missed_jobs(now=None) -> None:
             runner.run_increment_job(
                 skip_if_done=True, notify=scheduler_may_push("fuse")
             )
+            try:
+                from jiuha_watch_desk import run_jiuha_daily_fuse
+                from config import get_charts_dir
+
+                jres = run_jiuha_daily_fuse(
+                    market_db=runner.db_path,
+                    out_dir=os.path.join(get_charts_dir(), "jiuha"),
+                    charts_dir=get_charts_dir(),
+                )
+                logger.info(
+                    "補跑啾哈觀盤桌融會 asof=%s ok=%s",
+                    jres.get("asof"),
+                    jres.get("ok"),
+                )
+            except Exception:
+                logger.exception("補跑啾哈觀盤桌融會略過（不擋）")
     if need_evening:
         logger.info("補跑：已過台灣 20:00，晚間快照若已寫過仍再跑 AI 模擬倉")
         runner.run_evening_screen(skip_if_done=True, notify=False)
@@ -1332,6 +1348,22 @@ def run_scheduled_job(kind: str) -> None:
                 refresh_after_market_fuse(runner.db_path, kind=kind)
             except Exception:
                 logger.exception("飆大對回主庫略過")
+            try:
+                from jiuha_watch_desk import run_jiuha_daily_fuse
+                from config import get_charts_dir
+
+                jres = run_jiuha_daily_fuse(
+                    market_db=runner.db_path,
+                    out_dir=os.path.join(get_charts_dir(), "jiuha"),
+                    charts_dir=get_charts_dir(),
+                )
+                logger.info(
+                    "啾哈觀盤桌盤後融會 asof=%s ok=%s",
+                    jres.get("asof"),
+                    jres.get("ok"),
+                )
+            except Exception:
+                logger.exception("啾哈觀盤桌盤後融會略過（不擋）")
 
 
 def _scheduler_role() -> str:
