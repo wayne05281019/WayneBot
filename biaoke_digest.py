@@ -771,14 +771,22 @@ def format_teach_brief(db_path: str = "", pack: Optional[Dict[str, Any]] = None)
         _fresh = {}
         _said_tag = "他最新"
     lines.append("<b>現在</b>")
-    _pressure_break = (
+    _target_350 = (
+        "修正目標35000" in thesis
+        or "35000～35500" in thesis
+        or "35000~35500" in wait
+        or "修正目標35,000" in wait
+        or "修正目標35000" in wait
+        or "止跌還沒到" in wait
+    )
+    _pressure_break = (not _target_350) and (
         "不再假跌破" in thesis
         or "過C3下降壓" in thesis
         or "已過C3下降壓" in now
         or "回測下降壓力線" in wait
         or "清洗籌碼" in wait
     )
-    _stop_confirm = (not _pressure_break) and (
+    _stop_confirm = (not _target_350) and (not _pressure_break) and (
         "確認上週五低" in thesis
         or "1 4重疊" in thesis
         or "止跌確認" in thesis
@@ -787,22 +795,39 @@ def format_teach_brief(db_path: str = "", pack: Optional[Dict[str, Any]] = None)
         or "台指壓41760" in wait
         or "一定再測週五低" in wait
     )
-    _bb_dual = (not _pressure_break) and (not _stop_confirm) and (
+    _bb_dual = (not _target_350) and (not _pressure_break) and (not _stop_confirm) and (
         "B-b" in thesis
         or "五波跌完" in thesis
         or "備線九波" in thesis
         or "假跌破37837" in wait
         or "35579→31705" in wait
     )
-    _foot2_brief = (not _pressure_break) and (not _stop_confirm) and (
-        "第二隻腳" in thesis
-        or "等第二隻腳" in thesis
-        or "37000~37500" in wait
-        or "37000-37500" in wait
-        or "看不到37000" in wait
+    _foot2_brief = (
+        (not _target_350)
+        and (not _pressure_break)
+        and (not _stop_confirm)
+        and (
+            "第二隻腳" in thesis
+            or "等第二隻腳" in thesis
+            or "37000~37500" in wait
+            or "37000-37500" in wait
+            or "看不到37000" in wait
+        )
     )
     # 一條路＋目前落在哪；不准再叠「大A→大B→…→落在」兩段重複
-    if _pressure_break:
+    if _target_350:
+        lines.append(
+            html_escape("大盤：大A底（7/29）→ 大B反彈 → 大C進行中（修正目標帶・止跌未到）。")
+        )
+        lines.append(
+            html_escape(
+                f"{_said_tag}：修正目標 35000～35500；止跌還沒到・走 5-5-3；"
+                "真正低點在此帶（還差約 1000～1500）。"
+                "11/6 低 37837 已測破（官方）。"
+                "極限穿刺 33000 左右；3 天內站回 35700＝AI 未結束容忍（他點過・非買訊）。"
+            )
+        )
+    elif _pressure_break:
         lines.append(
             html_escape("大盤：大A底（7/29）→ 大B反彈 → 大C進行中（他已講止跌・下降壓改口）。")
         )
@@ -849,7 +874,7 @@ def format_teach_brief(db_path: str = "", pack: Optional[Dict[str, Any]] = None)
                 "低點最多 37000~37500；等反彈後拉回 1-2轉1-3-1 第二隻腳（他口語路徑・非買訊）。"
             )
         )
-    elif (not _stop_confirm) and (not _pressure_break) and (
+    elif (not _target_350) and (not _stop_confirm) and (not _pressure_break) and (
         "9波擴延" in thesis
         or "C-7轉C-8" in thesis
         or "C-7走完" in thesis
@@ -869,16 +894,16 @@ def format_teach_brief(db_path: str = "", pack: Optional[Dict[str, Any]] = None)
     elif thesis:
         lines.append(html_escape(thesis))
     struct_bits: List[str] = []
-    if fib and not (_stop_confirm or _pressure_break):
-        # 止跌／下降壓當令時，反彈壓舊句不准蓋最新點位
+    if fib and not (_stop_confirm or _pressure_break or _target_350):
+        # 止跌／下降壓／修正目標當令時，反彈壓舊句不准蓋最新點位
         fib_s = re.sub(r"^黃金切割反彈壓\s*", "", fib).strip() or fib
         struct_bits.append(f"· 反彈壓：{fib_s}")
-    elif fib and (_stop_confirm or _pressure_break):
+    elif fib and (_stop_confirm or _pressure_break or _target_350):
         pass
-    if morph and not (_stop_confirm or _pressure_break):
+    if morph and not (_stop_confirm or _pressure_break or _target_350):
         morph_s = morph.replace("；", "；").strip()
         struct_bits.append(f"· 型態：{morph_s}")
-    if intent:
+    if intent and not _target_350:
         one = intent.split("；")[0].strip()
         if one and "還不清楚" not in one:
             struct_bits.append(f"· 量：{one}")
@@ -888,6 +913,8 @@ def format_teach_brief(db_path: str = "", pack: Optional[Dict[str, Any]] = None)
             # 「中繼後原方向」補一句人話
             if one_w in ("中繼後原方向", "中繼後走原方向"):
                 one_w = "中繼結束後，多半續走原來的下跌方向"
+            elif _target_350 or re.search(r"修正目標\s*35,?000|35000\s*～\s*35500", wait):
+                one_w = "修正目標 35000～35500；止跌還沒到・走 5-5-3"
             elif re.search(r"低點區\s*37000", one_w):
                 one_w = "低點最多 37000~37500；看不到 37000 以下；等第二隻腳"
             elif re.search(r"低點區\s*35500", one_w):
@@ -944,8 +971,8 @@ def format_teach_brief(db_path: str = "", pack: Optional[Dict[str, Any]] = None)
             c9_hi = lv
         elif role == "C9低下沿" or abs(lv - 35500.0) < 1.0:
             c9_lo = lv
-    if _stop_confirm or _pressure_break:
-        # 止跌／下降壓當令：不准再用舊改口／C9 區間句蓋最新盯價
+    if _stop_confirm or _pressure_break or _target_350:
+        # 止跌／下降壓／修正目標當令：不准再用舊改口／C9 區間句蓋最新盯價
         foot_lo = foot_hi = c9_lo = c9_hi = None
     if foot_lo is not None and foot_hi is not None:
         c9_lo = c9_hi = None  # 改口壓 C9 區間句
@@ -954,8 +981,10 @@ def format_teach_brief(db_path: str = "", pack: Optional[Dict[str, Any]] = None)
         if foot_lo is not None and foot_hi is not None
         else (c9_lo, c9_hi)
     )
-    if pred_note or (zone_lo is not None and zone_hi is not None):
+    if pred_note or (zone_lo is not None and zone_hi is not None) or _target_350:
         bits = []
+        if _target_350:
+            bits.append("修正目標 35000~35500")
         if zone_lo is not None and zone_hi is not None:
             if foot_lo is not None:
                 bits.append(f"改口低點區 {int(zone_lo)}~{int(zone_hi)}")
@@ -974,14 +1003,20 @@ def format_teach_brief(db_path: str = "", pack: Optional[Dict[str, Any]] = None)
             if zone_lo is not None and re.search(r"38000.*劇本一上沿|38000$", bit):
                 bit = "38000已破"
             if re.search(r"改口低|37000|37500", bit) and (
-                foot_lo is not None or _stop_confirm or _pressure_break
+                foot_lo is not None or _stop_confirm or _pressure_break or _target_350
             ):
                 continue
-            if re.search(r"C9低|35500|37300", bit) and (
+            if re.search(r"C9低|37300", bit) and (
                 foot_lo is not None
                 or c9_lo is not None
                 or _stop_confirm
                 or _pressure_break
+                or _target_350
+            ):
+                continue
+            # 修正目標當令：35500 是目標上沿，不准當 C9 區句；41500／波浪4 舊標拿掉
+            if _target_350 and re.search(
+                r"41500|41800|42700|波浪4|回測平均|回測最低|絕對不破", bit
             ):
                 continue
             # 止跌／下降壓當令：舊雙軌深殺備線不准蓋最新盯價
@@ -1178,9 +1213,11 @@ def _apply_pressure_break_oral_to_board(
         from biaoke_level_learn import (
             _PRESSURE_BREAK_ORAL_AS_OF,
             _PRESSURE_BREAK_ORAL_SNIP,
+            _TARGET_350_355_ORAL_AS_OF,
             _ensure_pressure_break_oral_thesis_snap,
             _find_pressure_break_snip,
             _text_has_c3_pressure_break,
+            _text_has_target_350_355,
         )
     except Exception:
         return board
@@ -1191,6 +1228,11 @@ def _apply_pressure_break_oral_to_board(
         clock = clock.astimezone(TAIPEI)
     day = clock.strftime("%Y%m%d")
     if day < _PRESSURE_BREAK_ORAL_AS_OF:
+        return board
+    # 11/20 起修正目標 35000～35500 當令：不准再把下降壓／絕對不破贴進大盤欄開頭
+    if day >= _TARGET_350_355_ORAL_AS_OF or _text_has_target_350_355(
+        f"{board} {blob}"
+    ):
         return board
     pb = ""
     if _text_has_c3_pressure_break(blob) or _text_has_c3_pressure_break(board):

@@ -26,8 +26,17 @@
     "friday_low_twii": 37837.05,
     "oral_35579": 35579.0,
     "oral_37164": 37164.0,
-    "wave4_band_oral_1116": [41800.0, 42700.0],
-    "wave4_mid": 42250.0
+    "wave4_band_oral_1116": [
+      41800.0,
+      42700.0
+    ],
+    "wave4_mid": 42250.0,
+    "oral_target_350_355": [
+      35000.0,
+      35500.0
+    ],
+    "oral_extreme_33000": 33000.0,
+    "oral_reclaim_35700": 35700.0
   },
   "paths": [
     {
@@ -118,5 +127,7 @@
   "cycle8_review_zh": "大C修正：帶下急殺貫穿37837至35739，收36033。下看口頭35579 vs 收回站穩37837；波浪4帶仍遠。非買訊；不准發明新五波①。",
   "not_buy_signal": true,
   "preferred_was": "M3_seek_37837_continue",
-  "preferred_outcome_zh": "目標達成並過測（深破）；N1 同步成立。"
+  "preferred_outcome_zh": "目標達成並過測（深破）；N1 同步成立。",
+  "from_oral_refresh_zh": "11/20主文＋自回：修正目標35000～35500；11/20官方L35738.68已破37837、尚未測到35000帶；對質＝目標帶還沒碰到（低仍高於35500約+239）。",
+  "phone_narrative_zh": "話筒文敘／三窗已對齊35000～35500當令（壓波浪4帶／絕對不破37837）；段號仍 phone_sync=blocked，不准發明①～⑤。"
 }

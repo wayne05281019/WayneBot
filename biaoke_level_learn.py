@@ -4854,7 +4854,11 @@ def _latest_level_thesis(
             and not _text_has_c3_pressure_break(post_snip or "")
         ):
             pb_any = _PRESSURE_BREAK_ORAL_SNIP
-        if pb_any and _text_has_c3_pressure_break(pb_any):
+        if (
+            pb_any
+            and _text_has_c3_pressure_break(pb_any)
+            and cap < _TARGET_350_355_ORAL_AS_OF
+        ):
             if not _text_has_c3_pressure_break(snip):
                 # 併在前：後文改口壓前文止跌「再測／假跌破」句
                 snip = f"{pb_any} {snip}".strip()
@@ -4864,13 +4868,22 @@ def _latest_level_thesis(
     except Exception:
         logger.debug("下降壓改口題旨覆寫略過", exc_info=True)
     # 後文：至少回測 41500／絕對不破週五低（11/10 口頭；壓無報價下降壓盯法）
+    # 11/20 起修正目標 35000～35500 當令：不准再硬塞 41500／絕對不破
     try:
         if cap >= _RETEST_41500_ORAL_AS_OF:
             _ensure_retest_41500_oral_thesis_snap(db_path, as_of=cap)
-        if cap >= _RETEST_41500_ORAL_AS_OF and not _text_has_retest_41500(snip):
+        if (
+            cap >= _RETEST_41500_ORAL_AS_OF
+            and cap < _TARGET_350_355_ORAL_AS_OF
+            and not _text_has_retest_41500(snip)
+        ):
             snip = f"{_RETEST_41500_ORAL_SNIP} {snip}".strip()
             post_id = post_id or _RETEST_41500_ORAL_POST_ID
-        elif _text_has_retest_41500(snip) and "41500" not in snip:
+        elif (
+            cap < _TARGET_350_355_ORAL_AS_OF
+            and _text_has_retest_41500(snip)
+            and "41500" not in snip
+        ):
             snip = f"{_RETEST_41500_ORAL_SNIP} {snip}".strip()
     except Exception:
         logger.debug("41500 回測口頭題旨覆寫略過", exc_info=True)
@@ -4888,17 +4901,35 @@ def _latest_level_thesis(
     except Exception:
         logger.debug("41900～42700 低點帶口頭題旨覆寫略過", exc_info=True)
     # 後文：波浪4帶 41800～42700（11/16；壓 11/12 的 41900～42700）
+    # 再後文：11/20 起修正目標 35000～35500 當令時，不准再硬塞波浪4帶蓋最新口頭
     try:
         if cap >= _WAVE4_BAND_418_427_ORAL_AS_OF:
             _ensure_wave4_band_418_427_oral_thesis_snap(db_path, as_of=cap)
-        if cap >= _WAVE4_BAND_418_427_ORAL_AS_OF and not _text_has_wave4_band_418_427(
-            snip
+        if (
+            cap >= _WAVE4_BAND_418_427_ORAL_AS_OF
+            and cap < _TARGET_350_355_ORAL_AS_OF
+            and not _text_has_wave4_band_418_427(snip)
         ):
             # 接在後：_parse_retest_band_lo_hi 取最後一組 → 41800～42700 壓 41900
             snip = f"{snip} {_WAVE4_BAND_418_427_ORAL_SNIP}".strip()
             post_id = post_id or _WAVE4_BAND_418_427_ORAL_POST_ID
     except Exception:
         logger.debug("41800～42700 波浪4帶口頭題旨覆寫略過", exc_info=True)
+    try:
+        if cap >= _TARGET_350_355_ORAL_AS_OF:
+            _ensure_target_350_355_oral_thesis_snap(db_path, as_of=cap)
+        if cap >= _TARGET_350_355_ORAL_AS_OF and not _text_has_target_350_355(snip):
+            snip = f"{snip} {_TARGET_350_355_ORAL_SNIP}".strip()
+            post_id = post_id or _TARGET_350_355_ORAL_POST_ID
+        elif (
+            cap >= _TARGET_350_355_ORAL_AS_OF
+            and _text_has_target_350_355(snip)
+            and not re.search(r"35700", snip)
+        ):
+            # 庫內主文已有 35000～35500，仍併 11/22 站回／極限句（他已點過）
+            snip = f"{snip} {_TARGET_350_355_ORAL_SNIP}".strip()
+    except Exception:
+        logger.debug("35000～35500 修正目標口頭題旨覆寫略過", exc_info=True)
     morph_blob = snip + " " + " ".join(str(r["snippet"] or "") for r in (extra or []))
     if post_snip:
         morph_blob = f"{morph_blob} {post_snip}"
@@ -4962,10 +4993,28 @@ def _latest_level_thesis(
     has_41500 = _text_has_retest_41500(snip) or bool(re.search(r"41500", snip))
     has_low_band = _text_has_low_band_419_427(snip)
     has_wave4_band = _text_has_wave4_band_418_427(snip)
+    has_target_350_355 = _text_has_target_350_355(snip)
     has_micro_c14 = _text_has_micro_c_14_overlap(snip)
     denies_foot2 = _text_denies_second_foot_38000(snip)
     # 夜盤第二組落底（C3-5完成）優先於舊 C3-3 題旨；後文改口壓前文
-    if has_wave4_band:
+    if has_target_350_355:
+        # 11/20～22：修正目標 35000～35500；止跌未到；極限 33000／35700 站回（說明・非買訊）
+        thesis = "大A→大B→大C｜修正目標35000～35500・止跌未到（預估）"
+        wait_bits = [
+            f"修正目標{_px(_TARGET_350_355_LO)}～{_px(_TARGET_350_355_HI)}",
+            "止跌還沒到・走5-5-3",
+            "真正低點在此帶・還差約1000～1500",
+        ]
+        if re.search(r"33000", snip):
+            wait_bits.append("極限穿刺33000左右下影（他點過）")
+        if re.search(r"35700", snip):
+            wait_bits.append("3天內站回35700＝AI未結束容忍（他點過）")
+        if re.search(r"31000|34977|3\s*成", snip):
+            wait_bits.append("有效破35000→31000／系統風險觀察")
+        wait_bits.append("11/6低37837已測破（官方）")
+        wait_bits.append("非買訊")
+        wait = "；".join(wait_bits)
+    elif has_wave4_band:
         # 11/16：回測小5波結束→波浪4帶 41800～42700；細微C＋1 4重疊（說明・非買訊）
         thesis = "大A→大B→大C｜回測小5波後・波浪4帶（預估）"
         _rb = _retest_avg_min_from_text(snip) or {
@@ -8081,7 +8130,7 @@ def _teach_cyan_band_title_bit(
 
 
 def _active_oral_now_line(pack: Optional[Dict[str, Any]] = None) -> str:
-    """話筒／三窗腳註：後文當令優先（下降壓改口＞止跌確認＞第二隻腳＞C9）。"""
+    """話筒／三窗腳註：後文當令優先（35000～35500＞下降壓改口＞止跌確認＞第二隻腳＞C9）。"""
     blob = " ".join(
         str(x or "")
         for x in (
@@ -8092,6 +8141,17 @@ def _active_oral_now_line(pack: Optional[Dict[str, Any]] = None) -> str:
         )
     )
     thesis = str((pack or {}).get("thesis") or "")
+    if _text_has_target_350_355(blob) or "修正目標35000" in thesis:
+        bits = [
+            f"修正目標{_px(_TARGET_350_355_LO)}～{_px(_TARGET_350_355_HI)}",
+            "止跌還沒到・走5-5-3",
+        ]
+        if re.search(r"33000", blob):
+            bits.append("極限穿刺33000左右")
+        if re.search(r"35700", blob):
+            bits.append("3天內站回35700觀察")
+        bits.append("37837已測破・非買訊")
+        return "；".join(bits)
     if _pack_pressure_break_on(pack) or _text_has_c3_pressure_break(blob):
         # 寫死分開：斜線口述下降壓 ≠ 水平41760；回測平均／最低跟最新口頭
         # 不准只因對照句「≠41500」就切絕對不破（11/9 下降壓當令仍用不再假跌破）
@@ -8218,6 +8278,24 @@ _WAVE4_BAND_418_427_ORAL_SNIP = (
     "我用的是波浪理論高等型態學，是回測5波上漲結束的波浪位階4。"
     "台指期細微波C波修正，我剛才檢查了一下是有1 4重疊，重疊80點，是不是有效重疊有模糊空間。"
     "如果是有效重疊C波是走3段修正，也就是說以台指期來看大盤今天是最佳買點。"
+)
+
+# 飆大口頭（已確認・11/20 主文＋自回；11/21～22 續講）：修正目標 35000～35500
+# 後文壓前文：壓掉 11/16 波浪4帶／下降壓「絕對不破37837」當令（11/20 官方已測破 37837）
+# 11/22 自回補：極限穿刺 33000；3 天內站回 35700＝AI 未結束容忍；非買訊
+_TARGET_350_355_ORAL_AS_OF = "20261120"
+_TARGET_350_355_ORAL_POST_ID = "oral-target-350-355"
+_TARGET_350_355_LO = 35000.0
+_TARGET_350_355_HI = 35500.0
+_TARGET_350_355_MID = 35250.0
+_TARGET_350_355_ORAL_SNIP = (
+    "目前我看到的大盤要修正到35000~35500之間。"
+    "大盤止跌還沒到目前走5-5-3，真正的低點會在35000~35500之間，目前還差1000~1500點之間。"
+    "35000~35500，就如去年4月17300的位置是完全一樣的，用波浪理論來看，至少到那個地方不是那麼容易有效跌破，除非是系統性風險，目前還沒看到。"
+    "現在要看大盤35000~35500有沒有守住，沒有守住個股就是持續破底。"
+    "是有可能盤中穿刺33000左右拉長下影線，但真正的支撐在35000；如果有效跌破35000，就有非常高機率看到31000或之下。"
+    "如果大盤修正3成就是跌到34977；超過3成如31000之下就可能代表AI時代結束，或者要休息很多年才會再談AI。"
+    "大盤跌到33000多點是極限，然後3天內有效站回35700之上不再破底，就代表AI沒有結束最極致的容忍修正點位。"
 )
 
 # 回測帶：4xxxx～4xxxx（低點／回測／區間／95% 語境）；後文最新一組壓前文
@@ -8388,6 +8466,30 @@ def _text_has_wave4_band_418_427(blob: str) -> bool:
     return bool(
         has_wave4
         and (near or (41000 <= lo <= 42000 and 42000 <= hi <= 43500))
+    )
+
+
+def _text_has_target_350_355(blob: str) -> bool:
+    """11/20 起：修正目標／真正低點帶 35000～35500（後文壓波浪4／下降壓）。"""
+    s = str(blob or "").replace(",", "").replace("，", "")
+    if not s.strip():
+        return False
+    band = bool(
+        re.search(
+            r"35000\s*[-~～到至\-]\s*35500|35500\s*[-~～到至\-]\s*35000|"
+            r"35000.{0,8}35500|35500.{0,8}35000",
+            s,
+        )
+    )
+    if not band:
+        return False
+    # 語境：修正／低點／止跌／支撐／守住／5-5-3；避免誤抓無關兩價
+    return bool(
+        re.search(
+            r"修正到|真正的低點|止跌還沒|低點會在|關鍵支撐|有沒有守住|"
+            r"5\s*[-–]?\s*5\s*[-–]?\s*3|35000\s*[-~～到至]\s*35500",
+            s,
+        )
     )
 
 
@@ -8872,6 +8974,28 @@ def _ensure_wave4_band_418_427_oral_thesis_snap(db_path: str, *, as_of: str = ""
         )
     except Exception:
         logger.debug("補41800～42700波浪4帶口頭題旨 snap 略過", exc_info=True)
+
+
+def _ensure_target_350_355_oral_thesis_snap(db_path: str, *, as_of: str = "") -> None:
+    """題旨庫補 11/20 口頭：修正目標 35000～35500；極限 33000／35700 站回；非買訊。"""
+    if not db_path:
+        return
+    day = str(as_of or "").replace("-", "")[:8]
+    if not day or day < _TARGET_350_355_ORAL_AS_OF:
+        return
+    oral_day = _TARGET_350_355_ORAL_AS_OF
+    try:
+        _upsert_snap(
+            db_path,
+            post_id=_TARGET_350_355_ORAL_POST_ID,
+            as_of=oral_day,
+            post_date=f"{oral_day[:4]}-{oral_day[4:6]}-{oral_day[6:8]}",
+            post_time="09:50",
+            snippet=_TARGET_350_355_ORAL_SNIP,
+            chart_path="",
+        )
+    except Exception:
+        logger.debug("補35000～35500修正目標口頭題旨 snap 略過", exc_info=True)
 
 
 # 主圖／右下九波縮圖共用色（C1…C9）：奇數浪偏暖紅、偶數浪偏冷青／綠，C7 最醒目，虛線 C9 淡紫
@@ -9635,6 +9759,71 @@ def _paint_ai_end_zone_band(
     return (lo, hi)
 
 
+def _paint_target_350_355_band(
+    ax: Any,
+    pack: Optional[Dict[str, Any]],
+    *,
+    fp: Any,
+    label_x: Optional[float] = None,
+) -> Optional[Tuple[float, float]]:
+    """三窗共用：11/20 修正目標帶 35000～35500（他點名・非買訊）。"""
+    blob = " ".join(
+        str(x or "")
+        for x in (
+            (pack or {}).get("snippet_full"),
+            (pack or {}).get("snippet"),
+            (pack or {}).get("thesis"),
+            (pack or {}).get("wait_struct"),
+        )
+    )
+    if not _text_has_target_350_355(blob):
+        if "修正目標35000" not in blob and "35000～35500" not in blob:
+            return None
+    lo = float(_TARGET_350_355_LO)
+    hi = float(_TARGET_350_355_HI)
+    for row in ((pack or {}).get("pred_levels") or {}).get("tw") or []:
+        try:
+            role = str(row.get("role") or "")
+            lv = float(row.get("level") or 0)
+        except (TypeError, ValueError):
+            continue
+        if role in {"修正目標下沿", "目標低下沿"} and lv > 0:
+            lo = lv
+        elif role in {"修正目標上沿", "目標低上沿"} and lv > 0:
+            hi = lv
+    if hi < lo:
+        lo, hi = hi, lo
+    if hi - lo < 80.0:
+        return None
+    face, ink = "#ef6c00", "#ffe0b2"
+    ax.axhspan(lo, hi, facecolor=face, alpha=0.16, zorder=0.58)
+    ax.axhline(lo, color=ink, lw=1.1, ls=(0, (3.0, 2.2)), alpha=0.92, zorder=2.45)
+    ax.axhline(hi, color=ink, lw=1.1, ls=(0, (3.0, 2.2)), alpha=0.92, zorder=2.45)
+    y_lab = (float(lo) + float(hi)) * 0.5
+    x_lab = float(_TEACH_ZONE_LABEL_X if label_x is None else label_x)
+    ax.text(
+        x_lab,
+        y_lab,
+        f"修正目標{_px(lo)}~{_px(hi)}（止跌未到・非買訊）",
+        transform=ax.get_yaxis_transform(),
+        fontproperties=fp(10.5, "bold"),
+        color=ink,
+        ha="left",
+        va="center",
+        zorder=12.2,
+        bbox=dict(
+            boxstyle=f"round,pad={float(_TEACH_ZONE_LABEL_PAD)}",
+            fc="#1a1008",
+            ec=ink,
+            lw=1.35,
+            alpha=0.96,
+        ),
+        clip_on=False,
+    )
+    _reserve_zone_label_avoid(ax, x_ax=x_lab, y=y_lab, lo=lo, hi=hi)
+    return (lo, hi)
+
+
 def _paint_wave4_retest_band(
     ax: Any,
     pack: Optional[Dict[str, Any]],
@@ -9645,6 +9834,7 @@ def _paint_wave4_retest_band(
     """三窗共用：11/16 波浪4回測帶 41800～42700（他點名・非買訊）。
 
     帶＋中標；右欄另掛回測平均／最低／上沿水平線。
+    11/20 起修正目標 35000～35500 當令時不准再畫這帶蓋最新口頭。
     """
     blob = " ".join(
         str(x or "")
@@ -9655,6 +9845,8 @@ def _paint_wave4_retest_band(
             (pack or {}).get("wait_struct"),
         )
     )
+    if _text_has_target_350_355(blob) or "修正目標35000" in blob:
+        return None
     if not _text_has_wave4_band_418_427(blob):
         # thesis 已寫波浪4帶但 snippet 被截時仍畫
         if "波浪4帶" not in blob and "回測小5波後" not in blob:
@@ -10065,14 +10257,17 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
             label=_lab41760,
         )
     # 回測平均＋回測最低：從最新原文區間／單點重算（後文壓前文；不准鎖死舊價）
-    _rb = _retest_avg_min_from_text(s)
-    if _rb is None and (re.search(r"41500", s) or _text_has_retest_41500(s)):
-        _rb = {
-            "lo": 41500.0,
-            "hi": 41500.0,
-            "min": 41500.0,
-            "avg": 41500.0,
-        }
+    # 11/20 修正目標 35000～35500 當令：不准再掛 41500／波浪4 回測標蓋最新口頭
+    _rb = None
+    if not _text_has_target_350_355(s):
+        _rb = _retest_avg_min_from_text(s)
+        if _rb is None and (re.search(r"41500", s) or _text_has_retest_41500(s)):
+            _rb = {
+                "lo": 41500.0,
+                "hi": 41500.0,
+                "min": 41500.0,
+                "avg": 41500.0,
+            }
     if _rb is not None:
         _avg = float(_rb["avg"])
         _min = float(_rb["min"])
@@ -10121,11 +10316,23 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
     # 下降壓改口：37837＝已確認最低／不再假跌破；止跌確認後文未改口前＝再測／假跌破觀察
     # 不准還寫成舊雙軌「最佳買點」主標
     # 下降壓／止跌當令但句內沒寫 37837：仍釘週五低官方點（他已點過，不准丟標）
-    _pb_or_stop = _text_has_c3_pressure_break(s) or _text_has_stop_low_confirm(s)
+    _pb_or_stop = (
+        (not _text_has_target_350_355(s))
+        and (_text_has_c3_pressure_break(s) or _text_has_stop_low_confirm(s))
+    )
     if _pb_or_stop and not re.search(r"37837", s):
         s = f"{s} 星期五最低點位37837"
+    # 修正目標當令仍釘 11/6 低官方點（已測破標），方便三窗對質
+    if _text_has_target_350_355(s) and not re.search(r"37837", s):
+        s = f"{s} 11/6低37837已測破"
     if re.search(r"37837", s):
-        if _text_has_retest_41500(s) or re.search(r"絕對不(?:會)?破", s):
+        if _text_has_target_350_355(s) or re.search(
+            r"已測破|測破.?37837|37837已", s
+        ):
+            # 11/20 官方 L35739 已破；當令改盯 35000～35500，不准再寫絕對不破
+            tag = "已測破"
+            lab = f"11/6低／{_px(37837)}（已測破）"
+        elif _text_has_retest_41500(s) or re.search(r"絕對不(?:會)?破", s):
             tag = "絕對不破"
             # 與圖上 C3 底同一點：右下只留這一顆，不准再黃箭重複
             # 右欄：C3底＋價＋狀態即可；「週五低」三字多餘（使用者 2026-11-13）
@@ -10158,7 +10365,43 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
             tag="近對照",
             label=f"飆預測{_px(37164)}・4/23低",
         )
-    if re.search(r"35579", s):
+    # 11/20 修正目標帶 35000～35500（當令；壓舊回測帶／C9 區標）
+    if _text_has_target_350_355(s):
+        _add(
+            "tw",
+            level=float(_TARGET_350_355_HI),
+            ref_ymd="",
+            role="修正目標上沿",
+            tag="未到",
+            label=f"修正目標上沿／{_px(_TARGET_350_355_HI)}",
+        )
+        _add(
+            "tw",
+            level=float(_TARGET_350_355_LO),
+            ref_ymd="",
+            role="修正目標下沿",
+            tag="未到",
+            label=f"修正目標下沿／{_px(_TARGET_350_355_LO)}",
+        )
+        if re.search(r"35700", s):
+            _add(
+                "tw",
+                level=35700.0,
+                ref_ymd="",
+                role="站回觀察",
+                tag="未到",
+                label=f"3天內站回／{_px(35700)}",
+            )
+        if re.search(r"33000", s):
+            _add(
+                "tw",
+                level=33000.0,
+                ref_ymd="",
+                role="極限穿刺",
+                tag="未到",
+                label=f"極限穿刺／{_px(33000)}",
+            )
+    if re.search(r"35579", s) and not _text_has_target_350_355(s):
         _add(
             "tw",
             level=35579.0,
@@ -14311,13 +14554,26 @@ def _wave_now_ladder(pack: Optional[Dict[str, Any]] = None, *, blob: str = "") -
             or "備線九波" in thesis
         )
     )
-    has_wave4_ladder = (not pol.get("seal_big_c")) and (
-        _text_has_wave4_band_418_427(text)
-        or "波浪4帶" in thesis
-        or "回測小5波後" in thesis
+    has_target_350_ladder = (not pol.get("seal_big_c")) and (
+        _text_has_target_350_355(text)
+        or "修正目標35000" in thesis
+        or "35000～35500" in thesis
+    )
+    has_wave4_ladder = (
+        (not pol.get("seal_big_c"))
+        and (not has_target_350_ladder)
+        and (
+            _text_has_wave4_band_418_427(text)
+            or "波浪4帶" in thesis
+            or "回測小5波後" in thesis
+        )
     )
     if not pol.get("seal_big_c"):
-        if has_wave4_ladder:
+        if has_target_350_ladder:
+            steps.append("修正目標35000～35500")
+            if re.search(r"5\s*[-–]?\s*5\s*[-–]?\s*3", text) or "5-5-3" in thesis:
+                steps.append("走5-5-3・止跌未到")
+        elif has_wave4_ladder:
             steps.append("回測小5波後・波浪4帶")
             if _text_has_micro_c_14_overlap(text):
                 steps.append("細微C・1 4重疊")
@@ -14382,8 +14638,31 @@ def _wave_now_ladder(pack: Optional[Dict[str, Any]] = None, *, blob: str = "") -
     else:
         day_zh = ""
         day_bit = ""
-    # 波浪4帶／下降壓改口／止跌確認／雙軌／改口第二隻腳／9波擴延：話筒／超近說明用人話
-    if has_wave4_ladder or "回測小5波後・波浪4帶" in steps:
+    # 35000～35500／波浪4帶／下降壓改口／止跌確認／雙軌／改口第二隻腳／9波擴延：話筒／超近說明用人話
+    if has_target_350_ladder or "修正目標35000～35500" in steps:
+        oral_now = (
+            f"修正目標{_px(_TARGET_350_355_LO)}～{_px(_TARGET_350_355_HI)}；"
+            "止跌還沒到・走5-5-3"
+        )
+        if re.search(r"33000", text):
+            oral_now += "；極限穿刺33000左右"
+        if re.search(r"35700", text):
+            oral_now += "；3天內站回35700觀察"
+        oral_now += "；37837已測破・非買訊"
+        one_line = "現在：修正目標35000～35500・止跌未到（預估）"
+        now_line = (
+            oral_now
+            + (f"・{day_bit}" if day_bit else "")
+            + "・預估會改・非買訊"
+        )
+        teach_box = (
+            "現在走到（大→小）\n"
+            f"{chain}\n"
+            f"{oral_now}"
+            + (f"\n{day_bit}" if day_bit else "")
+            + "\n預估・非買訊"
+        )
+    elif has_wave4_ladder or "回測小5波後・波浪4帶" in steps:
         _rb_now = _retest_avg_min_from_text(text) or {
             "min": _WAVE4_BAND_418_427_LO,
             "avg": _WAVE4_BAND_418_427_MID,
@@ -14413,7 +14692,9 @@ def _wave_now_ladder(pack: Optional[Dict[str, Any]] = None, *, blob: str = "") -
             + "\n預估會改・非買訊"
         )
     elif "止跌確認・已過C3下降壓" in steps or (
-        has_pressure_ladder and not has_wave4_ladder
+        has_pressure_ladder
+        and not has_wave4_ladder
+        and not has_target_350_ladder
     ):
         _rb_now = _retest_avg_min_from_text(text)
         if _rb_now is not None:
@@ -18423,6 +18704,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         pass
     _paint_c9_low_zone_band(ax, pack, fp=_fp, label_x=_zx)
     _paint_ai_end_zone_band(ax, pack, fp=_fp, label_x=_zx)
+    _paint_target_350_355_band(ax, pack, fp=_fp, label_x=_zx)
     _paint_wave4_retest_band(ax, pack, fp=_fp, label_x=_zx)
     fig.savefig(save_path, facecolor=_LIVE_BG, bbox_inches="tight", pad_inches=0.22)
     plt.close(fig)
@@ -18724,6 +19006,9 @@ def _render_twii_c_wave_60_dark(
         vol_sr=c60_vol_sr,
         avoid_top_left_stamp=True,
         pack=pack,
+    )
+    _paint_target_350_355_band(
+        ax, pack, fp=_fp, label_x=_TEACH_ZONE_LABEL_X_MICRO
     )
     _paint_wave4_retest_band(
         ax, pack, fp=_fp, label_x=_TEACH_ZONE_LABEL_X_MICRO
@@ -19871,6 +20156,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         pass
     _paint_c9_low_zone_band(ax, pack, fp=_fp, label_x=_zx_n)
     _paint_ai_end_zone_band(ax, pack, fp=_fp, label_x=_zx_n)
+    _paint_target_350_355_band(ax, pack, fp=_fp, label_x=_zx_n)
     _paint_wave4_retest_band(ax, pack, fp=_fp, label_x=_zx_n)
     fig.savefig(save_path, facecolor=_LIVE_BG, bbox_inches="tight")
     plt.close(fig)
@@ -19994,6 +20280,9 @@ def _render_twii_super_near_c9_60m(
     _paint_c9_low_zone_band(ax, pack, fp=_fp, label_x=_TEACH_ZONE_LABEL_X_MICRO)
     # 超近60分：黃標／AI標同欄偏左，齊頭且不准壓末K
     _paint_ai_end_zone_band(ax, pack, fp=_fp, label_x=_TEACH_ZONE_LABEL_X_MICRO)
+    _paint_target_350_355_band(
+        ax, pack, fp=_fp, label_x=_TEACH_ZONE_LABEL_X_MICRO
+    )
     _paint_wave4_retest_band(
         ax, pack, fp=_fp, label_x=_TEACH_ZONE_LABEL_X_MICRO
     )
