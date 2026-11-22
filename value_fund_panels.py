@@ -5,11 +5,13 @@
 總覽上框只綠外框、無內格與中線；下半無框。
 
 只吃官方庫／OpenAPI 真數。
-- 負債比／ROE／每股參考淨值 ← OpenAPI 資產負債 t187ap07（由官方合計欄算出）
-- 除息／現金股利 ← 庫內 ex_rights（TWT49U 官方）
-- 股東會 ← company_events（t187ap41）
-- 應收／存貨週轉、業務比重、長期負債權益比（需長期借款明細）→ OpenAPI 彙總無欄，顯示 —
+- 負債比／ROE／每股參考淨值／非流動負債÷權益 ← OpenAPI 資產負債 t187ap07
+- 除息／現金股利 ← 庫內 ex_rights（TWT49U）；除權日另查 kind＝權／權息
+- 股東會 ← company_events／t187ap41
+- 應收／存貨週轉、業務比重、會計年度月 → 官方彙總無欄，顯示 —（不准猜）
+- 月表右欄去年營收：先對去年同月列，缺則用官方 revenue_prev_year
 季報明細圖用「單季」：累計列差分還原（與 expand_ytd_income_eps_to_single 同規則）。
+排版：標籤欄寬依字實測，值欄不得壓標籤；footer 預留，空季塊不畫。
 估值≠買訊；切入仍只認高低卡黃金買點。
 """
 from __future__ import annotations
@@ -102,6 +104,41 @@ def _text_w(font, text: str) -> int:
 
 # HT 字偏「瘦高」：橫向壓到 0.82（無明體字檔時用變形逼近）
 HT_CONDENSE = 0.82
+# 標籤與「：值」之間最少空隙（壓窄後像素）
+HT_LABEL_GAP = max(12, int(round(10 * _HT_SCALE)))
+# 底註預留（兩行 note）；內容區不可壓進來
+HT_FOOT_RESERVE = max(52, int(round(48 * _HT_SCALE)))
+
+
+def _condensed_w(font, text: str) -> int:
+    return max(1, int(_text_w(font, str(text or "")) * HT_CONDENSE))
+
+
+def _kv_label_w(font, labels: Sequence[str], *, gap: int = HT_LABEL_GAP) -> int:
+    """標籤欄寬＝最長標籤 condensed 寬＋gap；值從這之後起畫，不准壓字。"""
+    mw = 0
+    for lab in labels or ():
+        s = str(lab or "")
+        if s:
+            mw = max(mw, _condensed_w(font, s))
+    return int(mw + max(8, gap))
+
+
+def _clip_text_to_width(font, text: str, max_w: int) -> str:
+    """過長值截到 max_w（condensed）；末尾加…。不准互壓。"""
+    s = str(text or "")
+    if not s or max_w <= 0:
+        return s
+    if _condensed_w(font, s) <= max_w:
+        return s
+    ell = "…"
+    ew = _condensed_w(font, ell)
+    if max_w <= ew:
+        return ell
+    out = s
+    while out and _condensed_w(font, out) + ew > max_w:
+        out = out[:-1]
+    return (out + ell) if out else ell
 
 
 def _paste_condensed(
@@ -155,11 +192,37 @@ def _paste_condensed(
     img.paste(tmp, (px, py), tmp)
 
 
+def _draw_plain(
+    draw: ImageDraw.ImageDraw,
+    xy,
+    text: str,
+    font,
+    fill,
+    *,
+    anchor: str = "lm",
+) -> None:
+    """底註／小字：不橫向壓窄，避免字距糊成一團。"""
+    s = str(text or "")
+    if not s:
+        return
+    draw.text(xy, s, font=font, fill=fill, anchor=anchor)
+
+
 def _draw_left(
-    draw: ImageDraw.ImageDraw, xy, text: str, font, fill, *, anchor: str = "lm"
+    draw: ImageDraw.ImageDraw,
+    xy,
+    text: str,
+    font,
+    fill,
+    *,
+    anchor: str = "lm",
+    plain: bool = False,
 ) -> None:
     """預設 lm＝列中左對齊（表格字）；頂列改傳 anchor='lt'。"""
-    _paste_condensed(draw, xy, text, font, fill, anchor=anchor)
+    if plain:
+        _draw_plain(draw, xy, text, font, fill, anchor=anchor)
+    else:
+        _paste_condensed(draw, xy, text, font, fill, anchor=anchor)
 
 
 def _draw_right(
@@ -528,7 +591,7 @@ def _load_agm_event(sid: str, db_path: str) -> Dict[str, Any]:
 
 
 def _load_official_dividend(sid: str, db_path: str) -> Dict[str, Any]:
-    """最近一筆官方除息（TWT49U）＋股利分派（t187ap45 盈配／資配）；啟發式不上。"""
+    """最近一筆官方除息（TWT49U）＋除權日＋股利分派（t187ap45 盈配／資配）；啟發式不上。"""
     out: Dict[str, Any] = {}
     if not db_path or not os.path.isfile(db_path):
         return out
@@ -547,6 +610,19 @@ def _load_official_dividend(sid: str, db_path: str) -> Dict[str, Any]:
                 """,
                 (sid,),
             ).fetchone()
+            # 除權日：只認官方「權」或「權息」列；純息列不算除權
+            right = con.execute(
+                """
+                SELECT ex_date, kind, source
+                FROM ex_rights
+                WHERE stock_id=?
+                  AND kind IN ('權','權息')
+                  AND IFNULL(source,'') NOT LIKE 'heuristic%'
+                ORDER BY REPLACE(CAST(ex_date AS TEXT),'-','') DESC
+                LIMIT 1
+                """,
+                (sid,),
+            ).fetchone()
         finally:
             con.close()
         if row:
@@ -557,6 +633,10 @@ def _load_official_dividend(sid: str, db_path: str) -> Dict[str, Any]:
                 "source": str(row[3] or "").strip(),
                 "updated_at": str(row[4] or "").strip(),
             }
+        if right:
+            out["ex_right_date"] = _ymd(right[0])
+            out["ex_right_kind"] = str(right[1] or "").strip()
+            out["ex_right_source"] = str(right[2] or "").strip()
     except Exception:
         out = {}
     # 盈配／資配：證交所 t187ap45（元／股）；0 也是真數要顯示
@@ -730,10 +810,7 @@ def load_value_fund_pack(stock_id: str, db_path: str = None) -> Dict[str, Any]:
         "sources": {},
         "note": "",
         "omit": (
-            "應收／存貨週轉／長期借款：OpenAPI／MOPS 一般業彙總無明細 "
-            "（要 XBRL／財報附註）；業務比重：年報營運概況；"
-            "會計年度月／股東會時刻：OpenAPI 無欄；"
-            "興櫃無本益／無 t187ap07 資產負債彙總 → —"
+            "缺欄＝官方彙總無明細（應收／存貨週轉、業務比重、會計年度月等）；非造假"
         ),
     }
     if not sid or not path or not os.path.isfile(path):
@@ -799,8 +876,9 @@ def load_value_fund_pack(stock_id: str, db_path: str = None) -> Dict[str, Any]:
         conn.close()
 
     try:
-        monthly = list_monthly_revenue(path, sid, limit=24)
-        quarterly = list_quarterly_income(path, sid, limit=12)
+        # 月表右欄要對去年同月：至少 24 月；多抓利於回補窗
+        monthly = list_monthly_revenue(path, sid, limit=36)
+        quarterly = list_quarterly_income(path, sid, limit=16)
     except Exception:
         monthly, quarterly = [], []
 
@@ -1009,24 +1087,41 @@ def render_overview_png(pack: Dict[str, Any], out_path: str) -> str:
     ]
     right_co = [
         ("股票代碼", pack.get("stock_id") or "—"),
-        ("會計年度月份", "—"),  # OpenAPI 無欄；多數曆年＝1月但不准猜
+        ("會計年度月份", "—"),  # OpenAPI 無欄；不准猜 12
         ("總經理", co.get("gm") or "—"),
-        ("電話", fax or "—"),  # HT：右欄第二支＝傳真
+        ("傳真", fax or "—"),  # HT：右欄＝傳真（標清楚，避免兩「電話」）
         ("", ""),
         ("", ""),
         ("", ""),
         ("", ""),
     ]
-    lab_w = 110
+    lab_w = _kv_label_w(
+        f_lab, [a for a, _ in left_co] + [a for a, _ in right_co if a]
+    )
+    # 值欄右界：左半不越 mid；右半不越畫布
+    left_val_max = max(40, mid_x - 16 - (8 + lab_w))
+    right_val_max = max(40, W - 16 - (mid_x + 8 + lab_w))
     for i, ((lab_l, v_l), (lab_r, v_r)) in enumerate(zip(left_co, right_co)):
         yy = box1[1] + i * row_h
         ty = _row_mid_y(yy, row_h)
         if lab_l:
             _draw_left(draw, (8, ty), lab_l, f_lab, WHITE)
-            _draw_left(draw, (8 + lab_w, ty), f"：{v_l}", f_val, YELLOW)
+            _draw_left(
+                draw,
+                (8 + lab_w, ty),
+                f"：{_clip_text_to_width(f_val, v_l, left_val_max)}",
+                f_val,
+                YELLOW,
+            )
         if lab_r:
             _draw_left(draw, (mid_x + 8, ty), lab_r, f_lab, WHITE)
-            _draw_left(draw, (mid_x + 8 + lab_w + 20, ty), f"：{v_r}", f_val, YELLOW)
+            _draw_left(
+                draw,
+                (mid_x + 8 + lab_w, ty),
+                f"：{_clip_text_to_width(f_val, v_r, right_val_max)}",
+                f_val,
+                YELLOW,
+            )
 
     # 底：股東會／股利（左）＋獲利／估值（右）
     y2 = box1[3] + 20
@@ -1056,6 +1151,9 @@ def render_overview_png(pack: Dict[str, Any], out_path: str) -> str:
     ex_div = "—"
     if div.get("ex_date"):
         ex_div = _roc_ymd(div["ex_date"]) or "—"
+    ex_right = "—"
+    if div.get("ex_right_date"):
+        ex_right = _roc_ymd(div["ex_right_date"]) or "—"
     cash_div = (
         _fmt_m(div.get("cash_div"), digits=3)
         if _finite(div.get("cash_div")) is not None
@@ -1071,11 +1169,12 @@ def render_overview_png(pack: Dict[str, Any], out_path: str) -> str:
     debt = _finite(bs.get("debt_ratio_pct"))
     roe = _finite(pack.get("roe_pct"))
     book_nav = _finite(bs.get("book_nav")) or _finite(pack.get("book_from_pb"))
+    ncl_eq = _finite(bs.get("ncl_equity_pct"))
 
     left_bot = [
         ("股東大會地點", agm_place, YELLOW if agm_place != "—" else MUTED),
         ("股東大會時間", agm_when, GREEN if agm_when != "—" else MUTED),
-        ("除權日期", "—", MUTED),  # 最近 TWT49U 為息；無權則不上假
+        ("除權日期", ex_right, GREEN if ex_right != "—" else MUTED),
         ("除息日期", ex_div, GREEN if ex_div != "—" else MUTED),
         ("盈配(元)", earn_s, YELLOW if earn_s != "—" else MUTED),
         ("資配(元)", cap_s, YELLOW if cap_s != "—" else MUTED),
@@ -1087,10 +1186,11 @@ def render_overview_png(pack: Dict[str, Any], out_path: str) -> str:
         ),
         (
             "每股淨值(元)",
-            _fmt_m(book_nav, digits=2),
+            _fmt_m(book_nav, digits=2) if book_nav is not None else "—",
             YELLOW if book_nav is not None else MUTED,
         ),
     ]
+    # 非流動負債／權益＝官方 t187ap07 合計欄；≠HT「長期借款」明細，標名對齊真源
     right_bot = [
         ("毛利率", f"{_fmt_pct(gm)}%" if gm is not None else "—", YELLOW),
         ("營益率", f"{_fmt_pct(opm)}%" if opm is not None else "—", YELLOW),
@@ -1110,22 +1210,29 @@ def render_overview_png(pack: Dict[str, Any], out_path: str) -> str:
             f"{_fmt_pct(debt)}%" if debt is not None else "—",
             YELLOW if debt is not None else MUTED,
         ),
-        # OpenAPI 彙總無「長期借款」明細；非流動／權益≠HT「長期負債權益比」→ 不上混名
-        ("長期負債權益比", "—", MUTED),
+        (
+            "非流動負債／權益",
+            f"{_fmt_pct(ncl_eq)}%" if ncl_eq is not None else "—",
+            YELLOW if ncl_eq is not None else MUTED,
+        ),
         (
             "股東權益報酬率",
             f"{_fmt_pct(roe)}%" if roe is not None else "—",
             YELLOW if roe is not None else MUTED,
         ),
     ]
-    lab_w2 = 140
+    lab_w2 = _kv_label_w(
+        f_lab, [a for a, _v, _c in left_bot] + [a for a, _v, _c in right_bot]
+    )
+    left_val_max2 = max(40, mid_x - 16 - (8 + lab_w2))
+    right_val_max2 = max(40, W - 16 - (mid_x + 8 + lab_w2))
     for i, (lab, v, col) in enumerate(left_bot):
         ty = _row_mid_y(y2 + i * row_h, row_h)
         _draw_left(draw, (8, ty), lab, f_lab, WHITE)
         _draw_left(
             draw,
             (8 + lab_w2, ty),
-            f"：{v}",
+            f"：{_clip_text_to_width(f_val, v, left_val_max2)}",
             f_val,
             col if v != "—" else MUTED,
         )
@@ -1134,37 +1241,49 @@ def render_overview_png(pack: Dict[str, Any], out_path: str) -> str:
         _draw_left(draw, (mid_x + 8, ty), lab, f_lab, WHITE)
         _draw_left(
             draw,
-            (mid_x + 8 + lab_w2 + 20, ty),
-            f"：{v}",
+            (mid_x + 8 + lab_w2, ty),
+            f"：{_clip_text_to_width(f_val, v, right_val_max2)}",
             f_val,
             col if v != "—" else MUTED,
         )
 
     note = pack.get("omit") or ""
-    # 來源＋更新時戳（台北語意的民國／西元日，標清欄位）
+    # 來源＋更新時戳（台北語意的民國／西元日，標清欄位）；短句＋截斷防壓內容
     stamp_bits = []
     if src.get("valuation_date"):
-        stamp_bits.append(f"本益日{_stamp_roc_day(src['valuation_date'])}")
+        stamp_bits.append(f"本益{_stamp_roc_day(src['valuation_date'])}")
     if src.get("balance_published"):
-        stamp_bits.append(f"資產負債出表{_stamp_roc_day(src['balance_published'])}")
-    if src.get("balance_season"):
-        stamp_bits.append(str(src["balance_season"]))
+        stamp_bits.append(f"資產負債{_stamp_roc_day(src['balance_published'])}")
     if src.get("monthly_asof"):
-        stamp_bits.append(f"月營收{src['monthly_asof']}")
+        stamp_bits.append(f"月{src['monthly_asof']}")
     if src.get("quarterly_asof"):
-        stamp_bits.append(f"季報{src['quarterly_asof']}")
+        stamp_bits.append(f"季{src['quarterly_asof']}")
     if src.get("dividend_ex"):
         stamp_bits.append(f"除息{_stamp_roc_day(src['dividend_ex'])}")
     stamp_line = "｜".join(stamp_bits) if stamp_bits else "來源時戳待同步"
-    foot_gap = max(14, int(round(14 * _HT_SCALE)))
-    _draw_left(draw, (8, h - foot_gap * 2), note, f_small, AMBER, anchor="lt")
+    # 底註用 plain 字寬裁切（不套 condensed）
+    def _plain_clip(s: str) -> str:
+        t = str(s or "")
+        max_w = W - 24
+        if _text_w(f_small, t) <= max_w:
+            return t
+        while t and _text_w(f_small, t + "…") > max_w:
+            t = t[:-1]
+        return (t + "…") if t else "…"
+
+    foot1 = _plain_clip(note)
+    foot2 = _plain_clip(f"官方TWSE/TPEx｜{stamp_line}｜估值≠買訊")
+    _draw_left(
+        draw, (8, h - HT_FOOT_RESERVE + 8), foot1, f_small, AMBER, anchor="lt", plain=True
+    )
     _draw_left(
         draw,
-        (8, h - foot_gap),
-        f"官方TWSE/TPEx｜{stamp_line}｜估值≠買訊",
+        (8, h - max(16, HT_FOOT_RESERVE // 2)),
+        foot2,
         f_small,
         MUTED,
         anchor="lt",
+        plain=True,
     )
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
     img.save(out_path, "PNG", optimize=True)
@@ -1204,9 +1323,10 @@ def render_monthly_png(pack: Dict[str, Any], out_path: str) -> str:
 
     mid = W // 2
     table_top = y0 + HT_PAD
-    # 底季累計：標題＋5 列
+    # 底季累計：標題列＋5 資料列；預留 footer 防壓
     q_rows = 5
-    q_band = 20 + q_rows * row_h + 24
+    title_h = max(row_h, int(round(36 * _HT_SCALE)))
+    q_band = title_h + q_rows * row_h + HT_FOOT_RESERVE
     table_bot = h - q_band
     # 左／右兩表；中縫 4px
     left_box = (0, table_top, mid - 2, table_bot)
@@ -1220,11 +1340,13 @@ def render_monthly_png(pack: Dict[str, Any], out_path: str) -> str:
     ) -> None:
         """rows: (年月標籤, 月營收百萬, 比%)。
         HT：欄間直欄線＋表頭下橫線；資料列之間不畫橫線（靠列距分開）。
+        數字右對齊於各欄右緣內縮，不准壓隔壁欄標。
         """
         x0, y_t, x1, y_b = box
-        c1 = x0 + int((x1 - x0) * 0.28)
-        c2 = x0 + int((x1 - x0) * 0.62)
-        # HT：欄直欄＋表頭下橫線；無整框上下橫線、無資料列橫線
+        # 三欄：年月較窄、月營收較寬、比％中寬
+        span = max(1, x1 - x0)
+        c1 = x0 + int(span * 0.22)
+        c2 = x0 + int(span * 0.62)
         draw.line((x0, y_t, x0, y_b), fill=GRID, width=HT_GRID_W)
         draw.line((x1, y_t, x1, y_b), fill=GRID, width=HT_GRID_W)
         draw.line((c1, y_t, c1, y_b), fill=GRID, width=HT_GRID_W)
@@ -1232,19 +1354,21 @@ def render_monthly_png(pack: Dict[str, Any], out_path: str) -> str:
         head_bot = y_t + row_h
         draw.line((x0, head_bot, x1, head_bot), fill=GRID, width=HT_GRID_W)
         ty = _row_mid_y(y_t, row_h)
-        _draw_left(draw, (x0 + 6, ty), "年月", f_c, WHITE)
-        _draw_left(draw, (c1 + 6, ty), "月營收", f_c, WHITE)
-        _draw_left(draw, (c2 + 6, ty), pct_lab, f_c, WHITE)
+        _draw_center(draw, (x0 + c1) // 2, ty, "年月", f_c, WHITE)
+        # 表頭置中於欄，避免「月營收」貼左、數字貼右看起來互壓
+        _draw_center(draw, (c1 + c2) // 2, ty, "月營收", f_c, WHITE)
+        _draw_center(draw, (c2 + x1) // 2, ty, pct_lab, f_c, WHITE)
         for i, (lab, rev_m, pct) in enumerate(rows):
             yy = head_bot + i * row_h
             if yy + row_h > y_b:
                 break
             ty2 = _row_mid_y(yy, row_h)
-            _draw_left(draw, (x0 + 6, ty2), lab, f_c, YELLOW)
-            _draw_right(draw, c2 - 8, ty2, _fmt_m(rev_m), f_c, YELLOW)
+            # 年月置中於欄；數字右對齊欄內縮 10px
+            _draw_center(draw, (x0 + c1) // 2, ty2, lab, f_c, YELLOW)
+            _draw_right(draw, c2 - 10, ty2, _fmt_m(rev_m), f_c, YELLOW)
             _draw_right(
                 draw,
-                x1 - 8,
+                x1 - 10,
                 ty2,
                 _fmt_pct(pct, signed=False),
                 f_c,
@@ -1262,13 +1386,16 @@ def render_monthly_png(pack: Dict[str, Any], out_path: str) -> str:
                 _finite(m.get("mom_pct")),
             )
         )
-        # 右欄＝去年同月營收＋今年對去年的年增%（對齊 HT）
+        # 右欄＝去年同月營收＋今年 yoy%；缺去年列時用官方 revenue_prev_year
         prev_ym = _prev_year_yyyymm(yyyymm)
         prev = by_ym.get(prev_ym) or {}
+        prev_rev = _finite(prev.get("revenue"))
+        if prev_rev is None:
+            prev_rev = _finite(m.get("revenue_prev_year"))
         right_rows.append(
             (
                 _month_label(prev_ym, index=i) if prev_ym else "—",
-                _million_from_k(prev.get("revenue")),
+                _million_from_k(prev_rev),
                 _finite(m.get("yoy_pct")),
             )
         )
@@ -1276,29 +1403,29 @@ def render_monthly_png(pack: Dict[str, Any], out_path: str) -> str:
     _paint_table(left_box, pct_lab="上月比%", rows=left_rows)
     _paint_table(right_box, pct_lab="去年比%", rows=right_rows)
 
-    # 底：季營收累計（HT＝外框＋欄直線＋期別表頭下橫線；資料列不畫橫線）
+    # 底：季營收累計（標題獨立一列，不准壓期別）
     yq = table_bot + 4
-    _draw_center(draw, W // 2, yq + 8, "季營收 (Q1-Q4 累計)", f_c, WHITE)
-    yq += 20
+    _draw_center(draw, W // 2, yq + title_h // 2, "季營收 (Q1-Q4 累計)", f_c, WHITE)
     qs = _rolling_quarterly(pack.get("quarterly") or [], 4)
-    label_w = HT_LABEL_W
-    col_w = HT_COL_W
-    q_box_top = yq
-    q_box_bot = yq + q_rows * row_h
-    # HT 底表：欄直欄＋期別下橫線；不畫整框、不畫資料列橫線
+    row_labs = ["期別", "營業收入", "營益率", "業外比率", "每股盈餘"]
+    label_w = max(HT_LABEL_W, _kv_label_w(f_c, row_labs))
+    col_w = max(120, (W - label_w) // 4)
+    q_box_top = yq + title_h
+    q_box_bot = q_box_top + q_rows * row_h
     xs = [0, label_w] + [label_w + col_w * (i + 1) for i in range(4)]
     for x in xs:
         if x <= W - 1:
-            draw.line((x, q_box_top, x, q_box_bot), fill=GRID, width=HT_GRID_W)
+            draw.line((x, q_box_top, x, min(q_box_bot, h - HT_FOOT_RESERVE)), fill=GRID, width=HT_GRID_W)
     draw.line(
         (0, q_box_top + row_h, W - 1, q_box_top + row_h),
         fill=GRID,
         width=HT_GRID_W,
     )
 
-    row_labs = ["", "營業收入", "營益率", "業外比率", "每股盈餘"]
     for ri, lab in enumerate(row_labs):
         yy = q_box_top + ri * row_h
+        if yy + row_h > h - HT_FOOT_RESERVE:
+            break
         ty = _row_mid_y(yy, row_h)
         if lab:
             _draw_left(draw, (6, ty), lab, f_c, WHITE)
@@ -1350,11 +1477,24 @@ def render_monthly_png(pack: Dict[str, Any], out_path: str) -> str:
     src = pack.get("sources") or {}
     m_asof = src.get("monthly_asof") or ""
     q_asof = src.get("quarterly_asof") or ""
-    foot = "備註: 百萬元四捨五入。紅＝正成長、青＝負成長。估值≠買訊"
+    foot = "百萬四捨五入；紅＋／青−；估值≠買訊"
     if m_asof or q_asof:
-        foot = f"月營收截至{m_asof or '—'}｜季報{q_asof or '—'}｜{foot}"
-    foot_gap = max(14, int(round(14 * _HT_SCALE)))
-    _draw_left(draw, (8, h - foot_gap), foot, f_note, MUTED, anchor="lt")
+        foot = f"月{m_asof or '—'}｜季{q_asof or '—'}｜{foot}"
+    foot_s = foot
+    max_w = W - 24
+    if _text_w(f_note, foot_s) > max_w:
+        while foot_s and _text_w(f_note, foot_s + "…") > max_w:
+            foot_s = foot_s[:-1]
+        foot_s = (foot_s + "…") if foot_s else "…"
+    _draw_left(
+        draw,
+        (8, h - max(16, HT_FOOT_RESERVE // 2)),
+        foot_s,
+        f_note,
+        MUTED,
+        anchor="lt",
+        plain=True,
+    )
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
     img.save(out_path, "PNG", optimize=True)
     return out_path
@@ -1373,12 +1513,12 @@ def render_quarterly_png(pack: Dict[str, Any], out_path: str) -> str:
         "百萬",
         "04/10",
     )
-    # 字級：原圖縮放實測字高／列高≈0.84 → 54/63；粗體無襯線
     f_c = _font(HT_BODY_FONT)
     f_note = _font(HT_NOTE_FONT)
     single = pack.get("single") or {}
     qs = _rolling_quarterly(pack.get("quarterly") or [], HT_QUARTERLY_COLS)
-    blocks = [qs[:4], qs[4:8]]
+    # 只畫有資料的塊；空塊不畫格線（防底部空白＋footer 互壓）
+    blocks = [b for b in (qs[:4], qs[4:8]) if b]
     metrics = [
         ("期別", "season"),
         ("營業收入淨額", "revenue"),
@@ -1398,7 +1538,9 @@ def render_quarterly_png(pack: Dict[str, Any], out_path: str) -> str:
             return _roc_season(q["year"], q["season"]), WHITE
         if kind == "revenue":
             v = _million_from_k(single.get("revenue", {}).get(key))
-            return _fmt_m(v), YELLOW
+            return (_fmt_m(v) if v is not None else "—"), (
+                YELLOW if v is not None else MUTED
+            )
         if kind == "gm":
             rev = _finite(single.get("revenue", {}).get(key))
             gp = _finite(single.get("gross_profit", {}).get(key))
@@ -1414,11 +1556,12 @@ def render_quarterly_png(pack: Dict[str, Any], out_path: str) -> str:
             if rev is None or prev is None or prev == 0:
                 return "—", MUTED
             g = (rev - prev) / abs(prev) * 100.0
-            # HT 季報成長％＝淡黃（含負）；紅／青留給月營收比％
             return f"{g:.2f}%", YELLOW
         if kind == "op":
             v = _million_from_k(single.get("operating_income", {}).get(key))
-            return _fmt_m(v), YELLOW
+            return (_fmt_m(v) if v is not None else "—"), (
+                YELLOW if v is not None else MUTED
+            )
         if kind == "non":
             raw = single.get("non_operating", {}).get(key)
             if raw is None and q.get("non_operating") is None:
@@ -1443,17 +1586,30 @@ def render_quarterly_png(pack: Dict[str, Any], out_path: str) -> str:
         return "—", MUTED
 
     n_metrics = len(metrics)
-    label_w = HT_LABEL_W
-    col_w = HT_COL_W
-    row_h = HT_ROW_H
-    # 兩大區塊：上4季＋下4季
-    # HT：每塊＝頂橫線＋期別下橫線＋欄直欄；資料列無橫線；塊間不另疊雙線
-    block_h = n_metrics * row_h
-    gap_mid = max(14, int(round(14 * _HT_SCALE)))
+    label_w = max(HT_LABEL_W, _kv_label_w(f_c, [a for a, _ in metrics]))
+    col_w = max(120, (W - label_w) // 4)
+    gap_mid = max(10, int(round(10 * _HT_SCALE)))
     gw = HT_GRID_W
+    # 依剩餘高度自適列高：兩塊＋footer 塞得下才畫；否則縮列高
+    avail = max(200, h - y0 - HT_PAD - HT_FOOT_RESERVE)
+    n_blocks = max(1, len(blocks))
+    row_h = HT_ROW_H
+    need = n_blocks * n_metrics * row_h + max(0, n_blocks - 1) * gap_mid
+    if need > avail:
+        row_h = max(
+            int(round(22 * _HT_SCALE)),
+            int((avail - max(0, n_blocks - 1) * gap_mid) / (n_blocks * n_metrics)),
+        )
+        f_c = _font(max(18, int(row_h * 0.82)))
+        label_w = max(HT_LABEL_W, _kv_label_w(f_c, [a for a, _ in metrics]))
+        col_w = max(120, (W - label_w) // 4)
+
     for bi, block in enumerate(blocks):
+        block_h = n_metrics * row_h
         top = y0 + HT_PAD + bi * (block_h + gap_mid)
         bot = top + block_h
+        if bot > h - HT_FOOT_RESERVE:
+            break
         xs = [0, label_w] + [label_w + col_w * (i + 1) for i in range(4)]
         for x in xs:
             if x > W - 1:
@@ -1465,7 +1621,6 @@ def render_quarterly_png(pack: Dict[str, Any], out_path: str) -> str:
         for mi, (lab, kind) in enumerate(metrics):
             yy = top + mi * row_h
             ty = _row_mid_y(yy, row_h)
-            # HT：左欄標籤白字；數值黃（負成長／負業外＝青）
             _draw_left(draw, (6, ty), lab, f_c, WHITE)
             for ci in range(4):
                 if ci >= len(block):
@@ -1474,20 +1629,35 @@ def render_quarterly_png(pack: Dict[str, Any], out_path: str) -> str:
                 cx_r = min(W - 4, label_w + col_w * (ci + 1) - 10)
                 _draw_right(draw, cx_r, ty, text, f_c, col)
 
-    foot_gap = max(14, int(round(14 * _HT_SCALE)))
-    _draw_left(
-        draw, (8, h - foot_gap * 2), pack.get("omit") or "", f_note, AMBER, anchor="lt"
-    )
     src = pack.get("sources") or {}
     q_asof = src.get("quarterly_asof") or ""
-    bs_pub = _stamp_roc_day(src.get("balance_published")) if src.get("balance_published") else ""
-    bits = ["單季＝累計差分（缺前期不上）", "綜合損益官方"]
+    bits = ["單季＝累計差分（缺前期不上）"]
     if q_asof:
-        bits.append(f"季報{q_asof}")
-    if bs_pub:
-        bits.append(f"資產負債出表{bs_pub}")
+        bits.append(f"季{q_asof}")
     bits.append("估值≠買訊")
-    _draw_left(draw, (8, h - foot_gap), "｜".join(bits), f_note, MUTED, anchor="lt")
+    def _plain_clip_q(s: str) -> str:
+        t = str(s or "")
+        max_w = W - 24
+        if _text_w(f_note, t) <= max_w:
+            return t
+        while t and _text_w(f_note, t + "…") > max_w:
+            t = t[:-1]
+        return (t + "…") if t else "…"
+
+    foot1 = _plain_clip_q(pack.get("omit") or "")
+    foot2 = _plain_clip_q("｜".join(bits))
+    _draw_left(
+        draw, (8, h - HT_FOOT_RESERVE + 8), foot1, f_note, AMBER, anchor="lt", plain=True
+    )
+    _draw_left(
+        draw,
+        (8, h - max(16, HT_FOOT_RESERVE // 2)),
+        foot2,
+        f_note,
+        MUTED,
+        anchor="lt",
+        plain=True,
+    )
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
     img.save(out_path, "PNG", optimize=True)
     return out_path

@@ -53,18 +53,18 @@ def _seed_value_db(db: str, *, desk: str = "20261120") -> None:
                 "VALUES ('6416',2026,?,?, 'TW', ?, 0, 0, ?, ?, ?, ?, ?, '', ?)",
                 (season, "瑞祺電通", rev, gm, op, non, net, eps, desk),
             )
-        for mm, rev, mom, yoy in (
-            ("202608", 548128, 21.45, 109.34),
-            ("202609", 707131, 29.01, 59.15),
-            ("202610", 567160, -19.79, 126.81),
+        for mm, rev, mom, yoy, prev_y in (
+            ("202608", 548128, 21.45, 109.34, 261360),
+            ("202609", 707131, 29.01, 59.15, 444300),
+            ("202610", 567160, -19.79, 126.81, 250000),
         ):
             con.execute(
                 "INSERT OR REPLACE INTO monthly_revenue "
                 "(stock_id, yyyymm, stock_name, market, industry, revenue, "
                 "revenue_prev_month, revenue_prev_year, mom_pct, yoy_pct, "
                 "ytd_revenue, ytd_prev_year, ytd_yoy_pct, published_roc, updated_at) "
-                "VALUES ('6416',?,?, 'TW', '', ?, 0, 0, ?, ?, 0, 0, 0, '', ?)",
-                (mm, "瑞祺電通", rev, mom, yoy, desk),
+                "VALUES ('6416',?,?, 'TW', '', ?, 0, ?, ?, ?, 0, 0, 0, '', ?)",
+                (mm, "瑞祺電通", rev, prev_y, mom, yoy, desk),
             )
         con.commit()
     finally:
@@ -102,6 +102,54 @@ def test_monthly_right_is_prev_year_not_same_rev():
     assert _prev_year_yyyymm("202601") == "202501"
 
 
+def test_monthly_right_falls_back_to_revenue_prev_year(tmp_path):
+    """缺去年同月列時，右欄月營收改吃官方 revenue_prev_year（不准空白）。"""
+    from value_fund_panels import (
+        _million_from_k,
+        _prev_year_yyyymm,
+        _rolling_monthly,
+        load_value_fund_pack,
+        render_monthly_png,
+    )
+
+    db = str(tmp_path / "prev_y.db")
+    _seed_value_db(db)
+    pack = load_value_fund_pack("6416", db)
+    months = list(pack.get("monthly") or [])
+    by_ym = {
+        str(m.get("yyyymm") or ""): m
+        for m in months
+        if str(m.get("yyyymm") or "").isdigit() and len(str(m.get("yyyymm"))) == 6
+    }
+    show = _rolling_monthly(months, 3)
+    assert show
+    m0 = show[0]
+    prev_ym = _prev_year_yyyymm(str(m0.get("yyyymm") or ""))
+    # seed 只有今年三個月 → 去年同月列不在 by_ym
+    assert prev_ym not in by_ym
+    prev_rev = float(m0.get("revenue_prev_year") or 0)
+    assert prev_rev > 0
+    assert _million_from_k(prev_rev) is not None
+    out = str(tmp_path / "m.png")
+    assert render_monthly_png(pack, out)
+    assert os.path.isfile(out) and os.path.getsize(out) > 1000
+
+
+def test_overview_label_width_beats_longest_label():
+    """標籤欄寬必須大於最長標籤 condensed 寬，否則必壓值。"""
+    from value_fund_panels import (
+        HT_BODY_FONT,
+        _condensed_w,
+        _font,
+        _kv_label_w,
+    )
+
+    f = _font(HT_BODY_FONT)
+    labs = ["股東大會地點", "現金股利(元)", "非流動負債／權益", "股東權益報酬率"]
+    lw = _kv_label_w(f, labs)
+    assert lw > max(_condensed_w(f, x) for x in labs)
+
+
 def test_value_panels_render_6416(tmp_path):
     db = str(tmp_path / "vf.db")
     _seed_value_db(db)
@@ -110,7 +158,7 @@ def test_value_panels_render_6416(tmp_path):
     assert pack["valuation"]["pe"] == 16.86
     assert pack["quarterly"][0]["eps"] == 5.40
     # 應收／存貨週轉仍無 OpenAPI 明細；負債比／ROE 有資產負債源時另算
-    assert "應收" in pack["omit"] or "週轉" in pack["omit"]
+    assert "缺欄" in pack["omit"] or "週轉" in pack["omit"] or "應收" in pack["omit"]
     out = render_value_fund_panels("6416", db, str(tmp_path / "charts"), uid="t")
     assert out["ok"] is True
     assert len(out["paths"]) == 3
