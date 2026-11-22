@@ -1336,6 +1336,10 @@ def official_work(
         return None
     work["dt"] = pd.to_datetime(work["date"].astype(str), format="%Y%m%d", errors="coerce")
     work = work.dropna(subset=["dt"]).reset_index(drop=True)
+    # 量單位治癒（股→張）：不是 OHLC sanitize／normalize；混用會讓量柱／量標把股數寫成「張」
+    work["volume"] = normalize_vols_to_lots(
+        pd.to_numeric(work["volume"], errors="coerce").fillna(0.0).tolist()
+    )
     vol = work["volume"].fillna(0.0)
     flat = (vol <= 0) & ((work["high"] - work["low"]).abs() <= 1e-8)
     if "is_halt" in work.columns:
@@ -1394,6 +1398,44 @@ def _vol_zone_bar_skippable(work: pd.DataFrame, i: int, halt: pd.Series) -> bool
     return False
 
 
+def normalize_vols_to_lots(vols: Sequence[Any]) -> List[float]:
+    """把混用股／張的量序列正規成張（1 張＝1000 股）。
+
+    ``daily_quotes.volume`` 應為張；少數來源殘留股數時，同窗會出現比中位數大兩個
+    數量級的離群值，選爆大量日會永遠偏股數列（2330／2409 已中）。只治癒離群股數：
+    ÷1000 後更貼近同窗張數中位才改；整窗皆張／真大量波動不誤傷。
+    """
+    raw: List[float] = []
+    for v in vols:
+        try:
+            x = float(v or 0)
+        except (TypeError, ValueError):
+            x = 0.0
+        raw.append(0.0 if x < 0 else x)
+    pos = sorted(x for x in raw if x > 0)
+    if len(pos) < 2:
+        return raw
+    med = float(pos[len(pos) // 2])
+    if med <= 0:
+        return raw
+    # 股數列相對張數中位通常 ≥200×（1000× 量級）；真大量日很少一次飆到 200× 中位
+    share_floor = max(med * 200.0, 1000.0)
+    out: List[float] = []
+    for x in raw:
+        if x <= 0:
+            out.append(0.0)
+            continue
+        if x >= share_floor:
+            as_lots = x / 1000.0
+            if abs(as_lots - med) < abs(x - med):
+                out.append(as_lots)
+            else:
+                out.append(x)
+        else:
+            out.append(x)
+    return out
+
+
 def pick_vol_zone_core(
     *,
     dates: Sequence[Any],
@@ -1408,13 +1450,14 @@ def pick_vol_zone_core(
     """主大量區唯一選核：近窗可交易爆大量日 → 壓＝高、撐＝低。
 
     三端（``find_volume_zone``／``volume_first_price``／壓撐 numpy）只做資料適配後呼叫本核。
-    不是買訊。觸壓／破撐門檻不在此核。
+    量一律先正規成張再比大小。不是買訊。觸壓／破撐門檻不在此核。
     """
     n = len(closes)
     if n < 2 or n != len(highs) or n != len(lows) or n != len(vols) or n != len(dates):
         return None
     if len(skippable) != n:
         return None
+    lot_vols = normalize_vols_to_lots(vols)
     end = n - 1
     lb = max(int(lookback or 0), 1)
     tradable: List[int] = []
@@ -1445,7 +1488,7 @@ def pick_vol_zone_core(
     for i in range(start, scan_end):
         if bool(skippable[i]):
             continue
-        v = float(vols[i] or 0)
+        v = float(lot_vols[i] or 0)
         if v <= 0:
             continue
         hi = float(highs[i] or 0)
@@ -1470,7 +1513,7 @@ def pick_vol_zone_core(
         "date": str(dates[pick] or ""),
         "high": hi,
         "low": lo,
-        "volume": float(vols[pick] or 0),
+        "volume": float(lot_vols[pick] or 0),
         "active": bool(active_i is not None and pick == active_i),
         "provisional": bool(provisional),
         "ex_cut": cut or "",

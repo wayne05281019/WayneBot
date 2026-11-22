@@ -56,6 +56,49 @@ def test_find_volume_zone_prefers_active_overhead():
     assert zone["active"] is True
 
 
+def test_find_volume_zone_normalizes_mixed_share_lot_units():
+    """daily_quotes 股／張混用時，主峰須認真張數日，不准被股數離群值搶走。"""
+    from vol_zone_chart import find_volume_zone, normalize_vols_to_lots
+
+    rows = []
+    base = pd.Timestamp("2026-09-01")
+    for i in range(41):
+        d = (base + pd.Timedelta(days=i)).strftime("%Y%m%d")
+        rows.append(
+            {
+                "date": d,
+                "open": 990.0,
+                "high": 1000.0,
+                "low": 980.0,
+                "close": 990.0,
+                "volume": 30000.0,
+                "is_halt": False,
+            }
+        )
+    # 真主峰：80,000 張，壓仍在頭上
+    rows[10]["volume"] = 80000.0
+    rows[10]["high"] = 1050.0
+    rows[10]["low"] = 970.0
+    # 股數殘值：50,000,000 股＝50,000 張；未正規化會當最大量搶主峰
+    rows[20]["volume"] = 50_000_000.0
+    rows[20]["high"] = 1040.0
+    rows[20]["low"] = 960.0
+    rows[-1]["close"] = 990.0
+    work = pd.DataFrame(rows)
+
+    healed = normalize_vols_to_lots([r["volume"] for r in rows])
+    assert healed[20] == pytest.approx(50_000.0)
+    assert healed[10] == pytest.approx(80_000.0)
+
+    zone = find_volume_zone(work, lookback=40)
+    assert zone is not None
+    assert zone["date"] == rows[10]["date"]
+    assert zone["high"] == 1050.0
+    assert zone["low"] == 970.0
+    assert zone["volume"] == pytest.approx(80_000.0)
+    assert zone["active"] is True
+
+
 def test_find_volume_zone_excludes_last_bar():
     """最後一根即使量最大也不當大量區參考日。"""
     from vol_zone_chart import find_volume_zone

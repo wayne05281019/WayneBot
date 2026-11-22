@@ -2191,6 +2191,7 @@ def _close_tags_lower_right_y(
     avoid_price: float = 0.0,
     tip_high: float = 0.0,
     tip_low: float = 0.0,
+    avoid_prices: Optional[Sequence[float]] = None,
 ) -> float:
     """昨收／今收錨點 Y。
 
@@ -2199,6 +2200,7 @@ def _close_tags_lower_right_y(
     必與現價／avoid_price 拉開；軸內無空窗才貼下緣。
     2026-11-06：末日長陰（3595）錨點若落在 tip K 高低內 → 壓到 tip 低下方空帶，
     不准昨收｜今收跟縮圖 K 卡成一團。
+    2026-11-22：今收≈大量區壓／撐時，錨點再避 spike 高低，不准收標蓋壓撐數字。
     """
     y0 = float(ymin)
     y1 = float(ymax)
@@ -2207,9 +2209,13 @@ def _close_tags_lower_right_y(
     # 相對右下：約 14% 軸高（縮圖仍讀得到，又離現價／尾 K 遠）
     ay = float(y0 + span * 0.14)
     ap = float(avoid_price or 0.0)
+    extra = [float(p) for p in (avoid_prices or ()) if float(p or 0) > 0]
     # 跟現價拉開至少約 28% 軸高；不夠就再往下沉
     if ap > 0 and abs(ay - ap) < span * 0.28:
         ay = float(min(ay, ap - span * 0.30))
+    for p in extra:
+        if abs(ay - p) < span * 0.10:
+            ay = float(min(ay, p - span * 0.12))
     ay = float(max(ay, y0 + pad))
     ay = float(min(ay, y1 - pad))
     # 高價股舊絕對空窗（550～950）若仍遠低於現價，可再往該帶靠（更空）
@@ -2223,9 +2229,12 @@ def _close_tags_lower_right_y(
             b = min(y1 - pad, band_hi)
             if b > a and abs(0.5 * (a + b) - ap) >= span * 0.22:
                 ay = float(0.5 * (a + b))
-    # 最終再確認離現價
+    # 最終再確認離現價／壓撐價
     if ap > 0 and abs(ay - ap) < span * 0.22:
         ay = float(max(y0 + pad, min(ay, ap - span * 0.25)))
+    for p in extra:
+        if abs(ay - p) < span * 0.08:
+            ay = float(max(y0 + pad, min(ay, p - span * 0.10)))
     # 末日 K 高低帶：錨點不准落在 tip 影線／實體垂直範圍內（長陰尤甚）
     th = float(tip_high or 0.0)
     tl = float(tip_low or 0.0)
@@ -5248,6 +5257,7 @@ def render_biaoke_structure_png(
             avoid_price=float(last_c) if last_c > 0 else 0.0,
             tip_high=float(highs[-1] if highs else 0) or 0.0,
             tip_low=float(lows[-1] if lows else 0) or 0.0,
+            avoid_prices=(float(spike_hi or 0), float(spike_lo or 0)),
         ),
     )
     # 已刪演化區膚色底＋「演化區（不是保證…）」底標

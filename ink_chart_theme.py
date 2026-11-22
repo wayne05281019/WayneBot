@@ -1492,7 +1492,8 @@ def _key_cats(legends: List[Legend]) -> List[str]:
         elif any(x.startswith("20高") or "接近" in x for x in labs):
             cats.append("導航箭頭")
         else:
-            cats.append("訊號・買賣")
+            # 非買訊圖例桶：不准叫「訊號・買賣」（壓撐／結構只觀察）
+            cats.append("標示・觀察")
     return cats
 
 
