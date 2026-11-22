@@ -166,31 +166,63 @@ def detect_conditions(text: str) -> List[str]:
 
 
 def load_inst_by_date(market_db: str) -> Dict[str, Dict[str, Any]]:
+    """法人現貨：優先 market_inst_lots_daily（張）；否則 BFI82U 億元（只認方向／有數列）。"""
     if not market_db or not os.path.isfile(market_db):
         return {}
     con = sqlite3.connect(market_db, timeout=30.0)
+    out: Dict[str, Dict[str, Any]] = {}
     try:
-        rows = con.execute(
-            """
-            SELECT REPLACE(CAST(date AS TEXT),'-',''),
-                   foreign_net, trust_net, dealer_net, three_net, source
-            FROM market_inst_lots_daily
-            """
-        ).fetchall()
+        has_lots = con.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='market_inst_lots_daily'"
+        ).fetchone()
+        if has_lots:
+            rows = con.execute(
+                """
+                SELECT REPLACE(CAST(date AS TEXT),'-',''),
+                       foreign_net, trust_net, dealer_net, three_net, source
+                FROM market_inst_lots_daily
+                """
+            ).fetchall()
+            for r in rows:
+                d = _ymd(r[0])
+                if not d:
+                    continue
+                out[d] = {
+                    "foreign_net": _finite(r[1]),
+                    "trust_net": _finite(r[2]),
+                    "dealer_net": _finite(r[3]),
+                    "three_net": _finite(r[4]),
+                    "source": str(r[5] or ""),
+                    "unit": "lots",
+                }
+        has_bfi = con.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='market_inst_bfi_daily'"
+        ).fetchone()
+        if has_bfi:
+            rows = con.execute(
+                """
+                SELECT REPLACE(CAST(date AS TEXT),'-',''),
+                       foreign_net_yi, trust_net_yi, dealer_net_yi, three_net_yi, source
+                FROM market_inst_bfi_daily
+                """
+            ).fetchall()
+            for r in rows:
+                d = _ymd(r[0])
+                if not d or d in out:
+                    continue  # 已有張數列不覆寫
+                # 三同步只認方向；單位標 yi，不准跟張數混算絕對值
+                out[d] = {
+                    "foreign_net": _finite(r[1]),
+                    "trust_net": _finite(r[2]),
+                    "dealer_net": _finite(r[3]),
+                    "three_net": _finite(r[4]),
+                    "source": str(r[5] or "TWSE_BFI82U"),
+                    "unit": "yi",
+                }
+    except sqlite3.Error:
+        return out
     finally:
         con.close()
-    out: Dict[str, Dict[str, Any]] = {}
-    for r in rows:
-        d = _ymd(r[0])
-        if not d:
-            continue
-        out[d] = {
-            "foreign_net": _finite(r[1]),
-            "trust_net": _finite(r[2]),
-            "dealer_net": _finite(r[3]),
-            "three_net": _finite(r[4]),
-            "source": str(r[5] or ""),
-        }
     return out
 
 
@@ -1509,7 +1541,32 @@ def main() -> int:
         default=250,
         help="假突破指數代理較長窗（觸發稀疏）",
     )
+    ap.add_argument(
+        "--heal",
+        action="store_true",
+        help="對質前先跑官方欄補洞（期貨OI／融資／櫃買／USDTWD；非買訊）",
+    )
     args = ap.parse_args()
+    heal_info = None
+    if args.heal:
+        from jiuha_official_heal import heal_all
+
+        heal_info = heal_all(
+            args.market,
+            sessions_n=args.sessions,
+        )
+        print(
+            json.dumps(
+                {
+                    "heal_ok": heal_info.get("ok"),
+                    "heal_delta": heal_info.get("delta"),
+                    "heal_optional_unavailable": heal_info.get("optional_unavailable"),
+                    "not_buy_signal": True,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
     res = run(
         corpus_db=args.corpus,
         market_db=args.market,
@@ -1517,6 +1574,9 @@ def main() -> int:
         sessions_n=args.sessions,
         false_break_sessions=args.false_break_sessions,
     )
+    if heal_info is not None:
+        res["heal_delta"] = heal_info.get("delta")
+        res["heal_coverage_after"] = heal_info.get("after")
     print(json.dumps({k: res[k] for k in res if k != "rule_stats"}, ensure_ascii=False, indent=2))
     print(json.dumps(res.get("rule_stats"), ensure_ascii=False, indent=2))
     print(res.get("md"))
