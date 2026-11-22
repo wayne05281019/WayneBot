@@ -901,7 +901,8 @@ def _upsert_income(conn: sqlite3.Connection, rows: List[Dict[str, Any]]) -> int:
                 stock_name=excluded.stock_name, market=excluded.market, revenue=excluded.revenue,
                 cogs=excluded.cogs, gross_profit=excluded.gross_profit,
                 gross_margin_pct=excluded.gross_margin_pct, operating_income=excluded.operating_income,
-                non_operating=excluded.non_operating,
+                -- 官方業外有真數才覆寫；NULL／缺欄不准蓋掉已有列（否則 Q2／Q3 業外變 —）
+                non_operating=COALESCE(excluded.non_operating, quarterly_income.non_operating),
                 net_income=excluded.net_income, eps=excluded.eps,
                 published_roc=excluded.published_roc, updated_at=excluded.updated_at;
             """,
