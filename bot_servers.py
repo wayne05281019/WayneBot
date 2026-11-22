@@ -7847,7 +7847,7 @@ class WayneTelegramBot:
                 return
             if not parts:
                 await message.reply_text(
-                    "飆客區讀取失敗。", reply_markup=self._biaoke_reply_menu(uid)
+                    "飆大讀取失敗。", reply_markup=self._biaoke_reply_menu(uid)
                 )
                 delivered = True
                 return
