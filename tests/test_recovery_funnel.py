@@ -155,6 +155,107 @@ def test_format_recovery_observe_entry_blocked_not_wait_buy():
     assert "連買／估值等觀察" in html
 
 
+def test_golden_buy_dict_rows_norm_sid_not_dict_repr(tmp_path: Path, monkeypatch):
+    """海選 golden_buy 列是 dict 時，sid 必須是代號，HTML 不准出現 stock_id 字面。"""
+    from recovery_funnel import _collect_signal_maps
+    from screen_sessions import save_screen_session
+
+    db = _mem_db(tmp_path)
+    day = "20261119"
+    save_screen_session(
+        db,
+        day,
+        "evening",
+        {
+            "leave_zero": [],
+            "ma60_lower": [
+                {"stock_id": "2330", "stock_name": "台積電", "close": 1000.0}
+            ],
+            "golden_buy": [
+                {
+                    "stock_id": "1304",
+                    "stock_name": "台聚",
+                    "close": 11.05,
+                    "hi20_close": 14.0,
+                    "entry_price": None,
+                    "defense_price": None,
+                    "chase_warning": False,
+                }
+            ],
+        },
+    )
+    # 宇宙補 1304／2330
+    con = sqlite3.connect(db)
+    for sid, name in (("1304", "台聚"), ("2330", "台積電")):
+        con.execute(
+            "INSERT OR REPLACE INTO stock_universe VALUES (?,?,?,?,?,?,?)",
+            (sid, name, "TW", "STOCK", "塑膠工業", 1, ""),
+        )
+        for j in range(30):
+            d = (datetime(2026, 11, 19) - timedelta(days=29 - j)).strftime("%Y%m%d")
+            c = 11.0 + j * 0.01
+            con.execute(
+                "INSERT INTO daily_quotes VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                (d, sid, name, "TW", c, c + 0.2, c - 0.2, c, 900.0, 8000.0, 0.1),
+            )
+        con.execute(
+            "INSERT OR REPLACE INTO daily_valuation VALUES (?,?,?)", (sid, day, 12.0)
+        )
+    con.commit()
+    con.close()
+
+    sigs, names = _collect_signal_maps(db, day)
+    assert "1304" in sigs and "golden_buy" in sigs["1304"]
+    assert "2330" in sigs and "ma60_lower" in sigs["2330"]
+    assert names.get("1304") == "台聚"
+    assert all(not (isinstance(k, str) and k.startswith("{")) for k in sigs)
+
+    monkeypatch.setattr("recovery_funnel.fetch_and_store_punish", lambda *a, **k: 0)
+    out = run_recovery_funnel(db, as_of=day, refresh_punish=False)
+    html = format_recovery_funnel_html(out)
+    assert "stock_id" not in html
+    assert "&#x27;stock_id&#x27;" not in html
+    obs_sids = {r["sid"] for r in out["observe"]}
+    buy_sids = {r["sid"] for r in out["buy_ok"]}
+    assert "1304" in obs_sids or "1304" in buy_sids
+    assert all(isinstance(s, str) and not s.startswith("{") for s in obs_sids | buy_sids)
+
+
+def test_format_recovery_defends_dict_repr_sid():
+    """舊 payload sid 誤為 dict／dict 字串時，格式化仍出代號，不准整列 dump。"""
+    html = format_recovery_funnel_html(
+        {
+            "as_of": "20261106",
+            "regime": "bear",
+            "twii": {"date": "20261106", "c": 39702.0},
+            "buy_ok": [],
+            "observe": [
+                {
+                    "sid": {
+                        "stock_id": "1304",
+                        "stock_name": "台聚",
+                        "close": 11.05,
+                    },
+                    "name": "",
+                    "entry": [],
+                    "labels": ["還在零"],
+                },
+                {
+                    "sid": "{'stock_id': '1308', 'stock_name': '亞聚', 'close': 12.25}",
+                    "name": "",
+                    "entry": [],
+                    "labels": ["還在零"],
+                },
+            ],
+            "punish_n": 0,
+        }
+    )
+    assert "1304" in html and "台聚" in html
+    assert "1308" in html and "亞聚" in html
+    assert "stock_id" not in html
+    assert "&#x27;stock_id&#x27;" not in html
+
+
 def test_punish_active_window(tmp_path: Path):
     db = str(tmp_path / "p.db")
     ensure_recovery_tables(db)
