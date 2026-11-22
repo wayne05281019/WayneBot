@@ -347,8 +347,15 @@ def _fmt_axis_int(v, _p=None) -> str:
 
 
 def _vol(val: Any) -> str:
+    """量標一律「張」。誤存股數（≥500萬）先 ÷1000，不准把股數寫成張。"""
     try:
-        n = int(round(float(val or 0)))
+        raw = float(val or 0)
+    except (TypeError, ValueError):
+        return "—"
+    if raw >= 5_000_000:
+        raw = raw / 1000.0
+    try:
+        n = int(round(raw))
     except (TypeError, ValueError):
         return "—"
     return f"{n:,}張"
@@ -2431,12 +2438,19 @@ def _place_right_notes(
         placed.append((note, ty))
         taken.append(ty)
     # v7：昨收／今收硬釘右下空白錨點，不准進 soft、不准跟軌／現價搶位
+    # 2026-11-22：錨點亦須避開壓／撐真價（今收≈撐時框貼框，例 2454）
     if close_anchor_y is not None and closes_for_slot:
         ay = float(close_anchor_y)
-        for r in rails:
+        for r in list(rails) + list(levels):
             ry = float(r.get("y") or 0)
-            if abs(ay - ry) < gap * 1.2:
-                ay = min(ay, ry - gap * 1.25)
+            if abs(ay - ry) < gap * 1.35:
+                ay = min(ay, ry - gap * 1.45)
+        # 仍貼壓／撐 → 再往下沉一格
+        for r in levels:
+            ry = float(r.get("y") or 0)
+            if abs(ay - ry) < gap * 1.1:
+                ay = float(lo + gap * 0.35)
+                break
         ty = min(max(ay, lo), hi_others)
         for note in closes_for_slot:
             note["y"] = float(ty)
