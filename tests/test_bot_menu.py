@@ -135,6 +135,12 @@ def test_image_surfaces_wait_vanishes_after_photo():
     wave_btn = inspect.getsource(WayneTelegramBot.wave_status_cmd)
     assert "format_teach_brief" in wave_btn
     assert "_send_market_wave_charts" in wave_btn
+    # 巡檢 B：流水線前先出泡泡，不准畫面沉默
+    assert "_start_plain_wait" in wave_btn
+    assert "波浪位階進行中" in wave_btn
+    assert wave_btn.index("_start_plain_wait") < wave_btn.index(
+        "run_teach_trio_preflight_pipeline"
+    )
     chong_kb = inspect.getsource(WayneTelegramBot._chong_zone_keyboard)
     assert 'callback_data="daytrade"' in chong_kb
     assert 'callback_data="overnight"' in chong_kb

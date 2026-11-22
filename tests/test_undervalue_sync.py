@@ -51,7 +51,9 @@ def test_run_undervalue_sync_stub_success_zero_rows(tmp_path, monkeypatch):
     run = load_run(db, "20261114")
     assert run and run["status"] == "success"
     assert load_picks(db, "20261114") == []
-    assert empty_note_for_button(db, "20261114") == "已算完 0 檔"
+    note = empty_note_for_button(db, "20261114")
+    assert note and "0 檔" in note
+    assert "買訊" in note
     # skip_if_done
     out2 = run_undervalue_sync(db, skip_if_done=True)
     assert out2["ok"] is True

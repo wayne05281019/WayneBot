@@ -237,7 +237,8 @@ def empty_note_for_button(db_path: str, as_of: str) -> Optional[str]:
         return "盤後還沒算完（融合後掃描）"
     picks = load_picks(db_path, as_of)
     if not picks:
-        return "已算完 0 檔"
+        # 硬閘後空名單：明示估值≠買訊，不准讓人以為壞掉或可當進場表
+        return "硬閘後 0 檔（估值≠買訊；有真低估再顯示）"
     return None
 
 
