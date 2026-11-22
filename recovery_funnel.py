@@ -1035,13 +1035,45 @@ def format_recovery_funnel_html(payload: Dict[str, Any]) -> str:
 
     buy = list(payload.get("buy_ok") or [])
     obs = list(payload.get("observe") or [])
+    # 觀察欄口徑：已有買訊被估值／硬閘擋 ≠「尚等買點／還在零」
+    _ENTRY = {"winrate", "leave_zero", "ma60_lower"}
+    _VAL_GATE = ("本益落後", "本益缺", "本益過熱", "本益無效", "近四季EPS≤0")
+    n_entry_blocked = 0
+    n_wait_zero = 0
+    n_other = 0
+    for row in obs:
+        entry = set(row.get("entry") or []) & _ENTRY
+        labels = [str(x) for x in (row.get("labels") or [])]
+        if entry:
+            n_entry_blocked += 1
+        elif "還在零" in labels or "golden_buy" in set(row.get("signals") or []):
+            n_wait_zero += 1
+        else:
+            n_other += 1
+    obs_bits: List[str] = []
+    if n_entry_blocked:
+        obs_bits.append(f"已有買訊・估值／硬閘擋 {n_entry_blocked}")
+    if n_wait_zero:
+        obs_bits.append(f"尚等買點／還在零 {n_wait_zero}")
+    if n_other:
+        obs_bits.append(f"連買／估值等觀察 {n_other}")
+    obs_title = "／".join(obs_bits) if obs_bits else "過資格・未進真可買"
+    pe_blocked = any(
+        set(row.get("entry") or []) & _ENTRY
+        and any(g in [str(x) for x in (row.get("reasons") or [])] for g in _VAL_GATE)
+        for row in obs
+    )
     blocks = [
         title_line("綜合篩選・復原路", desk, "漏斗"),
         f"regime={regime}{escape(tw_bit)}",
         f"真可買 n={len(buy)}｜復原觀察 n={len(obs)}｜處置擋 {int(payload.get('punish_n') or 0)}",
         "<b>真可買</b>（過硬閘＋三種買訊；可空）\n" + _fmt_rows(buy),
-        "<b>復原觀察</b>（過資格、尚等買點／還在零）\n" + _fmt_rows(obs),
-        "<i>硬閘：資格／流動性／破底／處置／真可買估值底。軟縮排序不杀光。不准總分榜。非即時 tick。</i>",
+        f"<b>復原觀察</b>（{escape(obs_title)}）\n" + _fmt_rows(obs),
+        (
+            "<i>硬閘：資格／流動性／破底／處置／真可買估值底。"
+            + ("已有買訊被估值閘擋≠尚等買點。" if pe_blocked else "")
+            + "軟縮排序不杀光。不准總分榜。非即時 tick。</i>"
+        ),
     ]
     return join_dashed(*blocks)
 
