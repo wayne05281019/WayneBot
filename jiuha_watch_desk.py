@@ -29,11 +29,86 @@ DEFAULT_OUT = Path("/opt/cursor/artifacts/jiuha")
 
 def _fp(size: int, weight: str = "normal"):
     """Noto CJK font for phone-readable charts."""
-    import matplotlib.font_manager as fm
-
     from wayne_navigator import _fp as nav_fp
 
     return nav_fp(size, weight)
+
+
+def _ymd8(s: Any) -> str:
+    return "".join(ch for ch in str(s or "") if ch.isdigit())[:8]
+
+
+def _is_tw_open_day(ymd: str, market_db: str = "") -> bool:
+    key = _ymd8(ymd)
+    if len(key) != 8:
+        return False
+    try:
+        from tw_holidays import lookup_tw_session
+        return lookup_tw_session(key, market_db or None).get("kind") == "open"
+    except Exception:
+        try:
+            return datetime.strptime(key, "%Y%m%d").weekday() < 5
+        except ValueError:
+            return False
+
+
+def next_tw_trading_day(ymd: str, market_db: str = "") -> str:
+    from datetime import timedelta
+    key = _ymd8(ymd)
+    try:
+        dt = datetime.strptime(key, "%Y%m%d")
+    except ValueError:
+        return ""
+    for _ in range(18):
+        dt += timedelta(days=1)
+        cand = dt.strftime("%Y%m%d")
+        if _is_tw_open_day(cand, market_db):
+            return cand
+    return ""
+
+
+def _slash_ymd(ymd: str, *, with_year: bool = False) -> str:
+    key = _ymd8(ymd)
+    if len(key) != 8:
+        return str(ymd or "")
+    if with_year:
+        return f"{key[0:4]}/{key[4:6]}/{key[6:8]}"
+    return f"{key[4:6]}/{key[6:8]}"
+
+
+def _filter_open_bars(bars: List[Any], market_db: str, *, day: str = "") -> List[Any]:
+    out = []
+    for b in bars or []:
+        d = _ymd8(getattr(b, "date", None) or (b.get("date") if isinstance(b, dict) else ""))
+        if day and d > day:
+            continue
+        if _is_tw_open_day(d, market_db):
+            out.append(b)
+    return out
+
+
+def _wrap_at_punct(text: str, max_chars: int = 22) -> str:
+    s = str(text or "").strip()
+    if not s:
+        return ""
+    lines: List[str] = []
+    while s:
+        if len(s) <= max_chars:
+            lines.append(s)
+            break
+        cut = -1
+        for i, ch in enumerate(s[: max_chars + 1]):
+            if ch in "；、。｜":
+                cut = i + 1
+        if cut <= 0:
+            cut = max_chars
+        lines.append(s[:cut].rstrip("；、"))
+        s = s[cut:].lstrip("；、 ")
+        if len(lines) >= 4:
+            if s:
+                lines[-1] = lines[-1] + "…"
+            break
+    return "\n".join(lines)
 
 
 def build_tomorrow_intraday_checks(pack: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -104,10 +179,8 @@ def build_tomorrow_intraday_checks(pack: Dict[str, Any]) -> List[Dict[str, Any]]
         }
     )
 
-    # 5) 關鍵位刺穿——盤中就能看，不必等收
-    if any("假突破" in (x or "") for x in labs) or (
-        chg is not None and chg < -1.5 and vol_vs_5 and vol_vs_5 >= 1.2
-    ):
+    # 5) 關鍵位刺穿——只在已有「假突破」標籤時列；不准用昨收冒充前高／頸線
+    if any("假突破" in (x or "") for x in labs):
         checks.append(
             {
                 "id": "T_level_probe",
@@ -416,11 +489,24 @@ def build_concrete(pack: Dict[str, Any], market_db: str, twii_bars: List[Any]) -
         out["margin_ok"] = False
     oi = _load_foreign_oi(market_db, day)
     if oi.get("ok") and oi.get("oi_net") is not None and not oi.get("stale"):
+        oi_net = int(oi["oi_net"])
+        prev_day = ""
+        try:
+            from tw_holidays import previous_tw_trading_day
+            prev_day = previous_tw_trading_day(day, market_db) or ""
+        except Exception:
+            prev_day = ""
+        oi_prev = _load_foreign_oi(market_db, prev_day) if prev_day else {"ok": False}
+        oi_delta = None
+        if oi_prev.get("ok") and not oi_prev.get("stale") and oi_prev.get("oi_net") is not None:
+            oi_delta = oi_net - int(oi_prev["oi_net"])
         out.update(
             {
                 "oi_ok": True,
-                "oi_net": int(oi["oi_net"]),
+                "oi_net": oi_net,
                 "oi_short": int(oi["oi_short"]) if oi.get("oi_short") is not None else None,
+                "oi_delta": oi_delta,
+                "oi_prev_asof": prev_day or None,
             }
         )
     else:
@@ -455,18 +541,39 @@ def build_watch_desk(
         }
     tomorrow = build_tomorrow_intraday_checks(pack)
     audit = build_after_close_audit_only(pack)
-    # 近窗柱供出圖（拉長一點細節）
-    twii = load_index_bars(market_db, "TWII", limit=60)
-    otc = load_index_bars(market_db, "OTC", limit=60)
-    fx = load_index_bars(market_db, "USDTWD", limit=60)
+    # 近窗柱：只留開市日，濾掉週末／休市假柱；三圖對齊加權窗
+    twii = load_index_bars(market_db, "TWII", limit=80)
+    otc = load_index_bars(market_db, "OTC", limit=80)
+    fx = load_index_bars(market_db, "USDTWD", limit=80)
     day = pack["asof"]
-    twii_w = [b for b in reversed(twii) if b.date <= day][-30:]
-    otc_w = [b for b in reversed(otc) if b.date <= day][-30:]
-    fx_w = [b for b in reversed(fx) if b.date <= day][-30:]
-    concrete = build_concrete(pack, market_db, twii)
+    twii_open = _filter_open_bars(list(reversed(twii)), market_db, day=day)
+    otc_open = _filter_open_bars(list(reversed(otc)), market_db, day=day)
+    fx_open = _filter_open_bars(list(reversed(fx)), market_db, day=day)
+    twii_w = twii_open[-28:]
+    win_dates = {b.date for b in twii_w}
+    otc_w = [b for b in otc_open if b.date in win_dates][-28:]
+    fx_w = [b for b in fx_open if b.date in win_dates][-28:]
+    vols = [float(b.volume) for b in twii_open if b.volume]
+    vol_now = vols[-1] if vols else None
+
+    def _avg(xs):
+        return (sum(xs) / len(xs)) if xs else None
+
+    vol5 = _avg(vols[-5:]) if len(vols) >= 5 else None
+    vol20 = _avg(vols[-20:]) if len(vols) >= 20 else None
+    concrete = build_concrete(pack, market_db, list(reversed(twii_open)))
+    if vol_now is not None:
+        concrete["twii_vol"] = vol_now
+        concrete["twii_vol_wan"] = round(vol_now / 10000.0, 1)
+        if vol5:
+            concrete["twii_vol_vs_5"] = round(vol_now / vol5, 2)
+        if vol20:
+            concrete["twii_vol_vs_20"] = round(vol_now / vol20, 2)
+    next_day = next_tw_trading_day(day, market_db)
     return {
         "ok": True,
         "asof": day,
+        "next_session": next_day,
         "not_buy_signal": True,
         "author": "啾哈觀察",
         "daily": pack,
@@ -568,74 +675,85 @@ def plain_today_line(desk: Dict[str, Any]) -> str:
 
 
 def plain_tomorrow_rows(
-    checks: List[Dict[str, Any]], concrete: Optional[Dict[str, Any]] = None
+    checks: List[Dict[str, Any]],
+    concrete: Optional[Dict[str, Any]] = None,
+    *,
+    next_session: str = "",
+    asof: str = "",
 ) -> List[Dict[str, str]]:
-    """明天盤中：時段＋白話＋可給的基準數字。"""
+    """下一開市日盤中：時段＋門檻＋控車語（非買訊）。"""
     c = concrete or {}
-    vol_wan = c.get("twii_vol_wan")
-    vol5 = c.get("twii_vol_vs_5")
-    close = c.get("twii_close")
     otc_rel = c.get("otc_rel_pp")
     fx_c = c.get("fx_close")
+    ns = _slash_ymd(next_session) if next_session else "下一開市日"
+    asof_s = _slash_ymd(asof) if asof else "上一開市日"
     table = {
-        "T_l0_survive": ("開盤前", "先問：停損／最多虧多少設好了嗎"),
+        "T_l0_survive": (
+            "08:50開盤前",
+            "停損／最多虧多少設好了嗎；未設好＝後面燈先不當操作解讀（空手／等待）",
+        ),
         "T_open15_vol": (
             "09:00–09:15",
-            (
-                f"開盤量對照：昨全日約 {vol_wan}萬；量縮鎖死就先別急"
-                if vol_wan
-                else "開盤有沒有量？量縮鎖死就先別急"
-            ),
+            "第一根15分量＜近20日同時段中位×0.70＝量縮鎖死→空手等待；無同時段基準＝不判（不准拿全日量頂替）",
         ),
-        "T_escape_follow": ("09:00–10:30", "昨縮量漲的話：今早有沒有補量"),
+        "T_escape_follow": (
+            "09:00–10:30",
+            "昨標縮量反彈後：今早無補量／高開回吐→逃命窗延續假設；仍非買訊",
+        ),
         "T_am_vol_pace": (
-            "午前",
-            (
-                f"若大漲，累計量有無跟上（昨量／五日＝{vol5}×）"
-                if vol5 is not None
-                else "若大漲，累計量有沒有跟上"
-            ),
+            "09:30／10:30／11:30",
+            "大漲＞+1.5%且累計＜同時點中位×0.85→縮量反彈假設，不追；無同時段基準＝不判",
         ),
         "T_level_probe": (
-            "碰到前高／頸線時",
-            (
-                f"刺穿後有無立刻被打回（昨收 {close:.0f}）"
-                if close
-                else "刺穿後有沒有立刻被打回"
-            ),
+            "碰到已點名價時",
+            "有點名頸線／前高才對該價；刺穿後立刻打回→假突破假設；沒點名價＝本列不啟用",
         ),
         "T_otc_rel": (
-            "盤中",
+            "09:30起每30分",
             (
-                f"櫃買是否繼續弱於加權（昨相對 {otc_rel:+.2f}百分點）"
+                f"櫃買％−加權％持續＜−0.5百分點逾60分→融資壓力↑（{asof_s}相對 {otc_rel:+.2f}）；控車＝提高警戒／等待"
                 if otc_rel is not None
-                else "櫃買是不是比加權更弱"
+                else "櫃買％−加權％持續＜−0.5百分點逾60分→融資壓力↑；控車＝提高警戒／等待"
             ),
         ),
         "T_fx_lead": (
-            "盤中",
+            "08:30／09:30／11:00／13:00",
             (
-                f"台幣升或貶（昨匯率 {fx_c}；升偏暖、貶偏壓）"
+                f"USDTWD較{asof_s}收（{fx_c}）貶≥0.15%＝壓力燈、升≥0.15%＝偏暖；與指數背離優先信台幣"
                 if fx_c
-                else "台幣升還是貶（升偏暖、貶偏壓）"
+                else "台幣較昨收貶≥0.15%＝壓力、升≥0.15%＝偏暖；與指數背離優先信台幣"
             ),
         ),
-        "T_tx_proxy": ("盤中", "期貨有沒有跟著、還是只有現貨虛漲"),
-        "T_lever_etf_proxy": ("盤中", "正二／槓桿ETF是急殺無量還是有換手"),
+        "T_tx_proxy": (
+            "08:45／09:15／11:00／13:00",
+            "台指期價量是否跟著；急漲但期量萎縮→回補未確認；外資OI今晚才對質",
+        ),
+        "T_lever_etf_proxy": (
+            "09:00–13:30",
+            "正二／槓桿ETF急殺無量vs有換手＝去槓桿側證；融資餘額盤後才對質",
+        ),
     }
-    # 沒櫃買數就不列櫃買明日鈕
     if not c.get("otc_ok"):
         table.pop("T_otc_rel", None)
+    prefer = [
+        "T_l0_survive",
+        "T_open15_vol",
+        "T_escape_follow",
+        "T_am_vol_pace",
+        "T_otc_rel",
+        "T_fx_lead",
+        "T_tx_proxy",
+        "T_lever_etf_proxy",
+        "T_level_probe",
+    ]
+    by_id = {str(ch.get("id") or ""): ch for ch in (checks or [])}
     out: List[Dict[str, str]] = []
-    seen = set()
-    for ch in checks or []:
-        cid = str(ch.get("id") or "")
-        if cid in seen or cid not in table:
+    for cid in prefer:
+        if cid not in by_id or cid not in table:
             continue
-        seen.add(cid)
         when, line = table[cid]
-        out.append({"when": when, "line": line, "id": cid})
-        if len(out) >= 6:
+        out.append({"when": when, "line": line, "id": cid, "session": ns})
+        if len(out) >= 7:
             break
     return out
 
@@ -653,59 +771,86 @@ def render_watch_desk_markdown(desk: Dict[str, Any]) -> str:
     if not desk.get("ok"):
         return f"# 啾哈觀盤（非買訊）\n\n缺資料：{desk.get('note')}\n"
     c = desk.get("concrete") or {}
+    asof = desk.get("asof") or ""
+    ns = desk.get("next_session") or ""
+    labs = desk.get("structure_labels") or []
     lines = [
-        f"# 啾哈觀盤 {desk.get('asof')}（非買訊）",
+        f"# 啾哈觀盤 {_slash_ymd(asof, with_year=True)}（非買訊）",
         "",
+        f"**結構：** {'／'.join(labs[:2]) if labs else (desk.get('headline') or '')}",
         f"**今天：** {plain_today_line(desk)}",
         "",
-        "## 具體數字（有才列）",
+        "## 盤中可對照（有才列）",
     ]
     if c.get("twii_close") is not None:
         stamp = "［僅收盤戳記］" if c.get("twii_stamp") else ""
         lines.append(
             f"- 加權收 {_fmt_num(c.get('twii_close'))}（{_fmt_num(c.get('twii_chg_pts'), 0)}點／{_fmt_num(c.get('twii_chg_pct'))}%）{stamp}"
         )
-        if not c.get("twii_stamp") and c.get("twii_h") is not None:
-            lines.append(
-                f"- 加權開高低 {_fmt_num(c.get('twii_o'))}／{_fmt_num(c.get('twii_h'))}／{_fmt_num(c.get('twii_l'))}"
-            )
         lines.append(
-            f"- 成交量 {_fmt_num(c.get('twii_vol_wan'), 1)}萬（／五日 {_fmt_num(c.get('twii_vol_vs_5'))}×、／二十日 {_fmt_num(c.get('twii_vol_vs_20'))}×）"
+            f"- 成交量 {_fmt_num(c.get('twii_vol_wan'), 1)}萬張（／五日 {_fmt_num(c.get('twii_vol_vs_5'))}×、／二十日 {_fmt_num(c.get('twii_vol_vs_20'))}×）"
         )
     if c.get("otc_ok"):
         lines.append(
             f"- 櫃買收 {_fmt_num(c.get('otc_close'))}（{_fmt_num(c.get('otc_chg_pct'))}%），相對加權 {_fmt_num(c.get('otc_rel_pp'))} 百分點"
         )
     if c.get("fx_ok"):
+        fx_dir = "台幣貶" if (c.get("fx_chg_pct") or 0) > 0 else "台幣升"
         lines.append(
-            f"- 美金台幣 {_fmt_num(c.get('fx_close'), 3)}（{_fmt_num(c.get('fx_chg_pct'), 3)}%）"
+            f"- 美金台幣 {_fmt_num(c.get('fx_close'), 3)}（{_fmt_num(c.get('fx_chg_pct'), 3)}%＝{fx_dir}）"
         )
+    lines += ["", "## 盤後對質（非盤中鈕）"]
     if c.get("margin_ok"):
+        gap = c.get("speed_gap_pp")
+        gap_txt = ""
+        if gap is not None:
+            if gap < 0:
+                gap_txt = f"，融資跌更快 {abs(float(gap)):.2f}百分點"
+            else:
+                gap_txt = f"，融資跌較慢 {float(gap):.2f}百分點"
         lines.append(
-            f"- 融資餘額 {_fmt_num(c.get('margin_bal_yi'), 1)}億（變動 {_fmt_num(c.get('margin_delta_yi'), 1)}億／{_fmt_num(c.get('margin_chg_pct'))}%），速度差 {_fmt_num(c.get('speed_gap_pp'))} 百分點"
+            f"- 融資餘額 {_fmt_num(c.get('margin_bal_yi'), 1)}億（{_fmt_num(c.get('margin_delta_yi'), 1)}億／{_fmt_num(c.get('margin_chg_pct'))}%）{gap_txt}［對質］"
         )
     if c.get("oi_ok"):
-        lines.append(
-            f"- 外資期貨淨空 {_fmt_num(c.get('oi_net'), 0)}口（空單 {_fmt_num(c.get('oi_short'), 0)}口）"
-        )
+        net = c.get("oi_net")
+        delta = c.get("oi_delta")
+        net_txt = f"淨部位 {int(net):+,}口" if net is not None else ""
+        if delta is not None:
+            dlt = int(delta)
+            dlt_txt = (
+                f"減空 {abs(dlt):,}口"
+                if dlt > 0
+                else (f"加空 {abs(dlt):,}口" if dlt < 0 else "淨空持平")
+            )
+            lines.append(f"- 外資期貨{net_txt}（較上開市日{dlt_txt}）［對質］")
+        else:
+            lines.append(f"- 外資期貨{net_txt}［對質］")
     if c.get("bfi_ok"):
-        lines.append(f"- 外資現貨淨買賣 {_fmt_num(c.get('foreign_net_yi'), 1)}億")
-    lines += ["", "## 明天盤中這樣看"]
+        lines.append(f"- 外資現貨淨買賣 {_fmt_num(c.get('foreign_net_yi'), 1)}億［對質］")
+    if not any(c.get(k) for k in ("margin_ok", "oi_ok", "bfi_ok")):
+        lines.append("- （當日對質欄未齊）")
+    sess = _slash_ymd(ns, with_year=True) if ns else "下一開市日"
+    lines += ["", f"## {sess} 盤中這樣看（只觀察；切入仍只認高低卡）"]
     for i, r in enumerate(
-        plain_tomorrow_rows(desk.get("tomorrow_intraday") or [], c), 1
+        plain_tomorrow_rows(
+            desk.get("tomorrow_intraday") or [],
+            c,
+            next_session=ns,
+            asof=asof,
+        ),
+        1,
     ):
         lines.append(f"{i}. {r.get('when')}｜{r.get('line')}")
     lines += [
         "",
-        "沒寫出來的欄＝當天官方還沒齊，不准假填。",
-        "觀察 ≠ 買訊。切入仍只認已量化過關的高低卡。",
+        "缺欄不畫。觀察≠買訊。怎麼買仍看高低卡已過關規則。",
         "",
     ]
     return "\n".join(lines)
 
 
 def render_watch_desk_png(desk: Dict[str, Any], path: str) -> str:
-    """精細白話卡：具體數字（缺欄不畫）＋日K量能＋附圖＋明天基準。"""
+    """v4：由上往下量測排版；盤中卡／對質區分開；開市日窗；戳記不畫完整K。"""
     if not desk.get("ok"):
         return ""
     import matplotlib
@@ -714,47 +859,73 @@ def render_watch_desk_png(desk: Dict[str, Any], path: str) -> str:
     import matplotlib.pyplot as plt
     from matplotlib.patches import FancyBboxPatch, Rectangle
     from matplotlib.lines import Line2D
+    from matplotlib.ticker import FuncFormatter
 
     asof = desk.get("asof") or ""
-    asof_slash = f"{asof[4:6]}/{asof[6:8]}" if len(asof) == 8 else asof
+    ns = desk.get("next_session") or ""
     c = desk.get("concrete") or {}
     series = desk.get("series") or {}
     twii_s = series.get("twii") or []
     otc_s = series.get("otc") or []
     fx_s = series.get("usdtwd") or []
+    labs = desk.get("structure_labels") or []
     plain = plain_today_line(desk)
-    rows = plain_tomorrow_rows(desk.get("tomorrow_intraday") or [], c)
+    rows = plain_tomorrow_rows(
+        desk.get("tomorrow_intraday") or [], c, next_session=ns, asof=asof
+    )
 
     bg, ink, mute, card = "#f4f2ec", "#1a1a1a", "#5a5a5a", "#ffffff"
-    red, green = "#c62828", "#2e7d32"
+    red, green, audit_bg = "#c62828", "#2e7d32", "#fff8e7"
     chg = c.get("twii_chg_pct")
     up = chg is not None and chg >= 0
     chg_color = red if up else green
 
-    fig_w, fig_h, dpi = 9.2, 17.2, 150
+    fig_w, fig_h, dpi = 9.2, 19.5, 150
     fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi, facecolor=bg)
+    y = 0.985  # top cursor in figure fraction
 
+    def _advance(h: float, gap: float = 0.008) -> float:
+        nonlocal y
+        top = y
+        y -= h + gap
+        return top - h
+
+    # title
     fig.text(
         0.045,
-        0.978,
-        f"啾哈觀盤  {asof_slash}",
+        y,
+        f"啾哈觀盤  {_slash_ymd(asof, with_year=True)}",
         color=ink,
-        fontproperties=_fp(28, "bold"),
+        fontproperties=_fp(26, "bold"),
         ha="left",
         va="top",
     )
     fig.text(
         0.955,
-        0.978,
+        y,
         "非買訊",
         color=mute,
         fontproperties=_fp(15, "bold"),
         ha="right",
         va="top",
     )
+    y -= 0.028
+    if labs:
+        fig.text(
+            0.045,
+            y,
+            "／".join(str(x) for x in labs[:2]),
+            color=red,
+            fontproperties=_fp(14, "bold"),
+            ha="left",
+            va="top",
+        )
+        y -= 0.022
 
-    # 今天一句
-    ax_h = fig.add_axes([0.045, 0.88, 0.91, 0.075])
+    # today box
+    h_today = 0.07
+    top = _advance(h_today)
+    ax_h = fig.add_axes([0.045, top, 0.91, h_today])
     ax_h.set_xlim(0, 1)
     ax_h.set_ylim(0, 1)
     ax_h.axis("off")
@@ -770,46 +941,40 @@ def render_watch_desk_png(desk: Dict[str, Any], path: str) -> str:
             transform=ax_h.transAxes,
         )
     )
-    ax_h.text(0.03, 0.78, "今天（官方柱）", color=mute, fontproperties=_fp(13, "bold"), va="top")
-
-    def _wrap(s: str, n: int = 22) -> str:
-        s = str(s or "")
-        parts = []
-        while s:
-            parts.append(s[:n])
-            s = s[n:]
-        return "\n".join(parts[:3])
-
+    ax_h.text(0.03, 0.82, "今天（已收）", color=mute, fontproperties=_fp(12, "bold"), va="top")
     ax_h.text(
         0.03,
-        0.42,
-        _wrap(plain, 24),
+        0.38,
+        _wrap_at_punct(plain, 26),
         color=ink,
-        fontproperties=_fp(16, "bold"),
+        fontproperties=_fp(15, "bold"),
         va="center",
-        linespacing=1.25,
+        linespacing=1.3,
     )
 
-    # 具體數字列（只畫有數的）
-    metrics: List[Tuple[str, str, str, str]] = []
-    # title, big, sub, color
+    # intraday metric cards (2-col) — exclude margin/OI
+    intra: List[Tuple[str, str, str, str]] = []
     if c.get("twii_close") is not None:
         pts = c.get("twii_chg_pts")
-        sub = f"{pts:+.0f}點／{chg:+.2f}%" if pts is not None and chg is not None else f"{chg:+.2f}%"
+        sub = (
+            f"{pts:+.0f}點／{chg:+.2f}%"
+            if pts is not None and chg is not None
+            else (f"{chg:+.2f}%" if chg is not None else "")
+        )
         if c.get("twii_stamp"):
-            sub += " · 僅收盤"
-        metrics.append(("加權收", f"{c['twii_close']:,.0f}", sub, chg_color))
+            sub += " · 僅收盤戳記"
+        intra.append(("加權收", f"{c['twii_close']:,.0f}", sub, chg_color))
     if c.get("twii_vol_wan") is not None:
-        metrics.append(
+        intra.append(
             (
                 "成交量",
-                f"{c['twii_vol_wan']:,.1f}萬",
+                f"{c['twii_vol_wan']:,.1f}萬張",
                 f"／5日 {c.get('twii_vol_vs_5')}×  ／20日 {c.get('twii_vol_vs_20')}×",
                 ink,
             )
         )
     if c.get("otc_ok"):
-        metrics.append(
+        intra.append(
             (
                 "櫃買收",
                 f"{c['otc_close']:.2f}",
@@ -818,82 +983,59 @@ def render_watch_desk_png(desk: Dict[str, Any], path: str) -> str:
             )
         )
     if c.get("fx_ok"):
-        metrics.append(
+        fx_dir = "台幣貶" if (c.get("fx_chg_pct") or 0) > 0 else "台幣升"
+        intra.append(
             (
                 "美金台幣",
                 f"{c['fx_close']:.3f}",
-                f"{c.get('fx_chg_pct'):+.3f}% · " + ("台幣貶" if (c.get("fx_chg_pct") or 0) > 0 else "台幣升"),
-                green if (c.get("fx_chg_pct") or 0) > 0 else red,
-            )
-        )
-    if c.get("margin_ok"):
-        metrics.append(
-            (
-                "融資餘額",
-                f"{c['margin_bal_yi']:,.1f}億",
-                f"{c.get('margin_delta_yi'):+.1f}億／{c.get('margin_chg_pct'):+.2f}% · 速度差 {c.get('speed_gap_pp'):+.2f}百分點",
+                f"{c.get('fx_chg_pct'):+.3f}%＝{fx_dir}",
                 ink,
             )
         )
-    if c.get("oi_ok"):
-        metrics.append(
-            (
-                "外資期貨淨空",
-                f"{c['oi_net']:,}口",
-                f"空單 {c.get('oi_short'):,}口" if c.get("oi_short") is not None else "",
-                ink,
-            )
-        )
-    if c.get("bfi_ok"):
-        metrics.append(
-            (
-                "外資現貨",
-                f"{c['foreign_net_yi']:+.1f}億",
-                "當日三大法人外資欄",
-                green if c["foreign_net_yi"] < 0 else red,
-            )
-        )
 
-    # 排成最多 3 欄 × 2 列
-    n = len(metrics)
-    cols = 3
-    for i, (title, big, sub, col) in enumerate(metrics[:6]):
-        r, col_i = divmod(i, cols)
-        x0 = 0.045 + col_i * 0.31
-        y0 = 0.80 - r * 0.085
-        ax = fig.add_axes([x0, y0, 0.295, 0.075])
-        ax.set_xlim(0, 1)
-        ax.set_ylim(0, 1)
-        ax.axis("off")
-        ax.add_patch(
-            FancyBboxPatch(
-                (0, 0),
-                1,
-                1,
-                boxstyle="round,pad=0.02,rounding_size=0.04",
-                facecolor=card,
-                edgecolor="#ddd7cb",
-                linewidth=1.1,
-                transform=ax.transAxes,
+    card_h = 0.068
+    for i in range(0, len(intra), 2):
+        top = _advance(card_h)
+        pair = intra[i : i + 2]
+        for j, (title, big, sub, col) in enumerate(pair):
+            x0 = 0.045 + j * 0.465
+            ax = fig.add_axes([x0, top, 0.445, card_h])
+            ax.set_xlim(0, 1)
+            ax.set_ylim(0, 1)
+            ax.axis("off")
+            ax.add_patch(
+                FancyBboxPatch(
+                    (0, 0),
+                    1,
+                    1,
+                    boxstyle="round,pad=0.02,rounding_size=0.04",
+                    facecolor=card,
+                    edgecolor="#ddd7cb",
+                    linewidth=1.1,
+                    transform=ax.transAxes,
+                )
             )
-        )
-        ax.text(0.07, 0.78, title, color=mute, fontproperties=_fp(12, "bold"), va="top")
-        ax.text(0.07, 0.42, big, color=col, fontproperties=_fp(20, "bold"), va="center")
-        ax.text(0.07, 0.12, sub, color=mute, fontproperties=_fp(10), va="bottom")
+            ax.text(0.06, 0.78, title, color=mute, fontproperties=_fp(13, "bold"), va="top")
+            ax.text(0.06, 0.42, big, color=col, fontproperties=_fp(22, "bold"), va="center")
+            ax.text(0.06, 0.12, sub, color=mute, fontproperties=_fp(12), va="bottom")
 
-    metric_rows = 1 if n <= 3 else 2
-    chart_top = 0.78 - metric_rows * 0.085 - 0.01
-
-    # 加權日K＋量
-    ax_k = fig.add_axes([0.08, chart_top - 0.22, 0.84, 0.175])
-    ax_v = fig.add_axes([0.08, chart_top - 0.30, 0.84, 0.07], sharex=ax_k)
+    # K + volume
+    k_h, v_h = 0.16, 0.055
+    top_k = _advance(k_h + v_h + 0.01)
+    ax_k = fig.add_axes([0.10, top_k + v_h + 0.005, 0.82, k_h])
+    ax_v = fig.add_axes([0.10, top_k, 0.82, v_h], sharex=ax_k)
     for ax in (ax_k, ax_v):
         ax.set_facecolor(card)
         for sp in ax.spines.values():
             sp.set_color("#ddd7cb")
         ax.tick_params(colors=mute, labelsize=10)
-    ax_k.set_title("加權日K＋量（近窗）", color=ink, fontproperties=_fp(14, "bold"), loc="left", pad=6)
-
+    ax_k.set_title(
+        "加權日K＋量（開市日窗；◆＝僅收盤戳記）",
+        color=ink,
+        fontproperties=_fp(13, "bold"),
+        loc="left",
+        pad=4,
+    )
     if twii_s:
         closes_line = []
         for i, b in enumerate(twii_s):
@@ -904,14 +1046,12 @@ def render_watch_desk_png(desk: Dict[str, Any], path: str) -> str:
             closes_line.append(cl)
             stamp = bool(b.get("stamp")) or _is_stamp_bar(o, h, l, cl)
             prev_c = twii_s[i - 1].get("c") if i > 0 else None
-            # 漲跌色：有開盤用開收；戳記日用昨收比
             if stamp:
                 col = red if (prev_c is None or cl >= prev_c) else green
             else:
                 col = red if (o is None or cl >= o) else green
             if stamp or o is None or h is None or l is None:
-                # 戳記：畫收盤點，不發明高低
-                ax_k.plot([i], [cl], marker="D", color=col, markersize=5, zorder=5)
+                ax_k.plot([i], [cl], marker="D", color=col, markersize=6, zorder=5)
             else:
                 ax_k.add_line(Line2D([i, i], [l, h], color=col, lw=1.2, zorder=3))
                 body_lo = min(o, cl)
@@ -927,50 +1067,50 @@ def render_watch_desk_png(desk: Dict[str, Any], path: str) -> str:
                         zorder=4,
                     )
                 )
-            vol = b.get("v") or 0
+            vol = (b.get("v") or 0) / 10000.0  # 萬張
             ax_v.bar(i, vol, width=0.7, color=col, alpha=0.85)
-        # 收盤連線（含戳記日）讓落點不孤懸
         xs = [i for i, v in enumerate(closes_line) if v is not None]
         ys = [closes_line[i] for i in xs]
         if len(xs) >= 2:
             ax_k.plot(xs, ys, color="#666666", lw=1.0, alpha=0.55, zorder=2)
         ax_k.set_xlim(-0.8, len(twii_s) - 0.2)
-        # 首中尾日期
         ticks = [0, len(twii_s) // 2, len(twii_s) - 1]
-        labs = []
+        labs_x = []
         for ti in ticks:
             d0 = str(twii_s[ti].get("date") or "")
-            labs.append(f"{d0[4:6]}/{d0[6:8]}" if len(d0) == 8 else d0)
+            labs_x.append(_slash_ymd(d0))
         ax_v.set_xticks(ticks)
-        ax_v.set_xticklabels(labs, fontproperties=_fp(11))
+        ax_v.set_xticklabels(labs_x, fontproperties=_fp(11))
         ax_k.tick_params(labelbottom=False)
-        ax_k.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f"{v:,.0f}"))
+        ax_k.yaxis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:,.0f}"))
+        ax_v.yaxis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:.0f}"))
         for lab in ax_k.get_yticklabels():
             lab.set_fontproperties(_fp(10))
-        ax_v.set_ylabel("量", color=mute, fontproperties=_fp(10))
+        for lab in ax_v.get_yticklabels():
+            lab.set_fontproperties(_fp(9))
+        ax_v.set_ylabel("萬張", color=mute, fontproperties=_fp(10))
 
-    # 下排兩小圖：櫃買相對、台幣（有才畫）
+    # small charts
     have_otc = bool(c.get("otc_ok") and otc_s)
     have_fx = bool(c.get("fx_ok") and fx_s)
-    y_small = chart_top - 0.44
     if have_otc or have_fx:
+        sm_h = 0.10
+        top = _advance(sm_h)
         if have_otc and have_fx:
             boxes = [(0.08, 0.41), (0.51, 0.41)]
-        elif have_otc:
-            boxes = [(0.08, 0.84)]
         else:
             boxes = [(0.08, 0.84)]
         idx = 0
         if have_otc:
             x0, w = boxes[idx]
             idx += 1
-            ax_o = fig.add_axes([x0, y_small, w, 0.11])
+            ax_o = fig.add_axes([x0, top, w, sm_h])
             ax_o.set_facecolor(card)
             for sp in ax_o.spines.values():
                 sp.set_color("#ddd7cb")
             ax_o.tick_params(colors=mute, labelsize=9)
             ax_o.set_title(
-                f"櫃買收盤（昨相對 {c.get('otc_rel_pp'):+.2f}百分點）",
+                f"櫃買收盤（{_slash_ymd(asof)}相對 {c.get('otc_rel_pp'):+.2f}百分點）",
                 color=ink,
                 fontproperties=_fp(12, "bold"),
                 loc="left",
@@ -982,30 +1122,109 @@ def render_watch_desk_png(desk: Dict[str, Any], path: str) -> str:
                 d0 = str(otc_s[0].get("date") or "")
                 d1 = str(otc_s[-1].get("date") or "")
                 ax_o.set_xticks([0, len(oc) - 1])
-                ax_o.set_xticklabels(
-                    [f"{d0[4:6]}/{d0[6:8]}", f"{d1[4:6]}/{d1[6:8]}"],
-                    fontproperties=_fp(10),
-                )
-                ax_o.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f"{v:.1f}"))
+                ax_o.set_xticklabels([_slash_ymd(d0), _slash_ymd(d1)], fontproperties=_fp(10))
         if have_fx:
             x0, w = boxes[idx] if idx < len(boxes) else (0.51, 0.41)
-            ax_f = fig.add_axes([x0, y_small, w, 0.11])
+            ax_f = fig.add_axes([x0, top, w, sm_h])
             ax_f.set_facecolor(card)
             for sp in ax_f.spines.values():
                 sp.set_color("#ddd7cb")
             ax_f.tick_params(colors=mute, labelsize=9)
-            ax_f.set_title("美金台幣（升＝匯率跌）", color=ink, fontproperties=_fp(12, "bold"), loc="left")
+            ax_f.set_title(
+                "美金台幣（線往上＝台幣貶）",
+                color=ink,
+                fontproperties=_fp(12, "bold"),
+                loc="left",
+            )
             ys = [x.get("c") for x in fx_s]
             ax_f.plot(range(len(ys)), ys, color="#b8860b", lw=2.0)
             ax_f.set_xticks([0, len(ys) - 1])
             d0, d1 = str(fx_s[0].get("date")), str(fx_s[-1].get("date"))
-            ax_f.set_xticklabels(
-                [f"{d0[4:6]}/{d0[6:8]}", f"{d1[4:6]}/{d1[6:8]}"],
-                fontproperties=_fp(10),
-            )
+            ax_f.set_xticklabels([_slash_ymd(d0), _slash_ymd(d1)], fontproperties=_fp(10))
 
-    # 明天清單（避開上方小圖）
-    ax_t = fig.add_axes([0.045, 0.028, 0.91, 0.20 if (have_otc or have_fx) else 0.28])
+    # audit section
+    audit_bits: List[Tuple[str, str, str]] = []
+    if c.get("margin_ok"):
+        gap = c.get("speed_gap_pp")
+        if gap is not None and gap < 0:
+            gap_s = f"融資跌更快 {abs(float(gap)):.2f}百分點"
+        elif gap is not None:
+            gap_s = f"融資跌較慢 {float(gap):.2f}百分點"
+        else:
+            gap_s = ""
+        audit_bits.append(
+            (
+                "融資餘額［對質］",
+                f"{c['margin_bal_yi']:,.1f}億",
+                f"{c.get('margin_delta_yi'):+.1f}億／{c.get('margin_chg_pct'):+.2f}% · {gap_s}",
+            )
+        )
+    if c.get("oi_ok"):
+        net = c.get("oi_net")
+        delta = c.get("oi_delta")
+        big = f"淨部位 {int(net):+,}口" if net is not None else "—"
+        if delta is not None:
+            dlt = int(delta)
+            sub = (
+                f"較上開市日減空 {abs(dlt):,}口"
+                if dlt > 0
+                else (f"較上開市日加空 {abs(dlt):,}口" if dlt < 0 else "淨空持平")
+            )
+        else:
+            sub = "日變缺"
+        if c.get("oi_short") is not None:
+            sub += f" · 空單 {c['oi_short']:,}口"
+        audit_bits.append(("外資期貨［對質］", big, sub))
+    if c.get("bfi_ok"):
+        audit_bits.append(
+            ("外資現貨［對質］", f"{c['foreign_net_yi']:+.1f}億", "當日三大法人外資欄")
+        )
+    if audit_bits:
+        fig.text(
+            0.045,
+            y,
+            "盤後對質（非盤中鈕）",
+            color=mute,
+            fontproperties=_fp(13, "bold"),
+            ha="left",
+            va="top",
+        )
+        y -= 0.02
+        ah = 0.055
+        for i in range(0, len(audit_bits), 2):
+            top = _advance(ah)
+            for j, (title, big, sub) in enumerate(audit_bits[i : i + 2]):
+                x0 = 0.045 + j * 0.465
+                ax = fig.add_axes([x0, top, 0.445, ah])
+                ax.set_xlim(0, 1)
+                ax.set_ylim(0, 1)
+                ax.axis("off")
+                ax.add_patch(
+                    FancyBboxPatch(
+                        (0, 0),
+                        1,
+                        1,
+                        boxstyle="round,pad=0.02,rounding_size=0.04",
+                        facecolor=audit_bg,
+                        edgecolor="#e0c97a",
+                        linewidth=1.1,
+                        transform=ax.transAxes,
+                    )
+                )
+                ax.text(0.06, 0.78, title, color=mute, fontproperties=_fp(12, "bold"), va="top")
+                ax.text(0.06, 0.42, big, color=ink, fontproperties=_fp(16, "bold"), va="center")
+                ax.text(0.06, 0.12, sub, color=mute, fontproperties=_fp(11), va="bottom")
+
+    # tomorrow checklist
+    sess = _slash_ymd(ns, with_year=True) if ns else "下一開市日"
+    n_rows = max(len(rows), 1)
+    list_h = 0.035 + n_rows * 0.038
+    top = _advance(list_h, gap=0.01)
+    # leave footer room
+    if top < 0.04:
+        top = 0.04
+        list_h = max(0.12, y - 0.02)
+    ax_t = fig.add_axes([0.045, top, 0.91, list_h])
     ax_t.set_xlim(0, 1)
     ax_t.set_ylim(0, 1)
     ax_t.axis("off")
@@ -1023,18 +1242,32 @@ def render_watch_desk_png(desk: Dict[str, Any], path: str) -> str:
     )
     ax_t.text(
         0.03,
-        0.93,
-        "明天盤中這樣看（有基準數字才寫進句子）",
+        0.96,
+        f"{sess} 盤中這樣看（只觀察；切入仍只認高低卡）",
         color=ink,
-        fontproperties=_fp(16, "bold"),
+        fontproperties=_fp(14, "bold"),
         va="top",
     )
-    y = 0.78
-    for i, r in enumerate(rows[:6], 1):
-        ax_t.text(0.03, y, f"{i}", color=red, fontproperties=_fp(16, "bold"), va="top")
-        ax_t.text(0.08, y, r.get("when") or "", color=mute, fontproperties=_fp(13, "bold"), va="top")
-        ax_t.text(0.32, y, r.get("line") or "", color=ink, fontproperties=_fp(13, "bold"), va="top")
-        y -= 0.12
+    yy = 0.82
+    for i, r in enumerate(rows[:7], 1):
+        ax_t.text(0.03, yy, f"{i}", color=red, fontproperties=_fp(13, "bold"), va="top")
+        ax_t.text(
+            0.07,
+            yy,
+            r.get("when") or "",
+            color=mute,
+            fontproperties=_fp(11, "bold"),
+            va="top",
+        )
+        ax_t.text(
+            0.34,
+            yy,
+            _wrap_at_punct(r.get("line") or "", 28).replace("\n", " "),
+            color=ink,
+            fontproperties=_fp(11, "bold"),
+            va="top",
+        )
+        yy -= 0.11 if n_rows <= 6 else 0.095
 
     fig.text(
         0.045,
@@ -1080,16 +1313,19 @@ def _phone_caption(desk: Dict[str, Any]) -> str:
     if not desk.get("ok"):
         return "啾哈觀盤暫時組不出（非買訊）。"
     asof = desk.get("asof") or ""
-    asof_slash = f"{asof[4:6]}/{asof[6:8]}" if len(asof) == 8 else asof
+    ns = desk.get("next_session") or ""
     lines = [
-        f"啾哈觀盤 {asof_slash}（非買訊）",
+        f"啾哈觀盤 {_slash_ymd(asof, with_year=True)}（非買訊）",
         plain_today_line(desk),
     ]
     c = desk.get("concrete") or {}
-    rows = plain_tomorrow_rows(desk.get("tomorrow_intraday") or [], c)
+    rows = plain_tomorrow_rows(
+        desk.get("tomorrow_intraday") or [], c, next_session=ns, asof=asof
+    )
     if rows:
         tip = "；".join(f"{r['when']} {r['line']}" for r in rows[:2])
-        lines.append(f"明天先看：{tip}")
+        sess = _slash_ymd(ns) if ns else "下一開市日"
+        lines.append(f"{sess}先看：{tip}")
     return "\n".join(lines)
 
 
