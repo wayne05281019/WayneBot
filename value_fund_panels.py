@@ -8,7 +8,8 @@
 - 負債比／ROE／每股參考淨值／非流動負債÷權益 ← OpenAPI 資產負債 t187ap07
 - 除息／現金股利 ← 庫內 ex_rights（TWT49U）；除權日另查 kind＝權／權息
 - 股東會 ← company_events／t187ap41
-- 應收／存貨週轉、業務比重、會計年度月 → 官方彙總無欄，顯示 —（不准猜）
+- 會計年度月／長期借款／應收／存貨 ← mopsov 個股資產負債／綜合損益明細（t164sb03／04）
+- 應收／存貨週轉＝官方營收或成本 ÷ 平均餘額（可年化）；業務比重若年報營運概況無機器可讀列才 —
 - 月表右欄去年營收：先對去年同月列，缺則用官方 revenue_prev_year
 季報明細圖用「單季」：累計列差分還原（與 expand_ytd_income_eps_to_single 同規則）。
 排版：標籤欄寬依字實測，值欄不得壓標籤；footer 預留，空季塊不畫。
@@ -17,10 +18,15 @@
 from __future__ import annotations
 
 import os
+import re
 import sqlite3
+import time
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from PIL import Image, ImageDraw
+
+MOPS_BS_DETAIL = "https://mopsov.twse.com.tw/mops/web/ajax_t164sb03"
+MOPS_IS_DETAIL = "https://mopsov.twse.com.tw/mops/web/ajax_t164sb04"
 
 try:
     from config import get_charts_dir, get_db_path
@@ -559,35 +565,518 @@ def _load_balance_sheet(sid: str) -> Dict[str, Any]:
 
 
 def _load_agm_event(sid: str, db_path: str) -> Dict[str, Any]:
-    """股東會：company_events（t187ap41 等官方）。"""
+    """股東會：只認常會／臨時會／股東會；不准把法說會當股東會。"""
     out: Dict[str, Any] = {}
     if not db_path or not os.path.isfile(db_path):
         return out
     try:
         con = sqlite3.connect(db_path, timeout=15.0)
         try:
-            row = con.execute(
+            rows = con.execute(
                 """
                 SELECT event_date, kind, title, source
                 FROM company_events
-                WHERE stock_id=? AND (kind LIKE '%會%' OR title LIKE '%會%')
+                WHERE stock_id=?
                 ORDER BY REPLACE(CAST(event_date AS TEXT),'-','') DESC
-                LIMIT 1
+                LIMIT 40
                 """,
                 (sid,),
+            ).fetchall()
+        finally:
+            con.close()
+        pick = None
+        for row in rows or ():
+            kind = str(row[1] or "").strip()
+            title = str(row[2] or "").strip()
+            blob = kind + title
+            if "法說" in blob:
+                continue
+            if any(k in blob for k in ("常會", "臨時會", "股東會", "股東常會", "股東臨時會")):
+                pick = row
+                break
+            if kind in ("常會", "臨時會"):
+                pick = row
+                break
+        if not pick:
+            return out
+        place = ""
+        title = str(pick[2] or "").strip()
+        # t187ap41 標題常帶地點：常會 桃園…
+        if " " in title:
+            place = title.split(" ", 1)[-1].strip()
+        return {
+            "date": _ymd(pick[0]),
+            "kind": str(pick[1] or "").strip(),
+            "title": title,
+            "place": place,
+            "source": str(pick[3] or "").strip(),
+        }
+    except Exception:
+        return out
+
+
+def _mops_html(url: str, form: Dict[str, str]) -> str:
+    from fundamentals import _decode_mops_html, _post_form
+
+    return _decode_mops_html(_post_form(url, form)) or ""
+
+
+def _mops_cell_num(raw: str) -> Optional[float]:
+    s = (
+        str(raw or "")
+        .replace(",", "")
+        .replace("%", "")
+        .replace("＋", "+")
+        .replace("−", "-")
+        .replace("－", "-")
+        .strip()
+    )
+    if s in ("", "-", "--", "—", "N/A", "null", "None"):
+        return None
+    neg = s.startswith("(") and s.endswith(")")
+    if neg:
+        s = s[1:-1]
+    try:
+        v = float(s)
+    except ValueError:
+        return None
+    return -v if neg else v
+
+
+def _parse_mops_kv_rows(html: str) -> List[Tuple[str, List[Optional[float]]]]:
+    """t164sb0x 表格：會計項目｜數｜%｜數｜%… → (科目, 數值列)。"""
+    from html.parser import HTMLParser
+
+    class _P(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.rows: List[List[str]] = []
+            self._tr: Optional[List[str]] = None
+            self._td: Optional[List[str]] = None
+
+        def handle_starttag(self, tag, attrs):
+            if tag == "tr":
+                self._tr = []
+            elif tag in ("td", "th") and self._tr is not None:
+                self._td = []
+
+        def handle_endtag(self, tag):
+            if tag in ("td", "th") and self._tr is not None and self._td is not None:
+                self._tr.append("".join(self._td).strip())
+                self._td = None
+            elif tag == "tr" and self._tr is not None:
+                if any(self._tr):
+                    self.rows.append(self._tr)
+                self._tr = None
+
+        def handle_data(self, data):
+            if self._td is not None:
+                self._td.append(data)
+
+    p = _P()
+    try:
+        p.feed(html or "")
+    except Exception:
+        return []
+    out: List[Tuple[str, List[Optional[float]]]] = []
+    for cells in p.rows:
+        if not cells:
+            continue
+        name = re.sub(r"\s+", "", cells[0] or "")
+        nums: List[Optional[float]] = []
+        for c in cells[1:]:
+            # 跳過純％欄：若相鄰已有金額，％另格；一律試解析，失敗略過
+            nums.append(_mops_cell_num(c))
+        # 去掉夾在中間的佔比％（通常 <1000 且緊鄰大數）— 保留所有成功解析數，後續用位置取
+        out.append((name, nums))
+    return out
+
+
+def _load_mops_statement_detail(
+    sid: str, year: int, season: int, *, kind: str
+) -> Dict[str, Any]:
+    """個股 MOPS 明細：kind=bs→t164sb03；kind=is→t164sb04。"""
+    empty: Dict[str, Any] = {}
+    sid = str(sid or "").strip()
+    if not sid or year < 1990 or season not in (1, 2, 3, 4):
+        return empty
+    url = MOPS_BS_DETAIL if kind == "bs" else MOPS_IS_DETAIL
+    form = {
+        "encodeURIComponent": "1",
+        "step": "1",
+        "firstin": "1",
+        "off": "1",
+        "queryName": "co_id",
+        "inpuType": "co_id",
+        "TYPEK": "all",
+        "isnew": "false",
+        "co_id": sid,
+        "year": str(year - 1911),
+        "season": str(int(season)),
+    }
+    try:
+        html = _mops_html(url, form)
+    except Exception:
+        return empty
+    if not html or "安全" in html[:500]:
+        return empty
+    fiscal_month: Optional[int] = None
+    m = re.search(
+        r"本公司採\s*([0-9]{0,2})\s*月制會計年度（?空白表曆年制）?",
+        html.replace("(", "（").replace(")", "）"),
+    )
+    if not m:
+        m = re.search(r"本公司採\s*([0-9]{0,2})\s*月制會計年度", html)
+    if m:
+        raw = (m.group(1) or "").strip()
+        # 空白＝曆年制 → 12（報表自己寫的規則，不是猜）
+        fiscal_month = int(raw) if raw.isdigit() else 12
+    rows = _parse_mops_kv_rows(html)
+
+    def find(*names: str) -> List[Optional[float]]:
+        # 先精確／合計，再模糊；全空列（分類標題）跳過
+        fuzzy: List[Optional[float]] = []
+        for nm, nums in rows:
+            if not any(v is not None for v in nums):
+                continue
+            for want in names:
+                if nm == want or nm.endswith(want) or want in nm:
+                    if "合計" in nm or nm == want:
+                        return nums
+                    if not fuzzy:
+                        fuzzy = nums
+        return fuzzy
+
+    out: Dict[str, Any] = {
+        "year": year,
+        "season": season,
+        "fiscal_month": fiscal_month,
+        "source": "mopsov_t164sb03" if kind == "bs" else "mopsov_t164sb04",
+    }
+    if kind == "bs":
+        # 欄：本期金額、%、上期／去年底、%、去年同期、%
+        ar = find("應收帳款淨額", "應收帳款")
+        notes = find("應收票據淨額", "應收票據")
+        inv = find("存貨")
+        lt = find("長期借款")
+        eq = find("權益總計", "權益總額")
+        out.update(
+            {
+                "ar_end": ar[0] if ar else None,
+                "ar_prior_ye": ar[2] if len(ar) > 2 else None,
+                "ar_prior_yoy": ar[4] if len(ar) > 4 else None,
+                "notes_end": notes[0] if notes else None,
+                "notes_prior_ye": notes[2] if len(notes) > 2 else None,
+                "inv_end": inv[0] if inv else None,
+                "inv_prior_ye": inv[2] if len(inv) > 2 else None,
+                "inv_prior_yoy": inv[4] if len(inv) > 4 else None,
+                "lt_loan": lt[0] if lt else None,
+                "equity": eq[0] if eq else None,
+            }
+        )
+    else:
+        # 綜合損益：本季、%、去年同季、%、本年累計、%、去年累計、%
+        rev = find("營業收入合計", "營業收入")
+        cogs = find("營業成本合計", "營業成本")
+        non = find("營業外收入及支出合計", "營業外收入及支出")
+        out.update(
+            {
+                "rev_q": rev[0] if rev else None,
+                "rev_ytd": rev[4] if len(rev) > 4 else None,
+                "cogs_q": cogs[0] if cogs else None,
+                "cogs_ytd": cogs[4] if len(cogs) > 4 else None,
+                "non_q": non[0] if non else None,
+                "non_ytd": non[4] if len(non) > 4 else None,
+            }
+        )
+    return out
+
+
+def _avg2(a: Optional[float], b: Optional[float]) -> Optional[float]:
+    if a is None or b is None:
+        return None
+    return (a + b) / 2.0
+
+
+def _recv_total(ar: Optional[float], notes: Optional[float]) -> Optional[float]:
+    if ar is None and notes is None:
+        return None
+    return float(ar or 0.0) + float(notes or 0.0)
+
+
+def _turn_times(
+    flow: Optional[float], avg_bal: Optional[float], *, season: int, annualize: bool
+) -> Optional[float]:
+    if flow is None or avg_bal is None or avg_bal == 0:
+        return None
+    t = flow / abs(avg_bal)
+    if annualize and season in (1, 2, 3):
+        t *= 4.0 / float(season)
+    return round(t, 2)
+
+
+def _load_mops_business_mix(sid: str) -> Dict[str, Any]:
+    """主要經營業務：mopsov t05st03（公司基本資料）。有機器可讀列才填。"""
+    empty: Dict[str, Any] = {}
+    sid = str(sid or "").strip()
+    if not sid:
+        return empty
+    try:
+        html = _mops_html(
+            "https://mopsov.twse.com.tw/mops/web/ajax_t05st03",
+            {
+                "encodeURIComponent": "1",
+                "step": "1",
+                "firstin": "1",
+                "off": "1",
+                "queryName": "co_id",
+                "inpuType": "co_id",
+                "TYPEK": "all",
+                "co_id": sid,
+            },
+        )
+    except Exception:
+        return empty
+    if not html or "主要經營業務" not in html:
+        return empty
+    m = re.search(
+        r"主要經營業務</th>\s*<td[^>]*>(.*?)</td>",
+        html,
+        flags=re.I | re.S,
+    )
+    if not m:
+        return empty
+    raw = m.group(1) or ""
+    parts = [
+        re.sub(r"\s+", "", p)
+        for p in re.split(r"<br\s*/?>|\n|、|／|/", raw, flags=re.I)
+        if re.sub(r"<[^>]+>", "", p).strip()
+    ]
+    clean = [re.sub(r"<[^>]+>", "", p).strip() for p in parts if p]
+    clean = [c for c in clean if c and c not in ("-", "--", "—")]
+    if not clean:
+        return empty
+    text = "／".join(clean)
+    return {"text": text, "parts": clean, "source": "mopsov_t05st03"}
+
+
+_MOPS_EXTRA_DDL = """
+CREATE TABLE IF NOT EXISTS mops_fund_extra_cache (
+    stock_id TEXT NOT NULL,
+    asof_key TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    fetched_ymd TEXT NOT NULL,
+    PRIMARY KEY (stock_id, asof_key)
+)
+"""
+
+
+def _taipei_ymd() -> str:
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    return datetime.now(ZoneInfo("Asia/Taipei")).strftime("%Y%m%d")
+
+
+def _turns_to_json(d: Dict[Tuple[int, int], float]) -> Dict[str, float]:
+    return {f"{y}:{s}": float(v) for (y, s), v in (d or {}).items()}
+
+
+def _turns_from_json(d: Any) -> Dict[Tuple[int, int], float]:
+    out: Dict[Tuple[int, int], float] = {}
+    if not isinstance(d, dict):
+        return out
+    for k, v in d.items():
+        try:
+            ys, ss = str(k).split(":", 1)
+            fv = _finite(v)
+            if fv is None:
+                continue
+            out[(int(ys), int(ss))] = float(fv)
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def _mops_extra_cache_get(
+    db_path: str, sid: str, asof_key: str, ymd: str
+) -> Optional[Dict[str, Any]]:
+    if not db_path or not os.path.isfile(db_path):
+        return None
+    try:
+        import json
+
+        con = sqlite3.connect(db_path, timeout=15.0)
+        try:
+            con.execute(_MOPS_EXTRA_DDL)
+            row = con.execute(
+                """
+                SELECT payload FROM mops_fund_extra_cache
+                WHERE stock_id=? AND asof_key=? AND fetched_ymd=?
+                """,
+                (sid, asof_key, ymd),
             ).fetchone()
         finally:
             con.close()
         if not row:
-            return out
+            return None
+        raw = json.loads(row[0])
+        if not isinstance(raw, dict):
+            return None
         return {
-            "date": _ymd(row[0]),
-            "kind": str(row[1] or "").strip(),
-            "title": str(row[2] or "").strip(),
-            "source": str(row[3] or "").strip(),
+            "fiscal_month": raw.get("fiscal_month"),
+            "lt_loan_equity_pct": _finite(raw.get("lt_loan_equity_pct")),
+            "ar_turn": _turns_from_json(raw.get("ar_turn")),
+            "inv_turn": _turns_from_json(raw.get("inv_turn")),
+            "business_mix": raw.get("business_mix"),
+            "source": str(raw.get("source") or "") + ",cache",
         }
     except Exception:
+        return None
+
+
+def _mops_extra_cache_put(
+    db_path: str, sid: str, asof_key: str, ymd: str, payload: Dict[str, Any]
+) -> None:
+    if not db_path:
+        return
+    try:
+        import json
+
+        blob = json.dumps(
+            {
+                "fiscal_month": payload.get("fiscal_month"),
+                "lt_loan_equity_pct": payload.get("lt_loan_equity_pct"),
+                "ar_turn": _turns_to_json(payload.get("ar_turn") or {}),
+                "inv_turn": _turns_to_json(payload.get("inv_turn") or {}),
+                "business_mix": payload.get("business_mix"),
+                "source": payload.get("source") or "",
+            },
+            ensure_ascii=False,
+        )
+        parent = os.path.dirname(db_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        con = sqlite3.connect(db_path, timeout=30.0)
+        try:
+            con.execute(_MOPS_EXTRA_DDL)
+            con.execute(
+                """
+                INSERT OR REPLACE INTO mops_fund_extra_cache
+                (stock_id, asof_key, payload, fetched_ymd)
+                VALUES (?,?,?,?)
+                """,
+                (sid, asof_key, blob, ymd),
+            )
+            con.commit()
+        finally:
+            con.close()
+    except Exception:
+        return
+
+
+def _load_mops_fund_extras(
+    sid: str,
+    quarters: Sequence[Dict[str, Any]],
+    *,
+    db_path: str = "",
+) -> Dict[str, Any]:
+    """補轟天雷有、OpenAPI 彙總沒有的欄：會計年度月／長期借款比／應收存貨週轉。
+
+    季報兩塊共 8 季都抓；同日台北快取，話筒不准每次重打十次 MOPS。
+    """
+    out: Dict[str, Any] = {
+        "fiscal_month": None,
+        "lt_loan_equity_pct": None,
+        "ar_turn": {},  # (y,s) -> float
+        "inv_turn": {},
+        "business_mix": None,
+        "source": "",
+    }
+    if os.environ.get("WAYNE_SKIP_MOPS_DETAIL", "").strip() in ("1", "true", "yes"):
         return out
+    qs_raw = list(quarters or [])[:8]
+    if not qs_raw:
+        return out
+    keys: List[Tuple[int, int]] = []
+    for q in qs_raw:
+        try:
+            keys.append((int(q["year"]), int(q["season"])))
+        except (KeyError, TypeError, ValueError):
+            continue
+    if not keys:
+        return out
+    asof_key = ",".join(f"{y}Q{s}" for y, s in keys)
+    ymd = _taipei_ymd()
+    cached = _mops_extra_cache_get(db_path, sid, asof_key, ymd) if db_path else None
+    if cached and (cached.get("ar_turn") or cached.get("fiscal_month") is not None):
+        return cached
+
+    sources: List[str] = []
+    bs_by: Dict[Tuple[int, int], Dict[str, Any]] = {}
+    # 由舊到新：同年第 N 季可吃到已抓的 N-1
+    for y, s in sorted(keys):
+        bs = _load_mops_statement_detail(sid, y, s, kind="bs")
+        time.sleep(0.2)
+        inc = _load_mops_statement_detail(sid, y, s, kind="is")
+        time.sleep(0.2)
+        if bs:
+            bs_by[(y, s)] = bs
+            sources.append(str(bs.get("source") or ""))
+        if inc:
+            sources.append(str(inc.get("source") or ""))
+        if not bs:
+            continue
+        end_recv = _recv_total(bs.get("ar_end"), bs.get("notes_end"))
+        end_inv = _finite(bs.get("inv_end"))
+        if s == 1:
+            start_recv = _recv_total(bs.get("ar_prior_ye"), bs.get("notes_prior_ye"))
+            start_inv = _finite(bs.get("inv_prior_ye"))
+        else:
+            prev = bs_by.get((y, s - 1))
+            if not prev:
+                prev = _load_mops_statement_detail(sid, y, s - 1, kind="bs")
+                time.sleep(0.2)
+                if prev:
+                    bs_by[(y, s - 1)] = prev
+            start_recv = (
+                _recv_total(prev.get("ar_end"), prev.get("notes_end"))
+                if prev
+                else None
+            )
+            start_inv = _finite(prev.get("inv_end")) if prev else None
+        rev_q = _finite((inc or {}).get("rev_q"))
+        cogs_q = _finite((inc or {}).get("cogs_q"))
+        ar_t = _turn_times(
+            rev_q, _avg2(end_recv, start_recv), season=s, annualize=True
+        )
+        inv_t = _turn_times(
+            cogs_q, _avg2(end_inv, start_inv), season=s, annualize=True
+        )
+        if ar_t is not None:
+            out["ar_turn"][(y, s)] = ar_t
+        if inv_t is not None:
+            out["inv_turn"][(y, s)] = inv_t
+
+    # 會計年度月／長期借款：最新一季
+    for y, s in keys:  # keys 已是季報新→舊順序
+        bs = bs_by.get((y, s))
+        if not bs:
+            continue
+        if out["fiscal_month"] is None and bs.get("fiscal_month") is not None:
+            out["fiscal_month"] = bs.get("fiscal_month")
+        if out["lt_loan_equity_pct"] is None:
+            lt = _finite(bs.get("lt_loan"))
+            eq = _finite(bs.get("equity"))
+            if lt is not None and eq and eq != 0:
+                out["lt_loan_equity_pct"] = round(lt / eq * 100.0, 2)
+        if out["fiscal_month"] is not None and out["lt_loan_equity_pct"] is not None:
+            break
+
+    out["source"] = ",".join(sorted({x for x in sources if x}))
+    if db_path:
+        _mops_extra_cache_put(db_path, sid, asof_key, ymd, out)
+    return out
 
 
 def _load_official_dividend(sid: str, db_path: str) -> Dict[str, Any]:
@@ -804,14 +1293,13 @@ def load_value_fund_pack(stock_id: str, db_path: str = None) -> Dict[str, Any]:
         "dividend": {},
         "agm": {},
         "roe_pct": None,
+        "mops_extra": {},
         "monthly": [],
         "quarterly": [],
         "single": {},
         "sources": {},
         "note": "",
-        "omit": (
-            "缺欄＝官方彙總無明細（應收／存貨週轉、業務比重、會計年度月等）；非造假"
-        ),
+        "omit": "",
     }
     if not sid or not path or not os.path.isfile(path):
         empty["note"] = "缺庫"
@@ -898,13 +1386,17 @@ def load_value_fund_pack(stock_id: str, db_path: str = None) -> Dict[str, Any]:
     agm_o = _load_agm_openapi(sid)
     if agm_o:
         # OpenAPI 有開會地點；庫列可補日期。時刻欄官方沒有 → 不上假 09:00
-        if agm_o.get("place"):
+        # 不准用 OpenAPI 蓋掉已選到的常會（庫列優先於誤抓）
+        if agm_o.get("place") and not agm.get("place"):
+            agm["place"] = agm_o["place"]
+        elif agm_o.get("place") and agm.get("kind") in ("常會", "臨時會", ""):
             agm["place"] = agm_o["place"]
         if agm_o.get("date") and not agm.get("date"):
             agm["date"] = agm_o["date"]
         if agm_o.get("kind") and not agm.get("kind"):
             agm["kind"] = agm_o["kind"]
-        agm["source"] = agm_o.get("source") or agm.get("source") or ""
+        if not agm.get("source"):
+            agm["source"] = agm_o.get("source") or ""
     roe_pct = (
         _roe_from_pack(
             quarterly, balance, ni_parent=income_ni.get("ni_parent")
@@ -915,6 +1407,33 @@ def load_value_fund_pack(stock_id: str, db_path: str = None) -> Dict[str, Any]:
     # 每股淨值優先官方資產負債「每股參考淨值」
     if _finite(balance.get("book_nav")) is not None:
         book = _finite(balance.get("book_nav"))
+
+    mops_extra = _load_mops_fund_extras(sid, quarterly, db_path=path)
+    biz = _load_mops_business_mix(sid)
+    if biz.get("text"):
+        mops_extra["business_mix"] = biz.get("text")
+        src_biz = str(biz.get("source") or "")
+        if src_biz:
+            mops_extra["source"] = (
+                (mops_extra.get("source") + "," + src_biz).strip(",")
+                if mops_extra.get("source")
+                else src_biz
+            )
+
+    omit_bits: List[str] = []
+    if not mops_extra.get("business_mix"):
+        omit_bits.append("業務比重")
+    if mops_extra.get("fiscal_month") is None:
+        omit_bits.append("會計年度月")
+    if not (mops_extra.get("ar_turn") or {}):
+        omit_bits.append("應收週轉")
+    if not (mops_extra.get("inv_turn") or {}):
+        omit_bits.append("存貨週轉")
+    omit = (
+        ("缺欄＝" + "／".join(omit_bits) + "（官方無機器可讀）；非造假")
+        if omit_bits
+        else ""
+    )
 
     m_asof = ""
     if monthly:
@@ -945,6 +1464,7 @@ def load_value_fund_pack(stock_id: str, db_path: str = None) -> Dict[str, Any]:
         "agm_date": agm.get("date") or "",
         "agm_source": agm.get("source") or "",
         "income_published": str(income_ni.get("published") or ""),
+        "mops_extra": str(mops_extra.get("source") or ""),
     }
 
     ok = bool(valuation or monthly or quarterly or balance)
@@ -968,6 +1488,7 @@ def load_value_fund_pack(stock_id: str, db_path: str = None) -> Dict[str, Any]:
         "dividend": dividend,
         "agm": agm,
         "roe_pct": roe_pct,
+        "mops_extra": mops_extra,
         "monthly": monthly,
         "quarterly": quarterly,
         "single": {
@@ -979,7 +1500,7 @@ def load_value_fund_pack(stock_id: str, db_path: str = None) -> Dict[str, Any]:
         },
         "sources": sources,
         "note": "" if ok else "尚無官方本益／月營收／季報",
-        "omit": empty["omit"],
+        "omit": omit,
     }
 
 
@@ -1059,6 +1580,7 @@ def render_overview_png(pack: Dict[str, Any], out_path: str) -> str:
     bs = pack.get("balance") or {}
     div = pack.get("dividend") or {}
     agm = pack.get("agm") or {}
+    mx = pack.get("mops_extra") or {}
     src = pack.get("sources") or {}
     q0 = (pack.get("quarterly") or [None])[0]
     f_lab = _font(HT_BODY_FONT)
@@ -1075,6 +1597,9 @@ def render_overview_png(pack: Dict[str, Any], out_path: str) -> str:
     founded = _roc_ymd(co.get("founded")) or "—"
     phone = _fmt_phone(co.get("phone")) or "—"
     fax = _fmt_phone(co.get("fax")) or ""
+    biz_mix = str(mx.get("business_mix") or "").strip() or "—"
+    fiscal_m = mx.get("fiscal_month")
+    fiscal_s = f"{int(fiscal_m)}月" if fiscal_m is not None else "—"
     left_co = [
         ("股票名稱", pack.get("name") or "—"),
         ("創立日期", founded),
@@ -1083,11 +1608,11 @@ def render_overview_png(pack: Dict[str, Any], out_path: str) -> str:
         ("中文全名", co.get("name_full") or pack.get("name") or "—"),
         ("英文全名", co.get("name_en") or "—"),
         ("公司地址", co.get("address") or "—"),
-        ("業務比重", "—"),  # 年報營運概況；OpenAPI 無
+        ("業務比重", biz_mix),  # mopsov t05st03 主要經營業務
     ]
     right_co = [
         ("股票代碼", pack.get("stock_id") or "—"),
-        ("會計年度月份", "—"),  # OpenAPI 無欄；不准猜 12
+        ("會計年度月份", fiscal_s),  # mopsov 空白＝曆年制→12
         ("總經理", co.get("gm") or "—"),
         ("傳真", fax or "—"),  # HT：右欄＝傳真（標清楚，避免兩「電話」）
         ("", ""),
@@ -1170,6 +1695,12 @@ def render_overview_png(pack: Dict[str, Any], out_path: str) -> str:
     roe = _finite(pack.get("roe_pct"))
     book_nav = _finite(bs.get("book_nav")) or _finite(pack.get("book_from_pb"))
     ncl_eq = _finite(bs.get("ncl_equity_pct"))
+    lt_eq = _finite(mx.get("lt_loan_equity_pct"))
+    # 有 mopsov 長期借款明細 → 對齊 HT「長期借款／權益」；否則退 t187ap07 非流動負債／權益
+    if lt_eq is not None:
+        lev_lab, lev_val = "長期借款／權益", lt_eq
+    else:
+        lev_lab, lev_val = "非流動負債／權益", ncl_eq
 
     left_bot = [
         ("股東大會地點", agm_place, YELLOW if agm_place != "—" else MUTED),
@@ -1190,7 +1721,6 @@ def render_overview_png(pack: Dict[str, Any], out_path: str) -> str:
             YELLOW if book_nav is not None else MUTED,
         ),
     ]
-    # 非流動負債／權益＝官方 t187ap07 合計欄；≠HT「長期借款」明細，標名對齊真源
     right_bot = [
         ("毛利率", f"{_fmt_pct(gm)}%" if gm is not None else "—", YELLOW),
         ("營益率", f"{_fmt_pct(opm)}%" if opm is not None else "—", YELLOW),
@@ -1211,9 +1741,9 @@ def render_overview_png(pack: Dict[str, Any], out_path: str) -> str:
             YELLOW if debt is not None else MUTED,
         ),
         (
-            "非流動負債／權益",
-            f"{_fmt_pct(ncl_eq)}%" if ncl_eq is not None else "—",
-            YELLOW if ncl_eq is not None else MUTED,
+            lev_lab,
+            f"{_fmt_pct(lev_val)}%" if lev_val is not None else "—",
+            YELLOW if lev_val is not None else MUTED,
         ),
         (
             "股東權益報酬率",
@@ -1571,7 +2101,12 @@ def render_quarterly_png(pack: Dict[str, Any], out_path: str) -> str:
                 return "—", MUTED
             return _fmt_m(v), YELLOW
         if kind in ("ar", "inv"):
-            return "—", MUTED
+            mx = pack.get("mops_extra") or {}
+            turns = mx.get("ar_turn" if kind == "ar" else "inv_turn") or {}
+            v = turns.get(key)
+            if v is None:
+                return "—", MUTED
+            return f"{v:.2f}", YELLOW
         if kind == "opm":
             rev = _finite(single.get("revenue", {}).get(key))
             op = _finite(single.get("operating_income", {}).get(key))

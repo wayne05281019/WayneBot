@@ -102,7 +102,7 @@ def test_monthly_right_is_prev_year_not_same_rev():
     assert _prev_year_yyyymm("202601") == "202501"
 
 
-def test_monthly_right_falls_back_to_revenue_prev_year(tmp_path):
+def test_monthly_right_falls_back_to_revenue_prev_year(tmp_path, monkeypatch):
     """缺去年同月列時，右欄月營收改吃官方 revenue_prev_year（不准空白）。"""
     from value_fund_panels import (
         _million_from_k,
@@ -112,6 +112,7 @@ def test_monthly_right_falls_back_to_revenue_prev_year(tmp_path):
         render_monthly_png,
     )
 
+    monkeypatch.setenv("WAYNE_SKIP_MOPS_DETAIL", "1")
     db = str(tmp_path / "prev_y.db")
     _seed_value_db(db)
     pack = load_value_fund_pack("6416", db)
@@ -150,14 +151,15 @@ def test_overview_label_width_beats_longest_label():
     assert lw > max(_condensed_w(f, x) for x in labs)
 
 
-def test_value_panels_render_6416(tmp_path):
+def test_value_panels_render_6416(tmp_path, monkeypatch):
+    monkeypatch.setenv("WAYNE_SKIP_MOPS_DETAIL", "1")
     db = str(tmp_path / "vf.db")
     _seed_value_db(db)
     pack = load_value_fund_pack("6416", db)
     assert pack["ok"] is True
     assert pack["valuation"]["pe"] == 16.86
     assert pack["quarterly"][0]["eps"] == 5.40
-    # 應收／存貨週轉仍無 OpenAPI 明細；負債比／ROE 有資產負債源時另算
+    # 單元測跳過 mopsov；缺明細時 omit 誠實標
     assert "缺欄" in pack["omit"] or "週轉" in pack["omit"] or "應收" in pack["omit"]
     out = render_value_fund_panels("6416", db, str(tmp_path / "charts"), uid="t")
     assert out["ok"] is True
@@ -174,6 +176,86 @@ def test_value_panels_render_6416(tmp_path):
         assert im.size[0] / float(im.size[1]) >= 2.0
         im.close()
     assert H_MONTHLY >= 1000
+
+
+def test_agm_skips_earnings_call(tmp_path):
+    """股東會不准抓到法說會。"""
+    from value_fund_panels import _load_agm_event
+
+    db = str(tmp_path / "agm.db")
+    init_database(db)
+    ensure_core_schema(db)
+    con = sqlite3.connect(db)
+    try:
+        con.execute(
+            """
+            CREATE TABLE IF NOT EXISTS company_events (
+                stock_id TEXT, event_date TEXT, kind TEXT, title TEXT, source TEXT
+            )
+            """
+        )
+        con.execute(
+            "INSERT INTO company_events VALUES (?,?,?,?,?)",
+            ("2383", "20261120", "法說會", "法說會 線上", "x"),
+        )
+        con.execute(
+            "INSERT INTO company_events VALUES (?,?,?,?,?)",
+            ("2383", "20260527", "常會", "常會 桃園巿觀音區大同一路18號", "t187ap41_L"),
+        )
+        con.commit()
+    finally:
+        con.close()
+    agm = _load_agm_event("2383", db)
+    assert agm.get("kind") == "常會"
+    assert "法說" not in str(agm.get("title") or "")
+    assert "桃園" in str(agm.get("place") or "")
+
+
+def test_mops_extra_fills_overview_and_turns(tmp_path, monkeypatch):
+    """有 mops_extra 時總覽／季報不准再空會計年度月、長期借款、週轉、業務。"""
+    from value_fund_panels import render_overview_png, render_quarterly_png
+
+    monkeypatch.setenv("WAYNE_SKIP_MOPS_DETAIL", "1")
+    db = str(tmp_path / "mx.db")
+    _seed_value_db(db)
+    pack = load_value_fund_pack("6416", db)
+    pack["mops_extra"] = {
+        "fiscal_month": 12,
+        "lt_loan_equity_pct": 17.82,
+        "business_mix": "銅箔基板／黏合片／多層壓合板",
+        "ar_turn": {(2026, 3): 2.85},
+        "inv_turn": {(2026, 3): 4.12},
+        "source": "test",
+    }
+    pack["omit"] = ""
+    ov = str(tmp_path / "ov.png")
+    q = str(tmp_path / "q.png")
+    assert render_overview_png(pack, ov)
+    assert render_quarterly_png(pack, q)
+    assert os.path.getsize(ov) > 1000
+    assert os.path.getsize(q) > 1000
+
+
+def test_turn_times_annualizes_q3():
+    from value_fund_panels import _turn_times
+
+    # 單季 flow/avg；Q3 年化 ×4/3
+    t = _turn_times(300.0, 100.0, season=3, annualize=True)
+    assert t == round(3.0 * 4.0 / 3.0, 2)
+
+
+def test_business_mix_parse_from_html(monkeypatch):
+    from value_fund_panels import _load_mops_business_mix
+
+    html = (
+        "<th>主要經營業務</th>"
+        "<td colspan=5 class='lColor'>銅箔基板<BR>黏合片<BR>多層壓合板</td>"
+    )
+    monkeypatch.setattr(
+        "value_fund_panels._mops_html", lambda *a, **k: html
+    )
+    got = _load_mops_business_mix("2383")
+    assert got.get("text") == "銅箔基板／黏合片／多層壓合板"
 
 
 def test_undervalue_rejects_stale_pe_and_loss(tmp_path, monkeypatch):
