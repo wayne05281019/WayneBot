@@ -53,18 +53,18 @@ def _seed_value_db(db: str, *, desk: str = "20261120") -> None:
                 "VALUES ('6416',2026,?,?, 'TW', ?, 0, 0, ?, ?, ?, ?, ?, '', ?)",
                 (season, "瑞祺電通", rev, gm, op, non, net, eps, desk),
             )
-        for mm, rev, mom, yoy in (
-            ("202608", 548128, 21.45, 109.34),
-            ("202609", 707131, 29.01, 59.15),
-            ("202610", 567160, -19.79, 126.81),
+        for mm, rev, mom, yoy, prev_y in (
+            ("202608", 548128, 21.45, 109.34, 261360),
+            ("202609", 707131, 29.01, 59.15, 444300),
+            ("202610", 567160, -19.79, 126.81, 250000),
         ):
             con.execute(
                 "INSERT OR REPLACE INTO monthly_revenue "
                 "(stock_id, yyyymm, stock_name, market, industry, revenue, "
                 "revenue_prev_month, revenue_prev_year, mom_pct, yoy_pct, "
                 "ytd_revenue, ytd_prev_year, ytd_yoy_pct, published_roc, updated_at) "
-                "VALUES ('6416',?,?, 'TW', '', ?, 0, 0, ?, ?, 0, 0, 0, '', ?)",
-                (mm, "瑞祺電通", rev, mom, yoy, desk),
+                "VALUES ('6416',?,?, 'TW', '', ?, 0, ?, ?, ?, 0, 0, 0, '', ?)",
+                (mm, "瑞祺電通", rev, prev_y, mom, yoy, desk),
             )
         con.commit()
     finally:
@@ -102,15 +102,65 @@ def test_monthly_right_is_prev_year_not_same_rev():
     assert _prev_year_yyyymm("202601") == "202501"
 
 
-def test_value_panels_render_6416(tmp_path):
+def test_monthly_right_falls_back_to_revenue_prev_year(tmp_path, monkeypatch):
+    """缺去年同月列時，右欄月營收改吃官方 revenue_prev_year（不准空白）。"""
+    from value_fund_panels import (
+        _million_from_k,
+        _prev_year_yyyymm,
+        _rolling_monthly,
+        load_value_fund_pack,
+        render_monthly_png,
+    )
+
+    monkeypatch.setenv("WAYNE_SKIP_MOPS_DETAIL", "1")
+    db = str(tmp_path / "prev_y.db")
+    _seed_value_db(db)
+    pack = load_value_fund_pack("6416", db)
+    months = list(pack.get("monthly") or [])
+    by_ym = {
+        str(m.get("yyyymm") or ""): m
+        for m in months
+        if str(m.get("yyyymm") or "").isdigit() and len(str(m.get("yyyymm"))) == 6
+    }
+    show = _rolling_monthly(months, 3)
+    assert show
+    m0 = show[0]
+    prev_ym = _prev_year_yyyymm(str(m0.get("yyyymm") or ""))
+    # seed 只有今年三個月 → 去年同月列不在 by_ym
+    assert prev_ym not in by_ym
+    prev_rev = float(m0.get("revenue_prev_year") or 0)
+    assert prev_rev > 0
+    assert _million_from_k(prev_rev) is not None
+    out = str(tmp_path / "m.png")
+    assert render_monthly_png(pack, out)
+    assert os.path.isfile(out) and os.path.getsize(out) > 1000
+
+
+def test_overview_label_width_beats_longest_label():
+    """標籤欄寬必須大於最長標籤 condensed 寬，否則必壓值。"""
+    from value_fund_panels import (
+        HT_BODY_FONT,
+        _condensed_w,
+        _font,
+        _kv_label_w,
+    )
+
+    f = _font(HT_BODY_FONT)
+    labs = ["股東大會地點", "現金股利(元)", "非流動負債／權益", "股東權益報酬率"]
+    lw = _kv_label_w(f, labs)
+    assert lw > max(_condensed_w(f, x) for x in labs)
+
+
+def test_value_panels_render_6416(tmp_path, monkeypatch):
+    monkeypatch.setenv("WAYNE_SKIP_MOPS_DETAIL", "1")
     db = str(tmp_path / "vf.db")
     _seed_value_db(db)
     pack = load_value_fund_pack("6416", db)
     assert pack["ok"] is True
     assert pack["valuation"]["pe"] == 16.86
     assert pack["quarterly"][0]["eps"] == 5.40
-    # 應收／存貨週轉仍無 OpenAPI 明細；負債比／ROE 有資產負債源時另算
-    assert "應收" in pack["omit"] or "週轉" in pack["omit"]
+    # 單元測跳過 mopsov；缺明細時 omit 誠實標
+    assert "缺欄" in pack["omit"] or "週轉" in pack["omit"] or "應收" in pack["omit"]
     out = render_value_fund_panels("6416", db, str(tmp_path / "charts"), uid="t")
     assert out["ok"] is True
     assert len(out["paths"]) == 3
@@ -126,6 +176,147 @@ def test_value_panels_render_6416(tmp_path):
         assert im.size[0] / float(im.size[1]) >= 2.0
         im.close()
     assert H_MONTHLY >= 1000
+
+
+def test_agm_skips_earnings_call(tmp_path):
+    """股東會不准抓到法說會。"""
+    from value_fund_panels import _load_agm_event
+
+    db = str(tmp_path / "agm.db")
+    init_database(db)
+    ensure_core_schema(db)
+    con = sqlite3.connect(db)
+    try:
+        con.execute(
+            """
+            CREATE TABLE IF NOT EXISTS company_events (
+                stock_id TEXT, event_date TEXT, kind TEXT, title TEXT, source TEXT
+            )
+            """
+        )
+        con.execute(
+            "INSERT INTO company_events VALUES (?,?,?,?,?)",
+            ("2383", "20261120", "法說會", "法說會 線上", "x"),
+        )
+        con.execute(
+            "INSERT INTO company_events VALUES (?,?,?,?,?)",
+            ("2383", "20260527", "常會", "常會 桃園巿觀音區大同一路18號", "t187ap41_L"),
+        )
+        con.commit()
+    finally:
+        con.close()
+    agm = _load_agm_event("2383", db)
+    assert agm.get("kind") == "常會"
+    assert "法說" not in str(agm.get("title") or "")
+    assert "桃園" in str(agm.get("place") or "")
+
+
+def test_mops_extra_fills_overview_and_turns(tmp_path, monkeypatch):
+    """有 mops_extra 時總覽／季報不准再空會計年度月、長期借款、週轉、業務。"""
+    from value_fund_panels import render_overview_png, render_quarterly_png
+
+    monkeypatch.setenv("WAYNE_SKIP_MOPS_DETAIL", "1")
+    db = str(tmp_path / "mx.db")
+    _seed_value_db(db)
+    pack = load_value_fund_pack("6416", db)
+    pack["mops_extra"] = {
+        "fiscal_month": 12,
+        "lt_loan_equity_pct": 17.82,
+        "business_mix": "銅箔基板／黏合片／多層壓合板",
+        "ar_turn": {(2026, 3): 2.85},
+        "inv_turn": {(2026, 3): 4.12},
+        "source": "test",
+    }
+    pack["omit"] = ""
+    ov = str(tmp_path / "ov.png")
+    q = str(tmp_path / "q.png")
+    assert render_overview_png(pack, ov)
+    assert render_quarterly_png(pack, q)
+    assert os.path.getsize(ov) > 1000
+    assert os.path.getsize(q) > 1000
+
+
+def test_turn_times_annualizes_q3():
+    from value_fund_panels import _turn_times
+
+    # 單季 flow/avg；Q3 年化 ×4/3
+    t = _turn_times(300.0, 100.0, season=3, annualize=True)
+    assert t == round(3.0 * 4.0 / 3.0, 2)
+
+
+def test_business_mix_parse_from_html(monkeypatch):
+    from value_fund_panels import _load_mops_business_mix
+
+    html = (
+        "<th>主要經營業務</th>"
+        "<td colspan=5 class='lColor'>銅箔基板<BR>黏合片<BR>多層壓合板</td>"
+    )
+    monkeypatch.setattr(
+        "value_fund_panels._mops_html", lambda *a, **k: html
+    )
+    got = _load_mops_business_mix("2383")
+    assert got.get("text") == "銅箔基板／黏合片／多層壓合板"
+
+
+def test_ymd_accepts_roc_seven_digits():
+    """櫃買股東會日常是民國七碼；要轉西元才能顯示 115/05/25。"""
+    from value_fund_panels import _roc_ymd, _ymd
+
+    assert _ymd("1150525") == "20260525"
+    assert _roc_ymd("1150525") == "115/05/25"
+    assert _roc_ymd("20260525") == "115/05/25"
+
+
+def test_mops_non_op_fills_single_when_db_null(tmp_path, monkeypatch):
+    """上櫃庫內業外 NULL 時，mops_extra 單季數要進畫面並 COALESCE 寫回。"""
+    import value_fund_panels as vfp
+
+    db = str(tmp_path / "non.db")
+    _seed_value_db(db)
+    con = sqlite3.connect(db)
+    try:
+        con.execute(
+            "UPDATE quarterly_income SET non_operating=NULL "
+            "WHERE stock_id='6416' AND season IN (2,3)"
+        )
+        con.commit()
+    finally:
+        con.close()
+
+    def _fake_extra(sid, quarters, *, db_path=""):
+        return {
+            "fiscal_month": 12,
+            "lt_loan_equity_pct": 10.0,
+            "business_mix": None,
+            "ar_turn": {(2026, 3): 1.1},
+            "inv_turn": {(2026, 3): 2.2},
+            "non_op_q": {(2026, 2): 51.0, (2026, 3): 16.0},
+            "non_op_ytd": {(2026, 2): 100.0, (2026, 3): 116.0},
+            "source": "test",
+        }
+
+    monkeypatch.setattr(vfp, "_load_mops_fund_extras", _fake_extra)
+    monkeypatch.setattr(
+        vfp, "_load_mops_business_mix", lambda sid: {"text": "測試業", "source": "t"}
+    )
+    monkeypatch.setattr(vfp, "_load_company_profile", lambda sid: {})
+    monkeypatch.setattr(vfp, "_load_balance_sheet", lambda sid: {})
+    monkeypatch.setattr(vfp, "_load_income_parent_ni", lambda sid: {})
+    monkeypatch.setattr(vfp, "_load_agm_openapi", lambda sid: {})
+    pack = load_value_fund_pack("6416", db)
+    non = pack["single"]["non_operating"]
+    assert non.get((2026, 2)) == 51.0
+    assert non.get((2026, 3)) == 16.0
+    con = sqlite3.connect(db)
+    try:
+        rows = con.execute(
+            "SELECT season, non_operating FROM quarterly_income "
+            "WHERE stock_id='6416' AND year=2026 AND season IN (2,3) "
+            "ORDER BY season"
+        ).fetchall()
+    finally:
+        con.close()
+    assert rows == [(2, 100.0), (3, 116.0)]
 
 
 def test_undervalue_rejects_stale_pe_and_loss(tmp_path, monkeypatch):
