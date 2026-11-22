@@ -74,3 +74,22 @@ def test_menu_slot_jiuha_row3():
 
     assert MENU_LAYOUT_VERSION == "42"
     assert MENU_ROW3[1] == MENU_BTN_JIUHA
+
+
+def test_concrete_omits_empty_otc_and_has_numbers(tmp_path):
+    db = Path("/workspace/data/wayne_market.db")
+    if not db.is_file():
+        return
+    desk = build_watch_desk(str(db), asof="20261120")
+    c = desk.get("concrete") or {}
+    assert c.get("twii_close") is not None
+    assert c.get("twii_vol_wan") is not None
+    # 補洞後同日櫃買才出；若仍缺則 otc_ok=False 且畫面不准硬塞空白櫃買卡
+    if c.get("otc_ok"):
+        assert c.get("otc_close") is not None
+        assert c.get("otc_rel_pp") is not None
+    md = render_watch_desk_markdown(desk)
+    assert "具體數字" in md
+    assert "1708" in md or "成交量" in md
+    if not c.get("otc_ok"):
+        assert "櫃買收" not in md
