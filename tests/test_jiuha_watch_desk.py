@@ -48,7 +48,8 @@ def test_watch_desk_from_market_db(tmp_path):
     assert desk.get("not_buy_signal") is True
     assert desk.get("tomorrow_intraday")
     md = render_watch_desk_markdown(desk)
-    assert "明天盤中這樣看" in md
+    assert "盤中這樣看" in md
+    assert "盤後對質" in md
     assert "非買訊" in md
     assert "今天" in md
     out = write_watch_desk_artifacts(
@@ -89,7 +90,13 @@ def test_concrete_omits_empty_otc_and_has_numbers(tmp_path):
         assert c.get("otc_close") is not None
         assert c.get("otc_rel_pp") is not None
     md = render_watch_desk_markdown(desk)
-    assert "具體數字" in md
+    assert "盤中可對照" in md or "加權收" in md
     assert "1708" in md or "成交量" in md
+    assert desk.get("next_session")
+    ser = (desk.get("series") or {}).get("twii") or []
+    assert ser
+    from jiuha_watch_desk import _is_tw_open_day
+
+    assert all(_is_tw_open_day(b["date"], str(db)) for b in ser)
     if not c.get("otc_ok"):
         assert "櫃買收" not in md
