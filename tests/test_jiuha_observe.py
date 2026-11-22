@@ -6,6 +6,7 @@ import sqlite3
 from pathlib import Path
 
 from jiuha_observe import (
+    DESK_LAYERS,
     PRINCIPLES,
     align_post_to_bar,
     compute_daily_structure,
@@ -21,6 +22,18 @@ def test_principles_have_evidence():
     for p in PRINCIPLES:
         assert p["id"] and p["title"] and p["rule"]
         assert p["evidence"], p["id"]
+
+
+def test_desk_layers_l0_to_l5():
+    assert [x["id"] for x in DESK_LAYERS] == [
+        "L0",
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+    ]
+    assert "存活" in DESK_LAYERS[0]["title"]
 
 
 def test_extract_levels_and_align():

@@ -25,6 +25,16 @@ DEFAULT_CORPUS = Path("/workspace/data/jiuha_corpus/jiuha.sqlite")
 DEFAULT_MARKET = Path("/workspace/data/wayne_market.db")
 DEFAULT_OUT = Path("/opt/cursor/artifacts/jiuha")
 
+# 每日儀表層級（辯論 D 定調；A／B／C 掛載）。衝突時 L0＋非買訊勝出。
+DESK_LAYERS: List[Dict[str, str]] = [
+    {"id": "L0", "title": "存活閘", "hint": "停損／最大虧損／部位／現金／睡得著嗎"},
+    {"id": "L1", "title": "天氣", "hint": "台幣・外資期現貨・總經節點"},
+    {"id": "L2", "title": "路寬", "hint": "產業／供應鏈容錯（只觀察）"},
+    {"id": "L3", "title": "結構", "hint": "融資速度差・正二・真假換手・空單"},
+    {"id": "L4", "title": "節奏", "hint": "量價定性・頸線・開盤量・關鍵位"},
+    {"id": "L5", "title": "控車", "hint": "空手／減碼／避險／等待（禁止建議買入）"},
+]
+
 # 原則卡：每條必須能指回至少一篇 article_id（深度閱讀後鎖）
 PRINCIPLES: List[Dict[str, Any]] = [
     {
@@ -483,18 +493,24 @@ def compute_daily_structure(
         labels.append("台幣偏貶（資金面壓力訊號之一）")
 
     focus: List[str] = []
-    # 他的檢查清單橫向延伸成每日觀察項
-    focus.append("開盤至午前量能：有無換手，或量縮鎖死")
-    focus.append("櫃買是否比加權先止穩（融資止血）")
-    focus.append("融資餘額變動速度 vs 指數跌幅（速度差）")
-    focus.append("若反彈：是否帶量；縮量大漲當逃命窗而非追高證成")
-    focus.append("台幣＋外資現貨／期貨是否同向改善（缺官方列則標缺）")
-    focus.append("正二／槓桿相關融資：停加或轉減才是狀態切換")
-    focus.append("內資／ETF／官股是否在恐慌日逆勢承接（體質質變敘事）")
+    # 順序對齊 DESK_LAYERS（L0→L5）；辯論四組共識
+    focus.append("L0 存活閘：停損與最大虧損有無預設；現金／槓桿是否先理好")
+    focus.append("L1 天氣：台幣＋外資現貨／期貨是否同向改善（缺列則標缺）")
+    focus.append("L1 反轉三同步：減空×現貨轉買×台幣升值；缺一則大反彈偏逃命窗")
+    focus.append("L3 融資速度差 vs 指數；正二融資是否停加／連續減")
+    focus.append("L3 真假換手三點：正二連續減×空單回補×新融資未立刻被洗")
+    focus.append("L3 櫃買是否比加權先止穩（融資止血）")
+    focus.append("L4 若反彈：是否帶量；縮量大漲當逃命窗而非追高證成")
+    focus.append("L4 開盤至午前量能：有無換手，或量縮鎖死")
+    focus.append("L2／P11 內資／ETF／官股恐慌承接（敘事觀察；申贖／官股列缺則標缺）")
+    focus.append("L5 控車：空手／減碼／避險／等待（禁止建議買入）")
     if any("假突破" in (x or "") for x in labels) or (
         chg is not None and chg < -2 and vol_vs_5 and vol_vs_5 >= 1.3
     ):
-        focus.insert(0, "若有頸線／前高試探：突破幅度是否達有效門檻，收盤是否仍站上")
+        focus.insert(
+            7,
+            "L4 若有頸線／前高試探：突破幅度是否達有效門檻，收盤是否仍站上",
+        )
 
     missing: List[str] = []
     if o0 is None:
@@ -599,6 +615,8 @@ def render_daily_markdown(pack: Dict[str, Any]) -> str:
     if miss:
         lines += ["", "## 官方缺欄（不准假填）"]
         lines.extend(f"- {x}" for x in miss)
+    lines += ["", "## 儀表層級（L0→L5）"]
+    lines.extend(f"- {x['id']} {x['title']}：{x['hint']}" for x in DESK_LAYERS)
     lines += [
         "",
         "## 原則依據（原文證據）",
