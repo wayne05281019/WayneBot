@@ -352,8 +352,10 @@ def test_two_users_all_buttons_and_help_topics_interleaved(tmp_path):
         MENU_BTN_LEAVE_ZERO,
         MENU_BTN_DONGZHU,
         "綜合篩選",
+        "啾哈觀盤",
     ]
     assert "流水線" not in ALL_BUTTONS
+    assert "啾哈觀盤" in ALL_BUTTONS
 
     async def run():
         for i in range(BUTTON_ROUNDS):
