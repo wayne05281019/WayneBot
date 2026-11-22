@@ -5881,7 +5881,21 @@ class WayneTelegramBot:
             )
             return
         await wave_lock.acquire()
+        # 畫面不能沉默：流水線／敘述可能數十秒，必須先出「進行中」泡泡
+        wait_h = (None, None, None)
         try:
+            wait_h = await self._start_plain_wait(
+                msg,
+                text_fn=lambda s: self._wait_bubble(
+                    "波浪位階進行中",
+                    s,
+                    now="出圖前檢查",
+                    rest="敘述＋三窗",
+                    fill_sec=45.0,
+                ),
+                max_elapsed=180.0,
+                overtime_keep=True,
+            )
             # 先跑 01–08 流水線；不過＝不送文、不送圖（不准文新圖舊或只擋圖）
             try:
                 from biaoke_level_learn import run_teach_trio_preflight_pipeline
@@ -5893,6 +5907,8 @@ class WayneTelegramBot:
                 logger.exception("波浪位階流水線失敗")
                 pipe = {"ok": False, "fail_bits": ["出圖前準備失敗"], "pack": {}}
             if not (pipe or {}).get("ok"):
+                await self._stop_plain_wait(*wait_h)
+                wait_h = (None, None, None)
                 bits = "、".join(
                     str(b) for b in ((pipe or {}).get("fail_bits") or [])[:3] if b
                 )
@@ -5919,6 +5935,8 @@ class WayneTelegramBot:
             except Exception:
                 logger.exception("波浪位階敘述略過")
                 brief = ""
+            await self._stop_plain_wait(*wait_h)
+            wait_h = (None, None, None)
             if brief:
                 try:
                     await msg.reply_html(
@@ -5936,8 +5954,11 @@ class WayneTelegramBot:
                     "波浪位階（預估・非買訊）\n先送遠／近／超近三張；敘述這次沒湊齊。",
                     reply_markup=self._keyboard(),
                 )
-            await self._send_market_wave_charts(msg, uid=uid, pack=pack)
+            await self._send_market_wave_charts(
+                msg, uid=uid, pack=pack, wait_title="波浪位階進行中"
+            )
         finally:
+            await self._stop_plain_wait(*wait_h)
             try:
                 wave_lock.release()
             except RuntimeError:
@@ -7196,13 +7217,20 @@ class WayneTelegramBot:
             return ""
 
     async def _send_market_wave_charts(
-        self, message, *, uid: str = "", pack_task=None, pack: dict | None = None
+        self,
+        message,
+        *,
+        uid: str = "",
+        pack_task=None,
+        pack: dict | None = None,
+        wait_title: str = "大盤圖進行中",
     ) -> None:
         """大盤專頁附圖：暗底遠／近／超近（第1→2→3）。
 
         一律 force 重渲；prep-once 共用 pack；遠→近→超近單 Agg，送第 N 張時 paint 第 N+1。
         遠窗必到；缺就單張重渲，仍缺則白話停。外圍不准 trio 順手畫。
         pack：波浪鍵流水線已過關的同口包；有傳就用，不准再另抓漂價。
+        wait_title：波浪位階鍵傳「波浪位階進行中」；其他入口維持「大盤圖進行中」。
         """
         from config import skip_chart_warmup
 
@@ -7210,11 +7238,12 @@ class WayneTelegramBot:
             if pack_task is not None and not pack_task.done():
                 pack_task.cancel()
             return
+        title = str(wait_title or "").strip() or "大盤圖進行中"
         # 三窗連畫常超過 120s；過預估仍續跳秒，不准倒數框先消失、圖卻還在畫
         wait_h = await self._start_plain_wait(
             message,
             text_fn=lambda s: self._wait_bubble(
-                "大盤圖進行中", s, now="第1張遠窗", rest="近／超近窗", fill_sec=25.0
+                title, s, now="第1張遠窗", rest="近／超近窗", fill_sec=25.0
             ),
             max_elapsed=360.0,
             overtime_keep=True,
