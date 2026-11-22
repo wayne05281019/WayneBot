@@ -31,6 +31,7 @@ MENU_BUTTONS = [
     (MENU_BTN_CARD, "decision_card_btn"),
     (MENU_BTN_PIPELINE, "pipeline_cmd"),
     (MENU_BTN_COMBO_SCREEN, "combo_screen_cmd"),
+    ("啾哈觀盤", "jiuha_cmd"),
     (MENU_BTN_WAVE_STATUS, "wave_status_cmd"),
     (MENU_BTN_CHONG, "chong_zone_cmd"),
     ("當沖", "daytrade_cmd"),  # 隱藏打字入口仍認
@@ -56,6 +57,7 @@ INSTANT_ACK_BUTTONS = {
     MENU_BTN_FLOW: "資金輪動進行中",
     MENU_BTN_PIPELINE: "流水線觀測進行中",
     MENU_BTN_COMBO_SCREEN: "綜合篩選進行中",
+    "啾哈觀盤": "啾哈觀盤進行中",
 }
 
 
@@ -165,6 +167,8 @@ def test_instant_ack_before_slow_work(label, hint):
     bot._start_plain_wait = AsyncMock(side_effect=track_wait)
     bot._stop_plain_wait = AsyncMock()
     bot._send_market_page = AsyncMock()
+    bot._pin_reply_menu = AsyncMock()
+    bot._reply_menu = MagicMock(return_value=None)
     # _bot() 會把 handler 換成 mock；此測須綁回真實 cmd
     bot.market_cmd = WayneTelegramBot.market_cmd.__get__(bot, WayneTelegramBot)
     bot.flow_cmd = WayneTelegramBot.flow_cmd.__get__(bot, WayneTelegramBot)
@@ -172,6 +176,7 @@ def test_instant_ack_before_slow_work(label, hint):
     bot.combo_screen_cmd = WayneTelegramBot.combo_screen_cmd.__get__(
         bot, WayneTelegramBot
     )
+    bot.jiuha_cmd = WayneTelegramBot.jiuha_cmd.__get__(bot, WayneTelegramBot)
     with patch("money_flow.format_flow_html", return_value="<b>資金</b>"), patch(
         "money_flow.resolve_flow_as_of", return_value=("20260902", "")
     ), patch("money_flow.recompute_sector_flow", return_value=1), patch(
@@ -212,14 +217,25 @@ def test_instant_ack_before_slow_work(label, hint):
     ), patch(
         "pipeline_observe.format_combo_screen_html",
         return_value="<b>綜合篩選</b>",
+    ), patch(
+        "jiuha_watch_desk.write_watch_desk_artifacts",
+        return_value={
+            "ok": True,
+            "asof": "20260902",
+            "png": "",
+            "caption": "啾哈觀盤桌（非買訊）",
+        },
     ):
         msg = _msg(1001, label)
+        msg.reply_photo = AsyncMock(return_value=MagicMock())
         if label == MENU_BTN_MARKET:
             asyncio.run(bot.market_cmd(_update(msg), MagicMock()))
         elif label == MENU_BTN_PIPELINE:
             asyncio.run(bot.pipeline_cmd(_update(msg), MagicMock()))
         elif label == MENU_BTN_COMBO_SCREEN:
             asyncio.run(bot.combo_screen_cmd(_update(msg), MagicMock()))
+        elif label == "啾哈觀盤":
+            asyncio.run(bot.jiuha_cmd(_update(msg), MagicMock()))
         else:
             asyncio.run(bot.flow_cmd(_update(msg), MagicMock()))
 
