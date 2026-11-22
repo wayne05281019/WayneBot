@@ -153,6 +153,35 @@ def build_tomorrow_intraday_checks(pack: Dict[str, Any]) -> List[Dict[str, Any]]
         }
     )
 
+    # 8) W5：期貨空單盤中代理——日終 OI 不准當唯一鈕
+    checks.append(
+        {
+            "id": "T_tx_proxy",
+            "when": "08:45／09:15／11:00／13:00",
+            "watch": "台指期日盤／夜盤活價＋當日量（相對加權是否虛漲）",
+            "how": "急漲但期貨量萎縮、或夜盤已失守而日盤虛漲 →「回補／軋空未確認」（P02／P05）；真實減空仍等日終外資 OI 對質",
+            "principle": "P02_forced_buy",
+            "data_hint": "盤中期價／量；futures_inst_oi 日結只進盤後對質欄",
+            "intraday": True,
+            "priority": 4,
+        }
+    )
+
+    # 9) W7：存活閘——無行情欄，開盤前複誦
+    checks.insert(
+        0,
+        {
+            "id": "T_l0_survive",
+            "when": "08:50 開盤前（W1／W2 觸發再唸）",
+            "watch": "停損／最大虧損／部位／現金／睡得著嗎",
+            "how": "未設好＝L0 未過，後面燈先不當操作解讀（P09）；仍非買訊",
+            "principle": "P09_risk_first",
+            "data_hint": "自檢清單，無官方行情欄",
+            "intraday": True,
+            "priority": 0,
+        },
+    )
+
     checks.sort(key=lambda x: (x.get("priority", 9), x.get("id")))
     return checks
 

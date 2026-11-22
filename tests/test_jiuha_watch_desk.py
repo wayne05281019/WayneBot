@@ -25,6 +25,8 @@ def test_tomorrow_checks_are_intraday_only():
     assert all(c.get("intraday") is True for c in checks)
     assert any(c["id"] == "T_open15_vol" for c in checks)
     assert any(c["id"] == "T_escape_follow" for c in checks)
+    assert any(c["id"] == "T_tx_proxy" for c in checks)
+    assert any(c["id"] == "T_l0_survive" for c in checks)
     assert not any("融資餘額" in (c.get("watch") or "") for c in checks)
 
 
