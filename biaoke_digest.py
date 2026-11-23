@@ -1037,7 +1037,15 @@ def format_teach_brief(db_path: str = "", pack: Optional[Dict[str, Any]] = None)
             lines.append("")
             lines.append("<b>盯著的價（他講過）</b>")
             lines.append(html_escape("｜".join(bits)))
-    return "\n".join(lines)
+    html = "\n".join(lines)
+    # SYNC-RETRACT：開火句（上一句位→官方碰到沒→改口／還在等／未完）；失敗不擋主文
+    try:
+        from sync_retract import attach_retract_to_teach_brief
+
+        html = attach_retract_to_teach_brief(html, str(db_path or ""))
+    except Exception:
+        pass
+    return html
 
 
 def format_wave_level_one_liner(db_path: str = "") -> str:
