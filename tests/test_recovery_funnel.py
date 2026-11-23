@@ -228,6 +228,43 @@ def test_golden_buy_dict_rows_norm_sid_not_dict_repr(tmp_path: Path, monkeypatch
     assert all(isinstance(s, str) and not s.startswith("{") for s in obs_sids | buy_sids)
 
 
+def test_collect_leave_zero_prefers_screen_over_empty_live_judge(tmp_path: Path, monkeypatch):
+    """復原路 leave_zero 必須吃海選桶（與綜合篩選同源）；不准只靠空 live_judge 漏掉。"""
+    from recovery_funnel import _collect_signal_maps
+    from screen_sessions import save_screen_session
+
+    db = _mem_db(tmp_path)
+    day = "20261119"
+    save_screen_session(
+        db,
+        day,
+        "morning",
+        {
+            "leave_zero": [
+                {"stock_id": "4728", "stock_name": "雙美", "pick_close": 80.0}
+            ],
+            "ma60_lower": [],
+            "golden_buy": [],
+        },
+    )
+    con = sqlite3.connect(db)
+    con.execute(
+        "INSERT OR REPLACE INTO stock_universe VALUES (?,?,?,?,?,?,?)",
+        ("4728", "雙美", "TW", "STOCK", "生技醫療業", 1, ""),
+    )
+    con.commit()
+    con.close()
+
+    # live_judge 一律空 → 仍必須從海選桶拿到 leave_zero
+    monkeypatch.setattr(
+        "pipeline_observe._live_judge_pack",
+        lambda *a, **k: ("", []),
+    )
+    sigs, names = _collect_signal_maps(db, day)
+    assert "4728" in sigs and "leave_zero" in sigs["4728"]
+    assert names.get("4728") == "雙美"
+
+
 def test_format_recovery_defends_dict_repr_sid():
     """舊 payload sid 誤為 dict／dict 字串時，格式化仍出代號，不准整列 dump。"""
     html = format_recovery_funnel_html(

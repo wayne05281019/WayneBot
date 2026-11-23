@@ -325,6 +325,106 @@ def test_combo_streak_stale_chip_face():
     # 連買縮一行：不堆個股明細／YoY，只留桶計數＋舊日警告
     assert "外資1" in html or "外資 1" in html or "外資1" in html.replace(" ", "")
     assert "連買外資最長" not in html
+    # 空紅箭不准冒充進場標題
+    assert "觀察｜紅箭確認" in html
+    assert "進場｜紅箭確認" not in html
+
+
+def test_combo_ma60_screen_first_stale_radar_not_buy(tmp_path):
+    """紅箭：海選桶優先；live_judge 舊日不准 buy_ok。"""
+    from unittest.mock import patch
+
+    from pipeline_observe import build_combo_screen, format_combo_screen_html
+    from screen_sessions import save_screen_session
+    from silent_track_runs import ensure_pipeline_table
+    from winrate_buypoint import ensure_winrate_table
+
+    db = str(tmp_path / "combo_ma.db")
+    ensure_pipeline_table(db)
+    ensure_winrate_table(db)
+    day = "20261117"
+    conn = sqlite3.connect(db)
+    try:
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS index_daily ("
+            "date TEXT, symbol TEXT, close REAL, volume REAL, pct_change REAL, "
+            "ma20 REAL, ma60 REAL, regime TEXT, updated_at TEXT, "
+            "open REAL, high REAL, low REAL, PRIMARY KEY(date, symbol))"
+        )
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS daily_quotes ("
+            "date TEXT, stock_id TEXT, stock_name TEXT, market TEXT, "
+            "close REAL, open REAL, high REAL, low REAL, volume INTEGER, "
+            "foreign_net INTEGER, trust_net INTEGER, dealer_net INTEGER)"
+        )
+        for i in range(900):
+            conn.execute(
+                "INSERT INTO daily_quotes VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                (day, f"{i:04d}", f"T{i}", "TW", 100, 100, 100, 100, 1000, 0, 0, 0),
+            )
+        for i in range(700):
+            conn.execute(
+                "INSERT INTO daily_quotes VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                (day, f"{i+2000:04d}", f"O{i}", "OTC", 50, 50, 50, 50, 500, 0, 0, 0),
+            )
+        conn.execute(
+            "INSERT OR REPLACE INTO index_daily "
+            "(date, symbol, close, volume, pct_change, regime, updated_at) "
+            "VALUES (?,?,?,?,?,?,?)",
+            (day, "TWII", 40000.0, 1, -1.0, "bear", day),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    save_screen_session(
+        db,
+        day,
+        "morning",
+        {
+            "leave_zero": [],
+            "ma60_lower": [
+                {"stock_id": "6672", "stock_name": "騰輝電子-KY", "pick_close": 100}
+            ],
+            "golden_buy": [],
+        },
+    )
+    now = datetime(2026, 11, 17, 10, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+
+    def _lj(db_path, kind, as_of, **kw):
+        if kind == "ma60_lower":
+            # 故意回舊日＋別檔，海選優先時必須被蓋掉
+            return "20261103", [{"sid": "9999", "name": "假舊箭"}]
+        return "", []
+
+    with patch("pipeline_observe._live_judge_pack", side_effect=_lj):
+        payload = build_combo_screen(db, uid="9", now=now)
+    ma = (payload.get("lists") or {}).get("ma60_lower") or {}
+    assert ma.get("source") == "screen"
+    assert ma.get("buy_ok") is True
+    assert ma.get("face") == "可進場"
+    assert any(it.get("sid") == "6672" for it in (ma.get("items") or []))
+    assert not any(it.get("sid") == "9999" for it in (ma.get("items") or []))
+    html = format_combo_screen_html(payload)
+    assert "進場｜紅箭確認" in html
+    assert "6672" in html
+
+    # 無海選桶、只有舊日 live_judge → 觀察、不准 buy_ok
+    save_screen_session(
+        db,
+        day,
+        "morning",
+        {"leave_zero": [], "ma60_lower": [], "golden_buy": []},
+    )
+    with patch("pipeline_observe._live_judge_pack", side_effect=_lj):
+        stale_payload = build_combo_screen(db, uid="9", now=now)
+    ma2 = (stale_payload.get("lists") or {}).get("ma60_lower") or {}
+    assert ma2.get("source") == "radar"
+    assert ma2.get("stale") is True
+    assert ma2.get("buy_ok") is False
+    assert "舊日" in str(ma2.get("face") or "")
+    html2 = format_combo_screen_html(stale_payload)
+    assert "觀察｜紅箭確認" in html2
+    assert "名單舊日≠基準" in html2
 
 def test_combo_face_issues_before_nodes_and_no_dup_disclaimer():
     """對質異常置前；砍機構式流水帳／重複 disclaimer；勝率異集合標節點｜。"""
