@@ -67,9 +67,9 @@
 
 1. [x] 落 digest＋sources（本目錄）。  
 2. [x] 純函式 `mine_wave_rules.py`＋`tests/test_mine_wave_rules.py`（未 commit）。  
-3. [ ] `_build_self_pred_levels` 可選呼叫（最小 diff；失敗吞掉、不擋出圖）。  
+3. [x] `_build_self_pred_levels` 可選呼叫（最小 diff；失敗吞掉、不擋出圖；`mine_wave` 不進 `pred_levels`）。  
 4. [ ] 靜默對質排程鍵掛上（n 累積；過程不進對話）。  
-5. [ ] 話筒／飆大路徑 grep 確認無 `leading_diagonal`／`擴延1618` 洩漏進「他說」。  
+5. [x] 話筒／飆大路徑分鍋牆：`wave_pot_boundary.py`＋`tests/test_wave_pot_boundary.py`（B6／B9；對照表 `cross_pot_compare.*`）。  
 6. [ ] Drive：本批教學圖若還有完整 DC 包，補進 `docs/expert_notes/dc_wave/sources/`（目前 Drive MCP 搜尋空）。
 
 ---
