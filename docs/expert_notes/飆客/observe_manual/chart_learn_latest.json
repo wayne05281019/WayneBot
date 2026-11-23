@@ -1,0 +1,1300 @@
+{
+  "track": "BK-CHART",
+  "generated_at_taipei": "2026-11-23T23:16:57+08:00",
+  "as_of_today": "20261123",
+  "half_window_sessions": 8,
+  "pots": [
+    "他圖",
+    "官方",
+    "試標推論"
+  ],
+  "warning": "試標・推論／非他原文・非買訊・對質未過閘",
+  "inventory": {
+    "marks_total": 20,
+    "price_confronted": 16,
+    "structure_archived_only": 4,
+    "compare_groups": 3,
+    "charts_read_deep": 7,
+    "charts_downloaded_session": 76,
+    "chart_index_urls": 341
+  },
+  "verdict_counts": {
+    "偏": 1,
+    "對": 14,
+    "還沒走完": 1
+  },
+  "confront_rows": [
+    {
+      "chart_id": "src_20260723_60m",
+      "as_of": "20260723",
+      "theme": "descent_pressure_Bwave",
+      "mark_kind": "price_label",
+      "value": 48218.87,
+      "label": "60m 波段高 48218.87",
+      "instrument_hint": "TWII",
+      "source_path": "docs/expert_notes/飆客/sources/20260723_60m_chart.jpg",
+      "pot_his": "他圖",
+      "symbol_used": "TWII",
+      "window_dates": [
+        "20260713",
+        "20260714",
+        "20260715",
+        "20260716",
+        "20260717",
+        "20260720",
+        "20260721",
+        "20260722",
+        "20260723",
+        "20260724",
+        "20260727",
+        "20260728",
+        "20260729",
+        "20260730",
+        "20260731",
+        "20260803",
+        "20260804"
+      ],
+      "hit_bars": [],
+      "nearest": {
+        "date": "20260713",
+        "open": 45500.3203125,
+        "high": 46330.91015625,
+        "low": 45272.8984375,
+        "close": 45380.51953125,
+        "volume": 6161200.0,
+        "dist": 1887.9598,
+        "pct_of_level": 3.9154
+      },
+      "verdict": "偏",
+      "pot_official": "官方",
+      "note": "近窗未觸；最近完整柱距 1887.9598（3.9154%）"
+    },
+    {
+      "chart_id": "src_20260723_60m",
+      "as_of": "20260723",
+      "theme": "descent_pressure_Bwave",
+      "mark_kind": "price_label",
+      "value": 41967.75,
+      "label": "60m 波段低 41967.75",
+      "instrument_hint": "TWII",
+      "source_path": "docs/expert_notes/飆客/sources/20260723_60m_chart.jpg",
+      "pot_his": "他圖",
+      "symbol_used": "TWII",
+      "window_dates": [
+        "20260713",
+        "20260714",
+        "20260715",
+        "20260716",
+        "20260717",
+        "20260720",
+        "20260721",
+        "20260722",
+        "20260723",
+        "20260724",
+        "20260727",
+        "20260728",
+        "20260729",
+        "20260730",
+        "20260731",
+        "20260803",
+        "20260804"
+      ],
+      "hit_bars": [
+        {
+          "date": "20260720",
+          "open": 42793.1484375,
+          "high": 43084.51171875,
+          "low": 41967.75,
+          "close": 42449.69921875,
+          "volume": 5678000.0
+        },
+        {
+          "date": "20260728",
+          "open": 43221.9296875,
+          "high": 43221.9296875,
+          "low": 41565.0,
+          "close": 41603.359375,
+          "volume": 4492500.0
+        },
+        {
+          "date": "20260731",
+          "open": 41610.41015625,
+          "high": 43214.359375,
+          "low": 41610.41015625,
+          "close": 43119.75,
+          "volume": 4859500.0
+        }
+      ],
+      "nearest": {
+        "date": "20260720",
+        "open": 42793.1484375,
+        "high": 43084.51171875,
+        "low": 41967.75,
+        "close": 42449.69921875,
+        "volume": 5678000.0,
+        "dist": 0.0,
+        "pct_of_level": 0.0
+      },
+      "verdict": "對",
+      "pot_official": "官方",
+      "note": "近窗命中 3 根完整柱"
+    },
+    {
+      "chart_id": "cmoney_20260729_tx15m",
+      "as_of": "20260729",
+      "theme": "july_crash_A_low",
+      "mark_kind": "price_label",
+      "value": 45364.0,
+      "label": "15m 波段高 45364",
+      "instrument_hint": "TX",
+      "source_path": "chart_index:aid=181132138",
+      "pot_his": "他圖",
+      "symbol_used": "TX",
+      "window_dates": [
+        "20260717",
+        "20260720",
+        "20260721",
+        "20260722",
+        "20260723",
+        "20260724",
+        "20260727",
+        "20260728",
+        "20260729",
+        "20260730",
+        "20260731",
+        "20260803",
+        "20260804",
+        "20260805",
+        "20260806",
+        "20260807",
+        "20260810"
+      ],
+      "hit_bars": [
+        {
+          "date": "20260722",
+          "open": 45000.0,
+          "high": 45364.0,
+          "low": 44613.0,
+          "close": 44631.0,
+          "volume": 66011.0
+        },
+        {
+          "date": "20260723",
+          "open": 45310.0,
+          "high": 45339.0,
+          "low": 44445.0,
+          "close": 44930.0,
+          "volume": 54342.0
+        }
+      ],
+      "nearest": {
+        "date": "20260722",
+        "open": 45000.0,
+        "high": 45364.0,
+        "low": 44613.0,
+        "close": 44631.0,
+        "volume": 66011.0,
+        "dist": 0.0,
+        "pct_of_level": 0.0
+      },
+      "verdict": "對",
+      "pot_official": "官方",
+      "note": "近窗命中 2 根完整柱"
+    },
+    {
+      "chart_id": "cmoney_20260729_tx15m",
+      "as_of": "20260729",
+      "theme": "july_crash_A_low",
+      "mark_kind": "price_label",
+      "value": 39442.0,
+      "label": "15m 波段低 39442",
+      "instrument_hint": "TX",
+      "source_path": "chart_index:aid=181132138",
+      "pot_his": "他圖",
+      "symbol_used": "TX",
+      "window_dates": [
+        "20260717",
+        "20260720",
+        "20260721",
+        "20260722",
+        "20260723",
+        "20260724",
+        "20260727",
+        "20260728",
+        "20260729",
+        "20260730",
+        "20260731",
+        "20260803",
+        "20260804",
+        "20260805",
+        "20260806",
+        "20260807",
+        "20260810"
+      ],
+      "hit_bars": [
+        {
+          "date": "20260729",
+          "open": 41915.0,
+          "high": 42070.0,
+          "low": 39442.0,
+          "close": 40392.0,
+          "volume": 124405.0
+        }
+      ],
+      "nearest": {
+        "date": "20260729",
+        "open": 41915.0,
+        "high": 42070.0,
+        "low": 39442.0,
+        "close": 40392.0,
+        "volume": 124405.0,
+        "dist": 0.0,
+        "pct_of_level": 0.0
+      },
+      "verdict": "對",
+      "pot_official": "官方",
+      "note": "近窗命中 1 根完整柱"
+    },
+    {
+      "chart_id": "cmoney_20260729_tx15m",
+      "as_of": "20260729",
+      "theme": "july_crash_A_low",
+      "mark_kind": "price_label",
+      "value": 40807.4,
+      "label": "水平線 ~40807（當下翻上測試）",
+      "instrument_hint": "TX",
+      "source_path": "chart_index:aid=181132138",
+      "pot_his": "他圖",
+      "symbol_used": "TX",
+      "window_dates": [
+        "20260717",
+        "20260720",
+        "20260721",
+        "20260722",
+        "20260723",
+        "20260724",
+        "20260727",
+        "20260728",
+        "20260729",
+        "20260730",
+        "20260731",
+        "20260803",
+        "20260804",
+        "20260805",
+        "20260806",
+        "20260807",
+        "20260810"
+      ],
+      "hit_bars": [
+        {
+          "date": "20260729",
+          "open": 41915.0,
+          "high": 42070.0,
+          "low": 39442.0,
+          "close": 40392.0,
+          "volume": 124405.0
+        },
+        {
+          "date": "20260730",
+          "open": 40007.0,
+          "high": 41266.0,
+          "low": 39701.0,
+          "close": 40270.0,
+          "volume": 103235.0
+        }
+      ],
+      "nearest": {
+        "date": "20260729",
+        "open": 41915.0,
+        "high": 42070.0,
+        "low": 39442.0,
+        "close": 40392.0,
+        "volume": 124405.0,
+        "dist": 0.0,
+        "pct_of_level": 0.0
+      },
+      "verdict": "對",
+      "pot_official": "官方",
+      "note": "近窗命中 2 根完整柱"
+    },
+    {
+      "chart_id": "index_levels_20260731",
+      "as_of": "20260731",
+      "theme": "july_crash_A_low",
+      "mark_kind": "price_label",
+      "value": 41967.0,
+      "label": "41967 現貨／60m 低",
+      "instrument_hint": "TWII",
+      "source_path": "docs/expert_notes/飆客/charts/index_levels_20260731.png",
+      "pot_his": "他圖",
+      "symbol_used": "TWII",
+      "window_dates": [
+        "20260721",
+        "20260722",
+        "20260723",
+        "20260724",
+        "20260727",
+        "20260728",
+        "20260729",
+        "20260730",
+        "20260731",
+        "20260803",
+        "20260804",
+        "20260805",
+        "20260806",
+        "20260807",
+        "20260810",
+        "20260811",
+        "20260812"
+      ],
+      "hit_bars": [
+        {
+          "date": "20260728",
+          "open": 43221.9296875,
+          "high": 43221.9296875,
+          "low": 41565.0,
+          "close": 41603.359375,
+          "volume": 4492500.0
+        },
+        {
+          "date": "20260731",
+          "open": 41610.41015625,
+          "high": 43214.359375,
+          "low": 41610.41015625,
+          "close": 43119.75,
+          "volume": 4859500.0
+        }
+      ],
+      "nearest": {
+        "date": "20260728",
+        "open": 43221.9296875,
+        "high": 43221.9296875,
+        "low": 41565.0,
+        "close": 41603.359375,
+        "volume": 4492500.0,
+        "dist": 0.0,
+        "pct_of_level": 0.0
+      },
+      "verdict": "對",
+      "pot_official": "官方",
+      "note": "近窗命中 2 根完整柱"
+    },
+    {
+      "chart_id": "index_levels_20260731",
+      "as_of": "20260731",
+      "theme": "july_crash_A_low",
+      "mark_kind": "price_label",
+      "value": 40816.0,
+      "label": "40816 夜盤第一關（口述）",
+      "instrument_hint": "mixed",
+      "source_path": "docs/expert_notes/飆客/charts/index_levels_20260731.png",
+      "pot_his": "他圖",
+      "symbol_used": "TX",
+      "window_dates": [
+        "20260721",
+        "20260722",
+        "20260723",
+        "20260724",
+        "20260727",
+        "20260728",
+        "20260729",
+        "20260730",
+        "20260731",
+        "20260803",
+        "20260804",
+        "20260805",
+        "20260806",
+        "20260807",
+        "20260810",
+        "20260811",
+        "20260812"
+      ],
+      "hit_bars": [
+        {
+          "date": "20260729",
+          "open": 41915.0,
+          "high": 42070.0,
+          "low": 39442.0,
+          "close": 40392.0,
+          "volume": 124405.0
+        },
+        {
+          "date": "20260730",
+          "open": 40007.0,
+          "high": 41266.0,
+          "low": 39701.0,
+          "close": 40270.0,
+          "volume": 103235.0
+        }
+      ],
+      "nearest": {
+        "date": "20260729",
+        "open": 41915.0,
+        "high": 42070.0,
+        "low": 39442.0,
+        "close": 40392.0,
+        "volume": 124405.0,
+        "dist": 0.0,
+        "pct_of_level": 0.0
+      },
+      "verdict": "對",
+      "pot_official": "官方",
+      "note": "近窗命中 2 根完整柱"
+    },
+    {
+      "chart_id": "index_levels_20260731",
+      "as_of": "20260731",
+      "theme": "july_crash_A_low",
+      "mark_kind": "price_label",
+      "value": 39385.0,
+      "label": "39385 A 波低（現貨）",
+      "instrument_hint": "TWII",
+      "source_path": "docs/expert_notes/飆客/charts/index_levels_20260731.png",
+      "pot_his": "他圖",
+      "symbol_used": "TWII",
+      "window_dates": [
+        "20260721",
+        "20260722",
+        "20260723",
+        "20260724",
+        "20260727",
+        "20260728",
+        "20260729",
+        "20260730",
+        "20260731",
+        "20260803",
+        "20260804",
+        "20260805",
+        "20260806",
+        "20260807",
+        "20260810",
+        "20260811",
+        "20260812"
+      ],
+      "hit_bars": [
+        {
+          "date": "20260729",
+          "open": 41491.48046875,
+          "high": 41698.390625,
+          "low": 39384.8515625,
+          "close": 40039.1796875,
+          "volume": 6323100.0
+        },
+        {
+          "date": "20260730",
+          "open": 40048.94140625,
+          "high": 41155.421875,
+          "low": 39404.6484375,
+          "close": 39933.30078125,
+          "volume": 5907800.0
+        }
+      ],
+      "nearest": {
+        "date": "20260729",
+        "open": 41491.48046875,
+        "high": 41698.390625,
+        "low": 39384.8515625,
+        "close": 40039.1796875,
+        "volume": 6323100.0,
+        "dist": 0.0,
+        "pct_of_level": 0.0
+      },
+      "verdict": "對",
+      "pot_official": "官方",
+      "note": "近窗命中 2 根完整柱"
+    },
+    {
+      "chart_id": "index_levels_20260902",
+      "as_of": "20260902",
+      "theme": "micro_wave_band",
+      "mark_kind": "price_label",
+      "value": 46746.0,
+      "label": "46746 穿刺才不走 9 段（更正）",
+      "instrument_hint": "TX",
+      "source_path": "docs/expert_notes/飆客/charts/index_levels_20260902.png",
+      "pot_his": "他圖",
+      "symbol_used": "TX",
+      "window_dates": [
+        "20260821",
+        "20260824",
+        "20260825",
+        "20260826",
+        "20260827",
+        "20260828",
+        "20260831",
+        "20260901",
+        "20260902",
+        "20260903",
+        "20260904",
+        "20260907",
+        "20260908",
+        "20260909",
+        "20260910",
+        "20260911",
+        "20260914"
+      ],
+      "hit_bars": [
+        {
+          "date": "20260901",
+          "open": 46000.0,
+          "high": 47220.0,
+          "low": 45987.0,
+          "close": 47209.0,
+          "volume": 57627.0
+        },
+        {
+          "date": "20260902",
+          "open": 46701.0,
+          "high": 46746.0,
+          "low": 46131.0,
+          "close": 46189.0,
+          "volume": 46145.0
+        },
+        {
+          "date": "20260904",
+          "open": 46406.0,
+          "high": 46756.0,
+          "low": 46057.0,
+          "close": 46704.0,
+          "volume": 50177.0
+        },
+        {
+          "date": "20260910",
+          "open": 46940.0,
+          "high": 46950.0,
+          "low": 46506.0,
+          "close": 46870.0,
+          "volume": 48692.0
+        }
+      ],
+      "nearest": {
+        "date": "20260901",
+        "open": 46000.0,
+        "high": 47220.0,
+        "low": 45987.0,
+        "close": 47209.0,
+        "volume": 57627.0,
+        "dist": 0.0,
+        "pct_of_level": 0.0
+      },
+      "verdict": "對",
+      "pot_official": "官方",
+      "note": "近窗命中 4 根完整柱"
+    },
+    {
+      "chart_id": "index_levels_20260902",
+      "as_of": "20260902",
+      "theme": "micro_wave_band",
+      "mark_kind": "channel_band",
+      "value": 46250.0,
+      "label": "46250～46300 夜盤突破帶",
+      "instrument_hint": "TX",
+      "source_path": "docs/expert_notes/飆客/charts/index_levels_20260902.png",
+      "pot_his": "他圖",
+      "symbol_used": "TX",
+      "window_dates": [
+        "20260821",
+        "20260824",
+        "20260825",
+        "20260826",
+        "20260827",
+        "20260828",
+        "20260831",
+        "20260901",
+        "20260902",
+        "20260903",
+        "20260904",
+        "20260907",
+        "20260908",
+        "20260909",
+        "20260910",
+        "20260911",
+        "20260914"
+      ],
+      "hit_bars": [
+        {
+          "date": "20260827",
+          "open": 46175.0,
+          "high": 46517.0,
+          "low": 46006.0,
+          "close": 46078.0,
+          "volume": 50701.0
+        },
+        {
+          "date": "20260828",
+          "open": 46366.0,
+          "high": 46580.0,
+          "low": 46215.0,
+          "close": 46357.0,
+          "volume": 41611.0
+        },
+        {
+          "date": "20260901",
+          "open": 46000.0,
+          "high": 47220.0,
+          "low": 45987.0,
+          "close": 47209.0,
+          "volume": 57627.0
+        },
+        {
+          "date": "20260902",
+          "open": 46701.0,
+          "high": 46746.0,
+          "low": 46131.0,
+          "close": 46189.0,
+          "volume": 46145.0
+        },
+        {
+          "date": "20260903",
+          "open": 46169.0,
+          "high": 46472.0,
+          "low": 45714.0,
+          "close": 45837.0,
+          "volume": 53082.0
+        },
+        {
+          "date": "20260904",
+          "open": 46406.0,
+          "high": 46756.0,
+          "low": 46057.0,
+          "close": 46704.0,
+          "volume": 50177.0
+        },
+        {
+          "date": "20260911",
+          "open": 45820.0,
+          "high": 46340.0,
+          "low": 45780.0,
+          "close": 46218.0,
+          "volume": 58137.0
+        }
+      ],
+      "nearest": {
+        "date": "20260827",
+        "open": 46175.0,
+        "high": 46517.0,
+        "low": 46006.0,
+        "close": 46078.0,
+        "volume": 50701.0,
+        "dist": 0.0,
+        "pct_of_level": 0.0
+      },
+      "verdict": "對",
+      "pot_official": "官方",
+      "note": "近窗命中 7 根完整柱"
+    },
+    {
+      "chart_id": "index_levels_20260902",
+      "as_of": "20260902",
+      "theme": "micro_wave_band",
+      "mark_kind": "price_label",
+      "value": 45415.0,
+      "label": "45415 前波低／修正目標",
+      "instrument_hint": "TX",
+      "source_path": "docs/expert_notes/飆客/charts/index_levels_20260902.png",
+      "pot_his": "他圖",
+      "symbol_used": "TX",
+      "window_dates": [
+        "20260821",
+        "20260824",
+        "20260825",
+        "20260826",
+        "20260827",
+        "20260828",
+        "20260831",
+        "20260901",
+        "20260902",
+        "20260903",
+        "20260904",
+        "20260907",
+        "20260908",
+        "20260909",
+        "20260910",
+        "20260911",
+        "20260914"
+      ],
+      "hit_bars": [
+        {
+          "date": "20260826",
+          "open": 45285.0,
+          "high": 46027.0,
+          "low": 44865.0,
+          "close": 46011.0,
+          "volume": 57745.0
+        },
+        {
+          "date": "20260831",
+          "open": 45800.0,
+          "high": 46060.0,
+          "low": 45415.0,
+          "close": 45983.0,
+          "volume": 53336.0
+        },
+        {
+          "date": "20260914",
+          "open": 45589.0,
+          "high": 46018.0,
+          "low": 45302.0,
+          "close": 45780.0,
+          "volume": 94885.0
+        }
+      ],
+      "nearest": {
+        "date": "20260826",
+        "open": 45285.0,
+        "high": 46027.0,
+        "low": 44865.0,
+        "close": 46011.0,
+        "volume": 57745.0,
+        "dist": 0.0,
+        "pct_of_level": 0.0
+      },
+      "verdict": "對",
+      "pot_official": "官方",
+      "note": "近窗命中 3 根完整柱"
+    },
+    {
+      "chart_id": "index_levels_20260902",
+      "as_of": "20260902",
+      "theme": "micro_wave_band",
+      "mark_kind": "price_label",
+      "value": 44210.0,
+      "label": "44210 更深前低（9 段走完才清楚）",
+      "instrument_hint": "TWII",
+      "source_path": "docs/expert_notes/飆客/charts/index_levels_20260902.png",
+      "pot_his": "他圖",
+      "symbol_used": "TWII",
+      "window_dates": [
+        "20260821",
+        "20260824",
+        "20260825",
+        "20260826",
+        "20260827",
+        "20260828",
+        "20260831",
+        "20260901",
+        "20260902",
+        "20260903",
+        "20260904",
+        "20260907",
+        "20260908",
+        "20260909",
+        "20260910",
+        "20260911",
+        "20260914"
+      ],
+      "hit_bars": [
+        {
+          "date": "20260825",
+          "open": 44728.359375,
+          "high": 45169.4609375,
+          "low": 44210.30859375,
+          "close": 45169.4609375,
+          "volume": 3925500.0
+        }
+      ],
+      "nearest": {
+        "date": "20260825",
+        "open": 44728.359375,
+        "high": 45169.4609375,
+        "low": 44210.30859375,
+        "close": 45169.4609375,
+        "volume": 3925500.0,
+        "dist": 0.3086,
+        "pct_of_level": 0.0007
+      },
+      "verdict": "對",
+      "pot_official": "官方",
+      "note": "近窗命中 1 根完整柱"
+    },
+    {
+      "chart_id": "index_levels_20260909",
+      "as_of": "20260909",
+      "theme": "micro_wave_band",
+      "mark_kind": "price_label",
+      "value": 46746.0,
+      "label": "46746（同主題延續）",
+      "instrument_hint": "TX",
+      "source_path": "docs/expert_notes/飆客/charts/index_levels_20260909.png",
+      "pot_his": "他圖",
+      "symbol_used": "TX",
+      "window_dates": [
+        "20260828",
+        "20260831",
+        "20260901",
+        "20260902",
+        "20260903",
+        "20260904",
+        "20260907",
+        "20260908",
+        "20260909",
+        "20260910",
+        "20260911",
+        "20260914",
+        "20260915",
+        "20260916",
+        "20260917",
+        "20260918",
+        "20260921"
+      ],
+      "hit_bars": [
+        {
+          "date": "20260901",
+          "open": 46000.0,
+          "high": 47220.0,
+          "low": 45987.0,
+          "close": 47209.0,
+          "volume": 57627.0
+        },
+        {
+          "date": "20260902",
+          "open": 46701.0,
+          "high": 46746.0,
+          "low": 46131.0,
+          "close": 46189.0,
+          "volume": 46145.0
+        },
+        {
+          "date": "20260904",
+          "open": 46406.0,
+          "high": 46756.0,
+          "low": 46057.0,
+          "close": 46704.0,
+          "volume": 50177.0
+        },
+        {
+          "date": "20260910",
+          "open": 46940.0,
+          "high": 46950.0,
+          "low": 46506.0,
+          "close": 46870.0,
+          "volume": 48692.0
+        },
+        {
+          "date": "20260917",
+          "open": 46495.0,
+          "high": 47037.0,
+          "low": 46376.0,
+          "close": 46445.0,
+          "volume": 50102.0
+        }
+      ],
+      "nearest": {
+        "date": "20260901",
+        "open": 46000.0,
+        "high": 47220.0,
+        "low": 45987.0,
+        "close": 47209.0,
+        "volume": 57627.0,
+        "dist": 0.0,
+        "pct_of_level": 0.0
+      },
+      "verdict": "對",
+      "pot_official": "官方",
+      "note": "近窗命中 5 根完整柱"
+    },
+    {
+      "chart_id": "index_levels_20260909",
+      "as_of": "20260909",
+      "theme": "micro_wave_band",
+      "mark_kind": "channel_band",
+      "value": 46300.0,
+      "label": "46300 帶上緣（同主題延續）",
+      "instrument_hint": "TX",
+      "source_path": "docs/expert_notes/飆客/charts/index_levels_20260909.png",
+      "pot_his": "他圖",
+      "symbol_used": "TX",
+      "window_dates": [
+        "20260828",
+        "20260831",
+        "20260901",
+        "20260902",
+        "20260903",
+        "20260904",
+        "20260907",
+        "20260908",
+        "20260909",
+        "20260910",
+        "20260911",
+        "20260914",
+        "20260915",
+        "20260916",
+        "20260917",
+        "20260918",
+        "20260921"
+      ],
+      "hit_bars": [
+        {
+          "date": "20260828",
+          "open": 46366.0,
+          "high": 46580.0,
+          "low": 46215.0,
+          "close": 46357.0,
+          "volume": 41611.0
+        },
+        {
+          "date": "20260901",
+          "open": 46000.0,
+          "high": 47220.0,
+          "low": 45987.0,
+          "close": 47209.0,
+          "volume": 57627.0
+        },
+        {
+          "date": "20260902",
+          "open": 46701.0,
+          "high": 46746.0,
+          "low": 46131.0,
+          "close": 46189.0,
+          "volume": 46145.0
+        },
+        {
+          "date": "20260903",
+          "open": 46169.0,
+          "high": 46472.0,
+          "low": 45714.0,
+          "close": 45837.0,
+          "volume": 53082.0
+        },
+        {
+          "date": "20260904",
+          "open": 46406.0,
+          "high": 46756.0,
+          "low": 46057.0,
+          "close": 46704.0,
+          "volume": 50177.0
+        },
+        {
+          "date": "20260911",
+          "open": 45820.0,
+          "high": 46340.0,
+          "low": 45780.0,
+          "close": 46218.0,
+          "volume": 58137.0
+        },
+        {
+          "date": "20260916",
+          "open": 45687.0,
+          "high": 46242.0,
+          "low": 45678.0,
+          "close": 46078.0,
+          "volume": 36544.0
+        }
+      ],
+      "nearest": {
+        "date": "20260828",
+        "open": 46366.0,
+        "high": 46580.0,
+        "low": 46215.0,
+        "close": 46357.0,
+        "volume": 41611.0,
+        "dist": 0.0,
+        "pct_of_level": 0.0
+      },
+      "verdict": "對",
+      "pot_official": "官方",
+      "note": "近窗命中 7 根完整柱"
+    },
+    {
+      "chart_id": "index_levels_20260909",
+      "as_of": "20260909",
+      "theme": "micro_wave_band",
+      "mark_kind": "price_label",
+      "value": 45415.0,
+      "label": "45415（同主題延續）",
+      "instrument_hint": "TX",
+      "source_path": "docs/expert_notes/飆客/charts/index_levels_20260909.png",
+      "pot_his": "他圖",
+      "symbol_used": "TX",
+      "window_dates": [
+        "20260828",
+        "20260831",
+        "20260901",
+        "20260902",
+        "20260903",
+        "20260904",
+        "20260907",
+        "20260908",
+        "20260909",
+        "20260910",
+        "20260911",
+        "20260914",
+        "20260915",
+        "20260916",
+        "20260917",
+        "20260918",
+        "20260921"
+      ],
+      "hit_bars": [
+        {
+          "date": "20260831",
+          "open": 45800.0,
+          "high": 46060.0,
+          "low": 45415.0,
+          "close": 45983.0,
+          "volume": 53336.0
+        },
+        {
+          "date": "20260914",
+          "open": 45589.0,
+          "high": 46018.0,
+          "low": 45302.0,
+          "close": 45780.0,
+          "volume": 94885.0
+        }
+      ],
+      "nearest": {
+        "date": "20260831",
+        "open": 45800.0,
+        "high": 46060.0,
+        "low": 45415.0,
+        "close": 45983.0,
+        "volume": 53336.0,
+        "dist": 0.0,
+        "pct_of_level": 0.0
+      },
+      "verdict": "對",
+      "pot_official": "官方",
+      "note": "近窗命中 2 根完整柱"
+    },
+    {
+      "chart_id": "index_levels_20260909",
+      "as_of": "20260909",
+      "theme": "micro_wave_band",
+      "mark_kind": "price_label",
+      "value": 44210.0,
+      "label": "44210（同主題延續）",
+      "instrument_hint": "TWII",
+      "source_path": "docs/expert_notes/飆客/charts/index_levels_20260909.png",
+      "pot_his": "他圖",
+      "symbol_used": "TWII",
+      "window_dates": [
+        "20260828",
+        "20260831",
+        "20260901",
+        "20260902",
+        "20260903",
+        "20260904",
+        "20260907",
+        "20260908",
+        "20260909",
+        "20260910",
+        "20260911",
+        "20260914",
+        "20260915",
+        "20260916",
+        "20260917",
+        "20260918",
+        "20260921"
+      ],
+      "hit_bars": [],
+      "nearest": {
+        "date": "20260914",
+        "open": 46010.73828125,
+        "high": 46050.23828125,
+        "low": 45398.4296875,
+        "close": 45862.51953125,
+        "volume": 3400000.0,
+        "dist": 1188.4297,
+        "pct_of_level": 2.6881
+      },
+      "verdict": "還沒走完",
+      "pot_official": "官方",
+      "note": "近窗未觸；最近距 1188.4297（事後窗另比）"
+    }
+  ],
+  "structure_only": [
+    {
+      "chart_id": "src_20260723_60m",
+      "mark_kind": "trend_line",
+      "label": "下降壓力線（連 6 月末高→7 月一串更低高）",
+      "reason": "非標價／帶：只歸檔圖結構，不做價碰柱",
+      "pot": "他圖"
+    },
+    {
+      "chart_id": "src_20260723_60m",
+      "mark_kind": "wave_label",
+      "label": "文配圖：B-a-2 或 B-a-4（當時分不清）",
+      "reason": "非標價／帶：只歸檔圖結構，不做價碰柱",
+      "pot": "他圖"
+    },
+    {
+      "chart_id": "cmoney_20260729_tx15m",
+      "mark_kind": "trend_line",
+      "label": "多條加速下降壓力線（主／次／末殺扇形）",
+      "reason": "非標價／帶：只歸檔圖結構，不做價碰柱",
+      "pot": "他圖"
+    },
+    {
+      "chart_id": "index_levels_20260902",
+      "mark_kind": "wave_label",
+      "label": "細微波已跌 7 段；穿刺 46746 才不走 9 段",
+      "reason": "非標價／帶：只歸檔圖結構，不做價碰柱",
+      "pot": "他圖"
+    }
+  ],
+  "cross_theme": [
+    {
+      "theme": "descent_pressure_Bwave",
+      "as_of_list": [
+        "20260723"
+      ],
+      "levels": [
+        41967.75,
+        48218.87
+      ],
+      "reused_across_periods": false,
+      "verdicts": [
+        "偏",
+        "對"
+      ],
+      "pot": "試標推論",
+      "note": "單期圖；跨期互比材料不足"
+    },
+    {
+      "theme": "july_crash_A_low",
+      "as_of_list": [
+        "20260729",
+        "20260731"
+      ],
+      "levels": [
+        39385.0,
+        39442.0,
+        40807.4,
+        40816.0,
+        41967.0,
+        45364.0
+      ],
+      "reused_across_periods": true,
+      "verdicts": [
+        "對"
+      ],
+      "pot": "試標推論",
+      "note": "同主題多日圖重複標同一帶＝他當框架沿用"
+    },
+    {
+      "theme": "micro_wave_band",
+      "as_of_list": [
+        "20260902",
+        "20260909"
+      ],
+      "levels": [
+        44210.0,
+        45415.0,
+        46250.0,
+        46300.0,
+        46746.0
+      ],
+      "reused_across_periods": true,
+      "verdicts": [
+        "對",
+        "還沒走完"
+      ],
+      "pot": "試標推論",
+      "note": "同主題多日圖重複標同一帶＝他當框架沿用"
+    }
+  ],
+  "operable_rules": [
+    {
+      "id": "R1_multi_tf_descent_line",
+      "pot": "試標推論",
+      "rule": "大盤用 60 分畫下降壓力線判斷「是否仍在 B 波修正內」；日線官方柱驗證高低與收盤趨勢，不以 60m 極值硬套日線收盤。",
+      "evidence_charts": [
+        "src_20260723_60m",
+        "index_levels_20260723"
+      ],
+      "not_his_literal": true
+    },
+    {
+      "id": "R2_dual_wave_label_until_depth",
+      "pot": "試標推論",
+      "rule": "結構分不清時圖上可並標兩種浪標（如 B-a-2／B-a-4）；事後用「修正深度」歸類，不准假裝當時已確定。",
+      "evidence_charts": [
+        "src_20260723_60m"
+      ],
+      "not_his_literal": true
+    },
+    {
+      "id": "R3_level_photo_near_window",
+      "pot": "試標推論",
+      "rule": "圖標價對質必須用近窗官方開高低收＋量（照片），不是只盯最後一根；盤中未收不當收。",
+      "evidence_charts": [
+        "index_levels_20260902",
+        "index_levels_20260909"
+      ],
+      "not_his_literal": true
+    },
+    {
+      "id": "R4_tx_spot_basis_band",
+      "pot": "試標推論",
+      "rule": "夜盤突破帶（46250～46300）用 TX；現貨對照約低 50～150（如 45415 期 ↔ 45450 現）。跨口徑比對時先標儀器再判。",
+      "evidence_charts": [
+        "index_levels_20260902"
+      ],
+      "not_his_literal": true
+    },
+    {
+      "id": "R5_same_band_reuse",
+      "pot": "試標推論",
+      "rule": "同支撐／壓力帶他會跨日重複標（45415／44210／46746）；觀盤時把「重複出現的帶」當框架，單日新價若無圖無文則不准發明。",
+      "evidence_charts": [
+        "index_levels_20260902",
+        "index_levels_20260909"
+      ],
+      "not_his_literal": true
+    },
+    {
+      "id": "R6_segment_count_vs_pierce",
+      "pot": "試標推論",
+      "rule": "細微波段數（7→9）與「穿刺某價才不走滿」綁在一起：未穿刺＝更深修正路徑仍開著（還沒走完），不是當日收盤猜頂。",
+      "evidence_charts": [
+        "index_levels_20260902"
+      ],
+      "not_his_literal": true
+    },
+    {
+      "id": "R7_intraday_fan_then_daily_seal",
+      "pot": "試標推論",
+      "rule": "急殺日 15 分圖可畫加速下降扇＋水平翻關（如 39442 低、40807 水平）；日線完整柱走完才封「A 波低」口徑，未收盤不封。",
+      "evidence_charts": [
+        "cmoney_20260729_tx15m",
+        "index_levels_20260731"
+      ],
+      "not_his_literal": true
+    }
+  ],
+  "gaps": [
+    {
+      "item": "Drive 飆大資料夾",
+      "status": "只有 1709／社團 20／72 語料 md，無獨立圖包可下"
+    },
+    {
+      "item": "chart_index.json.gz 圖檔本體",
+      "status": "索引 341 則 URL 可連；git 不存圖檔本體（README／index note）。本軌已下市場相關 76 張暫存對讀，不強制入庫。"
+    },
+    {
+      "item": "本機 biaoke_posts",
+      "status": "空表；無 overlay 新附圖可抽。缺 Render 碟／正式庫圖欄。"
+    },
+    {
+      "item": "假圖",
+      "status": "不准補；缺就寫在 gaps。"
+    }
+  ],
+  "chart_read_inventory": {
+    "local_reconstructed_png": 4,
+    "local_source_jpg": 13,
+    "chart_index_total_urls": 341,
+    "downloaded_for_this_track": 76,
+    "visually_parsed_deep": [
+      "docs/expert_notes/飆客/sources/20260723_60m_chart.jpg",
+      "docs/expert_notes/飆客/charts/index_levels_20260723.png",
+      "docs/expert_notes/飆客/charts/index_levels_20260731.png",
+      "docs/expert_notes/飆客/charts/index_levels_20260902.png",
+      "docs/expert_notes/飆客/charts/index_levels_20260909.png",
+      "docs/expert_notes/飆客/sources/01a062da-b9d4-74a4-8ab8-677e20a1fa21.jpg",
+      "chart_index aid=181132138 TX 15m 20260729"
+    ],
+    "visually_parsed_deep_n": 7
+  }
+}
