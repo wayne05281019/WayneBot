@@ -4519,6 +4519,7 @@ def _structure_render_memo_key(
     quote: Optional[Dict[str, Any]] = None,
     figsize: Optional[Tuple[float, float]] = None,
     dpi: Optional[int] = None,
+    card: Optional[Dict[str, Any]] = None,
 ) -> Tuple[Any, ...]:
     """結構圖 memo 鍵（paint 內外共用）。現價／量／時段進鍵，變了必 miss。"""
     n = len(work)
@@ -4542,6 +4543,12 @@ def _structure_render_memo_key(
         _q_prev = float(_q0.get("prev") or _q0.get("prev_close") or 0)
     except (TypeError, ValueError):
         _q_prev = 0.0
+    try:
+        from sync_struct_vol_notes import notes_fingerprint as _sv_notes_fp
+
+        _sv_fp = _sv_notes_fp(card if isinstance(card, dict) else None)
+    except Exception:
+        _sv_fp = ("sync-struct-vol-v1", 0, ())
     return (
         "biaoke_struct",
         str(sid or ""),
@@ -4588,6 +4595,8 @@ def _structure_render_memo_key(
             ),
             2,
         ),
+        # SYNC-STRUCT-VOL 圖註開關／他位進鍵，不准互蓋
+        _sv_fp,
     )
 
 
@@ -4640,6 +4649,7 @@ def try_biaoke_structure_memo(
         quote=quote,
         figsize=figsize,
         dpi=dpi,
+        card=card if isinstance(card, dict) else None,
     )
     from wayne_navigator import _lookup_render_memo_get
 
@@ -4700,6 +4710,7 @@ def render_biaoke_structure_png(
         quote=quote,
         figsize=figsize,
         dpi=dpi,
+        card=card if isinstance(card, dict) else None,
     )
     from wayne_navigator import _lookup_render_memo_get, _lookup_render_memo_put
 
@@ -6075,6 +6086,21 @@ def render_biaoke_structure_png(
         )
     except Exception:
         pass
+    # SYNC-STRUCT-VOL：有效穿刺／假跌破／壓轉撐／量價句（可開關；有他點名位才疊他位）
+    try:
+        from sync_struct_vol_notes import maybe_paint_struct_vol_notes
+
+        maybe_paint_struct_vol_notes(
+            ax1,
+            work,
+            xs,
+            press=float(spike_hi or 0),
+            hold=float(spike_lo or 0),
+            card=card if isinstance(card, dict) else None,
+            chart_kind="struct",
+        )
+    except Exception:
+        logger.debug("結構圖 SYNC 圖註略過", exc_info=True)
     from wayne_navigator import _savefig_lookup_png
 
     # 查股順序三／飆大結構：墨線定稿套皮；失敗略過不准炸出圖
