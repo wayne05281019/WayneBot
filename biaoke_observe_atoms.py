@@ -84,11 +84,6 @@ _LEVEL_CTX = re.compile(
     r"低點|高點|軌道|下降壓|上升軌|回測|有效)"
 )
 _INDEX_BATTLE = re.compile(r"(大盤|加權|台指|台指期|夜盤|細微波|TWII)")
-# 個股戰場（SYNC-DEBATE：不准把台積電價／股票代號寫成大盤夜盤位）
-_STOCK_BATTLE = re.compile(r"(台積電|2330|聯發科|2454|鴻海|2317|股票|個股)")
-# 「修正6000點／下影2000點」＝振幅，不是觀測位
-_AMPLITUDE_BEFORE = re.compile(r"(修正|大漲|大跌|下影|爆量?|拉回|反彈|區間).{0,8}$")
-_AMPLITUDE_AFTER = re.compile(r"^\s*點")
 
 _RETRACT = re.compile(
     r"("
@@ -214,15 +209,6 @@ def _best_sentence(text: str, needle: re.Pattern[str]) -> str:
     return _clip(blob[i : m.end() + 48], 96)
 
 
-def _is_tw_index_level(raw: str) -> bool:
-    """加權／台指觀測位（現代語料 ≥10000）。股價／代號／振幅點數一律 False。"""
-    try:
-        v = float(raw)
-    except ValueError:
-        return False
-    return 10000.0 <= v <= 100000.0
-
-
 def _levels_in(text: str) -> List[str]:
     blob = _norm(text)
     out: List[str] = []
@@ -230,9 +216,6 @@ def _levels_in(text: str) -> List[str]:
         raw = m.group(1)
         before = blob[max(0, m.start() - 14) : m.start()]
         after = blob[m.end() : m.end() + 10]
-        # 振幅「…6000點」不准當觀測位
-        if _AMPLITUDE_AFTER.search(after) and _AMPLITUDE_BEFORE.search(before):
-            continue
         if not _LEVEL_CTX.search(before + after) and not _INDEX_BATTLE.search(
             before + blob[m.start() : m.end() + 20]
         ):
@@ -299,17 +282,50 @@ def load_db_posts(db_path: str) -> List[Dict[str, Any]]:
     return out
 
 
+def load_overlay_delta_posts() -> List[Dict[str, Any]]:
+    """git 凍的 overlay 增量（無碟／CI 也能合併至今日）。"""
+    try:
+        from biaoke_overlay_sync import load_overlay_delta
+
+        blob = load_overlay_delta() or {}
+    except Exception:
+        return []
+    out: List[Dict[str, Any]] = []
+    for row in blob.get("posts") or []:
+        if not isinstance(row, dict):
+            continue
+        out.append(
+            {
+                "id": row.get("id"),
+                "date": row.get("date") or "",
+                "time": row.get("time") or "",
+                "parent": row.get("parent") or "",
+                "layer": int(row.get("layer") or 0),
+                "kind": row.get("kind") or "post",
+                "text": row.get("text") or "",
+                "source": "overlay_delta",
+                "club": False,
+            }
+        )
+    return out
+
+
 def load_corpus_rows(
     *,
     db_path: str = "",
     include_club: bool = True,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
-    """合併 1709＋DB overlay＋社團（後台）。同 id 以較長正文／較新為準。"""
+    """合併 1709＋catchup＋overlay_delta＋DB overlay＋社團（後台）。
+
+    同 id 以較長正文／較新為準。社團只後台。
+    """
     from biaoke_archive import load_bundled_archive, load_bundled_club
 
     meta: Dict[str, Any] = {
         "archive_n": 0,
         "archive_replies": 0,
+        "catchup_n": 0,
+        "delta_n": 0,
         "db_n": 0,
         "club_n": 0,
         "club_replies": 0,
@@ -347,9 +363,29 @@ def load_corpus_rows(
     meta["archive_n"] = int(pub.get("n") or 0)
     meta["archive_replies"] = int(pub.get("replies") or 0)
 
-    for row in load_db_posts(db_path):
+    try:
+        from biaoke_desk import catchup_seed_rows
+
+        catchup_rows = catchup_seed_rows() or []
+    except Exception:
+        catchup_rows = []
+    for row in catchup_rows:
+        _put(row, club=False, source="catchup")
+    meta["catchup_n"] = len(
+        [1 for r in by_id.values() if r.get("source") == "catchup"]
+    )
+
+    for row in load_overlay_delta_posts():
+        _put(row, club=False, source="overlay_delta")
+    meta["delta_n"] = len(
+        [1 for r in by_id.values() if r.get("source") == "overlay_delta"]
+    )
+
+    db_rows = load_db_posts(db_path)
+    for row in db_rows:
         _put(row, club=False, source="db_overlay")
-    meta["db_n"] = len([1 for r in by_id.values() if r.get("source") == "db_overlay"])
+    # 以實際庫列數為準（同文被 delta 先佔 source 時仍算有 overlay）
+    meta["db_n"] = len(db_rows)
 
     if include_club:
         club = load_bundled_club() or {}
@@ -365,18 +401,6 @@ def load_corpus_rows(
     meta["from"] = min(dates) if dates else ""
     meta["to"] = max(dates) if dates else ""
     return rows, meta
-
-
-def _levels_for_theme(theme: str, rule: str, text: str) -> List[str]:
-    """依主題濾位：三層／大盤只留指數級；個股鍋留非指數。"""
-    raw = _levels_in(text)
-    if theme == "three_layer" or (
-        theme == "level" and rule.startswith("大盤")
-    ):
-        return [x for x in raw if _is_tw_index_level(x)]
-    if theme == "level" and rule.startswith("個股"):
-        return [x for x in raw if not _is_tw_index_level(x)]
-    return raw
 
 
 def _ensure_bucket(
@@ -395,10 +419,6 @@ def _ensure_bucket(
     core_flag = bool(core) and not leave and not club
     # 社團只後台內化：可進原子但 core=False、source=club_backend
     source = "club_backend" if club else "self"
-    seed_text = excerpt or str(row.get("text") or "")
-    levels0 = _levels_for_theme(theme, rule, seed_text) or _levels_for_theme(
-        theme, rule, str(row.get("text") or "")
-    )
     if key not in buckets:
         # atom_id 帶 rule 指紋，避免同 slug 不同規則撞名
         buckets[key] = {
@@ -408,7 +428,7 @@ def _ensure_bucket(
             "rule": rule,
             "core": core_flag,
             "source": source,
-            "levels": levels0,
+            "levels": _levels_in(excerpt) or _levels_in(str(row.get("text") or "")),
             "provenance": [_prov(row, excerpt, club=club)],
             "hit_n": 1,
             "leave_noise": bool(leave),
@@ -426,9 +446,9 @@ def _ensure_bucket(
     if pid and all(str(p.get("post_id")) != pid for p in prov):
         if len(prov) < 5:
             prov.append(_prov(row, excerpt, club=club))
-    # 補位階數字（主題過濾）
+    # 補位階數字
     lv = atom.setdefault("levels", [])
-    for x in _levels_for_theme(theme, rule, excerpt):
+    for x in _levels_in(excerpt):
         if x not in lv and len(lv) < 8:
             lv.append(x)
 
@@ -465,20 +485,12 @@ def extract_atoms(rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 row=row,
                 excerpt=excerpt,
             )
-            # 具體夜盤條件句另成原子（只認加權／台指指數級 ≥10000；不准股價／代號）
+            # 具體夜盤條件句另成原子（指數級 4+ 位數字才 core）
             if _NIGHT.search(text) and _LEVEL_NUM.search(text) and _LEVEL_CTX.search(text):
                 ex2 = _best_sentence(text, _NIGHT)
                 raw_lv = _levels_in(ex2) or _levels_in(text)
-                idx_lv = [x for x in raw_lv if _is_tw_index_level(x)]
-                # 句主是個股價（台積電破1935）→ 不進夜盤指數位
-                if (
-                    idx_lv
-                    and _INDEX_BATTLE.search(text)
-                    and not (
-                        _STOCK_BATTLE.search(ex2)
-                        and not any(_is_tw_index_level(x) for x in _levels_in(ex2))
-                    )
-                ):
+                idx_lv = [x for x in raw_lv if len(x.split(".")[0]) >= 4]
+                if idx_lv and _INDEX_BATTLE.search(text):
                     lv = "／".join(idx_lv[:3])
                     _ensure_bucket(
                         buckets,
@@ -541,14 +553,12 @@ def extract_atoms(rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 excerpt=excerpt,
             )
 
-        # --- 他點過的位（深度優先：大盤／夜盤戰場；個股短價不堆進大盤鍋）---
+        # --- 他點過的位（深度優先：大盤／夜盤戰場；個股短價不堆）---
         if _LEVEL_CTX.search(text) and _LEVEL_NUM.search(text):
             indexish = bool(_INDEX_BATTLE.search(text))
-            stockish = bool(_STOCK_BATTLE.search(text))
             levels = _levels_in(text)
-            # SYNC-DEBATE：大盤／期點只留指數級 ≥10000
-            idx_levels = [x for x in levels if _is_tw_index_level(x)]
-            stock_levels = [x for x in levels if not _is_tw_index_level(x)]
+            # 指數位通常 ≥4 位數；過濾明顯個股短價堆疊
+            idx_levels = [x for x in levels if len(x.split(".")[0]) >= 4]
             if indexish and idx_levels:
                 excerpt = _best_sentence(text, _LEVEL_CTX)
                 lv = "／".join(idx_levels[:4])
@@ -559,19 +569,6 @@ def extract_atoms(rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
                     slug=f"lv_{'_'.join(idx_levels[:3]).replace('.', '')[:28]}",
                     rule=rule,
                     core=True,
-                    row=row,
-                    excerpt=excerpt,
-                )
-            if stockish and stock_levels:
-                # 個股價另鍋／附檔，不准標成大盤觀測位
-                excerpt = _best_sentence(text, _LEVEL_CTX)
-                lv = "／".join(stock_levels[:3])
-                _ensure_bucket(
-                    buckets,
-                    theme="level",
-                    slug=f"lv_stock_{'_'.join(stock_levels[:2]).replace('.', '')[:24]}",
-                    rule=f"個股觀測位（非大盤）：{lv}",
-                    core=False,
                     row=row,
                     excerpt=excerpt,
                 )
@@ -752,8 +749,22 @@ def coverage_report(atoms: Sequence[Dict[str, Any]], meta: Dict[str, Any]) -> Di
     gaps: List[str] = []
     if by_theme.get("sox", 0) < 3:
         gaps.append("SOX／費半連動原文偏少，需 BK-CHART／後續 overlay 補圖註")
-    if meta.get("db_n", 0) == 0:
-        gaps.append("本機 biaoke_posts overlay 為空；盤中自回至今日需 Render 碟或 ingest 後再併")
+    if int(meta.get("db_n") or 0) <= 0 and int(meta.get("delta_n") or 0) <= 0:
+        gaps.append(
+            "DB overlay 與 overlay_delta 皆空；需跑 scripts/biaoke_sync_overlay_heal.py "
+            "（Render 碟或本機）補至今日"
+        )
+    to_s = str(meta.get("to") or "")
+    today = datetime.now(TAIPEI).strftime("%Y-%m-%d")
+    # 深夜／他尚未發當日文：差 1 曆日不算缺；≥2 天才標落後
+    if to_s and to_s < today:
+        try:
+            d0 = datetime.strptime(to_s, "%Y-%m-%d").date()
+            d1 = datetime.strptime(today, "%Y-%m-%d").date()
+            if (d1 - d0).days >= 2:
+                gaps.append(f"語料末日 {to_s} 早於今日 {today}；overlay 仍落後")
+        except ValueError:
+            gaps.append(f"語料末日 {to_s} 早於今日 {today}；overlay 仍落後")
     if by_theme.get("three_layer", 0) and not any(
         "e-mini" in str(a.get("rule") or "").lower() or "美期" in str(a.get("rule") or "")
         for a in atoms
@@ -815,6 +826,7 @@ def write_atoms_index_md(payload: Dict[str, Any], path: str = "") -> str:
         f"產生：`{payload.get('generated_at_taipei')}`（Asia/Taipei）",
         "",
         f"語料：公開主文 {meta.get('archive_n')}＋回文 {meta.get('archive_replies')}；"
+        f"catchup {meta.get('catchup_n')}；overlay_delta {meta.get('delta_n')}；"
         f"DB overlay {meta.get('db_n')}；社團後台主文 {meta.get('club_n')}＋回文 {meta.get('club_replies')}；"
         f"合併列 {meta.get('merged_n')}（{meta.get('from')}→{meta.get('to')}）。",
         "",
