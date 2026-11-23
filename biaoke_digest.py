@@ -736,9 +736,50 @@ def format_teach_brief(db_path: str = "", pack: Optional[Dict[str, Any]] = None)
         ladder = _wave_now_ladder(pack)
     except Exception:
         ladder = {}
-    lines: List[str] = ["<b>波浪位階・預估・非買訊</b>", ""]
     now = str(ladder.get("now") or "").strip()
     day_zh = str(ladder.get("day_zh") or "").strip()
+    _target_350 = (
+        "修正目標35000" in thesis
+        or "35000～35500" in thesis
+        or "35000~35500" in wait
+        or "修正目標35,000" in wait
+        or "修正目標35000" in wait
+        or "止跌還沒到" in wait
+    )
+    _pressure_break = (not _target_350) and (
+        "不再假跌破" in thesis
+        or "過C3下降壓" in thesis
+        or "已過C3下降壓" in now
+        or "回測下降壓力線" in wait
+        or "清洗籌碼" in wait
+    )
+    _stop_confirm = (not _target_350) and (not _pressure_break) and (
+        "確認上週五低" in thesis
+        or "1 4重疊" in thesis
+        or "止跌確認" in thesis
+        or "止跌確認" in now
+        or "再測週五" in now
+        or "台指壓41760" in wait
+        or "一定再測週五低" in wait
+    )
+    _bb_dual = (not _target_350) and (not _pressure_break) and (not _stop_confirm) and (
+        "B-b" in thesis
+        or "五波跌完" in thesis
+        or "備線九波" in thesis
+        or "假跌破37837" in wait
+        or "35579→31705" in wait
+    )
+    # 敘述框：標題＋固定警語＋三層鏈／SOX／期現／三鍋（缺 JSON 仍用 playbook／lock）
+    try:
+        from observe_manual import format_teach_brief_frame_lines
+
+        lines: List[str] = format_teach_brief_frame_lines(dual_wave=bool(_bb_dual))
+    except Exception:
+        lines = [
+            "<b>波浪位階・試標・非買訊</b>",
+            "試標・推論／非他原文・非買訊・對質未過閘",
+            "",
+        ]
     # 主述新鮮度：標他文日／加權已收；過舊警告。失敗略過，不准擋位階文。
     _fresh: Dict[str, Any] = {}
     _said_tag = "他最新"
@@ -777,37 +818,6 @@ def format_teach_brief(db_path: str = "", pack: Optional[Dict[str, Any]] = None)
         _fresh = {}
         _said_tag = "他最新"
     lines.append("<b>現在</b>")
-    _target_350 = (
-        "修正目標35000" in thesis
-        or "35000～35500" in thesis
-        or "35000~35500" in wait
-        or "修正目標35,000" in wait
-        or "修正目標35000" in wait
-        or "止跌還沒到" in wait
-    )
-    _pressure_break = (not _target_350) and (
-        "不再假跌破" in thesis
-        or "過C3下降壓" in thesis
-        or "已過C3下降壓" in now
-        or "回測下降壓力線" in wait
-        or "清洗籌碼" in wait
-    )
-    _stop_confirm = (not _target_350) and (not _pressure_break) and (
-        "確認上週五低" in thesis
-        or "1 4重疊" in thesis
-        or "止跌確認" in thesis
-        or "止跌確認" in now
-        or "再測週五" in now
-        or "台指壓41760" in wait
-        or "一定再測週五低" in wait
-    )
-    _bb_dual = (not _target_350) and (not _pressure_break) and (not _stop_confirm) and (
-        "B-b" in thesis
-        or "五波跌完" in thesis
-        or "備線九波" in thesis
-        or "假跌破37837" in wait
-        or "35579→31705" in wait
-    )
     _foot2_brief = (
         (not _target_350)
         and (not _pressure_break)
@@ -823,7 +833,9 @@ def format_teach_brief(db_path: str = "", pack: Optional[Dict[str, Any]] = None)
     # 一條路＋目前落在哪；不准再叠「大A→大B→…→落在」兩段重複
     if _target_350:
         lines.append(
-            html_escape("大盤：大A底（7/29）→ 大B反彈 → 大C進行中（修正目標帶・止跌未到）。")
+            html_escape(
+                "現・加權大盤：大A底（7/29）→ 大B反彈 → 大C進行中（修正目標帶・止跌未到）。"
+            )
         )
         lines.append(
             html_escape(
@@ -835,7 +847,9 @@ def format_teach_brief(db_path: str = "", pack: Optional[Dict[str, Any]] = None)
         )
     elif _pressure_break:
         lines.append(
-            html_escape("大盤：大A底（7/29）→ 大B反彈 → 大C進行中（他已講止跌・下降壓改口）。")
+            html_escape(
+                "現・加權大盤：大A底（7/29）→ 大B反彈 → 大C進行中（他已講止跌・下降壓改口）。"
+            )
         )
         _has_41500 = "41500" in wait or "至少回測" in wait
         if _has_41500:
@@ -843,7 +857,7 @@ def format_teach_brief(db_path: str = "", pack: Optional[Dict[str, Any]] = None)
                 html_escape(
                     f"{_said_tag}：拉回至少回測 41500；絕對不破上週五低 37837；"
                     "夜盤已過第二組 C3 下降壓（口述斜線・無報價）。"
-                    "水平台指壓 41760 另計（≠41500；非買訊）。"
+                    "期・水平台指壓 41760 另計（≠41500；試標・非買訊）。"
                 )
             )
         else:
@@ -851,26 +865,31 @@ def format_teach_brief(db_path: str = "", pack: Optional[Dict[str, Any]] = None)
                 html_escape(
                     f"{_said_tag}：夜盤過第二組 C3 下降壓（他口述的斜線；圖上沒單獨標 C3、也無報價），"
                     "上週五低不再假跌破；拉回再測那條下降壓／清洗籌碼。"
-                    "水平台指壓 41760 另計（≠那條口述下降壓；非買訊）。"
+                    "期・水平台指壓 41760 另計（≠那條口述下降壓；試標・非買訊）。"
                 )
             )
     elif _stop_confirm:
         lines.append(
-            html_escape("大盤：大A底（7/29）→ 大B反彈 → 大C進行中（他已講止跌確認）。")
+            html_escape(
+                "現・加權大盤：大A底（7/29）→ 大B反彈 → 大C進行中（他已講止跌確認）。"
+            )
         )
         lines.append(
             html_escape(
                 f"{_said_tag}：C3-5＋1 4重疊，確認上週五低＝最低；"
-                "一定再測週五低，破＝假跌破觀察（非買訊）。"
+                "一定再測週五低，破＝假跌破觀察（試標・非買訊）。"
             )
         )
     else:
-        lines.append(html_escape("大盤：大A底（7/29）→ 大B反彈 → 大C下跌中。"))
+        lines.append(
+            html_escape("現・加權大盤：大A底（7/29）→ 大B反彈 → 大C下跌中。")
+        )
     if _bb_dual:
         lines.append(
             html_escape(
                 "主線：五波跌完走 B-b（假跌破 37837 觀察）；"
-                "備線：若九波擴延 → 35579→31705。未定案前雙軌並陳（非買訊）。"
+                "備線：若九波擴延 → 35579→31705。"
+                "雙浪可並標・未定案前並陳（試標・非買訊・不准倒灌）。"
             )
         )
     elif _foot2_brief:
@@ -934,16 +953,16 @@ def format_teach_brief(db_path: str = "", pack: Optional[Dict[str, Any]] = None)
                 if re.search(r"41500|至少回測", wait):
                     one_w = "至少回測 41500；絕對不破週五低 37837"
                     if re.search(r"41760", wait):
-                        one_w = "水平台指壓 41760（≠41500）；" + one_w
+                        one_w = "期・水平台指壓 41760（≠41500）；" + one_w
                 else:
                     one_w = (
                         "拉回回測下降壓力線（口述斜線・圖上紫帶C3・粉虛下降壓示意／無報價）；"
                         "清洗籌碼；資金可 5~6 成"
                     )
                     if re.search(r"41760", wait):
-                        one_w = "水平台指壓 41760（≠那條口述下降壓）；" + one_w
+                        one_w = "期・水平台指壓 41760（≠那條口述下降壓）；" + one_w
             elif re.search(r"台指壓\s*41760|一定再測週五低", one_w):
-                one_w = "台指壓 41760；一定再測週五低；破＝假跌破觀察"
+                one_w = "期・台指壓 41760；一定再測週五低；破＝假跌破觀察"
             struct_bits.append(f"· 下一步：{one_w}")
     if struct_bits:
         lines.append("")
@@ -1069,7 +1088,9 @@ def format_wave_level_one_liner(db_path: str = "") -> str:
     if not now:
         return ""
     plain = _plain_wave_now_phrase(now) or now
-    return html_escape(f"大盤現在落在「{plain}」（細節按「波浪位階」・非買訊）")
+    return html_escape(
+        f"現・加權現在落在「{plain}」（細節按「波浪位階」・試標・非買訊）"
+    )
 
 
 def _when_short(date: str, time_s: str) -> str:

@@ -21,6 +21,29 @@ logger = logging.getLogger("wayne.observe_manual")
 
 # 話筒固定警語（MISSION_LOCK B1／B4／C11）
 OBSERVE_PHONE_DISCLAIMER = "試標・推論／非他原文・非買訊・對質未過閘"
+# 圖 caption 短式（字數緊；與長警語同口徑，不准改成「預估會改」舊句）
+OBSERVE_CAPTION_SHORT = "試標・非買訊・對質未過閘"
+# 波浪位階敘述標題（與大盤／三窗同口徑：試標，不准只寫預估）
+WAVE_BRIEF_TITLE = "波浪位階・試標・非買訊"
+# 三層鏈定式（chain_playbook.one_liner_zh；缺 JSON 仍用此 placeholder）
+CHAIN_ONE_LINER_ZH = (
+    "美股夜盤 e-mini 定大方向 → 台指早盤二次確認 → 加權現貨驗證；"
+    "全程與費半／那指連動，不准倒灌。"
+)
+# 費半連動一句（SYNC-NARRATIVE 硬鎖）
+SOX_LINK_ONE_ZH = (
+    "費半連動：弱而期強＝假強警示；費半穩而三盤弱＝偏內盤量價（試標・非買訊）。"
+)
+# 期現分標（不准混成同一句宣判）
+PERIOD_SPOT_SPLIT_ZH = (
+    "期＝台指／電子期（夜／日盤）；現＝加權現貨；兩口分標，不准混判。"
+)
+# 雙浪並標（主線／備線未定案可並陳；不准倒灌）
+DUAL_WAVE_NOTE_ZH = (
+    "雙浪可並標：主線／備線未定案前並陳；不准用較晚層倒改較早層假設。"
+)
+# 三鍋分標提醒（DC／我估／他）
+POT_SPLIT_NOTE_ZH = "標來源：他說／飆預測／我估／DC 分鍋，不准混成他原文。"
 
 _MANUAL_DIR = Path(__file__).resolve().parent / "docs" / "expert_notes" / "飆客" / "observe_manual"
 _ATOM_CANDIDATES = (
@@ -232,6 +255,101 @@ def _chain_lines(steps: List[Any], *, limit: int = 4) -> List[str]:
     return lines
 
 
+def chain_one_liner(*, root: Optional[Path] = None) -> str:
+    """三層鏈定式：優先 playbook JSON `one_liner_zh`；缺檔用 lock／硬鎖 placeholder。"""
+    base = Path(root) if root else _MANUAL_DIR
+    for name in _CHAIN_CANDIDATES:
+        hit = _read_json(base / name)
+        if not hit:
+            continue
+        one = str(hit.get("one_liner_zh") or hit.get("one_liner") or "").strip()
+        if one:
+            return one[:200]
+        warn = str(hit.get("warning_zh") or "").strip()
+        del warn
+    blurb = load_mission_lock_blurb(root=root)
+    if blurb and "夜盤" in blurb:
+        return blurb[:200]
+    return CHAIN_ONE_LINER_ZH
+
+
+def sox_link_one_liner(*, root: Optional[Path] = None) -> str:
+    """費半連動一句。只認連動層（LX_sox／連動・費半）；否則硬鎖句。
+
+    不准誤吃第一層標題「＋費半外圍」的 role。
+    """
+    base = Path(root) if root else _MANUAL_DIR
+    for name in _CHAIN_CANDIDATES:
+        hit = _read_json(base / name)
+        if not hit:
+            continue
+        layers = hit.get("layers") or []
+        if isinstance(layers, list):
+            for row in layers:
+                if not isinstance(row, dict):
+                    continue
+                lid = str(row.get("id") or "").lower()
+                title = str(row.get("title_zh") or row.get("title") or "")
+                if not (
+                    "sox_link" in lid
+                    or lid.startswith("lx_sox")
+                    or title.startswith("連動")
+                    or title.startswith("費半連動")
+                ):
+                    continue
+                role = str(row.get("role_zh") or row.get("role") or "").strip()
+                if role:
+                    return f"費半連動：{role}（試標・非買訊）。"[:160]
+        note = str(hit.get("sox_link_zh") or "").strip()
+        if note:
+            return note[:160]
+    return SOX_LINK_ONE_ZH
+
+
+def caption_disclaimer_bit() -> str:
+    """三窗／遠近超近 caption 共用短警語。"""
+    return OBSERVE_CAPTION_SHORT
+
+
+def format_market_observe_footer(*, root: Optional[Path] = None) -> str:
+    """台股大盤頁尾：與位階／三窗同口徑的觀盤鏈＋警語（HTML 片段）。"""
+    lines = [
+        "",
+        "<b>觀盤鏈（試標）</b>",
+        html_escape(f"· {chain_one_liner(root=root)}"),
+        html_escape(f"· {sox_link_one_liner(root=root)}"),
+        html_escape(f"· {PERIOD_SPOT_SPLIT_ZH}"),
+        html_escape(OBSERVE_PHONE_DISCLAIMER),
+        html_escape("細節／三窗請按「波浪位階」（先文後圖）。"),
+    ]
+    return "\n".join(lines)
+
+
+def format_teach_brief_frame_lines(
+    *,
+    dual_wave: bool = False,
+    root: Optional[Path] = None,
+) -> List[str]:
+    """波浪位階敘述開頭框：標題＋固定警語＋三層鏈＋SOX＋期現；雙浪可並標。
+
+    給 format_teach_brief 接；不准改黃金買點。
+    """
+    lines: List[str] = [
+        f"<b>{html_escape(WAVE_BRIEF_TITLE)}</b>",
+        html_escape(OBSERVE_PHONE_DISCLAIMER),
+        "",
+        "<b>觀盤鏈</b>",
+        html_escape(f"· {chain_one_liner(root=root)}"),
+        html_escape(f"· {sox_link_one_liner(root=root)}"),
+        html_escape(f"· {PERIOD_SPOT_SPLIT_ZH}"),
+    ]
+    if dual_wave:
+        lines.append(html_escape(f"· {DUAL_WAVE_NOTE_ZH}"))
+    lines.append(html_escape(f"· {POT_SPLIT_NOTE_ZH}"))
+    lines.append("")
+    return lines
+
+
 def format_wave_observe_slot(
     db_path: str = "",
     *,
@@ -240,7 +358,7 @@ def format_wave_observe_slot(
 ) -> str:
     """波浪位階回覆槽：觀測手冊摘要／今日觀測＋固定警語（HTML）。
 
-    pack／db 可選；目前不依賴盤中價。缺原子／鏈 → lock 說明 placeholder。
+    pack／db 可選；目前不依賴盤中價。缺原子／鏈 → playbook／lock placeholder。
     """
     del db_path, pack  # 介面預留；原子檔齊了再接當日勾選
     atoms = load_observe_atoms(root=root)
@@ -250,6 +368,12 @@ def format_wave_observe_slot(
         html_escape(OBSERVE_PHONE_DISCLAIMER),
         "",
     ]
+    # 定式一句永遠先出（有 JSON 或 placeholder）
+    lines.append("<b>觀盤鏈定式</b>")
+    lines.append(html_escape(f"· {chain_one_liner(root=root)}"))
+    lines.append(html_escape(f"· {sox_link_one_liner(root=root)}"))
+    lines.append(html_escape(f"· {PERIOD_SPOT_SPLIT_ZH}"))
+    lines.append("")
     if chain.get("ok"):
         lines.append("<b>三層鏈</b>")
         for ln in _chain_lines(list(chain.get("steps") or [])):
@@ -260,7 +384,7 @@ def format_wave_observe_slot(
         lines.append(html_escape(f"· {blurb}"))
         lines.append(
             html_escape(
-                "· 待 BK-CHAIN 落 chain_playbook.json 後改為當日勾選欄。"
+                "· 缺當日勾選欄時仍用 playbook／lock 定式；落 chain 勾選後改細欄。"
             )
         )
     lines.append("")

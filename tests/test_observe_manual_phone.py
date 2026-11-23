@@ -119,10 +119,12 @@ def test_slot_reads_corpus_chain_filenames(tmp_path: Path):
 
 
 def test_merge_includes_brief_and_slot():
-    html = merge_wave_phone_html("<b>波浪位階・預估・非買訊</b>\n目前落在：測試")
+    html = merge_wave_phone_html("<b>波浪位階・試標・非買訊</b>\n目前落在：測試")
     assert "波浪位階" in html
+    assert "試標" in html
     assert "觀測手冊摘要／今日觀測" in html
     assert OBSERVE_PHONE_DISCLAIMER in html
+    assert "觀盤鏈定式" in html
 
 
 def test_mission_lock_blurb_from_repo():
