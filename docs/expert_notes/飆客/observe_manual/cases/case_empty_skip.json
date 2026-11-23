@@ -1,0 +1,8 @@
+{
+  "case_id": "empty_levels_must_skip",
+  "track": "level_touch",
+  "as_of": "20261103",
+  "levels": [],
+  "deps": [],
+  "note_zh": "空名單不算：verdict 必須是空名單，ok=null，不進 n_decided。"
+}

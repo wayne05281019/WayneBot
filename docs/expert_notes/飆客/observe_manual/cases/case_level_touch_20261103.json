@@ -1,0 +1,21 @@
+{
+  "case_id": "level_touch_20261103_oral_43135_41760",
+  "track": "level_touch",
+  "as_of": "20261103",
+  "fwd": 2,
+  "tol_pct": 0.005,
+  "deps": ["official_twii", "biaoke_oral_levels"],
+  "note_zh": "他點過的大盤位：43135／41760；用後窗官方加權考碰到沒。fwd=2 避開 20261106 缺完整 OHLC。",
+  "levels": [
+    {
+      "level": 43135.0,
+      "role": "break",
+      "source": "oral_hold_fail_43135"
+    },
+    {
+      "level": 41760.0,
+      "role": "break",
+      "source": "oral_41760"
+    }
+  ]
+}
