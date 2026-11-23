@@ -88,27 +88,74 @@ def _filter_open_bars(bars: List[Any], market_db: str, *, day: str = "") -> List
 
 
 def _wrap_at_punct(text: str, max_chars: int = 22) -> str:
+    """CJK 換行：優先在標點／箭頭切斷；不准切斷數字、％、×、英文碼中段。"""
     s = str(text or "").strip()
     if not s:
         return ""
+    soft = set("；、。｜＝→←＜＞%）】」』，,/")
     lines: List[str] = []
+
+    def _ok_break_at(buf: str, i: int) -> bool:
+        """可否在 buf[i] 前切斷（即上行＝buf[:i]）。"""
+        if i <= 0 or i >= len(buf):
+            return False
+        left, right = buf[i - 1], buf[i]
+        if (left.isdigit() or left in ".×+") and (right.isdigit() or right in ".%％×"):
+            return False
+        if left.isascii() and left.isalnum() and right.isascii() and right.isalnum():
+            return False
+        return True
+
     while s:
         if len(s) <= max_chars:
             lines.append(s)
             break
         cut = -1
+        # 1) 視窗內最後一個軟標點後切斷
         for i, ch in enumerate(s[: max_chars + 1]):
-            if ch in "；、。｜":
-                cut = i + 1
+            if i == 0:
+                continue
+            if ch in soft and _ok_break_at(s, i):
+                cut = i + 1  # 標點留上行
+        # 2) 無標點：從 max_chars 往回找安全切點
+        if cut <= 0:
+            for i in range(min(max_chars, len(s)), max(max_chars // 2, 8), -1):
+                if _ok_break_at(s, i):
+                    cut = i
+                    break
         if cut <= 0:
             cut = max_chars
-        lines.append(s[:cut].rstrip("；、"))
-        s = s[cut:].lstrip("；、 ")
-        if len(lines) >= 4:
+            while cut > 8 and not _ok_break_at(s, cut):
+                cut -= 1
+        piece = s[:cut].rstrip("；、，, ")
+        s = s[cut:].lstrip("；、，, ")
+        if piece:
+            lines.append(piece)
+        if len(lines) >= 3:
             if s:
-                lines[-1] = lines[-1] + "…"
+                lines[-1] = lines[-1].rstrip("…") + "…"
             break
     return "\n".join(lines)
+
+
+def _short_when(when: str) -> str:
+    """長時段縮成手機可掃：保留關鍵時刻，不准一行撐爆。"""
+    w = str(when or "").strip()
+    if len(w) <= 14:
+        return w
+    # 08:30／09:30／11:00／13:00 → 08:30・09:30・11・13
+    parts = [p for p in w.replace("–", "／").replace("-", "／").split("／") if p]
+    if len(parts) >= 3:
+        slim = []
+        for p in parts[:4]:
+            p = p.strip()
+            if ":" in p and p.count(":") == 1:
+                hh, mm = p.split(":", 1)
+                slim.append(hh if mm in ("00", "0") else f"{hh}:{mm}")
+            else:
+                slim.append(p[:6])
+        return "・".join(slim)
+    return w[:14] + "…"
 
 
 def build_tomorrow_intraday_checks(pack: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -850,12 +897,12 @@ def render_watch_desk_markdown(desk: Dict[str, Any]) -> str:
 
 
 def _checklist_blocks(
-    rows: List[Dict[str, str]], *, body_width: int = 26
+    rows: List[Dict[str, str]], *, body_width: int = 24
 ) -> List[Dict[str, Any]]:
     """盤中清單：時段一行、內文可換行（最多 2 行）；回傳每列實際行數方便量高。"""
     out: List[Dict[str, Any]] = []
-    for r in rows[:7]:
-        when = str(r.get("when") or "").strip()
+    for r in rows[:6]:
+        when = _short_when(str(r.get("when") or "").strip())
         body = _wrap_at_punct(str(r.get("line") or "").strip(), body_width)
         body_lines = [ln for ln in body.split("\n") if ln] or ["—"]
         if len(body_lines) > 2:
@@ -1257,10 +1304,9 @@ def render_watch_desk_png(desk: Dict[str, Any], path: str) -> str:
                 ax.text(0.06, 0.42, big, color=ink, fontproperties=_fp(16, "bold"), va="center")
                 ax.text(0.06, 0.12, sub, color=mute, fontproperties=_fp(11), va="bottom")
 
-    # tomorrow checklist：數字座標一行一格，時段／內文分行，不准互壓
+    # tomorrow checklist：時段／內文分行；ylim 貼齊內容，不准白肚
     sess = _slash_ymd(ns, with_year=True) if ns else "下一開市日"
-    # 標題 1 行 + 各列（when+body）+ 列間 0.35 空行
-    row_slots = []
+    row_slots: List[Tuple[str, Any]] = []
     for b in blocks:
         row_slots.append(("when", b))
         for ln in b["body_lines"]:
@@ -1269,19 +1315,19 @@ def render_watch_desk_png(desk: Dict[str, Any], path: str) -> str:
     if row_slots and row_slots[-1][0] == "gap":
         row_slots.pop()
     n_slots = max(len(row_slots), 1)
-    # 清單高度＝槽數×最小英吋／總高，保證每行有實體像素間距
-    list_h = min(0.58, max(0.20, (0.5 + n_slots * 0.30) / fig_h))
-    remain = max(y - 0.055, 0.18)
+    # 內容單位：標題1.2 + 各槽 + 底墊0.4
+    content_units = 1.2 + sum(0.35 if k == "gap" else 1.0 for k, _ in row_slots) + 0.45
+    list_h = min(0.50, max(0.18, (content_units * 0.28) / fig_h))
+    remain = max(y - 0.05, 0.16)
     list_h = min(list_h, remain)
-    top = _advance(list_h, gap=0.014)
-    if top < 0.045:
-        top = 0.045
-        list_h = max(0.14, y - 0.02)
+    top = _advance(list_h, gap=0.012)
+    if top < 0.04:
+        top = 0.04
+        list_h = max(0.14, y - 0.018)
     ax_t = fig.add_axes([0.045, top, 0.91, list_h])
-    # y：上大下小；每槽佔 1 單位，保證行距
-    ymax = n_slots + 2.2
+    ymax = content_units
     ax_t.set_xlim(0, 1)
-    ax_t.set_ylim(0, ymax)
+    ax_t.set_ylim(0, ymax)  # 底貼齊，不留大段空白座標
     ax_t.axis("off")
     ax_t.add_patch(
         FancyBboxPatch(
@@ -1296,17 +1342,17 @@ def render_watch_desk_png(desk: Dict[str, Any], path: str) -> str:
             zorder=0,
         )
     )
-    y_cursor = ymax - 0.35
+    y_cursor = ymax - 0.25
     ax_t.text(
         0.03,
         y_cursor,
         f"{sess} 盤中這樣看（只觀察；切入仍只認高低卡）",
         color=ink,
-        fontproperties=_fp(14, "bold"),
+        fontproperties=_fp(13, "bold"),
         va="top",
         zorder=2,
     )
-    y_cursor -= 1.35
+    y_cursor -= 1.15
     item_i = 0
     for kind, payload in row_slots:
         if kind == "gap":
@@ -1335,7 +1381,6 @@ def render_watch_desk_png(desk: Dict[str, Any], path: str) -> str:
             )
             y_cursor -= 1.0
             continue
-        # body
         ax_t.text(
             0.09,
             y_cursor,
@@ -1347,7 +1392,7 @@ def render_watch_desk_png(desk: Dict[str, Any], path: str) -> str:
         )
         y_cursor -= 1.0
 
-    foot_y = max(0.014, top - 0.02)
+    foot_y = max(0.012, top - 0.016)
     fig.text(
         0.045,
         foot_y,

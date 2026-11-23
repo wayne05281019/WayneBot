@@ -103,7 +103,7 @@ def test_concrete_omits_empty_otc_and_has_numbers(tmp_path):
 
 
 def test_checklist_blocks_stack_when_and_body():
-    from jiuha_watch_desk import _checklist_blocks
+    from jiuha_watch_desk import _checklist_blocks, _wrap_at_punct
 
     rows = [
         {
@@ -112,13 +112,20 @@ def test_checklist_blocks_stack_when_and_body():
         },
         {"when": "08:50開盤前", "line": "停損／最多虧多少說好了嗎 未說好＝後面燈先不當操作解讀（空手／等待）"},
     ]
-    blocks = _checklist_blocks(rows, body_width=26)
+    blocks = _checklist_blocks(rows, body_width=24)
     assert len(blocks) == 2
-    assert blocks[0]["when"].startswith("08:30")
+    assert "08:30" in blocks[0]["when"]
     assert blocks[0]["n_lines"] >= 2
     assert all("\n" not in ln for ln in blocks[0]["body_lines"])
-    # 長時段不准跟內文同一行互壓：when 獨立、body 另列
     assert blocks[0]["body_lines"][0] != blocks[0]["when"]
+    # 長時段要縮，不准一整行撐爆
+    assert len(blocks[0]["when"]) <= 18
+    wrapped = _wrap_at_punct(
+        "USDTWD較11/20收（33.026）貶≥0.15%＝壓力燈、升≥0.15%＝偏暖", 24
+    )
+    joined = wrapped.replace("\n", "")
+    assert "0.15%" in joined
+    assert "0.1\n5" not in wrapped and "0.1 5" not in wrapped
 
 
 def test_watch_desk_png_layout_no_giant_empty(tmp_path):
