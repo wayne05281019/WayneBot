@@ -1,0 +1,423 @@
+{
+  "schema": "biaoke_observe_chain_playbook_v1",
+  "track": "BK-CHAIN",
+  "title_zh": "三層觀測操作手",
+  "tz": "Asia/Taipei",
+  "as_of_doc": "20261123",
+  "warning_zh": "試標・推論／非他原文・非買訊・對質未過閘",
+  "not_buy_signal": true,
+  "buy_signal": false,
+  "mix_into_biaoke_screen": false,
+  "phone_sync": "observe_aux_pending",
+  "golden_buy_untouched": true,
+  "one_liner_zh": "美股夜盤 e-mini 定大方向 → 台指早盤二次確認 → 加權現貨驗證；全程與費半／那指連動，不准倒灌。",
+  "sources": [
+    {
+      "kind": "user_lock",
+      "id": "T8_three_layer_confirm",
+      "at": "2026-11-12",
+      "zh": "夜盤電子盤大方向 → 台指期二次確認 → 日盤驗證"
+    },
+    {
+      "kind": "user_lock",
+      "id": "T9_trio_sox_linked",
+      "at": "2026-11-12",
+      "zh": "三盤密不可分；與費半連動"
+    },
+    {
+      "kind": "user_lock",
+      "id": "T7_tx_lead_before_cash",
+      "at": "2026-11-12",
+      "zh": "日盤開盤前台指期＝先行指標"
+    },
+    {
+      "kind": "his_method",
+      "file": "docs/expert_notes/飆客/knowhow.md",
+      "zh": "轉折先夜盤後日盤；台指期 15／60＋夜盤連續盤"
+    },
+    {
+      "kind": "his_method",
+      "file": "docs/expert_notes/飆客/sox_14.md",
+      "zh": "費半先行／1-4 重疊"
+    },
+    {
+      "kind": "forward_pack",
+      "keys": ["three_layer_zh", "sox_link_zh", "tx_lead_zh"],
+      "file_glob": "docs/expert_notes/飆客/decade_lab/wave_forward_infer_*.json"
+    },
+    {
+      "kind": "mission",
+      "file": "docs/expert_notes/飆客/observe_manual/MISSION_LOCK_20261123.md",
+      "zh": "實用觀盤：e-mini → 早盤 TX → 現貨＋SOX"
+    }
+  ],
+  "layers": [
+    {
+      "id": "L1_us_overnight_emini",
+      "order": 1,
+      "title_zh": "第一層・美股夜盤 e-mini（＋費半外圍）",
+      "window_taipei": "05:00–08:50",
+      "role_zh": "定大方向假設；不准用日盤倒改",
+      "instruments": [
+        {
+          "id": "sox",
+          "label_zh": "費半",
+          "fields": ["sox_pct", "sox_chg", "soxx_post_pct"],
+          "status": "ok"
+        },
+        {
+          "id": "es_f",
+          "label_zh": "標普 e-mini",
+          "fields": ["es_f_pct", "es_f_chg", "es_f_px"],
+          "status": "payload_only"
+        },
+        {
+          "id": "nq_f",
+          "label_zh": "那斯達克期",
+          "fields": ["nq_f_pct", "nq_f_chg", "nq_f_px"],
+          "status": "ok"
+        },
+        {
+          "id": "tx_night",
+          "label_zh": "台指期夜盤（本地電子盤橋）",
+          "fields": ["tx_night_date", "tx_night_open", "tx_night_high", "tx_night_low", "tx_night_close", "tx_night_volume"],
+          "note_zh": "他語境夜盤電子盤常指這段；與 e-mini 同勾",
+          "status": "ok"
+        },
+        {
+          "id": "te_night",
+          "label_zh": "電子期夜盤",
+          "fields": ["te_night_date", "te_night_open", "te_night_high", "te_night_low", "te_night_close", "te_night_volume"],
+          "status": "ok"
+        }
+      ],
+      "outputs": ["night_hypothesis"],
+      "night_hypothesis_enum": ["bias_up", "bias_down", "range", "unknown", "gap"]
+    },
+    {
+      "id": "L2_tx_morning_confirm",
+      "order": 2,
+      "title_zh": "第二層・台指早盤確認",
+      "window_taipei": "08:45–10:00",
+      "role_zh": "對夜盤假設二次確認或否決",
+      "instruments": [
+        {
+          "id": "tx_regular",
+          "label_zh": "台指日盤",
+          "fields": ["tx_regular_date", "tx_regular_open", "tx_regular_high", "tx_regular_low", "tx_regular_close", "tx_regular_volume"],
+          "status": "ok"
+        },
+        {
+          "id": "tx_minute",
+          "label_zh": "台指 15 分早盤",
+          "fields": ["minute_bars.TX"],
+          "status": "gap_often"
+        }
+      ],
+      "outputs": ["layer2_verdict"],
+      "layer2_verdict_enum": ["confirm", "reject", "pending", "gap"]
+    },
+    {
+      "id": "L3_twii_spot_verify",
+      "order": 3,
+      "title_zh": "第三層・加權現貨驗證",
+      "window_taipei": "09:00–13:30＋收盤欄",
+      "role_zh": "現貨是否跟上 TX 宣判；大量區／點名帶",
+      "instruments": [
+        {
+          "id": "twii",
+          "label_zh": "加權指數",
+          "fields": ["twii_date", "twii_open", "twii_high", "twii_low", "twii_close", "twii_volume"],
+          "status": "ok"
+        }
+      ],
+      "outputs": ["layer3_verdict"],
+      "layer3_verdict_enum": ["verified", "failed", "incomplete", "gap"]
+    },
+    {
+      "id": "LX_sox_link",
+      "order": 4,
+      "title_zh": "連動・費半／三盤",
+      "window_taipei": "全日可重勾",
+      "role_zh": "假強／內盤量價分流；1-4 重疊僅當他明講",
+      "outputs": ["sox_link_note"]
+    }
+  ],
+  "daily_checklist": [
+    {
+      "id": "A1",
+      "layer": "L1_us_overnight_emini",
+      "label_zh": "費半隔夜％（必要時盤後代理）",
+      "fields": ["sox_pct", "soxx_post_pct"],
+      "check_enum": ["done", "gap", "skip_closed"],
+      "result_enum": ["help_up", "help_down", "neutral", "gap"]
+    },
+    {
+      "id": "A2",
+      "layer": "L1_us_overnight_emini",
+      "label_zh": "標普 e-mini 隔夜方向",
+      "fields": ["es_f_pct"],
+      "check_enum": ["done", "gap", "skip_closed"],
+      "result_enum": ["bias_up", "bias_down", "flat", "gap"]
+    },
+    {
+      "id": "A3",
+      "layer": "L1_us_overnight_emini",
+      "label_zh": "那斯達克期隔夜方向",
+      "fields": ["nq_f_pct"],
+      "check_enum": ["done", "gap", "skip_closed"],
+      "result_enum": ["bias_up", "bias_down", "flat", "gap"]
+    },
+    {
+      "id": "A4",
+      "layer": "L1_us_overnight_emini",
+      "label_zh": "台指夜盤 vs 他點名／大量區",
+      "fields": ["tx_night_open", "tx_night_high", "tx_night_low", "tx_night_close", "tx_night_volume"],
+      "check_enum": ["done", "gap", "skip_closed"],
+      "result_enum": ["above_band", "inside_band", "below_band", "gap", "no_level"]
+    },
+    {
+      "id": "A5",
+      "layer": "L1_us_overnight_emini",
+      "label_zh": "電子期夜盤（可選）",
+      "fields": ["te_night_close", "te_night_pct_change"],
+      "optional": true,
+      "check_enum": ["done", "gap", "skip"],
+      "result_enum": ["aligned", "diverge", "gap", "skip"]
+    },
+    {
+      "id": "B1",
+      "layer": "L2_tx_morning_confirm",
+      "label_zh": "台指日盤開 vs 夜收／大量區",
+      "fields": ["tx_regular_open", "tx_night_close"],
+      "check_enum": ["done", "gap", "pre_open"],
+      "result_enum": ["strong", "weak", "flat", "gap"]
+    },
+    {
+      "id": "B2",
+      "layer": "L2_tx_morning_confirm",
+      "label_zh": "早盤型態（15 分優先）",
+      "fields": ["minute_bars.TX", "tx_regular_high", "tx_regular_low"],
+      "check_enum": ["done", "gap_proxy_day", "gap"],
+      "result_enum": ["reclaim", "fail", "chop", "gap"]
+    },
+    {
+      "id": "B3",
+      "layer": "L2_tx_morning_confirm",
+      "label_zh": "第二層對夜盤假設",
+      "fields": ["layer2_verdict"],
+      "check_enum": ["done", "pending"],
+      "result_enum": ["confirm", "reject", "pending"]
+    },
+    {
+      "id": "C1",
+      "layer": "L3_twii_spot_verify",
+      "label_zh": "加權 vs 台指早盤宣判",
+      "fields": ["twii_open", "twii_high", "twii_low", "twii_close", "twii_volume"],
+      "check_enum": ["done", "intraday", "gap"],
+      "result_enum": ["follow", "lag", "diverge", "gap"]
+    },
+    {
+      "id": "C2",
+      "layer": "L3_twii_spot_verify",
+      "label_zh": "最近大量壓／撐",
+      "fields": ["vol_resist", "vol_support"],
+      "check_enum": ["done", "gap"],
+      "result_enum": ["below_resist", "above_support", "broke_support", "cleared_resist", "gap"]
+    },
+    {
+      "id": "C3",
+      "layer": "L3_twii_spot_verify",
+      "label_zh": "他點名帶（僅有效點名時）",
+      "fields": ["named_band_lo", "named_band_hi"],
+      "check_enum": ["done", "no_active_band", "gap"],
+      "result_enum": ["above", "inside", "broke_lo", "no_active_band"]
+    },
+    {
+      "id": "C4",
+      "layer": "L3_twii_spot_verify",
+      "label_zh": "收盤戳（不准盤中未收當收）",
+      "fields": ["twii_close", "eod_stamp"],
+      "check_enum": ["done", "session_open", "gap"],
+      "result_enum": ["hold", "fail", "incomplete"]
+    },
+    {
+      "id": "D1",
+      "layer": "LX_sox_link",
+      "label_zh": "費半弱＋夜／期強 → 假強警示",
+      "check_enum": ["flagged", "clear", "gap"]
+    },
+    {
+      "id": "D2",
+      "layer": "LX_sox_link",
+      "label_zh": "費半穩＋三盤弱 → 內盤量價",
+      "check_enum": ["flagged", "clear", "gap"]
+    },
+    {
+      "id": "D3",
+      "layer": "LX_sox_link",
+      "label_zh": "費半 1-4 重疊（僅他明講）",
+      "check_enum": ["he_said", "not_claimed", "gap"]
+    }
+  ],
+  "rephrase_rules": [
+    {
+      "id": "R1_later_rejects_earlier",
+      "zh": "較晚層官方柱否決較早層假設 → 改口並寫觸發層＋OHLC 戳"
+    },
+    {
+      "id": "R2_he_revises",
+      "zh": "他自己新文改口／取消該位 → 跟隨改口，不准留舊價當他說"
+    },
+    {
+      "id": "R3_named_band_lost",
+      "zh": "點名帶有效失守（收仍在下）→ 該句升權／改口；毛刺只標戳測"
+    },
+    {
+      "id": "R4_no_invent_price",
+      "zh": "不准發明他沒說過的新價目標"
+    }
+  ],
+  "observe_only_rules": [
+    {
+      "id": "O1_touch_unconfirmed",
+      "zh": "觸及未確認（無收穩／無連 2 收）只觀察"
+    },
+    {
+      "id": "O2_outer_diverge",
+      "zh": "費半與 e-mini 背離、尚未被 TX 早盤複核 → 只觀察"
+    },
+    {
+      "id": "O3_missing_official",
+      "zh": "缺官方數 → 該格 gap，整鏈不宣判"
+    },
+    {
+      "id": "O4_band_edge",
+      "zh": "近點名帶／大量區邊緣 → 只觀察（不宣判突破／跌破）"
+    },
+    {
+      "id": "O5_intraday_not_eod",
+      "zh": "盤中未收不當收"
+    }
+  ],
+  "field_map": {
+    "sox_pct": {
+      "table": "us_overnight",
+      "column": "sox_pct",
+      "loader": "us_overnight.load_us_overnight"
+    },
+    "nq_f_pct": {
+      "table": "us_overnight",
+      "column": "nq_f_pct",
+      "loader": "us_overnight.load_us_overnight"
+    },
+    "es_f_pct": {
+      "table": "us_overnight",
+      "column": "payload.es_f_pct",
+      "loader": "us_overnight.load_us_overnight",
+      "gap": "no_dedicated_column"
+    },
+    "es_f_chg": {
+      "table": "us_overnight",
+      "column": "payload.es_f_chg",
+      "gap": "no_dedicated_column"
+    },
+    "ixic_pct": {
+      "table": "us_overnight",
+      "column": "ixic_pct"
+    },
+    "spx_pct": {
+      "table": "us_overnight",
+      "column": "spx_pct"
+    },
+    "dji_pct": {
+      "table": "us_overnight",
+      "column": "dji_pct"
+    },
+    "soxx_post_pct": {
+      "table": "us_overnight",
+      "column": "payload.soxx_post_pct"
+    },
+    "tx_night_*": {
+      "table": "futures_daily",
+      "filter": "symbol=TX AND session=night",
+      "loader": "taiwan_market.load_futures_night",
+      "keys": ["date", "open", "high", "low", "close", "volume", "pct_change"]
+    },
+    "te_night_*": {
+      "table": "futures_daily",
+      "filter": "symbol=TE AND session=night",
+      "loader": "taiwan_market.load_futures_night(symbol='TE')"
+    },
+    "tx_regular_*": {
+      "table": "futures_daily",
+      "filter": "symbol=TX AND session=regular",
+      "loader": "taiwan_market.load_futures_daily"
+    },
+    "twii_*": {
+      "table": "index_daily",
+      "filter": "symbol=TWII",
+      "loader": "taiwan_market.load_index_daily / SQL OHLC"
+    },
+    "health_tx_night": {
+      "endpoint": "/health",
+      "keys": ["tx_night_date", "tx_night_high", "tx_night_low"]
+    }
+  },
+  "gaps": [
+    {
+      "id": "G1_es_f_column",
+      "zh": "es_f_pct 無 us_overnight 獨立欄，只在 payload",
+      "severity": "helper_reads_payload"
+    },
+    {
+      "id": "G2_tx_am_15m",
+      "zh": "早盤 15 分確認常缺 minute_bars 窗",
+      "severity": "proxy_day_ohlc_mark_gap"
+    },
+    {
+      "id": "G3_named_level_inject",
+      "zh": "當日他點名位尚未自動灌進勾選表",
+      "owner": "BK-WAVE/BK-PHONE"
+    },
+    {
+      "id": "G4_sox_14_detect",
+      "zh": "費半 1-4 重疊無自動偵測，僅 sox_14 筆記",
+      "severity": "manual_he_said_flag"
+    },
+    {
+      "id": "G5_pipeline_run_key",
+      "zh": "三層當日勾選尚未進 pipeline_runs",
+      "severity": "json_checklist_file_first"
+    },
+    {
+      "id": "G6_phone_face",
+      "zh": "波浪位階話筒臉尚未掛本手摘要",
+      "owner": "BK-PHONE"
+    }
+  ],
+  "day_sheet_template": {
+    "schema": "biaoke_observe_chain_day_v1",
+    "tz": "Asia/Taipei",
+    "warning_zh": "試標・推論／非他原文・非買訊・對質未過閘",
+    "not_buy_signal": true,
+    "buy_signal": false,
+    "as_of": null,
+    "night_hypothesis": "pending",
+    "layer2_verdict": "pending",
+    "layer3_verdict": "pending",
+    "sox_link_note": "",
+    "checks": {},
+    "official": {
+      "us_overnight": null,
+      "tx_night": null,
+      "te_night": null,
+      "tx_regular": null,
+      "twii": null
+    },
+    "rephrase_log": [],
+    "note_zh": "空殼給話筒／自測填；不准假數"
+  },
+  "helper_module": "observe_chain_snapshot",
+  "note_zh": "觀測輔助・非買訊・不准改黃金買點；DC／我估／他分開標"
+}
