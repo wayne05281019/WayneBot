@@ -849,8 +849,28 @@ def render_watch_desk_markdown(desk: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _checklist_blocks(
+    rows: List[Dict[str, str]], *, body_width: int = 26
+) -> List[Dict[str, Any]]:
+    """盤中清單：時段一行、內文可換行（最多 2 行）；回傳每列實際行數方便量高。"""
+    out: List[Dict[str, Any]] = []
+    for r in rows[:7]:
+        when = str(r.get("when") or "").strip()
+        body = _wrap_at_punct(str(r.get("line") or "").strip(), body_width)
+        body_lines = [ln for ln in body.split("\n") if ln] or ["—"]
+        if len(body_lines) > 2:
+            body_lines = body_lines[:2]
+            if not body_lines[-1].endswith("…"):
+                body_lines[-1] = body_lines[-1].rstrip("；、。") + "…"
+        out.append({"when": when, "body_lines": body_lines, "n_lines": 1 + len(body_lines)})
+    return out
+
+
 def render_watch_desk_png(desk: Dict[str, Any], path: str) -> str:
-    """v4：由上往下量測排版；盤中卡／對質區分開；開市日窗；戳記不畫完整K。"""
+    """v4：由上往下量測排版；盤中卡／對質區分開；開市日窗；戳記不畫完整K。
+
+    畫布高度跟內容走：缺櫃買／匯／對質時不准留大片空白；清單時段與內文分行，不准互壓。
+    """
     if not desk.get("ok"):
         return ""
     import matplotlib
@@ -873,6 +893,7 @@ def render_watch_desk_png(desk: Dict[str, Any], path: str) -> str:
     rows = plain_tomorrow_rows(
         desk.get("tomorrow_intraday") or [], c, next_session=ns, asof=asof
     )
+    blocks = _checklist_blocks(rows, body_width=30)
 
     bg, ink, mute, card = "#f4f2ec", "#1a1a1a", "#5a5a5a", "#ffffff"
     red, green, audit_bg = "#c62828", "#2e7d32", "#fff8e7"
@@ -880,16 +901,79 @@ def render_watch_desk_png(desk: Dict[str, Any], path: str) -> str:
     up = chg is not None and chg >= 0
     chg_color = red if up else green
 
-    fig_w, fig_h, dpi = 9.2, 19.5, 150
+    # 先算要畫哪些卡，才能估畫布高（缺欄就不佔位）
+    intra: List[Tuple[str, str, str, str]] = []
+    if c.get("twii_close") is not None:
+        pts = c.get("twii_chg_pts")
+        sub = (
+            f"{pts:+.0f}點／{chg:+.2f}%"
+            if pts is not None and chg is not None
+            else (f"{chg:+.2f}%" if chg is not None else "")
+        )
+        if c.get("twii_stamp"):
+            sub += " · 僅收盤戳記"
+        intra.append(("加權收", f"{c['twii_close']:,.0f}", sub, chg_color))
+    if c.get("twii_vol_wan") is not None:
+        intra.append(
+            (
+                "成交量",
+                f"{c['twii_vol_wan']:,.1f}萬張",
+                f"／5日 {c.get('twii_vol_vs_5')}×  ／20日 {c.get('twii_vol_vs_20')}×",
+                ink,
+            )
+        )
+    if c.get("otc_ok"):
+        intra.append(
+            (
+                "櫃買收",
+                f"{c['otc_close']:.2f}",
+                f"{c.get('otc_chg_pct'):+.2f}% · 相對 {c.get('otc_rel_pp'):+.2f}百分點",
+                green if (c.get("otc_chg_pct") or 0) < 0 else red,
+            )
+        )
+    if c.get("fx_ok"):
+        fx_dir = "台幣貶" if (c.get("fx_chg_pct") or 0) > 0 else "台幣升"
+        intra.append(
+            (
+                "美金台幣",
+                f"{c['fx_close']:.3f}",
+                f"{c.get('fx_chg_pct'):+.3f}%＝{fx_dir}",
+                ink,
+            )
+        )
+    have_otc = bool(c.get("otc_ok") and otc_s)
+    have_fx = bool(c.get("fx_ok") and fx_s)
+    n_audit = sum(
+        1
+        for k in ("margin_ok", "oi_ok", "bfi_ok")
+        if c.get(k)
+    )
+    n_intra_rows = max(1, (len(intra) + 1) // 2)
+    n_audit_rows = (n_audit + 1) // 2 if n_audit else 0
+    # 清單槽：每列 when+body 行＋列間隙；每槽至少 0.30" 才不互壓
+    checklist_slots_est = sum(int(b["n_lines"]) for b in blocks) + max(len(blocks) - 1, 0)
+    checklist_inch = max(2.8, 0.55 + checklist_slots_est * 0.30)
+    fig_w, dpi = 9.2, 150
+    inch = (
+        0.55  # title
+        + (0.32 if labs else 0.0)
+        + 0.95  # today
+        + n_intra_rows * 0.95
+        + 3.7  # K+vol
+        + (1.85 if (have_otc or have_fx) else 0.0)
+        + (0.4 + n_audit_rows * 0.9 if n_audit else 0.0)
+        + checklist_inch
+        + 0.6  # footer pad
+    )
+    fig_h = max(12.5, min(22.0, inch))
     fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi, facecolor=bg)
     y = 0.985  # top cursor in figure fraction
 
     def _advance(h: float, gap: float = 0.008) -> float:
         nonlocal y
-        top = y
-        y -= h + gap
-        return top - h
-
+        top = y - h
+        y = top - gap
+        return top
     # title
     fig.text(
         0.045,
@@ -952,48 +1036,8 @@ def render_watch_desk_png(desk: Dict[str, Any], path: str) -> str:
         linespacing=1.3,
     )
 
-    # intraday metric cards (2-col) — exclude margin/OI
-    intra: List[Tuple[str, str, str, str]] = []
-    if c.get("twii_close") is not None:
-        pts = c.get("twii_chg_pts")
-        sub = (
-            f"{pts:+.0f}點／{chg:+.2f}%"
-            if pts is not None and chg is not None
-            else (f"{chg:+.2f}%" if chg is not None else "")
-        )
-        if c.get("twii_stamp"):
-            sub += " · 僅收盤戳記"
-        intra.append(("加權收", f"{c['twii_close']:,.0f}", sub, chg_color))
-    if c.get("twii_vol_wan") is not None:
-        intra.append(
-            (
-                "成交量",
-                f"{c['twii_vol_wan']:,.1f}萬張",
-                f"／5日 {c.get('twii_vol_vs_5')}×  ／20日 {c.get('twii_vol_vs_20')}×",
-                ink,
-            )
-        )
-    if c.get("otc_ok"):
-        intra.append(
-            (
-                "櫃買收",
-                f"{c['otc_close']:.2f}",
-                f"{c.get('otc_chg_pct'):+.2f}% · 相對 {c.get('otc_rel_pp'):+.2f}百分點",
-                green if (c.get("otc_chg_pct") or 0) < 0 else red,
-            )
-        )
-    if c.get("fx_ok"):
-        fx_dir = "台幣貶" if (c.get("fx_chg_pct") or 0) > 0 else "台幣升"
-        intra.append(
-            (
-                "美金台幣",
-                f"{c['fx_close']:.3f}",
-                f"{c.get('fx_chg_pct'):+.3f}%＝{fx_dir}",
-                ink,
-            )
-        )
-
-    card_h = 0.068
+    # intraday metric cards (2-col) — exclude margin/OI；內容已在上方組好
+    card_h = 0.072
     for i in range(0, len(intra), 2):
         top = _advance(card_h)
         pair = intra[i : i + 2]
@@ -1019,11 +1063,11 @@ def render_watch_desk_png(desk: Dict[str, Any], path: str) -> str:
             ax.text(0.06, 0.42, big, color=col, fontproperties=_fp(22, "bold"), va="center")
             ax.text(0.06, 0.12, sub, color=mute, fontproperties=_fp(12), va="bottom")
 
-    # K + volume
-    k_h, v_h = 0.16, 0.055
-    top_k = _advance(k_h + v_h + 0.01)
-    ax_k = fig.add_axes([0.10, top_k + v_h + 0.005, 0.82, k_h])
-    ax_v = fig.add_axes([0.10, top_k, 0.82, v_h], sharex=ax_k)
+    # K + volume（量圖與下方小圖之間多留縫，不准標籤互壓）
+    k_h, v_h = 0.155, 0.052
+    top_k = _advance(k_h + v_h + 0.018)
+    ax_k = fig.add_axes([0.11, top_k + v_h + 0.006, 0.80, k_h])
+    ax_v = fig.add_axes([0.11, top_k, 0.80, v_h], sharex=ax_k)
     for ax in (ax_k, ax_v):
         ax.set_facecolor(card)
         for sp in ax.spines.values():
@@ -1090,12 +1134,10 @@ def render_watch_desk_png(desk: Dict[str, Any], path: str) -> str:
             lab.set_fontproperties(_fp(9))
         ax_v.set_ylabel("萬張", color=mute, fontproperties=_fp(10))
 
-    # small charts
-    have_otc = bool(c.get("otc_ok") and otc_s)
-    have_fx = bool(c.get("fx_ok") and fx_s)
+    # small charts（缺欄不畫、不留空位）
     if have_otc or have_fx:
-        sm_h = 0.10
-        top = _advance(sm_h)
+        sm_h = 0.095
+        top = _advance(sm_h, gap=0.014)
         if have_otc and have_fx:
             boxes = [(0.08, 0.41), (0.51, 0.41)]
         else:
@@ -1215,18 +1257,31 @@ def render_watch_desk_png(desk: Dict[str, Any], path: str) -> str:
                 ax.text(0.06, 0.42, big, color=ink, fontproperties=_fp(16, "bold"), va="center")
                 ax.text(0.06, 0.12, sub, color=mute, fontproperties=_fp(11), va="bottom")
 
-    # tomorrow checklist
+    # tomorrow checklist：數字座標一行一格，時段／內文分行，不准互壓
     sess = _slash_ymd(ns, with_year=True) if ns else "下一開市日"
-    n_rows = max(len(rows), 1)
-    list_h = 0.035 + n_rows * 0.038
-    top = _advance(list_h, gap=0.01)
-    # leave footer room
-    if top < 0.04:
-        top = 0.04
-        list_h = max(0.12, y - 0.02)
+    # 標題 1 行 + 各列（when+body）+ 列間 0.35 空行
+    row_slots = []
+    for b in blocks:
+        row_slots.append(("when", b))
+        for ln in b["body_lines"]:
+            row_slots.append(("body", ln))
+        row_slots.append(("gap", None))
+    if row_slots and row_slots[-1][0] == "gap":
+        row_slots.pop()
+    n_slots = max(len(row_slots), 1)
+    # 清單高度＝槽數×最小英吋／總高，保證每行有實體像素間距
+    list_h = min(0.58, max(0.20, (0.5 + n_slots * 0.30) / fig_h))
+    remain = max(y - 0.055, 0.18)
+    list_h = min(list_h, remain)
+    top = _advance(list_h, gap=0.014)
+    if top < 0.045:
+        top = 0.045
+        list_h = max(0.14, y - 0.02)
     ax_t = fig.add_axes([0.045, top, 0.91, list_h])
+    # y：上大下小；每槽佔 1 單位，保證行距
+    ymax = n_slots + 2.2
     ax_t.set_xlim(0, 1)
-    ax_t.set_ylim(0, 1)
+    ax_t.set_ylim(0, ymax)
     ax_t.axis("off")
     ax_t.add_patch(
         FancyBboxPatch(
@@ -1238,48 +1293,78 @@ def render_watch_desk_png(desk: Dict[str, Any], path: str) -> str:
             edgecolor="#ddd7cb",
             linewidth=1.4,
             transform=ax_t.transAxes,
+            zorder=0,
         )
     )
+    y_cursor = ymax - 0.35
     ax_t.text(
         0.03,
-        0.96,
+        y_cursor,
         f"{sess} 盤中這樣看（只觀察；切入仍只認高低卡）",
         color=ink,
         fontproperties=_fp(14, "bold"),
         va="top",
+        zorder=2,
     )
-    yy = 0.82
-    for i, r in enumerate(rows[:7], 1):
-        ax_t.text(0.03, yy, f"{i}", color=red, fontproperties=_fp(13, "bold"), va="top")
+    y_cursor -= 1.35
+    item_i = 0
+    for kind, payload in row_slots:
+        if kind == "gap":
+            y_cursor -= 0.35
+            continue
+        if kind == "when":
+            item_i += 1
+            b = payload
+            ax_t.text(
+                0.03,
+                y_cursor,
+                f"{item_i}",
+                color=red,
+                fontproperties=_fp(13, "bold"),
+                va="top",
+                zorder=2,
+            )
+            ax_t.text(
+                0.09,
+                y_cursor,
+                b["when"],
+                color=mute,
+                fontproperties=_fp(12, "bold"),
+                va="top",
+                zorder=2,
+            )
+            y_cursor -= 1.0
+            continue
+        # body
         ax_t.text(
-            0.07,
-            yy,
-            r.get("when") or "",
-            color=mute,
-            fontproperties=_fp(11, "bold"),
-            va="top",
-        )
-        ax_t.text(
-            0.34,
-            yy,
-            _wrap_at_punct(r.get("line") or "", 28).replace("\n", " "),
+            0.09,
+            y_cursor,
+            payload,
             color=ink,
-            fontproperties=_fp(11, "bold"),
+            fontproperties=_fp(12, "bold"),
             va="top",
+            zorder=2,
         )
-        yy -= 0.11 if n_rows <= 6 else 0.095
+        y_cursor -= 1.0
 
+    foot_y = max(0.014, top - 0.02)
     fig.text(
         0.045,
-        0.012,
+        foot_y,
         "缺欄不畫。觀察≠買訊。怎麼買仍看高低卡已過關規則。",
         color=mute,
         fontproperties=_fp(11),
         ha="left",
-        va="bottom",
+        va="top",
     )
     Path(path).parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(path, facecolor=fig.get_facecolor(), edgecolor="none")
+    fig.savefig(
+        path,
+        facecolor=fig.get_facecolor(),
+        edgecolor="none",
+        bbox_inches="tight",
+        pad_inches=0.25,
+    )
     plt.close(fig)
     return path
 

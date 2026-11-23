@@ -100,3 +100,44 @@ def test_concrete_omits_empty_otc_and_has_numbers(tmp_path):
     assert all(_is_tw_open_day(b["date"], str(db)) for b in ser)
     if not c.get("otc_ok"):
         assert "櫃買收" not in md
+
+
+def test_checklist_blocks_stack_when_and_body():
+    from jiuha_watch_desk import _checklist_blocks
+
+    rows = [
+        {
+            "when": "08:30／09:30／11:00／13:00",
+            "line": "台幣較昨收貶≥0.15%＝壓力、升≥0.15%＝偏暖；與指數背離優先信台幣",
+        },
+        {"when": "08:50開盤前", "line": "停損／最多虧多少說好了嗎 未說好＝後面燈先不當操作解讀（空手／等待）"},
+    ]
+    blocks = _checklist_blocks(rows, body_width=26)
+    assert len(blocks) == 2
+    assert blocks[0]["when"].startswith("08:30")
+    assert blocks[0]["n_lines"] >= 2
+    assert all("\n" not in ln for ln in blocks[0]["body_lines"])
+    # 長時段不准跟內文同一行互壓：when 獨立、body 另列
+    assert blocks[0]["body_lines"][0] != blocks[0]["when"]
+
+
+def test_watch_desk_png_layout_no_giant_empty(tmp_path):
+    from PIL import Image
+    from jiuha_watch_desk import build_watch_desk, render_watch_desk_png
+
+    db = Path("/workspace/data/wayne_market.db")
+    if not db.is_file():
+        return
+    desk = build_watch_desk(str(db), asof="20261120")
+    if not desk.get("ok"):
+        return
+    # 缺欄路徑：畫布應明顯矮於舊固定 19.5"（~2925px＠150dpi）
+    slim = dict(desk)
+    slim["concrete"] = dict(desk.get("concrete") or {})
+    for k in ("otc_ok", "fx_ok", "margin_ok", "oi_ok", "bfi_ok"):
+        slim["concrete"][k] = False
+    p = tmp_path / "desk_slim.png"
+    render_watch_desk_png(slim, str(p))
+    im = Image.open(p)
+    assert im.size[1] < 2600
+    assert p.stat().st_size > 1000
