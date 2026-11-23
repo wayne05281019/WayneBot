@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # 快速訊號：完全不需要資料庫，幾十秒內告訴你有沒有明顯壞掉。
+  # 無庫訊號（非「幾十秒」）：not production_db 仍含大量出圖，歷史綠跑約 ~60 分。
   smoke-no-db:
     runs-on: ubuntu-latest
     # 與 full-suite 同量級（非 production_db 仍含大量出圖）；120 仍誤殺 full-suite；放寬到 180
@@ -49,7 +49,11 @@ jobs:
 
   # 完整訊號：抓 Release 庫，跑包含選單、決策卡、出圖、大盤頁的全套。
   # 只跑煙霧測試的話，回歸會安靜地合併進 main 再部署上去。
+  # needs smoke：同一 PR 不准 smoke／full 並搶兩席（24 PR 排隊時峰值約腰斬）；
+  # smoke 紅就不開 full，省 runner。仍兩職都綠才合（對齊 #969）。
+  # 詳見 docs/ci_queue_concurrency_strategy_20261123.md
   full-suite:
+    needs: smoke-no-db
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
