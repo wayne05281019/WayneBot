@@ -29,6 +29,15 @@ logger = logging.getLogger("WayneBot.ScenarioForecast")
 
 _TZ = ZoneInfo("Asia/Taipei")
 
+try:
+    from mine_wave_rules import (  # noqa: E402
+        evaluate_mine_wave_gates,
+        motive_lengths_from_nodes,
+    )
+except Exception:  # pragma: no cover - 缺模組時情境圖仍可畫
+    evaluate_mine_wave_gates = None  # type: ignore
+    motive_lengths_from_nodes = None  # type: ignore
+
 # 近窗對齊結構圖量級；右側未來軸長度依該檔浪段根數對稱（非固定曆日終點）
 _BARS = 320
 _WAVE_LEFT = 10
@@ -885,6 +894,62 @@ def _deadline_after_c(
     }
 
 
+def _attach_mine_wave_gate(
+    pack: Dict[str, Any],
+) -> Dict[str, Any]:
+    """附加我估結構閘（擴延1618／前端傾斜）；失敗吞掉不擋出圖。
+
+    標籤 pot=MINE；不准冒充飆大原文、不准寫回黃金買點。
+    """
+    if not pack or evaluate_mine_wave_gates is None or motive_lengths_from_nodes is None:
+        return pack
+    try:
+        start = pack.get("start") or {}
+        confirmed = list(pack.get("confirmed") or [])
+        # 已確認節點才進閘；投影虛線不當作已走腿
+        lengths = motive_lengths_from_nodes(start.get("price"), confirmed)
+        w1 = next((c for c in confirmed if c.get("label") == "(1)"), None)
+        w2 = next((c for c in confirmed if c.get("label") == "(2)"), None)
+        w3 = next((c for c in confirmed if c.get("label") == "(3)"), None)
+        w4 = next((c for c in confirmed if c.get("label") == "(4)"), None)
+        kwargs: Dict[str, Any] = {"lengths": lengths}
+        if w1 and w4 and start:
+            # ① 價區＝起點→(1)；④ 價區＝(3)→(4)（缺 (3) 則用 (2)→(4)）
+            w1s = float(start.get("price") or 0)
+            w1e = float(w1.get("price") or 0)
+            w4s = float((w3 or w2 or w1).get("price") or 0) if (w3 or w2 or w1) else w1e
+            w4e = float(w4.get("price") or 0)
+            kwargs.update(
+                w1_start=w1s,
+                w1_end=w1e,
+                w4_start=w4s,
+                w4_end=w4e,
+                # 位置／5-3-5-3-5 本路徑不腦補；只報重疊候選
+                position_ok=None,
+                structure_53535=None,
+            )
+        mine = evaluate_mine_wave_gates(**kwargs)
+        # 置信：擴延過關升；1–4 重疊且未確認前端傾斜則降（標準 impulse 風險）
+        conf = 0.55
+        ext = mine.get("extension") or {}
+        ld = mine.get("leading_diagonal") or {}
+        if ext.get("pass"):
+            conf += 0.2
+        if ld.get("confirmed"):
+            conf += 0.15
+        elif ld.get("candidate") and not ext.get("pass"):
+            conf -= 0.1
+        if ext.get("variant") == "w1_w4_overlap_not_impulse_ext":
+            conf -= 0.15
+        mine["confidence"] = float(max(0.05, min(0.95, conf)))
+        pack = dict(pack)
+        pack["mine_wave"] = mine
+        # 氣泡不改「他說」；僅在我估欄；bubble 保持情境預估 Disclaimer
+    except Exception:
+        logger.debug("mine_wave gate attach failed", exc_info=True)
+    return pack
+
+
 def infer_dc_wave_scenario(
     rows: Sequence[Dict[str, Any]],
     ladders: Sequence[Dict[str, Any]],
@@ -892,6 +957,7 @@ def infer_dc_wave_scenario(
     """大級別浪階定稿：長窗 degree zigzag；abc 與衝動分軌；未轉折不凍 (3)。
 
     規則見 docs/dc-wave-drawing-logic-year-corpus.md。僅情境預估；不是買訊。
+    附加 ``mine_wave``＝我估結構閘（擴延／前端傾斜）；三鍋分標。
     """
     rows = list(rows or [])
     n = len(rows)
@@ -986,24 +1052,7 @@ def infer_dc_wave_scenario(
             fut = _clamp_future_bars(far - x_now + 8.0)
         else:
             fut = _clamp_future_bars(float(fut))
-        # 我估結構閘（DC→MINE）：擴延1618／前端傾斜；失敗不改買訊、只附加
-        mine_wave: Dict[str, Any] = {}
-        try:
-            from mine_wave_rules import mine_wave_from_impulse_nodes
-
-            mine_wave = mine_wave_from_impulse_nodes(
-                float(start.get("price") or 0),
-                confirmed,
-                projected=projected,
-            )
-        except Exception:
-            mine_wave = {
-                "source": "mine",
-                "pot": "DC→我估",
-                "ok": False,
-                "basis": "mine_wave attach failed",
-            }
-        return {
+        out = {
             "start": start,
             "confirmed": confirmed,
             "projected": projected,
@@ -1021,9 +1070,8 @@ def infer_dc_wave_scenario(
             "future_bars": float(fut),
             "leg_bars": dict(leg_bars or {}),
             "proj_durs": dict(proj_durs or {}),
-            # 三鍋分標：此欄＝我估，不准當「他說」
-            "mine_wave": mine_wave,
         }
+        return _attach_mine_wave_gate(out)
 
     # ----- 候選：大級別衝動 -----
     work = list(zz)

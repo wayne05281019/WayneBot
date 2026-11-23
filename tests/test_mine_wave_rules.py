@@ -4,17 +4,27 @@ from __future__ import annotations
 
 from mine_wave_rules import (
     EXT_RATIO,
+    RULE_NEXT_EXT,
+    RULE_NEXT_LD,
+    RULE_PHONE_EXT,
+    RULE_PHONE_LD,
     alternation_2_4_hint,
     analyze_motive_from_pivot_prices,
     check_w1_w4_overlap,
     detect_extension_1618,
     ending_diagonal_flags,
+    evaluate_mine_wave_gates,
     fib_extension_targets,
     fib_retracement_levels,
+    judge_mine_practice,
     leading_diagonal_flags,
     lengths_from_pivots,
     mine_wave_from_impulse_nodes,
+    motive_lengths_from_nodes,
+    motive_w3_not_shortest,
+    overlap_depth_pct,
     price_ranges_overlap,
+    summarize_mine_practice,
     wave_equality_guide,
     wave_price_length,
 )
@@ -172,3 +182,100 @@ def test_analyze_and_mine_wave_from_impulse_nodes():
     assert mw["has_full_five"] is True
     assert mw["extension"]["pass"] is False
     assert mw["source"] == "mine"
+def test_extension_v2_rejects_w3_shortest():
+    # 比例過 1.618 但③最短 → v2 fail
+    lengths = {"1": 2000, "3": 500, "5": 1000}  # max=1, ratio vs 5 = 2.0
+    r1 = detect_extension_1618(lengths)
+    assert r1["pass"] is True
+    r2 = detect_extension_1618(lengths, require_w3_not_shortest=True)
+    assert r2["pass"] is False
+    assert r2["variant"] == "w3_shortest"
+    assert motive_w3_not_shortest(lengths) is False
+
+
+def test_extension_v2_rejects_w1_w4_overlap_as_impulse_ext():
+    lengths = {"1": 1000, "3": 2000, "5": 800}
+    r = detect_extension_1618(lengths, forbid_w1_w4_overlap=True)
+    assert r["pass"] is False
+    assert r["variant"] == "w1_w4_overlap_not_impulse_ext"
+
+
+def test_overlap_depth_and_ld_v2_gate():
+    # ① 100→200；④ 150→250 → 交集 50／短邊 100＝0.5
+    d = overlap_depth_pct(100, 200, 150, 250)
+    assert d is not None and abs(d - 0.5) < 1e-9
+    ov = check_w1_w4_overlap(100, 200, 150, 250)
+    assert ov["overlap"] is True
+    assert abs(ov["overlap_depth_pct"] - 0.5) < 1e-9
+
+    # v2：深度夠但缺位置／結構 → candidate False
+    ld = leading_diagonal_flags(
+        w1_w4_overlap=True,
+        overlap_depth_pct=0.5,
+        min_overlap_depth=0.08,
+        require_pos_or_struct=True,
+        position_ok=None,
+        structure_53535=None,
+    )
+    assert ld["candidate"] is False
+
+    ld2 = leading_diagonal_flags(
+        w1_w4_overlap=True,
+        overlap_depth_pct=0.5,
+        min_overlap_depth=0.08,
+        require_pos_or_struct=True,
+        position_ok=True,
+        structure_53535=None,
+    )
+    assert ld2["candidate"] is True
+    assert ld2["confirmed"] is False
+
+
+def test_evaluate_mine_wave_gates_has_next_keys():
+    pack = evaluate_mine_wave_gates(
+        lengths={"1": 1000, "3": 1700, "5": 900},
+        w1_start=100,
+        w1_end=200,
+        w4_start=280,
+        w4_end=240,
+    )
+    assert pack["pot"] == "MINE"
+    assert pack["source"] == "mine"
+    assert pack["≠biaoke"] is True
+    assert pack["extension"]["rule"] == RULE_PHONE_EXT
+    assert pack["extension_next"]["rule"] == RULE_NEXT_EXT
+    assert pack["leading_diagonal"]["rule"] == RULE_PHONE_LD
+    assert pack["leading_diagonal_next"]["rule"] == RULE_NEXT_LD
+    assert pack["extension"]["pass"] is True
+    assert pack["leading_diagonal"]["candidate"] is False  # 無重疊
+
+
+def test_motive_lengths_from_nodes():
+    d = motive_lengths_from_nodes(
+        100,
+        [
+            {"label": "(1)", "price": 200},
+            {"label": "(2)", "price": 150},
+            {"label": "(3)", "price": 320},
+        ],
+    )
+    assert d["1"] == 100.0
+    assert d["2"] == 50.0
+    assert d["3"] == 170.0
+
+
+def test_judge_and_summarize_mine_only():
+    hit = judge_mine_practice(True, post_move_pct=0.03)
+    assert hit["verdict"] == "對" and hit["pot"] == "MINE"
+    miss = judge_mine_practice(True, post_move_pct=-0.05)
+    assert miss["verdict"] == "偏"
+    pend = judge_mine_practice(True, post_move_pct=None, incomplete=True)
+    assert pend["verdict"] == "未完"
+    summ = summarize_mine_practice(
+        [{"judge": hit}, {"judge": miss}, {"judge": pend}]
+    )
+    assert summ["n_scoreable"] == 2
+    assert summ["n_hit"] == 1
+    assert summ["pot"] == "MINE"
+    assert summ["≠mixed_pots"] is True
+    assert abs(summ["winrate"] - 0.5) < 1e-9

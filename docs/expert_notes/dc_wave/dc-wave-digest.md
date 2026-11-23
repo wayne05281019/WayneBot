@@ -85,9 +85,15 @@ L_max ≥ 1.618 × L_second_max
 - 不准把本規則寫回黃金買點／海選／洞燭名單。
 - 不准用 DC 教學句當飆大 thesis 回覆。
 
-### 建議對質鍵（再生下一版用）
-- `mine_ext1618_v1`：獨立交易日 n≥20 且勝「無擴延閘」現況才換（§13）。
-- `mine_lead_diag_v1`：同樣分軌；空名單不算。
+### 建議對質鍵（再生下一版用；§13）
+- **現況話筒鍵**
+  - `mine_ext1618_v1`：`L_max≥1.618×L_2nd`
+  - `mine_lead_diag_v1`：①④ 重疊→candidate；confirmed 要位置＋5-3-5-3-5
+- **下一版候選（同件再生，已開收集）**
+  - `mine_ext1618_v2`：v1 ＋ ③非最短 ＋ 禁把標準 impulse 1–4 重疊當擴延 pass
+  - `mine_lead_diag_v2`：重疊深度≥8% ＋ 位置或結構至少一項才 candidate
+- 獨立交易日 n≥20 **且** 贏該功能現況才換；空名單不算；**勝率只記我估鍋**。
+- 落檔：`mine_practice_*.json`（對／偏／未完）＋`mine_practice_next_keys.json`。
 
 ---
 

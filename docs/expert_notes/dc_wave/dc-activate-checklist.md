@@ -14,8 +14,8 @@
 | 我估暗色圖 | `_render_twii_self_pred_dark` | 讀 `pack["self_pred"]["mine_wave"]`；過關才畫註「我估｜擴延1618」／「我估｜前端傾斜」。 |
 | 標籤工廠 | `_self_pred_label(price, basis)` | basis 用短句：`擴延1618·③`、`前端傾斜1-4重疊`。 |
 | DC 情境分軌 | `dc_scenario_silent_verify`（`dc_sf_*` 表） | 只當 **同學圖對質** 參考；可遷移句進 `dc_sf_rules.learn_transfer` 時標 `origin=dc_teach`，**不准**寫 `biaoke_posts`。 |
-| 個股情境臉 | `scenario_forecast_chart.py` → `infer_dc_wave_scenario` | 2026-11-23：回傳附加 `mine_wave`（`mine_wave_from_impulse_nodes`）；失敗不改買訊、只附加。標籤 pot=DC→我估。 |
-| 靜默對質鍵 | 新建建議 | `mine_ext1618_v1`、`mine_lead_diag_v1`；末端圖到齊再開 `mine_end_diag_v1`。 |
+| 個股情境臉 | `scenario_forecast_chart.py` → `infer_dc_wave_scenario` | 附加 `mine_wave`（`_attach_mine_wave_gate`／擴延1618＋前端傾斜）；失敗不改買訊、只降置信。標籤 pot=MINE。 |
+| 靜默對質鍵 | 現況＋再生 | 現況 `mine_ext1618_v1`／`mine_lead_diag_v1`；下一版 `mine_ext1618_v2`／`mine_lead_diag_v2`（分軌；只記我估）。末端圖到齊再開 `mine_end_diag_v1`。 |
 
 ---
 
@@ -66,13 +66,14 @@
 ## D. 啟用步驟（主 agent）
 
 1. [x] 落 digest＋sources（本目錄）。  
-2. [x] 純函式 `mine_wave_rules.py`＋`tests/test_mine_wave_rules.py`。  
-3. [x] `infer_dc_wave_scenario` 附加 `mine_wave`（2026-11-23）。  
+2. [x] 純函式 `mine_wave_rules.py`＋`tests/test_mine_wave_rules.py`（擴延／前端傾斜閘＋v2 再生鍵）。  
+3. [x] `infer_dc_wave_scenario` 附加 `mine_wave`（失敗吞掉、不擋出圖；pot=MINE）。  
 4. [x] 官方柱練習樣例＋`tests/test_dc_wave_practice_samples.py`（見 `practice_log_20261123.md`）。  
-5. [ ] `_build_self_pred_levels` 可選呼叫（最小 diff；失敗吞掉、不擋出圖）。  
-6. [ ] 靜默對質排程鍵掛上（n 累積；過程不進對話）。  
-7. [ ] 話筒／飆大路徑 grep 確認無 `leading_diagonal`／`擴延1618` 洩漏進「他說」。  
-8. [ ] Drive／附檔：末端傾斜＋motive 全表進 `sources/`（2026-11-23 再搜仍空）。
+5. [x] 官方柱樣例對質腳本 `scripts/mine_wave_practice_confront.py` → `mine_practice_*.json`。  
+6. [ ] `_build_self_pred_levels` 可選呼叫（最小 diff；失敗吞掉、不擋出圖）。  
+7. [ ] 靜默對質排程鍵掛上 Render（n 累積；過程不進對話）。  
+8. [ ] 話筒／飆大路徑 grep 確認無 `leading_diagonal`／`擴延1618` 洩漏進「他說」。  
+9. [ ] Drive／附檔：末端傾斜＋motive 全表進 `sources/`（目前仍空）。
 
 ---
 

@@ -219,11 +219,14 @@ def test_dc_wave_labels_and_projection():
     assert "不是買訊" in str(wave.get("bubble") or "")
     # 虛線點存在或已完整
     assert wave.get("path_done")
-    # DC→我估結構閘附加；三鍋分標不准當他說
+    # 我估閘附加：pot=MINE；不准冒充飆大
     mw = wave.get("mine_wave") or {}
+    assert mw.get("pot") == "MINE"
     assert mw.get("source") == "mine"
-    assert mw.get("pot") == "DC→我估"
-    assert "extension" in mw or mw.get("ok") is False
+    assert mw.get("≠biaoke") is True
+    assert "extension" in mw and "extension_next" in mw
+    assert mw["extension"]["rule"] == "mine_ext1618_v1"
+    assert mw["extension_next"]["rule"] == "mine_ext1618_v2"
     meta = build_scenario_meta(rows)
     cap = format_scenario_caption("4927", "泰鼎-KY", meta)
     assert "不是買訊" in cap and "不保證" in cap

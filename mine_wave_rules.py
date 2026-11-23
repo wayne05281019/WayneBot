@@ -6,14 +6,21 @@
 
 - detect_extension_1618：五浪群最長浪 ≥ 161.8% × 次長 → 推進擴延候選。
 - check_w1_w4_overlap／leading_diagonal_flags：①④ 價區重疊（前端傾斜特徵之一）。
+- evaluate_mine_wave_gates：我估鍋統一閘（現況鍵＋§13 下一版候選鍵）。
 
-不是買訊；盤中未收柱呼叫端自己擋。
+不是買訊；盤中未收柱呼叫端自己擋。三鍋分標：pot=MINE／DC→我估。
 """
 from __future__ import annotations
 
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
 EXT_RATIO = 1.618
+
+# §13 靜默對質鍵（只記我估鍋；不准混飆大／海選勝率）
+RULE_PHONE_EXT = "mine_ext1618_v1"
+RULE_NEXT_EXT = "mine_ext1618_v2"  # 再生：+③非最短＋禁標準 impulse 1–4 重疊
+RULE_PHONE_LD = "mine_lead_diag_v1"
+RULE_NEXT_LD = "mine_lead_diag_v2"  # 再生：+重疊深度≥8%＋位置或結構至少一項
 
 Number = Union[int, float]
 
@@ -36,15 +43,30 @@ def wave_price_length(start: Number, end: Number) -> Optional[float]:
     return abs(b - a)
 
 
+def motive_w3_not_shortest(lengths: Mapping[str, Number]) -> Optional[bool]:
+    """動機鐵律旁證：①③⑤ 齊時，③ 不可最短。缺腿→None。"""
+    l1, l3, l5 = _f(lengths.get("1")), _f(lengths.get("3")), _f(lengths.get("5"))
+    if None in (l1, l3, l5):
+        return None
+    return float(l3) + 1e-12 >= min(float(l1), float(l5))
+
+
 def detect_extension_1618(
     lengths: Mapping[str, Number],
     *,
     ratio: float = EXT_RATIO,
+    require_w3_not_shortest: bool = False,
+    forbid_w1_w4_overlap: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """擴延波檢測：L_max ≥ ratio × L_second_max。
 
     ``lengths`` 典型鍵 ``\"1\"``／``\"3\"``／``\"5\"``（也可只傳有的浪）。
     回傳一律可 JSON 化；``pass``＝過核心閘。
+
+    v2 強化（``require_w3_not_shortest``／``forbid_w1_w4_overlap``）：
+    - ①③⑤ 齊時③不可最短，否則 fail（variant=w3_shortest）。
+    - 若呼叫端已知標準 impulse 下 1–4 重疊為真，則不准當擴延推進 pass
+      （應改走前端傾斜軌；不准自動改標）。
     """
     cleaned: Dict[str, float] = {}
     for k, v in (lengths or {}).items():
@@ -63,6 +85,7 @@ def detect_extension_1618(
             "second": None,
             "lengths": cleaned,
             "variant": "insufficient_legs",
+            "w3_not_shortest": motive_w3_not_shortest(cleaned),
             "basis": "need≥2 motive legs",
         }
 
@@ -76,12 +99,14 @@ def detect_extension_1618(
             "second": sec_k,
             "lengths": cleaned,
             "variant": "zero_second",
+            "w3_not_shortest": motive_w3_not_shortest(cleaned),
             "basis": "second length≤0",
         }
 
     got = long_v / sec_v
     passed = got + 1e-12 >= float(ratio)
     variant: Optional[str] = None
+    w3_ok = motive_w3_not_shortest(cleaned)
     if not passed:
         # 例外標籤（digest §1）：僅提示，不自動升格為 pass
         l1 = cleaned.get("1")
@@ -100,6 +125,13 @@ def detect_extension_1618(
         ):
             variant = "rare_ending_motive_variant"
 
+    if require_w3_not_shortest and w3_ok is False:
+        passed = False
+        variant = "w3_shortest"
+    if forbid_w1_w4_overlap is True and passed:
+        passed = False
+        variant = "w1_w4_overlap_not_impulse_ext"
+
     return {
         "pass": bool(passed),
         "ratio": float(got),
@@ -108,6 +140,7 @@ def detect_extension_1618(
         "second": sec_k,
         "lengths": cleaned,
         "variant": variant,
+        "w3_not_shortest": w3_ok,
         "basis": f"L_max≥{ratio:g}×L_2nd",
     }
 
@@ -128,6 +161,28 @@ def price_ranges_overlap(
     return not (hi_a < lo_b or hi_b < lo_a)
 
 
+def overlap_depth_pct(
+    a_lo: Number,
+    a_hi: Number,
+    b_lo: Number,
+    b_hi: Number,
+) -> Optional[float]:
+    """兩價區重疊深度＝交集長度／較短區間長度；無重疊→0；缺數→None。"""
+    alo, ahi = _f(a_lo), _f(a_hi)
+    blo, bhi = _f(b_lo), _f(b_hi)
+    if None in (alo, ahi, blo, bhi):
+        return None
+    lo_a, hi_a = (alo, ahi) if alo <= ahi else (ahi, alo)
+    lo_b, hi_b = (blo, bhi) if blo <= bhi else (bhi, blo)
+    inter = min(hi_a, hi_b) - max(lo_a, lo_b)
+    if inter <= 0:
+        return 0.0
+    short = min(hi_a - lo_a, hi_b - lo_b)
+    if short <= 1e-12:
+        return None
+    return float(inter / short)
+
+
 def check_w1_w4_overlap(
     w1_start: Number,
     w1_end: Number,
@@ -136,8 +191,10 @@ def check_w1_w4_overlap(
 ) -> Dict[str, Any]:
     """① 與 ④ 價區是否重疊（前端傾斜關鍵特徵；標準 impulse 禁止）。"""
     ov = price_ranges_overlap(w1_start, w1_end, w4_start, w4_end)
+    depth = overlap_depth_pct(w1_start, w1_end, w4_start, w4_end)
     return {
         "overlap": ov,
+        "overlap_depth_pct": depth,
         "w1": {"start": _f(w1_start), "end": _f(w1_end)},
         "w4": {"start": _f(w4_start), "end": _f(w4_end)},
         "basis": "w1_w4_price_range_overlap",
@@ -149,21 +206,45 @@ def leading_diagonal_flags(
     w1_w4_overlap: Optional[bool],
     position_ok: Optional[bool] = None,
     structure_53535: Optional[bool] = None,
+    overlap_depth_pct: Optional[float] = None,
+    min_overlap_depth: float = 0.0,
+    require_pos_or_struct: bool = False,
 ) -> Dict[str, Any]:
     """前端傾斜旗標組裝（純規則；內部 5-3-5-3-5 由呼叫端先判再傳入）。
 
     implication=continuation（vs ending_diagonal=termination）。
     candidate＝重疊為真；confirmed 還要位置＋結構（缺則 False）。
+
+    v2：``min_overlap_depth``（預設 0；v2 用 0.08）＋
+    ``require_pos_or_struct``＝candidate 還要位置或結構至少一真（缺則不升格）。
+    不准把標準 impulse 1–4 失敗自動改標前端傾斜。
     """
     overlap = None if w1_w4_overlap is None else bool(w1_w4_overlap)
     pos = None if position_ok is None else bool(position_ok)
     struct = None if structure_53535 is None else bool(structure_53535)
-    candidate = overlap is True
-    confirmed = candidate and pos is True and struct is True
+    depth = _f(overlap_depth_pct)
+    depth_ok = True if float(min_overlap_depth) <= 0 else (
+        depth is not None and depth + 1e-12 >= float(min_overlap_depth)
+    )
+    candidate = overlap is True and depth_ok
+    if require_pos_or_struct and candidate:
+        # 缺位／缺結構＝不腦補通過；兩者皆 None 時維持 candidate=False（防假陽）
+        if pos is None and struct is None:
+            candidate = False
+        elif not (pos is True or struct is True):
+            candidate = False
+    confirmed = (
+        overlap is True
+        and depth_ok
+        and pos is True
+        and struct is True
+    )
     return {
         "candidate": candidate,
         "confirmed": confirmed,
         "w1_w4_overlap": overlap,
+        "overlap_depth_pct": depth,
+        "min_overlap_depth": float(min_overlap_depth),
         "position_ok": pos,
         "structure_53535": struct,
         "implication": "continuation",
@@ -510,4 +591,221 @@ def alternation_2_4_hint(
         "w2_retrace_pct": float(r2),
         "w4_retrace_pct": float(r4),
         "basis": "2_4_alternation_hint; pot=DC→我估",
+    }
+
+
+def motive_lengths_from_nodes(
+    start_price: Number,
+    nodes: Sequence[Mapping[str, Any]],
+) -> Dict[str, float]:
+    """從浪節點（label=(1)(2)(3)(4)(5)）組動機浪 1/3/5 與修正 2/4 價距。
+
+    ①＝|start→(1)|；②＝|(1)→(2)|；③＝|(2)→(3)|；④＝|(3)→(4)|；⑤＝|(4)→(5)|。
+    缺節點則略該段。一律 pot=MINE。
+    """
+    by: Dict[str, float] = {}
+    sp = _f(start_price)
+    for n in nodes or []:
+        lab = str(n.get("label") or "").strip()
+        px = _f(n.get("price"))
+        if px is None:
+            continue
+        if lab in ("(1)", "1", "①"):
+            by["p1"] = px
+        elif lab in ("(2)", "2", "②"):
+            by["p2"] = px
+        elif lab in ("(3)", "3", "③"):
+            by["p3"] = px
+        elif lab in ("(4)", "4", "④"):
+            by["p4"] = px
+        elif lab in ("(5)", "5", "⑤"):
+            by["p5"] = px
+    out: Dict[str, float] = {}
+    if sp is not None and "p1" in by:
+        out["1"] = abs(by["p1"] - sp)
+    if "p1" in by and "p2" in by:
+        out["2"] = abs(by["p2"] - by["p1"])
+    if "p2" in by and "p3" in by:
+        out["3"] = abs(by["p3"] - by["p2"])
+    if "p3" in by and "p4" in by:
+        out["4"] = abs(by["p4"] - by["p3"])
+    if "p4" in by and "p5" in by:
+        out["5"] = abs(by["p5"] - by["p4"])
+    return out
+
+
+def evaluate_mine_wave_gates(
+    *,
+    lengths: Optional[Mapping[str, Number]] = None,
+    pivots: Optional[Sequence[Tuple[Number, ...]]] = None,
+    w1_start: Optional[Number] = None,
+    w1_end: Optional[Number] = None,
+    w4_start: Optional[Number] = None,
+    w4_end: Optional[Number] = None,
+    position_ok: Optional[bool] = None,
+    structure_53535: Optional[bool] = None,
+) -> Dict[str, Any]:
+    """我估鍋統一閘：現況 v1 ＋ §13 下一版候選 v2（同件再生）。
+
+    勝率／對質只准記 ``pot=MINE``；不准混飆大／海選／洞燭。
+    不是買訊；不過閘不准發明 5／9 上話筒。
+    """
+    lens: Dict[str, float]
+    if lengths:
+        lens = {}
+        for k, v in lengths.items():
+            fv = _f(v)
+            if fv is not None and fv >= 0:
+                lens[str(k)] = float(fv)
+    elif pivots:
+        lens = lengths_from_pivots(pivots)
+    else:
+        lens = {}
+
+    motive = {k: lens[k] for k in ("1", "3", "5") if k in lens}
+    ov_pack: Optional[Dict[str, Any]] = None
+    if None not in (w1_start, w1_end, w4_start, w4_end):
+        ov_pack = check_w1_w4_overlap(w1_start, w1_end, w4_start, w4_end)
+    elif pivots and len(pivots) >= 5:
+        pts = [_f(p[0]) if isinstance(p, (tuple, list)) else _f(p) for p in pivots[:5]]
+        pts = [p for p in pts if p is not None]
+        if len(pts) >= 5:
+            ov_pack = check_w1_w4_overlap(pts[0], pts[1], pts[3], pts[4])
+
+    overlap = None if ov_pack is None else ov_pack.get("overlap")
+    depth = None if ov_pack is None else ov_pack.get("overlap_depth_pct")
+
+    ext_v1 = detect_extension_1618(motive if len(motive) >= 2 else lens)
+    ext_v2 = detect_extension_1618(
+        motive if len(motive) >= 2 else lens,
+        require_w3_not_shortest=True,
+        forbid_w1_w4_overlap=True if overlap is True else None,
+    )
+
+    ld_v1 = leading_diagonal_flags(
+        w1_w4_overlap=overlap,
+        position_ok=position_ok,
+        structure_53535=structure_53535,
+        overlap_depth_pct=depth,
+        min_overlap_depth=0.0,
+        require_pos_or_struct=False,
+    )
+    ld_v2 = leading_diagonal_flags(
+        w1_w4_overlap=overlap,
+        position_ok=position_ok,
+        structure_53535=structure_53535,
+        overlap_depth_pct=depth,
+        min_overlap_depth=0.08,
+        require_pos_or_struct=True,
+    )
+    if ov_pack is not None:
+        ld_v1["w1_w4_check"] = ov_pack
+        ld_v2["w1_w4_check"] = ov_pack
+
+    return {
+        "source": "mine",
+        "pot": "MINE",
+        "label_prefix": "我估",
+        "≠biaoke": True,
+        "≠golden_buy": True,
+        "lengths": lens,
+        "motive_lengths": motive,
+        "extension": {
+            "rule": RULE_PHONE_EXT,
+            **ext_v1,
+        },
+        "extension_next": {
+            "rule": RULE_NEXT_EXT,
+            **ext_v2,
+        },
+        "leading_diagonal": {
+            "rule": RULE_PHONE_LD,
+            **ld_v1,
+        },
+        "leading_diagonal_next": {
+            "rule": RULE_NEXT_LD,
+            **ld_v2,
+        },
+        "track_keys": {
+            "phone_ext": RULE_PHONE_EXT,
+            "next_ext": RULE_NEXT_EXT,
+            "phone_ld": RULE_PHONE_LD,
+            "next_ld": RULE_NEXT_LD,
+        },
+        "basis": "DC→我估結構閘；三鍋分標；§13 再生下一版",
+    }
+
+
+def judge_mine_practice(
+    gate_pass: Optional[bool],
+    *,
+    post_move_pct: Optional[float] = None,
+    expect_continuation: bool = True,
+    continue_thresh: float = 0.01,
+    reverse_thresh: float = 0.02,
+    incomplete: bool = False,
+) -> Dict[str, Any]:
+    """靜默對質裁決：對／偏／未完（只記我估鍋）。
+
+    - 未完：腿不足／後續柱不足／incomplete。
+    - 對：閘過且後續同向延續≥continue_thresh（或閘不過且後續反向確認非推進）。
+    - 偏：閘過但後續反向≥reverse_thresh；或閘不過但後續強延續（漏抓）。
+    """
+    if incomplete or gate_pass is None or post_move_pct is None:
+        return {
+            "verdict": "未完",
+            "scoreable": False,
+            "gate_pass": gate_pass,
+            "post_move_pct": post_move_pct,
+            "pot": "MINE",
+        }
+    move = float(post_move_pct)
+    gp = bool(gate_pass)
+    cont = move >= float(continue_thresh) if expect_continuation else move <= -float(continue_thresh)
+    rev = move <= -float(reverse_thresh) if expect_continuation else move >= float(reverse_thresh)
+    if gp and cont:
+        verd = "對"
+    elif gp and rev:
+        verd = "偏"
+    elif (not gp) and rev:
+        # 閘擋下且真的反向＝擋對
+        verd = "對"
+    elif (not gp) and cont:
+        verd = "偏"  # 漏抓推進
+    else:
+        verd = "未完"
+    return {
+        "verdict": verd,
+        "scoreable": verd in ("對", "偏"),
+        "gate_pass": gp,
+        "post_move_pct": move,
+        "continuation": cont,
+        "reversal": rev,
+        "pot": "MINE",
+    }
+
+
+def summarize_mine_practice(
+    rows: Sequence[Mapping[str, Any]],
+) -> Dict[str, Any]:
+    """彙總我估對質列：n／勝率只算 scoreable；勝率不准混他鍋。"""
+    scored = [r for r in rows if (r.get("judge") or {}).get("scoreable")]
+    hit = sum(1 for r in scored if (r.get("judge") or {}).get("verdict") == "對")
+    miss = sum(1 for r in scored if (r.get("judge") or {}).get("verdict") == "偏")
+    pending = sum(
+        1 for r in rows if (r.get("judge") or {}).get("verdict") == "未完"
+    )
+    n = hit + miss
+    wr = (hit / n) if n else None
+    return {
+        "pot": "MINE",
+        "n_scoreable": n,
+        "n_hit": hit,
+        "n_miss": miss,
+        "n_pending": pending,
+        "n_rows": len(list(rows)),
+        "winrate": wr,
+        "gate_ready_n20": bool(n >= 20),
+        "≠mixed_pots": True,
+        "basis": "勝率只記我估鍋；n≥20且贏現況才換（§13）",
     }
