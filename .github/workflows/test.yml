@@ -51,6 +51,7 @@ jobs:
   # 只跑煙霧測試的話，回歸會安靜地合併進 main 再部署上去。
   # needs smoke：同一 PR 不准 smoke／full 並搶兩席（24 PR 排隊時峰值約腰斬）；
   # smoke 紅就不開 full，省 runner。仍兩職都綠才合（對齊 #969）。
+  # 詳見 docs/ci_queue_concurrency_strategy_20261123.md
   full-suite:
     needs: smoke-no-db
     runs-on: ubuntu-latest
