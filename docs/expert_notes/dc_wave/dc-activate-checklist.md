@@ -70,10 +70,11 @@
 3. [x] `infer_dc_wave_scenario` 附加 `mine_wave`（失敗吞掉、不擋出圖；pot=MINE）。  
 4. [x] 官方柱練習樣例＋`tests/test_dc_wave_practice_samples.py`（見 `practice_log_20261123.md`）。  
 5. [x] 官方柱樣例對質腳本 `scripts/mine_wave_practice_confront.py` → `mine_practice_*.json`。  
-6. [ ] `_build_self_pred_levels` 可選呼叫（最小 diff；失敗吞掉、不擋出圖）。  
-7. [ ] 靜默對質排程鍵掛上 Render（n 累積；過程不進對話）。  
-8. [ ] 話筒／飆大路徑 grep 確認無 `leading_diagonal`／`擴延1618` 洩漏進「他說」。  
-9. [ ] Drive／附檔：末端傾斜＋motive 全表進 `sources/`（目前仍空）。
+6. [x] `_build_self_pred_levels` 可選呼叫（最小 diff；失敗吞掉、不擋出圖；`mine_wave` 不進 `pred_levels`）。  
+7. [x] 話筒／飆大路徑分鍋牆：`wave_pot_boundary.py`＋`tests/test_wave_pot_boundary.py`（B6／B9；對照表 `cross_pot_compare.*`）。  
+8. [ ] 靜默對質排程鍵掛上 Render（n 累積；過程不進對話）。  
+9. [ ] 話筒／飆大路徑 grep 確認無 `leading_diagonal`／`擴延1618` 洩漏進「他說」。  
+10. [ ] Drive／附檔：末端傾斜＋motive 全表進 `sources/`（目前仍空）。
 
 ---
 

@@ -1070,6 +1070,12 @@ def infer_dc_wave_scenario(
             "future_bars": float(fut),
             "leg_bars": dict(leg_bars or {}),
             "proj_durs": dict(proj_durs or {}),
+            # DC 視覺臉鍋戳：同學軌；不准當「他說／飆預測」
+            "pot": "dc_peer",
+            "source": "dc_scenario_visual",
+            "not_biaoke": True,
+            "phone_forbid_as_his": True,
+            "not_buy_signal": True,
         }
         return _attach_mine_wave_gate(out)
 

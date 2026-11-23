@@ -1,6 +1,7 @@
 # DC 進化・並行鎖（2026-11-23 台北）
 
 - 預算：與飆大**各自**最多 8 代理；第一波飆大優先開完後再排 DC（或錯開開）。
-- 三鍋分標：DC／我估／飆大 永遠分開；不准冒充他說。
+- 三鍋分標：DC／我估／飆大 永遠分開；不准冒充他說（MISSION_LOCK **B6**）。
+- 對照不互寫（**B9**）；飆大 `observe_manual` 產出只讀、不准改成 DC。
 - 目標：補齊停滯（digest 約停在 2026-11-02）→ 官方柱練習 → 對質 → §13 再生。
-- 邊界細節見 `vs-biaoke-boundary.md`、`dc-wave-digest.md`。
+- 邊界細節見 `vs-biaoke-boundary.md`、`dc-wave-digest.md`、`cross_pot_compare.md`。

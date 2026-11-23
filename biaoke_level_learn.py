@@ -14433,9 +14433,20 @@ def _self_pred_label(price: float, basis: str) -> str:
     單向：可讀他的當參考；不准把我估回寫成他的依據或標成飆預測。
     """
     b = str(basis or "").strip()[:28]
+    # 硬擋：依據若冒充他說／DC原文當他說 → 改成我估依據缺省句（B6）
+    if b.startswith("他說") or b.startswith("飆預測") or b.startswith("DC原文"):
+        b = "依據不准冒充老師原文"
     if b:
-        return f"我估{_px(price)}｜{b}"
-    return f"我估{_px(price)}｜依據未寫＝不准"
+        lab = f"我估{_px(price)}｜{b}"
+    else:
+        lab = f"我估{_px(price)}｜依據未寫＝不准"
+    try:
+        from wave_pot_boundary import POT_MINE, assert_label_pot
+
+        assert_label_pot(lab, POT_MINE)
+    except Exception:
+        pass
+    return lab
 
 
 def _near_his_level(lv: float, his: Sequence[float], *, tol: float = 80.0) -> bool:
@@ -14672,7 +14683,50 @@ def _build_self_pred_levels(
     ]
     if us_bias:
         refs.insert(0, us_bias)
-    return {
+    # DC→我估結構閘（可選；失敗吞掉、不擋出圖；不准寫進 pred_levels）
+    mine_wave: Dict[str, Any] = {}
+    try:
+        from mine_wave_rules import detect_extension_1618, leading_diagonal_flags
+        from wave_pot_boundary import stamp_mine
+
+        # 近窗轉折粗距：只作結構旁註；缺柱就不填
+        if n >= 6:
+            i0, i1, i2 = max(0, n - 6), max(0, n - 4), max(0, n - 2)
+            legs = {
+                "1": abs(float(highs[i0]) - float(lows[i0])),
+                "3": abs(float(highs[i1]) - float(lows[i1])),
+                "5": abs(float(highs[i2]) - float(lows[i2])),
+            }
+            ext = detect_extension_1618(legs)
+            # 1–4 重疊粗檢：用近窗高低當價區代理；缺位置／結構→confirmed 必 False
+            ov = None
+            try:
+                from mine_wave_rules import check_w1_w4_overlap
+
+                ov_pack = check_w1_w4_overlap(
+                    float(lows[i0]),
+                    float(highs[i0]),
+                    float(lows[i2]),
+                    float(highs[i2]),
+                )
+                ov = ov_pack.get("overlap")
+            except Exception:
+                ov = None
+            ld = leading_diagonal_flags(
+                w1_w4_overlap=ov if isinstance(ov, bool) else None,
+                position_ok=None,
+                structure_53535=None,
+            )
+            mine_wave = stamp_mine(
+                {
+                    "extension": ext,
+                    "leading_diagonal": ld,
+                }
+            )
+    except Exception:
+        logger.debug("self_pred mine_wave 略過", exc_info=True)
+        mine_wave = {}
+    out_sp: Dict[str, Any] = {
         "mine": kept,
         "his_aux": his_notes[:6],
         "us_bias": us_bias,
@@ -14681,7 +14735,12 @@ def _build_self_pred_levels(
             [f"{r['label']}" for r in kept[:3]]
             + ([us_bias] if us_bias else [])
         )[:280],
+        "source": "mine",
+        "pot": "mine",
     }
+    if mine_wave:
+        out_sp["mine_wave"] = mine_wave
+    return out_sp
 
 
 def _c_forecast_tip(
