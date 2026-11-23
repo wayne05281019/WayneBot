@@ -62,7 +62,7 @@ def pytest_configure(config):
     )
     config.addinivalue_line(
         "markers",
-        "network: 允許打外網（預設單元測 stub ISIN／不准掛死 smoke）",
+        "network: 允許打外網（預設單元測 stub ISIN／MOPS／月表；不准掛死 smoke）",
     )
     config.addinivalue_line(
         "markers",
@@ -103,6 +103,51 @@ def _stub_isin_universe_offline(request, monkeypatch):
             _no_isin,
             raising=False,
         )
+    except Exception:
+        pass
+    yield
+
+
+@pytest.fixture(autouse=True)
+def _stub_official_http_offline(request, monkeypatch):
+    """單元測不准真打 MOPS／證交所月表。
+
+    查股／介紹圖會 asyncio.to_thread(ensure_stock_fundamentals) 或同步 ensure；
+    SSL 握手卡住時 requests timeout 不生效，asyncio 關 loop 再等 default
+    executor join 300s（CI smoke --durations 多支卡在 ~300／500／900s，
+    總長 142→180 分被 cancel；本機 faulthandler 對質過）。
+    需要真抓掛 @pytest.mark.network（含 production_db 路徑）。
+    """
+    if request.node.get_closest_marker("network"):
+        yield
+        return
+
+    def _no_json(*_a, **_k):
+        return []
+
+    def _no_bytes(*_a, **_k):
+        return b""
+
+    def _no_month(*_a, **_k):
+        return []
+
+    # _post_form＝MOPS ajax POST（timeout=60×3）；漏 stub 時空庫 ensure
+    # 會連打數十次，CI smoke 卡在介紹圖／查股測（本機 durations 對質）。
+    monkeypatch.setattr("fundamentals._get", _no_json, raising=False)
+    monkeypatch.setattr("fundamentals._get_bytes", _no_bytes, raising=False)
+    monkeypatch.setattr("fundamentals._post_form", _no_bytes, raising=False)
+    try:
+        import fundamentals as _fund
+
+        monkeypatch.setattr(_fund, "_get", _no_json)
+        monkeypatch.setattr(_fund, "_get_bytes", _no_bytes)
+        monkeypatch.setattr(_fund, "_post_form", _no_bytes)
+    except Exception:
+        pass
+    try:
+        import biaoke_walk as _bw
+
+        monkeypatch.setattr(_bw, "fetch_stock_month", _no_month, raising=False)
     except Exception:
         pass
     yield

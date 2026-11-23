@@ -616,3 +616,23 @@ def test_unit_tests_stub_isin_universe_offline(monkeypatch):
 
     # conftest autouse 已 stub；呼叫應立刻回空、不准真 HTTP
     assert universe.fetch_isin_universe() == []
+
+
+def test_unit_tests_stub_mops_and_month_http_offline():
+    """單元測不准真打 MOPS／證交所月表；否則查股 ensure 卡 SSL→executor 300s。"""
+    import time
+
+    import fundamentals
+
+    t0 = time.perf_counter()
+    assert fundamentals._get("https://mops.twse.com.tw/blocked") == []
+    assert fundamentals._get_bytes("https://mops.twse.com.tw/blocked") == b""
+    # ajax_t163sb04 走 _post_form；漏 stub 時空庫介紹圖會連打卡住
+    assert fundamentals._post_form("https://mopsov.twse.com.tw/mops/web/ajax_t163sb04", {}) == b""
+    try:
+        import biaoke_walk
+
+        assert biaoke_walk.fetch_stock_month("2330", "202609", "TW") == []
+    except Exception:
+        pass
+    assert (time.perf_counter() - t0) < 1.0
