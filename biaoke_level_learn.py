@@ -4378,10 +4378,19 @@ def _reply_level_delta(blob: str) -> bool:
     s = str(blob or "")
     if not s.strip():
         return False
-    # 明確大盤／費半數字或改口
+    # 明確大盤／費半數字或改口（含 11/23：33000 防線／31700 崩盤／31500 系統／8336）
     if re.search(
         r"45546|46292|44210|44042|39384|42000|41000|40000|35000|38000|"
-        r"35500|37300|37000|37500|9865|10445|8498|47500|41800|41900|42700|43135|41760",
+        r"35500|37300|37000|37500|35700|33000|31700|31500|31000|37837|"
+        r"9865|10445|8498|8336|47500|41800|41900|42700|43135|41760",
+        s,
+    ):
+        return True
+    # 防線／系統風險語＋戰場（可不帶「大盤」二字）
+    if re.search(r"防線|系統性風險|崩盤|假突破", s) and re.search(
+        r"(?<![0-9])(?:3[0-9]|4[0-9])\d{3}(?:\.\d+)?(?![0-9])|"
+        r"(?<![0-9])(?:8|9|10)\d{3}(?:\.\d+)?(?![0-9])|"
+        r"台指|加權|費半|台股|期貨",
         s,
     ):
         return True
@@ -4393,11 +4402,12 @@ def _reply_level_delta(blob: str) -> bool:
         s,
     ) and _INDEXISH.search(s):
         return True
-    if re.search(r"(?:9865|10445|8498).{0,6}會破|會破.{0,6}(?:9865|10445|8498)", s):
+    if re.search(r"(?:9865|10445|8498|8336).{0,6}會破|會破.{0,6}(?:9865|10445|8498|8336)", s):
         return True
+    # 30xxx～49xxx（含 31／33 防線帶）；舊門檻 35xxx 起會漏 31700／33000
     return bool(
         _INDEXISH.search(s)
-        and re.search(r"(?<![0-9])(?:3[5-9]|4[0-9])\d{3}(?:\.\d+)?(?![0-9])", s)
+        and re.search(r"(?<![0-9])(?:3[0-9]|4[0-9])\d{3}(?:\.\d+)?(?![0-9])", s)
     )
 
 
@@ -4431,6 +4441,9 @@ def _latest_biaoke_index_snip(
     since = (dt - timedelta(days=21)).strftime("%Y-%m-%d")
 
     def _ok_clock(d: str, t: str) -> bool:
+        # 牆鐘之後／未來日文不准吃（查詢 now 釘在昨日時，庫內今日文不可回填）
+        if d and d > today_dash:
+            return False
         if d == today_dash and t and t > hm:
             return False
         return True
@@ -4464,7 +4477,7 @@ def _latest_biaoke_index_snip(
 
     best_blob = ""
     best_pid = ""
-    best_key = (-1, "", "")
+    best_key = ("", "", -1)  # (date, time, score) 時間優先
     best_date = ""
     best_time = ""
     for pid, date_s, time_s, text in mains or ():
@@ -4482,7 +4495,8 @@ def _latest_biaoke_index_snip(
         if not (_INDEXISH.search(blob) or looks_like_level_now(blob)):
             continue
         score = _biaoke_level_snip_score(blob, is_main=True)
-        key = (score, d, t)
+        # 時間優先：最新位階主文才當題旨根；舊長文分數高不准壓掉今日防線／31700 自回串
+        key = (d, t, score)
         if key > best_key:
             best_key = key
             best_blob = blob
@@ -4562,6 +4576,40 @@ def _latest_biaoke_index_snip(
                     "ORDER BY date ASC, time ASC, id ASC",
                     (f"{aid}:%",),
                 ).fetchall()
+            # 最近兩則位階主文：前一則樓下點位自回也併（話筒「兩串重點」）
+            prior_aid = ""
+            for pid2, date_s2, time_s2, text2 in mains or ():
+                sid2 = str(pid2 or "")
+                if not sid2 or sid2 == best_pid or ":c" in sid2:
+                    continue
+                d2 = str(date_s2 or "").strip()
+                t2 = str(time_s2 or "").strip()
+                blob2 = str(text2 or "")
+                if not blob2 or not _ok_clock(d2, t2):
+                    continue
+                if not (_INDEXISH.search(blob2) or looks_like_level_now(blob2)):
+                    continue
+                # 只收時間早於當令主文的前一則
+                if (d2, t2) >= (best_date, best_time):
+                    continue
+                prior_aid = sid2.split(":", 1)[0]
+                break
+            if prior_aid and prior_aid != aid:
+                try:
+                    prior_reps = conn.execute(
+                        "SELECT id, date, time, text FROM biaoke_posts "
+                        "WHERE id LIKE ? AND IFNULL(kind,'reply')='reply' "
+                        "ORDER BY date ASC, time ASC, id ASC",
+                        (f"{prior_aid}:%",),
+                    ).fetchall()
+                except sqlite3.OperationalError:
+                    prior_reps = conn.execute(
+                        "SELECT id, date, time, text FROM biaoke_posts "
+                        "WHERE id LIKE ? "
+                        "ORDER BY date ASC, time ASC, id ASC",
+                        (f"{prior_aid}:%",),
+                    ).fetchall()
+                reps = list(reps or []) + list(prior_reps or [])
         finally:
             conn.close()
     except Exception:
@@ -4574,8 +4622,10 @@ def _latest_biaoke_index_snip(
         blob = str(text or "")
         if not blob or not _ok_clock(d, t):
             continue
-        # 主文當日：只收主文時間之後；跨日回文全收（仍卡牆鐘）
-        if d == best_date and t and best_time and t < best_time:
+        # 當令主文當日：只收主文時間之後；跨日／前一串回文全收（仍卡牆鐘）
+        pid_s = str(pid or "")
+        same_thread = pid_s.startswith(f"{aid}:")
+        if same_thread and d == best_date and t and best_time and t < best_time:
             continue
         if not _reply_level_delta(blob):
             continue
@@ -5009,6 +5059,10 @@ def _latest_level_thesis(
             wait_bits.append("極限穿刺33000左右下影（他點過）")
         if re.search(r"35700", snip):
             wait_bits.append("3天內站回35700＝AI未結束容忍（他點過）")
+        if re.search(r"31700", snip):
+            wait_bits.append("真正崩盤觀察31700之下（他點過）")
+        if re.search(r"31500", snip) and re.search(r"系統", snip):
+            wait_bits.append("收盤31500之下＝系統性風險確認（他點過）")
         if re.search(r"31000|34977|3\s*成", snip):
             wait_bits.append("有效破35000→31000／系統風險觀察")
         wait_bits.append("11/6低37837已測破（官方）")
@@ -10401,6 +10455,46 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
                 tag="未到",
                 label=f"極限穿刺／{_px(33000)}",
             )
+    # 11/23 自回：33000～35000 多頭最後防線（可與修正目標帶並存；只認他寫）
+    elif re.search(r"33000", s) and re.search(r"防線|極限", s):
+        _add(
+            "tw",
+            level=33000.0,
+            ref_ymd="",
+            role="極限穿刺",
+            tag="未到",
+            label=f"多頭防線／{_px(33000)}",
+        )
+    if re.search(r"31700", s) and re.search(r"崩盤|之下|以下", s):
+        _add(
+            "tw",
+            level=31700.0,
+            ref_ymd="",
+            role="崩盤觀察",
+            tag="未到",
+            label=f"崩盤觀察／{_px(31700)}",
+        )
+    if re.search(r"31500", s) and re.search(r"系統性風險|系統風險", s):
+        _add(
+            "tw",
+            level=31500.0,
+            ref_ymd="",
+            role="系統風險",
+            tag="未到",
+            label=f"系統風險確認／{_px(31500)}",
+        )
+    # 站回 35700：即使未命中 35000～35500 帶句，他自回有寫仍上標
+    if re.search(r"35700", s) and not any(
+        abs(float(r.get("level") or 0) - 35700.0) < 0.6 for r in out["tw"]
+    ):
+        _add(
+            "tw",
+            level=35700.0,
+            ref_ymd="",
+            role="站回觀察",
+            tag="未到",
+            label=f"3天內站回／{_px(35700)}",
+        )
     if re.search(r"35579", s) and not _text_has_target_350_355(s):
         _add(
             "tw",
@@ -10649,28 +10743,38 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
     except Exception:
         logger.debug("題旨抽大盤點位略過", exc_info=True)
     # 費半點位：文內「費半…數字」或既有 10445／9865 外的他寫價
+    # 亦收「費半…8336 或8498」兩價（假突破句）
     seen_sox = {round(float(r["level"]), 1) for r in out["sox"]}
-    for m in re.finditer(
-        r"費半[^0-9]{0,16}(\d{4,5}(?:\.\d+)?)", s
-    ):
-        try:
-            lv = float(m.group(1))
-        except (TypeError, ValueError):
-            continue
-        if not (7000.0 <= lv <= 16000.0):
-            continue
-        key = round(lv, 1)
-        if key in seen_sox:
-            continue
-        seen_sox.add(key)
-        _add(
-            "sox",
-            level=lv,
-            ref_ymd="",
-            role="費半點位",
-            tag="未到",
-            label=f"費半{_px(lv)}",
-        )
+    sox_spans = list(
+        re.finditer(r"費半[^0-9]{0,24}(\d{4,5}(?:\.\d+)?)(?:[^0-9]{0,12}(\d{4,5}(?:\.\d+)?))?", s)
+    )
+    for m in sox_spans:
+        for g in m.groups():
+            if not g:
+                continue
+            try:
+                lv = float(g)
+            except (TypeError, ValueError):
+                continue
+            if not (7000.0 <= lv <= 16000.0):
+                continue
+            key = round(lv, 1)
+            if key in seen_sox:
+                continue
+            seen_sox.add(key)
+            _lab = f"費半{_px(lv)}"
+            if re.search(r"假突破", s) and abs(lv - 8498.0) < 0.6:
+                _lab = f"費半{_px(lv)}・B波假突破"
+            elif re.search(r"假突破|穿刺", s) and abs(lv - 8336.0) < 0.6:
+                _lab = f"費半{_px(lv)}・勿穿刺"
+            _add(
+                "sox",
+                level=lv,
+                ref_ymd="",
+                role="費半點位",
+                tag="未到",
+                label=_lab,
+            )
 
     # 過期標／備注最後再濾一次（後文壓前文）
     out = _purge_stale_tw_pred_levels(out, snip=s)
@@ -10781,6 +10885,12 @@ def _purge_stale_tw_pred_levels(
         "劇本一上沿": 43,
         "AI結束上緣": 42,
         "深殺": 41,
+        "修正目標上沿": 40,
+        "修正目標下沿": 39,
+        "站回觀察": 38,
+        "極限穿刺": 37,
+        "崩盤觀察": 36,
+        "系統風險": 35,
         "至少回測": 20,
         "點位": 10,
         "": 5,
