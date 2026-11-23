@@ -19,12 +19,216 @@ import logging
 import os
 import re
 import sqlite3
+import threading
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 from zoneinfo import ZoneInfo
 
 logger = logging.getLogger("wayne.biaoke_level_learn")
 TAIPEI = ZoneInfo("Asia/Taipei")
+
+# 波浪位階話筒加速：流水線／三窗路徑記憶快取（process 內；雙人共用行情、鎖仍按 actor）
+_WAVE_PHONE_MEMO_LOCK = threading.Lock()
+_WAVE_PIPE_MEMO: Dict[str, Any] = {
+    "at": 0.0,
+    "db": "",
+    "tip_fp": "",
+    "result": None,
+}
+_WAVE_KIT_MEMO: Dict[str, Any] = {
+    "at": 0.0,
+    "db": "",
+    "tip_fp": "",
+    "kit": None,
+}
+# 非盤中可較長；盤中 tip 易漂 → 短 TTL（秒）
+_WAVE_PIPE_TTL_S = 90.0
+_WAVE_PIPE_TTL_LIVE_S = 25.0
+_WAVE_KIT_TTL_S = 120.0
+_WAVE_KIT_TTL_LIVE_S = 30.0
+
+
+def _teach_tip_fingerprint(tip: Optional[Dict[str, Any]]) -> str:
+    if not isinstance(tip, dict) or not tip:
+        return ""
+    bits: List[str] = []
+    for prefix in ("tw", "sox", "tx"):
+        bits.append(_ymd(tip.get(f"{prefix}_asof")) or "-")
+        try:
+            bits.append(f"{float(tip.get(f'{prefix}_close') or 0):.2f}")
+        except (TypeError, ValueError):
+            bits.append("0")
+        bits.append(str(int(tip.get(f"{prefix}_live") or 0)))
+    return "|".join(bits)
+
+
+def clear_wave_phone_caches() -> None:
+    """單測／強制刷新：清流水線與三窗路徑記憶。"""
+    with _WAVE_PHONE_MEMO_LOCK:
+        _WAVE_PIPE_MEMO.update(
+            {"at": 0.0, "db": "", "tip_fp": "", "result": None}
+        )
+        _WAVE_KIT_MEMO.update({"at": 0.0, "db": "", "tip_fp": "", "kit": None})
+
+
+def _wave_phone_ttl(*, live: bool, kind: str = "pipe") -> float:
+    if kind == "kit":
+        return float(_WAVE_KIT_TTL_LIVE_S if live else _WAVE_KIT_TTL_S)
+    return float(_WAVE_PIPE_TTL_LIVE_S if live else _WAVE_PIPE_TTL_S)
+
+
+def _wave_session_live_now(now: Optional[datetime] = None) -> bool:
+    """盤中／夜盤 tip 易變 → 短 TTL。失敗當非盤中。"""
+    dt = now or datetime.now(TAIPEI)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=TAIPEI)
+    else:
+        dt = dt.astimezone(TAIPEI)
+    try:
+        if _twii_cash_session_live(dt) or _tx_night_session_live(dt):
+            return True
+    except Exception:
+        pass
+    try:
+        from live_quote import is_live_merge_window
+
+        return bool(is_live_merge_window(dt))
+    except Exception:
+        return False
+
+
+def remember_wave_kit_paths(
+    db_path: str,
+    kit: Dict[str, Any],
+    *,
+    tip: Optional[Dict[str, Any]] = None,
+) -> None:
+    """活畫／送出成功後記住三窗路徑（記憶快取）。"""
+    if not db_path or not isinstance(kit, dict):
+        return
+    tip0 = tip if isinstance(tip, dict) else kit.get("teach_tip")
+    fp = _teach_tip_fingerprint(tip0 if isinstance(tip0, dict) else None)
+    with _WAVE_PHONE_MEMO_LOCK:
+        _WAVE_KIT_MEMO["at"] = time.monotonic()
+        _WAVE_KIT_MEMO["db"] = str(db_path)
+        _WAVE_KIT_MEMO["tip_fp"] = fp
+        _WAVE_KIT_MEMO["kit"] = dict(kit)
+
+
+def teach_kit_reusable_for_phone(
+    stored: Optional[Dict[str, Any]],
+    want_tip: Optional[Dict[str, Any]],
+    *,
+    db_path: str = "",
+    min_bytes: int = 8_000,
+) -> Dict[str, Any]:
+    """存檔 tip 同口且遠／近／超近 PNG 都在 → 准跳過活畫（磁碟快取）。"""
+    out: Dict[str, Any] = {
+        "ok": False,
+        "far_path": "",
+        "near_path": "",
+        "micro_path": "",
+        "thesis": "",
+        "as_of": "",
+        "reason": "empty",
+        "from_mem": False,
+    }
+    tip_fp = _teach_tip_fingerprint(want_tip if isinstance(want_tip, dict) else None)
+
+    def _png_ok(path: str) -> bool:
+        p = str(path or "").strip()
+        if not p or not os.path.isfile(p):
+            return False
+        try:
+            return os.path.getsize(p) >= int(min_bytes)
+        except OSError:
+            return False
+
+    # 記憶快取先試（同 tip）
+    with _WAVE_PHONE_MEMO_LOCK:
+        mem_kit = (
+            dict(_WAVE_KIT_MEMO.get("kit") or {}) if _WAVE_KIT_MEMO.get("kit") else {}
+        )
+        mem_fp = str(_WAVE_KIT_MEMO.get("tip_fp") or "")
+        mem_at = float(_WAVE_KIT_MEMO.get("at") or 0.0)
+        mem_db = str(_WAVE_KIT_MEMO.get("db") or "")
+    mem_tip = (
+        mem_kit.get("teach_tip")
+        if isinstance(mem_kit.get("teach_tip"), dict)
+        else None
+    )
+    tip_same = bool(
+        (tip_fp and mem_fp == tip_fp)
+        or (
+            isinstance(want_tip, dict)
+            and mem_tip
+            and teach_tip_snapshots_match(want_tip, mem_tip)
+        )
+    )
+    if (
+        mem_kit
+        and tip_same
+        and (not db_path or not mem_db or mem_db == str(db_path))
+    ):
+        live = _wave_session_live_now()
+        if (time.monotonic() - mem_at) <= _wave_phone_ttl(live=live, kind="kit"):
+            far = str(mem_kit.get("far_path") or "")
+            near = str(mem_kit.get("near_path") or "")
+            micro = str(mem_kit.get("micro_path") or "")
+            if _png_ok(far) and _png_ok(near) and _png_ok(micro):
+                out.update(
+                    {
+                        "ok": True,
+                        "far_path": far,
+                        "near_path": near,
+                        "micro_path": micro,
+                        "thesis": str(mem_kit.get("thesis") or ""),
+                        "as_of": str(mem_kit.get("as_of") or ""),
+                        "reason": "mem_hit",
+                        "from_mem": True,
+                    }
+                )
+                return out
+
+    if not isinstance(stored, dict) or not stored:
+        out["reason"] = "no_stored"
+        return out
+    if not teach_tip_snapshots_match(want_tip, stored.get("teach_tip")):
+        out["reason"] = "tip_mismatch"
+        return out
+    far = str(stored.get("far_path") or "")
+    near = str(stored.get("near_path") or "")
+    micro = str(stored.get("micro_path") or "")
+    if not (_png_ok(far) and _png_ok(near) and _png_ok(micro)):
+        out["reason"] = "png_missing"
+        return out
+    out.update(
+        {
+            "ok": True,
+            "far_path": far,
+            "near_path": near,
+            "micro_path": micro,
+            "thesis": str(stored.get("thesis") or ""),
+            "as_of": str(stored.get("as_of") or ""),
+            "reason": "disk_hit",
+            "from_mem": False,
+        }
+    )
+    if db_path:
+        remember_wave_kit_paths(
+            str(db_path),
+            {
+                "far_path": far,
+                "near_path": near,
+                "micro_path": micro,
+                "thesis": out["thesis"],
+                "as_of": out["as_of"],
+                "teach_tip": stored.get("teach_tip"),
+            },
+            tip=want_tip if isinstance(want_tip, dict) else None,
+        )
+    return out
 
 # 現況位階／細微波說話（他講大盤走法時；含預估重修／動態修正）
 _LEVEL_NOW = re.compile(
@@ -21423,6 +21627,7 @@ def run_teach_trio_preflight_pipeline(
 
     回傳 {ok, pack, gate, steps, sox_degraded, fail_bits}。
     pack 已傳入則重用並再跑 tip／終檢；否則 prepare_wave_live_pack 一輪。
+    同 tip 短窗內回記憶快取（避免連按重抓柱）；tip 漂了仍走全流水線。
     """
     steps: List[Dict[str, Any]] = []
     dt = now or datetime.now(TAIPEI)
@@ -21439,6 +21644,55 @@ def run_teach_trio_preflight_pipeline(
                 "detail": str(detail or "")[:160],
             }
         )
+
+    # —— 記憶快取：同 DB＋tip 未漂 → 跳過 01–07 重抓 ——
+    if not (isinstance(pack, dict) and pack):
+        with _WAVE_PHONE_MEMO_LOCK:
+            memo_res = _WAVE_PIPE_MEMO.get("result")
+            memo_at = float(_WAVE_PIPE_MEMO.get("at") or 0.0)
+            memo_db = str(_WAVE_PIPE_MEMO.get("db") or "")
+            memo_fp = str(_WAVE_PIPE_MEMO.get("tip_fp") or "")
+            cached = dict(memo_res) if isinstance(memo_res, dict) else None
+        live_now = _wave_session_live_now(dt)
+        ttl = _wave_phone_ttl(live=live_now, kind="pipe")
+        if (
+            cached
+            and cached.get("ok")
+            and memo_db == str(db_path)
+            and (time.monotonic() - memo_at) <= ttl
+        ):
+            cpack = cached.get("pack") if isinstance(cached.get("pack"), dict) else {}
+            ctip = cpack.get("teach_tip") if isinstance(cpack.get("teach_tip"), dict) else {}
+            try:
+                # 輕量 tip：不 ensure／不重抓柱；只讀庫＋既有 pack 即時欄
+                light = compute_teach_tip_snapshot(
+                    db_path, dict(cpack), reuse_frozen=False
+                ) or {}
+            except Exception:
+                light = {}
+            # 用 tip 容差比對（±px_tol）；不准要求指紋字串全等（夜盤即時價微漂會誤殺）
+            if ctip and teach_tip_snapshots_match(light, ctip):
+                out_c = dict(cached)
+                out_c["from_cache"] = True
+                out_c["checked_at"] = dt.isoformat()
+                # 回寫輕量 tip，後續敘述／出圖同口
+                try:
+                    pack_c = dict(out_c.get("pack") or {})
+                    pack_c["teach_tip"] = dict(light)
+                    out_c["pack"] = pack_c
+                except Exception:
+                    pass
+                out_c["steps"] = list(cached.get("steps") or []) + [
+                    {
+                        "id": "00_pipe_cache",
+                        "ok": True,
+                        "detail": (
+                            f"mem hit ttl={ttl:.0f}s "
+                            f"fp={memo_fp[:40] or _teach_tip_fingerprint(light)[:40]}"
+                        ),
+                    }
+                ]
+                return out_c
 
     # —— 01 加權日K（含落後愈合）——
     # 順序：先看 tip → 落後立刻官方 force（MI5／OpenAPI）→ 再 Yahoo／60 分
@@ -21678,7 +21932,7 @@ def run_teach_trio_preflight_pipeline(
         )
     except Exception:
         logger.debug("teach_last_fail 落檔略過", exc_info=True)
-    return {
+    result = {
         "ok": bool(gate.get("ok")),
         "pack": pack,
         "gate": gate,
@@ -21686,7 +21940,27 @@ def run_teach_trio_preflight_pipeline(
         "sox_degraded": bool(gate.get("sox_degraded")),
         "fail_bits": fail_bits[:5],
         "checked_at": str(gate.get("checked_at") or dt.isoformat()),
+        "from_cache": False,
     }
+    # 過關才記記憶：連按同 tip 可跳過重抓柱
+    if result["ok"] and isinstance(pack.get("teach_tip"), dict):
+        fp = _teach_tip_fingerprint(pack.get("teach_tip"))
+        if fp:
+            with _WAVE_PHONE_MEMO_LOCK:
+                _WAVE_PIPE_MEMO["at"] = time.monotonic()
+                _WAVE_PIPE_MEMO["db"] = str(db_path)
+                _WAVE_PIPE_MEMO["tip_fp"] = fp
+                _WAVE_PIPE_MEMO["result"] = {
+                    "ok": True,
+                    "pack": dict(pack),
+                    "gate": dict(gate) if isinstance(gate, dict) else gate,
+                    "steps": list(steps),
+                    "sox_degraded": bool(gate.get("sox_degraded")),
+                    "fail_bits": list(fail_bits[:5]),
+                    "checked_at": result["checked_at"],
+                    "from_cache": False,
+                }
+    return result
 
 
 def prepare_wave_live_pack(
