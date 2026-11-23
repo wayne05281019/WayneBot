@@ -1,0 +1,9 @@
+{
+  "case_id": "chain_trio_20261105_sox_risk_off",
+  "track": "chain_trio",
+  "as_of": "20261105",
+  "overnight_as_of": "20261105",
+  "expect_chain": "down",
+  "deps": ["us_overnight", "tx_regular", "twii", "BK-CHAIN_handbook_optional"],
+  "note_zh": "樣例：20261105 us_overnight regime=risk_off／sox≈-10% → TX 日盤弱 → 加權驗證。NQ 缺則仍可用 SOX＋regime（現況 v1）；下一版 v2 收緊。"
+}

@@ -1,0 +1,70 @@
+{
+  "case_id": "segment_bias_20261120_vs_fwd1119",
+  "track": "segment_bias",
+  "as_of": "20261120",
+  "infer_as_of": "20261119",
+  "preferred": "M3_seek_37837_continue",
+  "deps": [
+    "wave_forward_infer_20261119",
+    "wave_eod_verify_20261120",
+    "official_twii_frozen_in_case"
+  ],
+  "note_zh": "本機 DB 末日可能早於 20261120；官方柱凍結自 decade_lab/wave_eod_verify_20261120（60分OHLC＋FMTQIK量），不准假數。",
+  "official_bar": {
+    "open": 37646.13,
+    "high": 37646.13,
+    "low": 35738.68,
+    "close": 36033.29,
+    "volume": 17070331.0,
+    "source": "wave_eod_verify_20261120.twii"
+  },
+  "paths": [
+    {
+      "id": "M3_seek_37837_continue",
+      "levels": {
+        "retest": 37837.05
+      },
+      "segments_provisional": [
+        {
+          "label": "B-a_hold_fail",
+          "role": "41760仍失",
+          "level": 41760.0
+        },
+        {
+          "label": "B-b",
+          "role": "回測C3底／週五低37837",
+          "level": 37837.05
+        }
+      ]
+    },
+    {
+      "id": "W4_reclaim_418_427_band",
+      "levels": {
+        "lo": 41800.0,
+        "mid": 42250.0,
+        "hi": 42700.0
+      },
+      "segments_provisional": [
+        {
+          "label": "wave4_band_reclaim",
+          "role": "收回波浪4帶",
+          "lo": 41800.0,
+          "hi": 42700.0
+        }
+      ]
+    },
+    {
+      "id": "N1_follow_through_below_band",
+      "levels": {
+        "broke": 37837.05
+      },
+      "segments_provisional": [
+        {
+          "label": "stay_below_37837",
+          "role": "37837下停留",
+          "level": 37837.05
+        }
+      ]
+    }
+  ]
+}
