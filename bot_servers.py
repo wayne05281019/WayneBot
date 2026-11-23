@@ -5953,23 +5953,43 @@ class WayneTelegramBot:
             except Exception:
                 logger.exception("波浪位階敘述略過")
                 brief = ""
+            # 先文後圖：敘述＋觀測手冊摘要／今日觀測（警語固定）再補三窗
+            try:
+                from observe_manual import merge_wave_phone_html
+
+                phone_html = (
+                    await asyncio.to_thread(
+                        merge_wave_phone_html,
+                        brief,
+                        db_path=self.db_path,
+                        pack=pack,
+                    )
+                    or brief
+                    or ""
+                )
+            except Exception:
+                logger.exception("波浪位階觀測槽略過")
+                phone_html = brief or ""
             await self._stop_plain_wait(*wait_h)
             wait_h = (None, None, None)
-            if brief:
+            if phone_html:
                 try:
                     await msg.reply_html(
-                        brief[:3500],
+                        phone_html[:3500],
                         disable_web_page_preview=True,
                         reply_markup=self._keyboard(),
                     )
                 except Exception:
                     await msg.reply_text(
-                        "波浪位階（預估・非買訊）",
+                        "波浪位階・試標・非買訊\n"
+                        "試標・推論／非他原文・非買訊・對質未過閘",
                         reply_markup=self._keyboard(),
                     )
             else:
                 await msg.reply_text(
-                    "波浪位階（預估・非買訊）\n先送遠／近／超近三張；敘述這次沒湊齊。",
+                    "波浪位階・試標・非買訊\n"
+                    "試標・推論／非他原文・非買訊・對質未過閘\n"
+                    "先送遠／近／超近三張；敘述這次沒湊齊。",
                     reply_markup=self._keyboard(),
                 )
             await self._send_market_wave_charts(
@@ -7134,7 +7154,13 @@ class WayneTelegramBot:
                 bits = [f"第2張・近窗・看C段"]
                 if q_line:
                     bits.append(q_line)
-                bits.append("同層級・預估會改・非買訊")
+                try:
+                    from observe_manual import caption_disclaimer_bit
+
+                    _cap_bit = caption_disclaimer_bit()
+                except Exception:
+                    _cap_bit = "試標・非買訊・對質未過閘"
+                bits.append(f"同層級・{_cap_bit}")
             else:
                 bits = [f"第3張・超近窗・細浪"]
                 if q_line:
@@ -7147,10 +7173,16 @@ class WayneTelegramBot:
                         if m:
                             now_bit = m.group(1)
                             break
+                try:
+                    from observe_manual import caption_disclaimer_bit
+
+                    _cap_bit = caption_disclaimer_bit()
+                except Exception:
+                    _cap_bit = "試標・非買訊・對質未過閘"
                 if now_bit:
-                    bits.append(f"落在「{now_bit}」・細浪①～⑤・非買訊")
+                    bits.append(f"落在「{now_bit}」・細浪①～⑤・{_cap_bit}")
                 else:
-                    bits.append("細浪①～⑤・對齊縮圖閃折・非買訊")
+                    bits.append(f"細浪①～⑤・對齊縮圖閃折・{_cap_bit}")
             ok = await self._send_market_teach_one(
                 message, path, caption="\n".join(bits)[:900], label=label
             )
@@ -7453,6 +7485,13 @@ class WayneTelegramBot:
             intro_bits: list = []
             if q_wall:
                 intro_bits.append(f"查詢 {q_wall}（台北）")
+            try:
+                from observe_manual import caption_disclaimer_bit
+
+                _far_bit = caption_disclaimer_bit()
+            except Exception:
+                _far_bit = "試標・非買訊・對質未過閘"
+            intro_bits.append(_far_bit)
             if ladder_line:
                 intro_bits.extend(
                     [
@@ -7462,10 +7501,7 @@ class WayneTelegramBot:
                     ][:2]
                 )
             elif thesis:
-                intro_bits.append("預估會改・非買訊")
                 intro_bits.append(str(thesis)[:120])
-            else:
-                intro_bits.append("預估會改・非買訊")
             trio_cap = "\n".join(intro_bits)[:900]
             trio_caps = self._market_teach_trio_caps()
             label_by_key = {k: lab for k, lab in trio_caps}
@@ -7607,7 +7643,12 @@ class WayneTelegramBot:
                     near_bits = [f"第2張・近窗・看C段"]
                     if q_wall:
                         near_bits.append(f"查詢 {q_wall}（台北）")
-                    near_bits.append("同層級・預估會改・非買訊")
+                    try:
+                        from observe_manual import caption_disclaimer_bit
+
+                        near_bits.append(f"同層級・{caption_disclaimer_bit()}")
+                    except Exception:
+                        near_bits.append("同層級・試標・非買訊・對質未過閘")
                     ok_near = await self._send_market_teach_one(
                         message,
                         near_path,
@@ -7662,10 +7703,16 @@ class WayneTelegramBot:
                     micro_bits = [f"第3張・超近窗・細浪"]
                     if q_wall:
                         micro_bits.append(f"查詢 {q_wall}（台北）")
+                    try:
+                        from observe_manual import caption_disclaimer_bit
+
+                        _mbit = caption_disclaimer_bit()
+                    except Exception:
+                        _mbit = "試標・非買訊・對質未過閘"
                     if ladder_now:
-                        micro_bits.append(f"落在「{ladder_now}」・細浪①～⑤・非買訊")
+                        micro_bits.append(f"落在「{ladder_now}」・細浪①～⑤・{_mbit}")
                     else:
-                        micro_bits.append("細浪①～⑤・對齊縮圖閃折・非買訊")
+                        micro_bits.append(f"細浪①～⑤・對齊縮圖閃折・{_mbit}")
                     ok_micro = await self._send_market_teach_one(
                         message,
                         micro_path,
@@ -8419,7 +8466,13 @@ class WayneTelegramBot:
         except Exception:
             logger.exception("教具層級一句略過")
             ladder_line = ""
-        bits = ["遠窗・上費半／下加權・非買訊", "近／超近請按「波浪位階」"]
+        try:
+            from observe_manual import caption_disclaimer_bit
+
+            _fbit = caption_disclaimer_bit()
+        except Exception:
+            _fbit = "試標・非買訊・對質未過閘"
+        bits = [f"遠窗・上費半／下加權・{_fbit}", "近／超近請按「波浪位階」"]
         if stale_note:
             bits.insert(1, stale_note)
         if ladder_line:

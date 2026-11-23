@@ -85,6 +85,7 @@ def market_wave_caption_lines(session_ymd: str) -> tuple[str, ...]:
     head = f"官方日K至 {stamp}" if stamp else "官方日K"
     return (
         head,
+        "試標・推論／非他原文・非買訊・對質未過閘",
         "他 10/19 18:52　C-4 機率最高",
         "其次 C-5 走完再第一組反彈 B；這兩個沒有價",
         "下降軌兩個轉折沒印出來，不畫，第一組不標完成",
@@ -95,6 +96,7 @@ def market_wave_caption_lines(session_ymd: str) -> tuple[str, ...]:
         "40000 以下才撿鑽石；39000 C 不見得破",
         "56000 已收回不畫；約 4000 點不換價",
         "虛線＝未走（不往上拐）",
+        "期現分標・不准倒灌・費半連動一句見波浪位階",
     )
 
 
@@ -105,7 +107,7 @@ def _chart_caption_lines(session_ymd: str) -> tuple[str, ...]:
     if len(raw) == 8 and raw.isdigit():
         stamp = f"{raw[:4]}/{raw[4:6]}/{raw[6:8]}"
     head = f"官方日K至 {stamp}" if stamp else "官方日K"
-    return (head, "虛線未走・第一組未標完成・2～3組無價")
+    return (head, "虛線未走・試標・非買訊・對質未過閘")
 
 
 def _biaoke_dc_proj_path(
