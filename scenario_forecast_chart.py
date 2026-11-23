@@ -986,6 +986,23 @@ def infer_dc_wave_scenario(
             fut = _clamp_future_bars(far - x_now + 8.0)
         else:
             fut = _clamp_future_bars(float(fut))
+        # 我估結構閘（DC→MINE）：擴延1618／前端傾斜；失敗不改買訊、只附加
+        mine_wave: Dict[str, Any] = {}
+        try:
+            from mine_wave_rules import mine_wave_from_impulse_nodes
+
+            mine_wave = mine_wave_from_impulse_nodes(
+                float(start.get("price") or 0),
+                confirmed,
+                projected=projected,
+            )
+        except Exception:
+            mine_wave = {
+                "source": "mine",
+                "pot": "DC→我估",
+                "ok": False,
+                "basis": "mine_wave attach failed",
+            }
         return {
             "start": start,
             "confirmed": confirmed,
@@ -1004,6 +1021,8 @@ def infer_dc_wave_scenario(
             "future_bars": float(fut),
             "leg_bars": dict(leg_bars or {}),
             "proj_durs": dict(proj_durs or {}),
+            # 三鍋分標：此欄＝我估，不准當「他說」
+            "mine_wave": mine_wave,
         }
 
     # ----- 候選：大級別衝動 -----

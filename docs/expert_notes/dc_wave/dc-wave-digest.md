@@ -6,9 +6,10 @@
 > - **不准**把本檔句子寫進飆大話筒回覆當「他說」；也不准把飆大原文標成 DC。  
 > - 飆大＝老師參考；DC＝同學頂標教材；輸出仍分「他說／飆預測」vs「我估」。
 
-時區：`Asia/Taipei`。落檔日：2026-11-01。  
+時區：`Asia/Taipei`。落檔日：2026-11-01；**推進日：2026-11-23**（練習日誌＋可測點再開）。  
 來源圖（本批）：`sources/extension_1618_guide.jpg`、`sources/leading_diagonal_summary.jpg`  
-（附件三張裡兩張擴延指南 md5 相同，已去重。）
+（附件三張裡兩張擴延指南 md5 相同，已去重。）  
+並行鎖：`MISSION_LOCK_PARALLEL_20261123.md`。練習：`practice_log_20261123.md`。
 
 ---
 
@@ -40,6 +41,8 @@ L_max ≥ 1.618 × L_second_max
 ### 與現況程式的關係
 - `_build_self_pred_levels` 已有「B高 − 1.618×(⑤−A)」的 **C 目標延伸**＝Fib 投影價位，**≠** 本條「五浪群內擴延檢測」。
 - 本條是 **結構閘**：候選 1–5 是否像真推進；前者是 **目標價**。兩者都屬「我估」，但欄位／用途分開。
+- 純函式：`mine_wave_rules.detect_extension_1618`／`analyze_motive_from_pivot_prices`／`mine_wave_from_impulse_nodes`。
+- `infer_dc_wave_scenario`（2026-11-23）回傳附加 `mine_wave`（source=mine）；**失敗不改買訊**、不准寫進「他說」。
 
 ---
 
@@ -54,6 +57,12 @@ L_max ≥ 1.618 × L_second_max
 | 市場意涵 | **持續（continuation）** —— 走完後趨勢多半延續 |
 | vs 末端傾斜 | Ending Diagonal＝**終結（termination）**；意涵相反，不准混標 |
 | 速度特徵 | 第五次級波＝價變「緩步」；相對 ①② 短線速度「增加」、幅度「擴大」 |
+
+### 末端傾斜 Ending Diagonal（教材缺口・2026-11-23）
+- **意涵**：終結（termination）；位置末端 ⑤ 或 C；常伴 ①④ 重疊＋收斂楔形＋內部 5-3-5-3-5。
+- **現況**：`sources/` **無**末端完整頁 → `ending_diagonal_flags(curriculum_ready=False)` 永不 `confirmed`，`status=curriculum_pending`。
+- **不准**：用 rare_ending_motive_variant 或單純 1–4 重疊 **自動升格** ending_diagonal。
+- 上傳末端頁後再開 `mine_end_diag_v1` 收集（§13）。
 
 ### 與飆大鐵律的對照（勿混語料）
 - 飆大課綱／knowhow：標準推進 **1–4 不重疊**；重疊常當趨勢化解／末升失敗訊號。
@@ -122,3 +131,28 @@ L_max ≥ 1.618 × L_second_max
 4. 若已有資料夾，給 **folder id 或分享連結**（全盤關鍵字搜不到專包）。
 
 上傳後放進 `docs/expert_notes/dc_wave/sources/`，digest 再追加；消化結果仍標 **MINE**，不准混進飆大「他說」。
+
+---
+
+## 6. 2026-11-23 推進（停滯補齊）
+
+### 盤點缺口 → 本批動作
+
+| 缺口 | 狀態 |
+|------|------|
+| digest 停在 11-01／約 11-02 | **已推進**本節＋練習日誌 |
+| sources 僅擴延＋前端兩圖 | 未變；Drive 再搜仍 **0** 真 DC 包 |
+| 末端／motive 全表 | 末端仍缺圖；函式骨架已留、不准假 confirmed |
+| 官方柱練習 | **已開**：TWII×4＋TX×2 凍結轉折樣例（`practice_log_20261123.md`） |
+| `infer_dc_wave_scenario` 接擴延閘 | **已接** `mine_wave` 欄（MINE） |
+| 靜默鍵 n≥20 | 再生鍵名已列；收集中、過程不進對話 |
+
+### Drive 再搜（2026-11-23）
+- `直流變頻`／`直流變頻 波浪`／`前端傾斜`／`擴延波`／`Elliott Wave`／folder `dc_wave`：**真教包 0**。
+- title `D.C` 仍誤中雜湊檔名含 `DC` 的相片／建案 PDF → **不下載、不進 sources**。
+- 飆大 1709／社團包屬老師軌 → **不准**拷進本目錄（boundary §硬禁止 5）。
+
+### 可測點
+- `tests/test_mine_wave_rules.py`：擴延／前端／末端 pending／`analyze_motive_from_pivot_prices`。
+- `tests/test_dc_wave_practice_samples.py`：上表凍結官方轉折價對質（標 pot=DC→我估）。
+- `tests/test_scenario_forecast.py`：`infer_dc_wave_scenario` 帶 `mine_wave.source==mine`。
