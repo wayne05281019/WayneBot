@@ -3,6 +3,9 @@
 
 只觀察，不是買訊。接既有 find_volume_zone；上市／上櫃／興櫃同一套。
 只用官方日Ｋ原柱；盤中未收不當收。不准改黃金買點／海選進場。
+
+SYNC-LEVELS：個股大量／結構圖原文線走 ``written_targets_for``；
+僅該檔他有點名才併可畫位（非買訊；不准發明）。
 """
 from __future__ import annotations
 

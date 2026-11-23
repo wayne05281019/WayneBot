@@ -12055,7 +12055,7 @@ def _build_live_pack(
             levels[f"pred_sox_{int(float(row['level']))}"] = float(row["level"])
         except (TypeError, ValueError, KeyError):
             continue
-    return {
+    pack_out = {
         "thesis": thesis_pack.get("thesis") or "",
         "wait_struct": wait[:480],
         "turn_note": str(turn)[:240],
@@ -12078,6 +12078,14 @@ def _build_live_pack(
         "query_at": dt.isoformat(),
         "db_path": db_path,
     }
+    # SYNC-LEVELS：atoms／段證／snaps 他點過的指數位灌進三窗（非買訊・不准發明）
+    try:
+        from observe_sync_levels import attach_sync_levels_to_pack
+
+        attach_sync_levels_to_pack(pack_out)
+    except Exception:
+        logger.debug("SYNC-LEVELS 併 pack 略過", exc_info=True)
+    return pack_out
 
 
 # 活畫深底：話筒縮圖對比（對齊你覺得清楚的黑底讀法）
