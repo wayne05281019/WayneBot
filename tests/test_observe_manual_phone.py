@@ -68,8 +68,54 @@ def test_slot_reads_atoms_and_chain(tmp_path: Path):
     assert OBSERVE_PHONE_DISCLAIMER in slot
     # 原子／鏈齊了就不報那兩檔；MISSION_LOCK 可另放
     miss = missing_manual_files(root=tmp_path)
-    assert "observe_atoms.json" not in miss
-    assert "observe_chain.json" not in miss
+    assert "atoms_latest.json" not in miss
+    assert "chain_playbook.json" not in miss
+
+
+def test_slot_reads_corpus_chain_filenames(tmp_path: Path):
+    """對齊 BK-CORPUS／BK-CHAIN 實際檔名與欄位。"""
+    (tmp_path / "atoms_latest.json").write_text(
+        json.dumps(
+            {
+                "atoms": [
+                    {
+                        "theme_label": "鐵律",
+                        "rule": "1–4 不重疊、3 非最短",
+                        "core": True,
+                    }
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "chain_playbook.json").write_text(
+        json.dumps(
+            {
+                "layers": [
+                    {
+                        "title_zh": "第一層・美股夜盤",
+                        "role_zh": "定大方向假設",
+                        "window_taipei": "05:00–08:50",
+                    },
+                    {
+                        "title_zh": "第二層・早盤 TX",
+                        "role_zh": "確認夜盤",
+                    },
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    atoms = load_observe_atoms(root=tmp_path)
+    chain = load_observe_chain(root=tmp_path)
+    assert atoms["ok"] and atoms["atoms"][0]["rule"].startswith("1–4")
+    assert chain["ok"] and len(chain["steps"]) == 2
+    slot = format_wave_observe_slot(root=tmp_path)
+    assert "1–4 不重疊" in slot
+    assert "美股夜盤" in slot
+    assert OBSERVE_PHONE_DISCLAIMER in slot
 
 
 def test_merge_includes_brief_and_slot():

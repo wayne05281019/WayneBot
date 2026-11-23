@@ -24,11 +24,13 @@ OBSERVE_PHONE_DISCLAIMER = "試標・推論／非他原文・非買訊・對質�
 
 _MANUAL_DIR = Path(__file__).resolve().parent / "docs" / "expert_notes" / "飆客" / "observe_manual"
 _ATOM_CANDIDATES = (
+    "atoms_latest.json",  # BK-CORPUS 產出
     "observe_atoms.json",
     "atoms.json",
     "chain_atoms.json",
 )
 _CHAIN_CANDIDATES = (
+    "chain_playbook.json",  # BK-CHAIN 產出
     "observe_chain.json",
     "chain_ops.json",
     "三層觀測操作手.json",
@@ -97,6 +99,14 @@ def load_observe_chain(*, root: Optional[Path] = None) -> Dict[str, Any]:
             or hit.get("items")
             or []
         )
+        if not isinstance(steps, list) or not steps:
+            layers = hit.get("layers")
+            if isinstance(layers, list) and layers:
+                steps = layers
+        if not isinstance(steps, list) or not steps:
+            checklist = hit.get("daily_checklist")
+            if isinstance(checklist, list) and checklist:
+                steps = checklist
         if not isinstance(steps, list):
             steps = []
         out["ok"] = bool(steps)
@@ -166,6 +176,7 @@ def _atom_lines(atoms: List[Any], *, limit: int = 4) -> List[str]:
             continue
         title = str(
             row.get("title")
+            or row.get("theme_label")
             or row.get("method")
             or row.get("label")
             or row.get("name")
@@ -173,8 +184,8 @@ def _atom_lines(atoms: List[Any], *, limit: int = 4) -> List[str]:
         ).strip()
         body = str(
             row.get("summary")
-            or row.get("text")
             or row.get("rule")
+            or row.get("text")
             or row.get("note")
             or ""
         ).strip()
@@ -197,9 +208,22 @@ def _chain_lines(steps: List[Any], *, limit: int = 4) -> List[str]:
         if not isinstance(row, dict):
             continue
         lab = str(
-            row.get("label") or row.get("step") or row.get("name") or row.get("title") or ""
+            row.get("label")
+            or row.get("label_zh")
+            or row.get("title_zh")
+            or row.get("step")
+            or row.get("name")
+            or row.get("title")
+            or ""
         ).strip()
-        note = str(row.get("check") or row.get("note") or row.get("text") or "").strip()
+        note = str(
+            row.get("check")
+            or row.get("role_zh")
+            or row.get("note")
+            or row.get("text")
+            or row.get("window_taipei")
+            or ""
+        ).strip()
         bit = lab if lab else note
         if lab and note and note != lab:
             bit = f"{lab}：{note}"
@@ -236,7 +260,7 @@ def format_wave_observe_slot(
         lines.append(html_escape(f"· {blurb}"))
         lines.append(
             html_escape(
-                "· 待 BK-CHAIN 落 observe_chain.json 後改為當日勾選欄。"
+                "· 待 BK-CHAIN 落 chain_playbook.json 後改為當日勾選欄。"
             )
         )
     lines.append("")
@@ -248,7 +272,7 @@ def format_wave_observe_slot(
         lines.append("<b>觀測原子（暫）</b>")
         lines.append(
             html_escape(
-                "· 待 BK-CORPUS 落 observe_atoms.json（方法／位／改口／鐵律）。"
+                "· 待 BK-CORPUS 落 atoms_latest.json（方法／位／改口／鐵律）。"
             )
         )
         miss = missing_manual_files(root=root)
