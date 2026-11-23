@@ -1,0 +1,73 @@
+{
+  "generated_at_taipei": "2026-11-23T23:38:23+0800",
+  "pot": "MINE",
+  "verdict": "未完",
+  "n": 5,
+  "items": [
+    {
+      "symbol": "TWII",
+      "as_of": "20251128",
+      "judge": {
+        "verdict": "未完",
+        "scoreable": false,
+        "gate_pass": false,
+        "post_move_pct": -0.0032512397879129497,
+        "continuation": false,
+        "reversal": false,
+        "pot": "MINE"
+      }
+    },
+    {
+      "symbol": "TWII",
+      "as_of": "20261106",
+      "judge": {
+        "verdict": "未完",
+        "scoreable": false,
+        "gate_pass": true,
+        "post_move_pct": null,
+        "pot": "MINE"
+      }
+    },
+    {
+      "symbol": "2330",
+      "as_of": "20250314",
+      "judge": {
+        "verdict": "未完",
+        "scoreable": false,
+        "gate_pass": false,
+        "post_move_pct": -0.01564129301355579,
+        "continuation": false,
+        "reversal": false,
+        "pot": "MINE"
+      }
+    },
+    {
+      "symbol": "2330",
+      "as_of": "20261106",
+      "judge": {
+        "verdict": "未完",
+        "scoreable": false,
+        "gate_pass": true,
+        "post_move_pct": null,
+        "pot": "MINE"
+      }
+    },
+    {
+      "symbol": "0050",
+      "as_of": "20261106",
+      "judge": {
+        "verdict": "未完",
+        "scoreable": false,
+        "gate_pass": true,
+        "post_move_pct": null,
+        "pot": "MINE"
+      }
+    }
+  ],
+  "track_keys": {
+    "phone_ext": "mine_ext1618_v1",
+    "next_ext": "mine_ext1618_v2",
+    "phone_ld": "mine_lead_diag_v1",
+    "next_ld": "mine_lead_diag_v2"
+  }
+}
