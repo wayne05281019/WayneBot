@@ -240,7 +240,7 @@ def test_optical_page_includes_win_semiconductor_not_tsmc(tmp_path):
         ],
     )
     html = format_industry_html("3081", db, allow_fetch=False)
-    assert "跨族" in html and "光通訊" in html
+    assert "主題鏈" in html and "光通訊" in html and "已教過★" in html
     for sid, name in (
         ("3105", "穩懋"),
         ("2455", "全新"),

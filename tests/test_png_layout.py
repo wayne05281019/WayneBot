@@ -110,7 +110,7 @@ def test_industry_kv_uses_right_edge():
     from industry_card import _card_font, _wrap_px
 
     font = _card_font(32)
-    lines = _wrap_px("同業＝同一產業鏈才比；跨族檔另標他還有的鏈。", font, 984)
+    lines = _wrap_px("同業＝同一產業鏈才比；主題鏈已教過檔另標。", font, 984)
     assert lines
     assert not any(ln[:1] in "。、；：）" for ln in lines)
     assert max(font.getlength(ln) for ln in lines) <= 984 + 1.0

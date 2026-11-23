@@ -398,9 +398,9 @@ def render_industry_png(
         chain = spec["chain"]
         if chain:
             items.append(("kv", "產業鏈", chain))
-        extras = spec["extras"]
-        if extras:
-            items.append(("kv", "跨族", "／".join(extras)))
+        theme = str(spec.get("theme_layer") or "").strip()
+        if theme:
+            items.append(("kv", "主題鏈", theme))
         items.append(("kv", "同業", spec["peer_lab"]))
         if tags0:
             items.append(("muted", spec["copy_src"]))
