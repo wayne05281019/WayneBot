@@ -1,0 +1,224 @@
+{
+  "track": "SYNC-DEBATE",
+  "as_of_taipei": "2026-11-23T23:55:00+0800",
+  "tz": "Asia/Taipei",
+  "phone_warning_fixed": "試標・推論／非他原文・非買訊・對質未過閘",
+  "buy_signal": false,
+  "phone_sync": "blocked",
+  "mission": "MISSION_LOCK_20261123",
+  "scanned_branches": [
+    "cursor/observe-sync-wave2-lock-d6f7",
+    "cursor/observe-mission-lock-d6f7",
+    "cursor/bk-phone-wave-fast-d6f7",
+    "cursor/bk-chart-learn-d6f7",
+    "cursor/bk-corpus-observe-atoms-d6f7",
+    "cursor/bk-chain-playbook-d6f7",
+    "cursor/bk-wave-rules-evidence-d6f7",
+    "cursor/bk-verify-suite-d6f7",
+    "cursor/dc-bound-pot-sep-d6f7",
+    "cursor/dc-digest-practice-d6f7",
+    "cursor/mine-ext-gate-d6f7"
+  ],
+  "summary": {
+    "n_conflicts_scanned": 14,
+    "n_ruled": 11,
+    "n_fixed_this_pr": 3,
+    "n_deferred_large": 3,
+    "n_non_conflict_pot_ok": 3
+  },
+  "rulings": [
+    {
+      "id": "C1",
+      "title_zh": "原子個股價／代號混進夜盤大盤位",
+      "severity": [
+        "atoms_latest.json",
+        "ATOMS_INDEX.md",
+        "biaoke_observe_atoms.py"
+      ],
+      "severity_examples": [
+        "three_layer.night_level_1900_1800_1835",
+        "level.lv_1865_1910",
+        "three_layer.night_level_21000_3227_8039",
+        "three_layer.night_level_6000_2000"
+      ],
+      "severity": "same_price_diff_instrument_or_pollution",
+      "ruling": "reject_non_index",
+      "ruling_zh": "大盤／三層夜盤只留指數級≥10000；個股另附檔；振幅Ｎ點不算位",
+      "basis": [
+        "MISSION A5/B6",
+        "chain instrument split",
+        "official bar confront only for TWII/TX index scale"
+      ],
+      "status": "fixed_this_pr",
+      "fix_paths": ["biaoke_observe_atoms.py"]
+    },
+    {
+      "id": "C2",
+      "title_zh": "PHONE README 檔名與 CORPUS/CHAIN 產出不一致",
+      "severity": ["README.md", "observe_manual.py"],
+      "severity": "filename_drift",
+      "ruling": "prefer_producer_filenames",
+      "ruling_zh": "以 atoms_latest.json／chain_playbook.json 為準",
+      "basis": ["observe_manual._ATOM_CANDIDATES", "BK-CORPUS/BK-CHAIN outputs"],
+      "status": "fixed_this_pr",
+      "fix_paths": ["docs/expert_notes/飆客/observe_manual/README.md"]
+    },
+    {
+      "id": "C3",
+      "title_zh": "WR-OPS-NIGHT-LEADS 缺 e-mini 層序",
+      "severity": ["wave_rules_cards.json", "chain_playbook.md", "MISSION_LOCK_20261123.md"],
+      "severity": "layer_order_gap",
+      "ruling": "align_mission_chain",
+      "ruling_zh": "e-mini→TX夜盤→早盤TX→加權；不准倒灌",
+      "basis": ["MISSION 實用觀盤交付1", "chain_playbook one_liner"],
+      "status": "fixed_this_pr",
+      "fix_paths": ["docs/expert_notes/飆客/observe_manual/wave_rules_cards.json"]
+    },
+    {
+      "id": "C4",
+      "title_zh": "48218.87 圖對質偏 vs 口述波段高",
+      "severity": ["chart_learn_latest.json", "chart_learn_rules.md"],
+      "severity": "same_price_diff_verdict_instrument",
+      "ruling": "defer_reinstrument",
+      "ruling_zh": "暫不採他標錯；先重標 TX 再 confront",
+      "basis": ["chart_learn_rules 期現口徑", "60m source likely TX"],
+      "status": "deferred_large",
+      "followup_track": "BK-CHART/SYNC-LEVELS"
+    },
+    {
+      "id": "C5",
+      "title_zh": "44210 對與還沒走完並存",
+      "severity": ["chart_learn_latest.json"],
+      "severity": "same_price_diff_window",
+      "ruling": "keep_both_with_window_stamp",
+      "ruling_zh": "不同 as_of 窗；禁止合併單一對錯",
+      "basis": ["near-window photo rule"],
+      "status": "ruled_ok"
+    },
+    {
+      "id": "C6",
+      "title_zh": "假跌破上車點 vs 主買訊",
+      "severity": ["wave_rules_cards.json#WR-OPS-FAKE-BREAK"],
+      "severity": "buy_signal_boundary",
+      "ruling": "already_separated",
+      "ruling_zh": "他的上車點≠WayneBot主買訊",
+      "basis": ["MISSION B3", "hard_forbid_zh on card"],
+      "status": "non_conflict_pot_ok"
+    },
+    {
+      "id": "C7",
+      "title_zh": "1-4不重疊 vs 前端傾斜",
+      "severity": [
+        "wave_rules_cards.json#WR-IRON-14-OVERLAP",
+        "docs/expert_notes/dc_wave/vs-biaoke-boundary.md",
+        "docs/expert_notes/dc_wave/cross_pot_compare.md"
+      ],
+      "severity": "dc_mixed_as_his",
+      "ruling": "keep_pots_separate",
+      "ruling_zh": "永遠分標；不准自動改前端傾斜",
+      "basis": ["B6", "B9", "wave_pot_boundary"],
+      "status": "non_conflict_pot_ok"
+    },
+    {
+      "id": "C8",
+      "title_zh": "Fib反彈壓 vs 擴延1618閘",
+      "severity": ["WR-FIB-REBOUND", "mine_wave_rules.detect_extension_1618"],
+      "severity": "dc_mixed_as_his",
+      "ruling": "keep_pots_separate",
+      "ruling_zh": "他Fib表≠我估擴延閘",
+      "basis": ["vs-biaoke-boundary", "WR-FIB-REBOUND.vs_mine_zh"],
+      "status": "non_conflict_pot_ok"
+    },
+    {
+      "id": "C9",
+      "title_zh": "CHAIN 示例帶41900-42700",
+      "severity": ["chain_playbook.md"],
+      "severity": "stale_named_band_risk",
+      "ruling": "example_only_if_still_named",
+      "ruling_zh": "僅當他仍有效點名；不准寫死永恆支撐",
+      "basis": ["WR-LEVEL-ORAL-ONLY", "retract rules"],
+      "status": "ruled_ok"
+    },
+    {
+      "id": "C10",
+      "title_zh": "Michael邊緣規則進CHAIN",
+      "severity": ["chain_playbook.md#observe_only"],
+      "severity": "cross_teacher_leak",
+      "ruling": "keep_labeled_not_his",
+      "ruling_zh": "可留但必須標Michael不混他說",
+      "basis": ["MISSION B9"],
+      "status": "ruled_ok"
+    },
+    {
+      "id": "C11",
+      "title_zh": "phone_sync blocked vs B1",
+      "severity": ["wave_rules_cards.json", "verify_latest.json", "MISSION_LOCK"],
+      "severity": "phone_gate",
+      "ruling": "gate_not_conflict",
+      "ruling_zh": "blocked＝未過閘；過閘後才B1警語上話筒",
+      "basis": ["§13 n≥20", "B1"],
+      "status": "ruled_ok"
+    },
+    {
+      "id": "C12",
+      "title_zh": "DC checklist／MISSION_PARALLEL 跨PR漂移",
+      "severity": [
+        "dc-bound-pot-sep",
+        "dc-digest-practice",
+        "mine-ext-gate"
+      ],
+      "severity": "doc_drift_cross_pr",
+      "ruling": "prefer_dc_bound",
+      "ruling_zh": "以DC-BOUND加強版為準；不准回寫飆大手冊",
+      "basis": ["B6", "B9", "observe_manual read-only"],
+      "status": "deferred_large",
+      "followup_track": "DC-BOUND merge"
+    },
+    {
+      "id": "C13",
+      "title_zh": "BK-DEBATE vs SYNC-DEBATE 代號",
+      "severity": ["AGENT_ALLOCATION_BIAOKE.md", "AGENT_ALLOCATION_SYNC_WAVE2.md"],
+      "severity": "naming",
+      "ruling": "alias_ok",
+      "ruling_zh": "Wave2深度仲裁＝本軌",
+      "basis": ["allocation tables"],
+      "status": "ruled_ok"
+    },
+    {
+      "id": "C14",
+      "title_zh": "倒灌（日盤改寫夜盤）",
+      "severity": ["chain_playbook.md", "WR-OPS-NIGHT-LEADS"],
+      "severity": "backflow",
+      "ruling": "hard_forbid_backflow",
+      "ruling_zh": "較晚層只確認／否決；不准回寫夜盤假設",
+      "basis": ["chain_playbook §1", "C3 patch"],
+      "status": "fixed_this_pr",
+      "fix_paths": ["docs/expert_notes/飆客/observe_manual/wave_rules_cards.json"]
+    }
+  ],
+  "fixed_this_pr": [
+    "biaoke_observe_atoms.py index-scale + stock/amplitude split",
+    "README.md filename priority",
+    "wave_rules_cards.json WR-OPS-NIGHT-LEADS layer order + no backflow"
+  ],
+  "deferred_large": [
+    {
+      "id": "C4",
+      "track": "BK-CHART/SYNC-LEVELS",
+      "todo_zh": "48218 儀器重標 TX + 近窗再 confront"
+    },
+    {
+      "id": "C12",
+      "track": "DC-BOUND merge",
+      "todo_zh": "統一 dc checklist / MISSION_PARALLEL"
+    },
+    {
+      "id": "C1-render",
+      "track": "BK-CORPUS/Render",
+      "todo_zh": "雲端碟若仍舊 atoms，重跑 extract"
+    }
+  ],
+  "not_buy_signal": true,
+  "leave_narrative_forbidden": true,
+  "dc_as_biaoke_forbidden": true
+}
