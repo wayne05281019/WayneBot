@@ -13,12 +13,18 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from observe_wave_rules import attach_wave_rules_ref  # noqa: E402
+
 MARKET_DB = Path(os.environ.get("WAYNE_DB_PATH") or (ROOT / "data" / "wayne_market.db"))
 OUT_DIR = ROOT / "docs" / "expert_notes" / "飆客" / "decade_lab"
 ART = Path("/opt/cursor/artifacts")
@@ -331,6 +337,19 @@ def run_for_post_20261109() -> Dict[str, Any]:
             "note_zh": "正確率升高前只練習；不上話筒定論",
         },
     }
+    # BK-WAVE：掛浪則卡索引＋試標警語（非買訊；對質未過閘）
+    attach_wave_rules_ref(
+        out,
+        rule_ids=[
+            "WR-IRON-14-OVERLAP",
+            "WR-IRON-W3-NOT-SHORTEST",
+            "WR-OPS-FAKE-BREAK",
+            "WR-RETRACT-COND",
+            "WR-SEGMENT-TRIAL-WARN",
+            "WR-FWD-LOOP",
+            "WR-LEVEL-ORAL-ONLY",
+        ],
+    )
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     ART.mkdir(parents=True, exist_ok=True)
     text = json.dumps(out, ensure_ascii=False, indent=2)
