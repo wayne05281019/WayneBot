@@ -49,7 +49,10 @@ jobs:
 
   # 完整訊號：抓 Release 庫，跑包含選單、決策卡、出圖、大盤頁的全套。
   # 只跑煙霧測試的話，回歸會安靜地合併進 main 再部署上去。
+  # needs smoke：同一 PR 不准 smoke／full 並搶兩席（24 PR 排隊時峰值約腰斬）；
+  # smoke 紅就不開 full，省 runner。仍兩職都綠才合（對齊 #969）。
   full-suite:
+    needs: smoke-no-db
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
