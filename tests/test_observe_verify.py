@@ -105,8 +105,89 @@ def test_chain_trio_with_embedded_bars():
 def test_variant_keys_distinct_section13():
     assert ov.VARIANT_CURRENT == "bk_verify_v1_trio_level_seg"
     assert ov.VARIANT_NEXT == "bk_verify_v2_chain_sox_strict"
+    assert ov.VARIANT_NEXT_PHONE == "bk_verify_v3_phone_brief_stamp"
     assert ov.VARIANT_CURRENT != ov.VARIANT_NEXT
+    assert ov.VARIANT_NEXT != ov.VARIANT_NEXT_PHONE
     assert ov.PHONE_SYNC == "blocked"
+    assert ov.PHONE_DISCLAIMER == "試標・推論／非他原文・非買訊・對質未過閘"
+
+
+def test_phone_stamp_ok_clean():
+    case = json.loads((CASES / "case_phone_stamp_ok.json").read_text(encoding="utf-8"))
+    row = ov.grade_phone_stamp_case(case)
+    assert row["verdict"] == "對"
+    assert row["ok"] is True
+    assert row["violations"] == []
+    assert row["phone_sync"] == "blocked"
+    assert row["buy_signal"] is False
+
+
+def test_phone_stamp_backflow_detected():
+    case = json.loads((CASES / "case_phone_stamp_backflow.json").read_text(encoding="utf-8"))
+    row = ov.grade_phone_stamp_case(case)
+    assert row["verdict"] == "對"  # 偵測器抓到預期違規＝本題對
+    assert row["ok"] is True
+    assert "backflow" in row["found_codes"]
+    assert "miss_analysis" not in row
+
+
+def test_phone_stamp_layer_and_futures_and_invent():
+    for name, code in (
+        ("case_phone_stamp_layer_skip.json", "layer_order"),
+        ("case_phone_stamp_futures_spot.json", "futures_spot_mix"),
+        ("case_phone_stamp_invent_level.json", "invented_level"),
+    ):
+        case = json.loads((CASES / name).read_text(encoding="utf-8"))
+        row = ov.grade_phone_stamp_case(case)
+        assert row["ok"] is True, name
+        assert code in row["found_codes"], (name, row["found_codes"])
+
+
+def test_phone_stamp_buy_sync_disclaimer_leak():
+    case = json.loads((CASES / "case_phone_stamp_buy_leak.json").read_text(encoding="utf-8"))
+    row = ov.grade_phone_stamp_case(case)
+    assert row["ok"] is True
+    for code in ("buy_signal_leak", "phone_sync_leak", "missing_disclaimer"):
+        assert code in row["found_codes"]
+
+
+def test_phone_stamp_miss_when_detector_blind():
+    """預期有 backflow 卻給乾淨 stamp → 偏＋miss_analysis→v3。"""
+    case = {
+        "case_id": "phone_blind",
+        "track": "phone_stamp",
+        "as_of": "20261105",
+        "expect_ok": False,
+        "expect_violations": ["backflow"],
+        "his_levels": [41760.0],
+        "brief": "乾淨",
+        "observe_slot": ov.PHONE_DISCLAIMER,
+        "stamp": {
+            "disclaimer_present": True,
+            "phone_sync": "blocked",
+            "buy_signal": False,
+            "layers_order": ["L1", "L2", "L3"],
+            "layer1_hypothesis": "bias_down",
+            "layer2_verdict": "confirm",
+            "layer3_verdict": "pending",
+            "named_levels": [{"level": 41760.0, "source": "oral"}],
+        },
+    }
+    row = ov.grade_phone_stamp_case(case)
+    assert row["verdict"] == "偏"
+    assert row["ok"] is False
+    miss = row["miss_analysis"]
+    assert miss["next_variant"] == ov.VARIANT_NEXT_PHONE
+    assert miss["not_buy_signal"] is True
+    assert "backflow" in (miss.get("which_segment_broke") or "")
+
+
+def test_phone_stamp_empty_skip():
+    row = ov.grade_phone_stamp_case(
+        {"case_id": "phone_empty", "track": "phone_stamp", "as_of": "20261105"}
+    )
+    assert row["verdict"] == "空名單"
+    assert row["ok"] is None
 
 
 def test_run_suite_writes_verify_latest(tmp_path: Path):
@@ -132,8 +213,11 @@ def test_run_suite_writes_verify_latest(tmp_path: Path):
     assert summary["buy_signal"] is False
     assert summary["current_variant"] == ov.VARIANT_CURRENT
     assert summary["next_variant"]["variant"] == ov.VARIANT_NEXT
+    assert summary["next_variant"]["parallel_next"]["variant"] == ov.VARIANT_NEXT_PHONE
+    assert summary["next_variant_phone"] == ov.VARIANT_NEXT_PHONE
     assert (out / "verify_latest.json").is_file()
     assert (out / "verify_latest.md").is_file()
     blob = json.loads((out / "verify_latest.json").read_text(encoding="utf-8"))
     assert "mix_forbidden_zh" in blob
     assert blob["gate"]["replace"] is False
+    assert blob["phone_sync"] == "blocked"

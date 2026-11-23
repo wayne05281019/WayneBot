@@ -1,0 +1,31 @@
+{
+  "case_id": "phone_stamp_ok_layered",
+  "track": "phone_stamp",
+  "as_of": "20261105",
+  "expect_ok": true,
+  "expect_violations": [],
+  "deps": ["BK-PHONE", "BK-CHAIN", "MISSION_LOCK"],
+  "note_zh": "乾淨樣例：警語齊、L1→L2→L3、只認他位、期現分標、phone_sync=blocked。",
+  "his_levels": [41760.0, 43135.0],
+  "brief": "波浪位階・預估・非買訊\n目前落在：夜盤偏空 → 早盤 TX 確認 → 現貨加權驗證",
+  "observe_slot": "觀測手冊摘要／今日觀測\n試標・推論／非他原文・非買訊・對質未過閘\n三層鏈\n· 夜盤 e-mini／SOX\n· 早盤 TX 確認\n· 現貨加權驗證",
+  "stamp": {
+    "disclaimer_present": true,
+    "disclaimer": "試標・推論／非他原文・非買訊・對質未過閘",
+    "phone_sync": "blocked",
+    "buy_signal": false,
+    "layers_order": ["L1", "L2", "L3"],
+    "layer1_hypothesis": "bias_down",
+    "layer2_verdict": "confirm",
+    "layer3_verdict": "verify_ok",
+    "named_levels": [
+      {"level": 41760.0, "source": "oral", "pot": "he"},
+      {"level": 43135.0, "source": "oral", "pot": "he"}
+    ],
+    "instrument_labels": {
+      "twii": "加權現貨",
+      "tx": "台指日盤",
+      "tx_night": "台指夜盤"
+    }
+  }
+}
