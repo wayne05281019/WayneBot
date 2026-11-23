@@ -1869,6 +1869,21 @@ def maybe_push_marked_level_hits(
     )
     if not html:
         return stats
+    # SYNC-RETRACT：話筒關卡句維持一句人話；開火狀態只進 stats／log（不塞正文、不發明價）
+    try:
+        from sync_retract import run_sync_retract
+
+        _rt = run_sync_retract(db_path)
+        if (_rt.get("sentence") or {}).get("levels"):
+            stats["retract_status"] = str(_rt.get("status") or "")
+            stats["retract_fire"] = str(_rt.get("fire_line") or "")
+            logger.info(
+                "level_hit_retract_fire status=%s fire=%s",
+                stats.get("retract_status"),
+                stats.get("retract_fire"),
+            )
+    except Exception:
+        logger.debug("level_hit SYNC-RETRACT 略過", exc_info=True)
     body_fp = _body_fingerprint(html)
     body_key = f"idx:body:{bar_ymd}:{body_fp}"
     # 同日同關卡正文已推過（即使 level 鍵集合微變）→ 不重送

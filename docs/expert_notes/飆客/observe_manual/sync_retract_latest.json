@@ -1,0 +1,60 @@
+{
+  "track": "SYNC-RETRACT",
+  "rule_id": "WR-RETRACT-COND",
+  "generated_at_taipei": "2026-11-24 01:00:02",
+  "buy_signal": false,
+  "not_buy_signal": true,
+  "phone_warning_fixed": "試標・推論／非他原文・非買訊・對質未過閘",
+  "leave_narrative_blocked": true,
+  "golden_buy_untouched": true,
+  "status": "還在等",
+  "fire_line": "開火：上一句位 37837 → 官方近窗 11/20 還沒碰到 → 還在等・等官方碰到他自己點過的位｜試標・推論／非他原文・非買訊・對質未過閘",
+  "fire_shape_zh": "上一句的位 → 官方柱碰到沒 → 改口或還在等／未完｜固定警語",
+  "sentence": {
+    "post_id": "sample1",
+    "date": "2026-11-18",
+    "time": "21:10",
+    "kind": "post",
+    "he_said_retract": false,
+    "levels": [
+      {
+        "level": 37837.0,
+        "face": "37837",
+        "role": "support",
+        "oral_role": "夜盤",
+        "ctx": "大盤先看 37837 支撐，不破再談反彈；夜盤觀察結構。"
+      }
+    ],
+    "excerpt": "大盤先看 37837 支撐，不破再談反彈；夜盤觀察結構。"
+  },
+  "near_window": [
+    {
+      "date": "20261120",
+      "open": 39000.0,
+      "high": 39500.0,
+      "low": 38800.0,
+      "close": 39200.0
+    }
+  ],
+  "grades": [
+    {
+      "level": 37837.0,
+      "face": "37837",
+      "role": "support",
+      "touched": false,
+      "broke": false,
+      "held": true,
+      "near_hi": 39500.0,
+      "near_lo": 38800.0,
+      "near_close": 39200.0,
+      "bar_date": "20261120"
+    }
+  ],
+  "wr_retract": {
+    "id": "WR-RETRACT-COND",
+    "title_zh": "改口／重訂位階條件",
+    "ops_check_zh": "官方柱有效失守他鎖的帶、或鐵律違規、或多標籤被台積電量價否決→改口；沒說過的價不准當他的下一步。"
+  },
+  "retract_atoms_n": 0,
+  "retract_atom_ids": []
+}
