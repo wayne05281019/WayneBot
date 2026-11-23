@@ -5942,23 +5942,42 @@ class WayneTelegramBot:
             except Exception:
                 logger.exception("波浪位階敘述略過")
                 brief = ""
+            # 先文後圖：敘述＋觀測手冊摘要／今日觀測（警語固定）再補三窗
+            try:
+                from observe_manual import merge_wave_phone_html
+
+                phone_html = (
+                    await asyncio.to_thread(
+                        merge_wave_phone_html,
+                        brief,
+                        db_path=self.db_path,
+                        pack=pack,
+                    )
+                    or brief
+                    or ""
+                )
+            except Exception:
+                logger.exception("波浪位階觀測槽略過")
+                phone_html = brief or ""
             await self._stop_plain_wait(*wait_h)
             wait_h = (None, None, None)
-            if brief:
+            if phone_html:
                 try:
                     await msg.reply_html(
-                        brief[:3500],
+                        phone_html[:3500],
                         disable_web_page_preview=True,
                         reply_markup=self._keyboard(),
                     )
                 except Exception:
                     await msg.reply_text(
-                        "波浪位階（預估・非買訊）",
+                        "波浪位階（預估・非買訊）\n試標・推論／非他原文・非買訊・對質未過閘",
                         reply_markup=self._keyboard(),
                     )
             else:
                 await msg.reply_text(
-                    "波浪位階（預估・非買訊）\n先送遠／近／超近三張；敘述這次沒湊齊。",
+                    "波浪位階（預估・非買訊）\n"
+                    "試標・推論／非他原文・非買訊・對質未過閘\n"
+                    "先送遠／近／超近三張；敘述這次沒湊齊。",
                     reply_markup=self._keyboard(),
                 )
             await self._send_market_wave_charts(
@@ -7239,7 +7258,8 @@ class WayneTelegramBot:
     ) -> None:
         """大盤專頁附圖：暗底遠／近／超近（第1→2→3）。
 
-        一律 force 重渲；prep-once 共用 pack；遠→近→超近單 Agg，送第 N 張時 paint 第 N+1。
+        加速：tip 同口且三窗 PNG 齊 → 磁碟／記憶快取直送（跳過 force 活畫）。
+        否則 force 重渲；prep-once 共用 pack；遠→近→超近單 Agg，送第 N 張時 paint 第 N+1。
         遠窗必到；缺就單張重渲，仍缺則白話停。外圍不准 trio 順手畫。
         pack：波浪鍵流水線已過關的同口包；有傳就用，不准再另抓漂價。
         wait_title：波浪位階鍵傳「波浪位階進行中」；其他入口維持「大盤圖進行中」。
@@ -7270,7 +7290,9 @@ class WayneTelegramBot:
                 latest_teach_kit,
                 paint_open_day_hypothesis,
                 prepare_wave_live_pack,
+                remember_wave_kit_paths,
                 run_teach_trio_preflight_pipeline,
+                teach_kit_reusable_for_phone,
                 teach_tip_snapshots_match,
                 _wave_now_ladder,
             )
@@ -7458,6 +7480,73 @@ class WayneTelegramBot:
             trio_cap = "\n".join(intro_bits)[:900]
             trio_caps = self._market_teach_trio_caps()
             label_by_key = {k: lab for k, lab in trio_caps}
+
+            # 加速：tip 同口＋三窗 PNG 齊 → 磁碟／記憶快取直送，跳過 force 活畫
+            reuse = teach_kit_reusable_for_phone(
+                stored, want_tip, db_path=self.db_path
+            )
+            if reuse.get("ok"):
+                if wait_h and wait_h[0] is not None:
+                    await self._safe_edit_text(
+                        wait_h[0],
+                        self._wait_bubble(
+                            title,
+                            0,
+                            now="快取三窗直送",
+                            rest="",
+                            fill_sec=8.0,
+                        ),
+                        parse_mode="HTML",
+                    )
+                cache_items = [
+                    (
+                        "far_path",
+                        label_by_key.get("far_path", "遠窗"),
+                        str(reuse.get("far_path") or ""),
+                    ),
+                    (
+                        "near_path",
+                        label_by_key.get("near_path", "近窗"),
+                        str(reuse.get("near_path") or ""),
+                    ),
+                    (
+                        "micro_path",
+                        label_by_key.get("micro_path", "超近窗"),
+                        str(reuse.get("micro_path") or ""),
+                    ),
+                ]
+                sent_n, failed_labs = await self._send_market_teach_trio_album(
+                    message,
+                    cache_items,
+                    caption=trio_cap,
+                    ladder_line=ladder_line,
+                )
+                sent = int(sent_n or 0)
+                if sent <= 0:
+                    await message.reply_text(fail_msg)
+                elif failed_labs:
+                    try:
+                        await message.reply_text(
+                            "大盤教具應一次三張（遠／近／超近），這次缺："
+                            f"{'、'.join(failed_labs)}。"
+                            "請稍後再按一次波浪位階。"
+                        )
+                    except Exception:
+                        pass
+                else:
+                    remember_wave_kit_paths(
+                        self.db_path,
+                        {
+                            "far_path": reuse.get("far_path"),
+                            "near_path": reuse.get("near_path"),
+                            "micro_path": reuse.get("micro_path"),
+                            "thesis": reuse.get("thesis") or thesis,
+                            "as_of": reuse.get("as_of") or as_of,
+                            "teach_tip": want_tip,
+                        },
+                        tip=want_tip,
+                    )
+                return
 
             async with paint_lock:
                 # 1) 先畫遠窗（硬閘）
@@ -7688,7 +7777,15 @@ class WayneTelegramBot:
                     "oral_path": oral_path,
                     "thesis": thesis,
                     "as_of": as_of,
+                    "teach_tip": want_tip,
                 }
+                if sent >= 3 and self._market_teach_path_ok(far_path):
+                    try:
+                        remember_wave_kit_paths(
+                            self.db_path, kit, tip=want_tip
+                        )
+                    except Exception:
+                        logger.debug("波浪三窗記憶快取略過", exc_info=True)
 
             if sent <= 0:
                 await message.reply_text(fail_msg)
