@@ -193,6 +193,12 @@ def _lookup_card_fingerprint(card: Optional[dict]) -> tuple:
             )
     except (TypeError, ValueError):
         ohlc_r = None
+    try:
+        from sync_struct_vol_notes import notes_fingerprint as _sv_notes_fp
+
+        sv_fp = _sv_notes_fp(card)
+    except Exception:
+        sv_fp = ("sync-struct-vol-v1", 0, ())
     return (
         str(card.get("stock_id") or ""),
         str(card.get("latest_date") or card.get("as_of") or ""),
@@ -211,6 +217,8 @@ def _lookup_card_fingerprint(card: Optional[dict]) -> tuple:
         nrows,
         int(bool(card.get("is_live"))),
         int(bool((card.get("vol_chip_exchange") or {}).get("hit"))),
+        # SYNC-STRUCT-VOL 圖註開關／他位（大量撐壓 memo）
+        sv_fp,
     )
 
 

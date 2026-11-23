@@ -1,0 +1,24 @@
+{
+  "track": "SYNC-STRUCT-VOL",
+  "as_of_taipei": "2026-11-23T16:55:00+0800",
+  "tz": "Asia/Taipei",
+  "buy_signal": false,
+  "phone_warning_fixed": "試標・推論／非他原文・非買訊・對質未過閘",
+  "env_key": "WAYNE_STRUCT_VOL_NOTES",
+  "default_enabled": false,
+  "pots": ["他說", "官方", "試標推論"],
+  "rule_ids": [
+    "WR-OPS-EFF-PIERCE",
+    "WR-OPS-FAKE-BREAK",
+    "WR-OPS-PRESS-TO-SUPPORT",
+    "WR-VOL-NO-STABILIZE"
+  ],
+  "his_levels_only_when_named": true,
+  "hooks": [
+    "biaoke_chart.render_biaoke_structure_png",
+    "vol_zone_chart._paint_volume_zone",
+    "three_in_one_chart.render_lookup_structure_result caption",
+    "vol_zone_chart.render_volume_zone_result caption"
+  ],
+  "module": "sync_struct_vol_notes.py"
+}
