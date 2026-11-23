@@ -181,16 +181,44 @@ def test_combo_sid_labels_parenthetical(tmp_path):
                 "winrate": {
                     "as_of": "20261120",
                     "buy_ok": True,
+                    "face": "可進場",
+                    "vs_screen_lz": "same",
                     "items": [{"sid": "2330", "name": "台積電"}],
-                }
+                },
+                "leave_zero": {
+                    "as_of": "20261120",
+                    "buy_ok": True,
+                    "face": "可進場",
+                    "source": "screen",
+                    "items": [],
+                },
+                "ma60_lower": {
+                    "as_of": "20261120",
+                    "buy_ok": False,
+                    "face": "觀察非買",
+                    "items": [],
+                },
+                "undervalue_star": {"as_of": "20261120", "items": [], "buy_ok": False},
+                "streak_foreign": {
+                    "as_of": "20261120",
+                    "items": [{"sid": "1101", "name": "台泥", "days": 2}],
+                    "buy_ok": False,
+                    "stale": False,
+                },
+                "streak_trust": {"as_of": "20261120", "items": [], "buy_ok": False},
+                "streak_both": {"as_of": "20261120", "items": [], "buy_ok": False},
             },
             "layers": [],
             "issues": [],
             "_db_path": str(db),
         }
     )
+    # 進場節點仍可帶 YoY／毛；連買縮一行不准再堆括註
     assert "YoY+25.5%" in html
     assert "毛54.2%" in html
+    assert "見連買鈕" in html
+    streak_chunk = html.split("連買")[1].split("可進場只認")[0]
+    assert "YoY" not in streak_chunk
 
 
 def test_hydrate_does_not_change_selection_ids(tmp_path):

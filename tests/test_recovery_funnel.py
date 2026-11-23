@@ -116,11 +116,14 @@ def test_format_recovery_two_columns():
     assert "真可買" in html and "復原觀察" in html
     assert "6115" in html and "9907" in html
     assert "不准總分" in html
-    assert "尚等買點／還在零" in html
+    assert "尚等買點" in html
+    # 真可買一檔一行，不准長串頓號塞爆
+    buy_chunk = html.split("<b>真可買</b>")[1].split("<b>復原觀察</b>")[0]
+    assert "6115 鎰勝" in buy_chunk
 
 
 def test_format_recovery_observe_entry_blocked_not_wait_buy():
-    """已有買訊但估值閘擋 → 不准寫成「尚等買點／還在零」。"""
+    """已有買訊但估值閘擋 → 不准寫成「尚等買點」。"""
     html = format_recovery_funnel_html(
         {
             "as_of": "20261117",
@@ -148,11 +151,15 @@ def test_format_recovery_observe_entry_blocked_not_wait_buy():
             "punish_n": 0,
         }
     )
-    assert "已有買訊・估值／硬閘擋" in html
-    assert "已有買訊被估值閘擋≠尚等買點" in html
-    banner = html.split("復原觀察")[1].split("\n")[0]
-    assert "尚等買點／還在零" not in banner or "已有買訊" in banner
-    assert "連買／估值等觀察" in html
+    assert "買訊被擋" in html
+    assert "買訊被擋≠尚等買點" in html
+    obs = html.split("<b>復原觀察</b>")[1]
+    # 分桶：2317 在買訊被擋；2476 在連買／估值等；不准混成尚等買點
+    blocked = obs.split("·買訊被擋")[1].split("·")[0]
+    assert "2317" in blocked
+    assert "尚等買點" not in blocked
+    assert "連買／估值等" in obs
+    assert "2476" in obs.split("·連買／估值等")[1]
 
 
 def test_golden_buy_dict_rows_norm_sid_not_dict_repr(tmp_path: Path, monkeypatch):
