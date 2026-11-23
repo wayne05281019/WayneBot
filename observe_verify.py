@@ -1,20 +1,23 @@
 # -*- coding: utf-8 -*-
 """飆大觀測・BK-VERIFY 自測核心（§13 再生／不准混海選／黃金買點）。
 
-三軌考題（歷史開市日官方柱）：
+四軌考題：
 1. chain_trio：夜盤美指／SOX → 早盤 TX → 現貨加權（三層觀測鏈）
 2. level_touch：他點過的位是否被後窗官方柱碰到
 3. segment_bias：試標段／forward 路徑是否對／偏／未完
+4. phone_stamp：話筒 brief／observe slot／stamp 是否違反三層／倒灌／期現／只認他位
 
 硬邊界：
 - Asia/Taipei；已收官方柱；空名單不算；phone_sync=blocked；不是買訊
 - 勝率不准混進海選／黃金買點；WAVE 段號仍屬警語層
 - 錯案必填 miss_analysis，並預留下一版候選鍵
+- phone_sync 未過閘不准當買訊（SYNC-VERIFY）
 """
 from __future__ import annotations
 
 import json
 import os
+import re
 import sqlite3
 from collections import Counter
 from datetime import datetime
@@ -31,10 +34,28 @@ TAIPEI = ZoneInfo("Asia/Taipei")
 TRACK = "bk_verify"
 VARIANT_CURRENT = "bk_verify_v1_trio_level_seg"
 VARIANT_NEXT = "bk_verify_v2_chain_sox_strict"
+# SYNC-VERIFY §13 再生：話筒 brief／slot／stamp 違規閘（並列下一版）
+VARIANT_NEXT_PHONE = "bk_verify_v3_phone_brief_stamp"
 MIN_N = 20
 TOL_PCT = 0.005
 FWD_N = 5
 PHONE_SYNC = "blocked"
+PHONE_DISCLAIMER = "試標・推論／非他原文・非買訊・對質未過閘"
+
+# 期現標籤錯配：現貨被寫成夜盤／期貨，或 TX 被寫成加權現貨
+_FX_SPOT_BAD_TWII = ("台指夜盤", "期夜", "夜盤收", "TX夜", "台指期收")
+_FX_SPOT_BAD_TX = ("加權現貨", "現貨加權", "TWII收", "加權收盤")
+_BUY_SIGNAL_PHRASES = (
+    "準買",
+    "買進訊號",
+    "進場買訊",
+    "當買訊",
+    "改黃金買點",
+    "leave_zero已改",
+)
+_HIS_LEVEL_SOURCES = frozenset(
+    {"oral", "biaoke", "he", "his", "oral_hold", "oral_level", "named"}
+)
 
 VERDICT_HIT = "對"
 VERDICT_MISS = "偏"
@@ -664,6 +685,348 @@ def grade_chain_trio_case(
     return row
 
 
+def _his_level_set(case: Dict[str, Any]) -> set:
+    out: set = set()
+    for raw in list(case.get("his_levels") or []):
+        if isinstance(raw, dict):
+            lv = _f(raw.get("level"))
+        else:
+            lv = _f(raw)
+        if lv is not None:
+            out.add(round(float(lv), 2))
+    return out
+
+
+def _text_blob(*parts: Any) -> str:
+    bits: List[str] = []
+    for p in parts:
+        if p is None:
+            continue
+        if isinstance(p, dict):
+            bits.append(json.dumps(p, ensure_ascii=False))
+        else:
+            bits.append(str(p))
+    return "\n".join(bits)
+
+
+def detect_phone_stamp_violations(
+    case: Dict[str, Any],
+) -> List[Dict[str, str]]:
+    """偵測話筒 brief／observe slot／stamp 違規（結構化欄＋文案）。
+
+    代碼：
+    - layer_order／layer_skip：三層順序錯或跳層宣判
+    - backflow：倒灌（用現貨收改寫夜盤假設）
+    - futures_spot_mix：期現標籤互灌
+    - invented_level：只認他位（發明／DC／我估冒充他）
+    - missing_disclaimer：缺固定警語
+    - buy_signal_leak：未過閘當買訊
+    - phone_sync_leak：stamp 自稱已 sync／過閘
+    """
+    stamp = dict(case.get("stamp") or {})
+    brief = str(case.get("brief") or "")
+    slot = str(case.get("observe_slot") or case.get("slot") or "")
+    text = _text_blob(brief, slot, stamp.get("text"), stamp.get("caption"))
+    his = _his_level_set(case)
+    violations: List[Dict[str, str]] = []
+
+    # —— 警語／買訊／phone_sync ——
+    disc_ok = bool(stamp.get("disclaimer_present"))
+    if PHONE_DISCLAIMER in text or PHONE_DISCLAIMER in str(stamp.get("disclaimer") or ""):
+        disc_ok = True
+    if not disc_ok and not case.get("allow_no_disclaimer"):
+        violations.append(
+            {
+                "code": "missing_disclaimer",
+                "zh": "缺固定警語「試標・推論／非他原文・非買訊・對質未過閘」",
+            }
+        )
+
+    sync_val = str(stamp.get("phone_sync") or case.get("phone_sync") or PHONE_SYNC).lower()
+    if sync_val in ("ok", "synced", "allowed", "pass", "passed", "open"):
+        violations.append(
+            {
+                "code": "phone_sync_leak",
+                "zh": "phone_sync 未過閘卻標成可上／已 sync",
+            }
+        )
+    if stamp.get("buy_signal") is True or case.get("buy_signal") is True:
+        violations.append(
+            {
+                "code": "buy_signal_leak",
+                "zh": "觀測層標 buy_signal=true（未過閘不准當買訊）",
+            }
+        )
+    for phrase in _BUY_SIGNAL_PHRASES:
+        if phrase in text:
+            violations.append(
+                {
+                    "code": "buy_signal_leak",
+                    "zh": f"文案含買訊語氣：{phrase}",
+                }
+            )
+            break
+
+    # —— 三層順序／跳層 ——
+    order = list(stamp.get("layers_order") or [])
+    if order:
+        norm = [str(x).upper().replace("LAYER", "L") for x in order]
+        # 允許 L1/L2/L3 或 1/2/3
+        mapped = []
+        for x in norm:
+            m = re.search(r"([123])", x)
+            mapped.append(int(m.group(1)) if m else 0)
+        if mapped and mapped != sorted(mapped):
+            violations.append(
+                {
+                    "code": "layer_order",
+                    "zh": f"三層順序錯：{order}（應夜盤→早盤TX→現貨）",
+                }
+            )
+    l1 = stamp.get("layer1_hypothesis")
+    l2 = stamp.get("layer2_verdict")
+    l3 = stamp.get("layer3_verdict")
+    # 第三層已宣判（非 pending／gap／未完）卻缺第一層假設＝跳層
+    l3_s = str(l3 or "").lower()
+    l3_decided = bool(l3) and l3_s not in (
+        "pending",
+        "gap",
+        "未完",
+        "observe",
+        "none",
+        "",
+    )
+    if l3_decided and not l1:
+        violations.append(
+            {
+                "code": "layer_skip",
+                "zh": "三層跳層：缺第一層夜盤假設卻宣判第三層現貨",
+            }
+        )
+    if stamp.get("skip_tx_confirm") is True and l3_decided:
+        violations.append(
+            {
+                "code": "layer_skip",
+                "zh": "三層跳層：略過早盤 TX 確認直接現貨宣判",
+            }
+        )
+
+    # —— 倒灌：用現貨／日盤收改寫夜盤 ——
+    rewrite = str(
+        stamp.get("layer1_source_rewrite")
+        or stamp.get("night_rewrite_from")
+        or stamp.get("backflow_source")
+        or ""
+    ).lower()
+    backflow_tokens = (
+        "twii_eod",
+        "twii_close",
+        "spot_eod",
+        "spot_close",
+        "twii",
+        "現貨收",
+        "加權收",
+        "日盤倒改",
+    )
+    if any(t in rewrite for t in backflow_tokens) or stamp.get("backflow") is True:
+        violations.append(
+            {
+                "code": "backflow",
+                "zh": "倒灌：用現貨／日盤收改寫夜盤方向假設",
+            }
+        )
+    if "倒灌" in text or "用收盤改夜盤" in text or "日盤倒改夜盤" in text:
+        violations.append(
+            {
+                "code": "backflow",
+                "zh": "文案明示倒灌改寫夜盤",
+            }
+        )
+
+    # —— 期現混標 ——
+    labels = dict(stamp.get("instrument_labels") or {})
+    twii_lab = str(labels.get("twii") or labels.get("spot") or "")
+    tx_lab = str(labels.get("tx") or labels.get("tx_regular") or "")
+    tx_night_lab = str(labels.get("tx_night") or "")
+    if twii_lab and any(bad in twii_lab for bad in _FX_SPOT_BAD_TWII):
+        violations.append(
+            {
+                "code": "futures_spot_mix",
+                "zh": f"期現混：加權現貨被標成「{twii_lab}」",
+            }
+        )
+    if tx_lab and any(bad in tx_lab for bad in _FX_SPOT_BAD_TX):
+        violations.append(
+            {
+                "code": "futures_spot_mix",
+                "zh": f"期現混：台指日盤被標成「{tx_lab}」",
+            }
+        )
+    if tx_night_lab and ("加權" in tx_night_lab or "現貨" in tx_night_lab):
+        violations.append(
+            {
+                "code": "futures_spot_mix",
+                "zh": f"期現混：台指夜盤被標成「{tx_night_lab}」",
+            }
+        )
+    if stamp.get("futures_spot_mix") is True:
+        violations.append(
+            {
+                "code": "futures_spot_mix",
+                "zh": "stamp.futures_spot_mix=true",
+            }
+        )
+
+    # —— 只認他位 ——
+    named = list(stamp.get("named_levels") or case.get("named_levels") or [])
+    bad_src = frozenset({"invented", "invent", "dc", "mine", "我估", "fake", "unknown"})
+    for row in named:
+        if isinstance(row, dict):
+            lv = _f(row.get("level"))
+            src = str(row.get("source") or "").lower().strip()
+            pot = str(row.get("pot") or row.get("voice") or "").lower().strip()
+            claims_he = bool(row.get("claims_he")) or pot in (
+                "he",
+                "oral",
+                "biaoke",
+                "他",
+                "他說",
+            )
+        else:
+            lv = _f(row)
+            src = "unknown"
+            pot = ""
+            claims_he = False
+        if lv is None:
+            continue
+        lv_r = round(float(lv), 2)
+        dirty = src in bad_src or pot in ("dc", "mine", "我估", "invent", "invented", "fake")
+        if dirty:
+            violations.append(
+                {
+                    "code": "invented_level",
+                    "zh": (
+                        f"只認他位：{lv_r} 來源={src or pot}"
+                        + ("（冒充他說）" if claims_he else "")
+                    ),
+                }
+            )
+            continue
+        if his and lv_r not in his and src not in _HIS_LEVEL_SOURCES:
+            violations.append(
+                {
+                    "code": "invented_level",
+                    "zh": f"只認他位：{lv_r} 不在 his_levels 且非 oral 源",
+                }
+            )
+
+    # 去重（同 code+zh）
+    seen = set()
+    uniq: List[Dict[str, str]] = []
+    for v in violations:
+        key = (v.get("code"), v.get("zh"))
+        if key in seen:
+            continue
+        seen.add(key)
+        uniq.append(v)
+    return uniq
+
+
+def grade_phone_stamp_case(case: Dict[str, Any]) -> Dict[str, Any]:
+    """考話筒 brief／observe slot／stamp 是否違反三層／倒灌／期現／只認他位。"""
+    case_id = str(case.get("case_id") or "phone_stamp")
+    as_of = _ymd(case.get("as_of"))
+    stamp = dict(case.get("stamp") or {})
+    brief = str(case.get("brief") or "")
+    slot = str(case.get("observe_slot") or case.get("slot") or "")
+    # 空 brief＋空 slot＋空 stamp → 空名單
+    if not brief.strip() and not slot.strip() and not stamp:
+        return {
+            "case_id": case_id,
+            "track": "phone_stamp",
+            "as_of": as_of,
+            "verdict": VERDICT_EMPTY,
+            "ok": None,
+            "note_zh": "空名單不算",
+            "variant": VARIANT_CURRENT,
+            "phone_sync": PHONE_SYNC,
+            "buy_signal": False,
+        }
+
+    violations = detect_phone_stamp_violations(case)
+    expect_codes = [
+        str(x) for x in list(case.get("expect_violations") or []) if str(x).strip()
+    ]
+    found_codes = sorted({str(v.get("code") or "") for v in violations if v.get("code")})
+
+    # expect_ok=True → 文案／戳記應乾淨（無違規）
+    # expect_ok=False → 應抓到 expect_violations（偵測器自測）
+    if "expect_ok" in case:
+        expect_ok = bool(case.get("expect_ok"))
+    else:
+        expect_ok = not bool(expect_codes)
+
+    missing = [c for c in expect_codes if c not in found_codes]
+    if expect_ok:
+        actual_ok = len(violations) == 0
+    else:
+        # 至少抓到預期碼；未指定碼時只要有任一違規
+        actual_ok = (not missing) if expect_codes else (len(violations) > 0)
+
+    if actual_ok:
+        verd, ok = VERDICT_HIT, True
+    else:
+        verd, ok = VERDICT_MISS, False
+
+    row: Dict[str, Any] = {
+        "case_id": case_id,
+        "track": "phone_stamp",
+        "as_of": as_of,
+        "verdict": verd,
+        "ok": ok,
+        "expect_ok": expect_ok,
+        "expect_violations": expect_codes,
+        "violations": violations,
+        "found_codes": found_codes,
+        "missing_expected_codes": missing,
+        "variant": VARIANT_CURRENT,
+        "next_variant_candidate": VARIANT_NEXT_PHONE,
+        "phone_sync": PHONE_SYNC,
+        "buy_signal": False,
+        "not_buy_signal": True,
+        "deps": list(case.get("deps") or ["BK-PHONE", "BK-CHAIN", "MISSION_LOCK"]),
+        "note_zh": (
+            "SYNC-VERIFY：話筒 brief／slot／stamp 考三層／倒灌／期現／只認他位；"
+            "phone_sync=blocked 未過閘不准當買訊"
+        ),
+        "brief_len": len(brief),
+        "slot_len": len(slot),
+        "stamp_keys": sorted(stamp.keys()),
+    }
+    if ok is False:
+        row["miss_analysis"] = build_miss_analysis(
+            case_id=case_id,
+            track="phone_stamp",
+            expected=(
+                "無違規" if expect_ok else f"偵測到 {expect_codes or ['任一違規']}"
+            ),
+            actual=(
+                f"found={found_codes}; missing_expected={missing}; "
+                f"violations={json.dumps(violations, ensure_ascii=False)[:280]}"
+            ),
+            unexpected="; ".join(found_codes) if found_codes else "偵測器漏抓",
+            which_broke="phone_stamp:" + (",".join(missing or found_codes) or "unknown"),
+            rule_patch=(
+                f"下一版 {VARIANT_NEXT_PHONE}：stamp 必含 layers_order＝L1→L2→L3、"
+                "禁止 layer1_source_rewrite＝twii_eod、"
+                "named_levels 只准 oral／his、期現標籤分鍋、"
+                "缺警語／buy_signal／phone_sync≠blocked 直接偏"
+            ),
+            next_variant=VARIANT_NEXT_PHONE,
+        )
+    return row
+
+
 def load_case_files(cases_dir: Path = CASES_DIR) -> List[Dict[str, Any]]:
     if not cases_dir.is_dir():
         return []
@@ -721,6 +1084,8 @@ def run_suite(
             row = grade_chain_trio_case(
                 case, overnight_map=overnight, tx_regular=tx_reg, twii=twii
             )
+        elif track == "phone_stamp":
+            row = grade_phone_stamp_case(case)
         else:
             row = {
                 "case_id": case.get("case_id"),
@@ -752,19 +1117,34 @@ def run_suite(
         "gate_n20": False,
         "replace": False,
         "note_zh": "現況樣本仍少；繼續靜默收集。勝率不准混海選／黃金買點。",
+        "parallel_next": {
+            "variant": VARIANT_NEXT_PHONE,
+            "rule_zh": (
+                "phone_stamp：layers_order＝L1→L2→L3；禁倒灌 twii_eod；"
+                "期現標籤分鍋；named_levels 只准 oral／his；"
+                "缺警語／buy_signal／phone_sync≠blocked → 偏"
+            ),
+            "status": "collecting",
+            "track": "phone_stamp",
+            "note_zh": "SYNC-VERIFY §13 再生鍵；未過閘不准當買訊",
+        },
     }
 
     summary: Dict[str, Any] = {
         "written_at": _now(),
         "tz": "Asia/Taipei",
         "track": TRACK,
-        "purpose_zh": "BK-VERIFY：三層鏈／他點過的位／試標段 → 對／偏／未完；可重跑自測",
+        "purpose_zh": (
+            "BK-VERIFY／SYNC-VERIFY：三層鏈／他點過的位／試標段／"
+            "話筒 brief·slot·stamp → 對／偏／未完；可重跑自測"
+        ),
         "phone_sync": PHONE_SYNC,
         "buy_signal": False,
         "not_buy_signal": True,
         "mix_forbidden_zh": "勝率不准混進海選／黃金買點；本軌不上話筒買訊",
         "current_variant": VARIANT_CURRENT,
         "next_variant": next_collecting,
+        "next_variant_phone": VARIANT_NEXT_PHONE,
         "db": {
             "path": str(db_path),
             "ok": db_ok,
@@ -782,18 +1162,23 @@ def run_suite(
         "deps_zh": [
             "BK-CHAIN《三層觀測操作手》齊了可加更多 chain 考題",
             "BK-WAVE 段號證據桶齊了可擴 segment 母體",
+            "BK-PHONE 話筒 brief／observe slot／stamp 進 phone_stamp 考題",
             "本機／Render 官方柱需完整 OHLC；缺柱＝未完",
             "wave_forward_infer／wave_eod_verify 可當 segment 樣例來源",
         ],
         "daily_review_zh": (
             "開市日盤後：python scripts/observe_verify_suite.py --write；"
             "核對 verify_latest.json；有 miss 填 rule_patch 並續收下一版鍵"
+            f"（chain→{VARIANT_NEXT}；phone→{VARIANT_NEXT_PHONE}）"
         ),
         "gate": {
             "min_n": MIN_N,
             "replace": replace_any,
             "phone_sync": PHONE_SYNC,
-            "note_zh": "n≥20 獨立交易日且贏現況才換；現況框架階段 replace=false",
+            "note_zh": (
+                "n≥20 獨立交易日且贏現況才換；現況框架階段 replace=false；"
+                "phone_sync 未過閘不准當買訊"
+            ),
         },
     }
 
@@ -807,7 +1192,8 @@ def run_suite(
             "# BK-VERIFY 自測覆核",
             "",
             f"寫入：`{summary['written_at']}`（Asia/Taipei）。",
-            f"現況鍵 `{VARIANT_CURRENT}` → 下一版候選 `{VARIANT_NEXT}`（§13 再生）。",
+            f"現況鍵 `{VARIANT_CURRENT}` → 下一版 `{VARIANT_NEXT}`／"
+            f"phone `{VARIANT_NEXT_PHONE}`（§13 再生）。",
             "",
             f"- 考題數：{len(cases)}；分軌：{', '.join(sorted(by_track)) or '（空）'}",
             f"- 總覽 n_decided={overall.get('n_decided')} hit_rate={overall.get('hit_rate')}（僅目錄，不准混軌）",
@@ -825,6 +1211,7 @@ def run_suite(
             "",
             "- 開市日盤後跑 suite 落 `verify_latest.json`／`verify_YYYYMMDD.json`",
             "- 有偏 → 讀 `miss_analysis` → 改下一版候選規則繼續收",
+            "- phone_stamp：三層／倒灌／期現／只認他位；未過閘不准當買訊",
             "- 空名單不算；缺官方完整柱＝未完",
             "",
         ]
@@ -841,9 +1228,13 @@ def run_suite(
 __all__ = [
     "VARIANT_CURRENT",
     "VARIANT_NEXT",
+    "VARIANT_NEXT_PHONE",
+    "PHONE_DISCLAIMER",
     "build_miss_analysis",
+    "detect_phone_stamp_violations",
     "grade_chain_trio_case",
     "grade_level_touch_case",
+    "grade_phone_stamp_case",
     "grade_segment_bias_case",
     "run_suite",
     "score_level_vs_fwd",

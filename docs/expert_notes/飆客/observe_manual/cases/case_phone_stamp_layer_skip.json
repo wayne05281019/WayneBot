@@ -1,0 +1,26 @@
+{
+  "case_id": "phone_stamp_layer_skip_l3",
+  "track": "phone_stamp",
+  "as_of": "20261105",
+  "expect_ok": false,
+  "expect_violations": ["layer_skip", "layer_order"],
+  "deps": ["BK-PHONE", "BK-CHAIN"],
+  "note_zh": "三層違反：順序顛倒＋缺 L1 卻宣判 L3。",
+  "his_levels": [41760.0],
+  "brief": "現貨已驗證偏空",
+  "observe_slot": "試標・推論／非他原文・非買訊・對質未過閘",
+  "stamp": {
+    "disclaimer_present": true,
+    "phone_sync": "blocked",
+    "buy_signal": false,
+    "layers_order": ["L3", "L1", "L2"],
+    "layer2_verdict": "pending",
+    "layer3_verdict": "verify_fail",
+    "skip_tx_confirm": true,
+    "named_levels": [{"level": 41760.0, "source": "oral"}],
+    "instrument_labels": {
+      "twii": "加權現貨",
+      "tx": "台指日盤"
+    }
+  }
+}
