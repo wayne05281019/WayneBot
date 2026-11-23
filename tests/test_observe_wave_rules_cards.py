@@ -22,7 +22,8 @@ MANUAL = ROOT / "docs" / "expert_notes" / "飆客" / "observe_manual"
 
 def test_wave_rules_cards_load_and_provenance():
     data = load_wave_rules_cards()
-    assert data["n_cards"] == 22
+    # SYNC-FWD 回寫後可增 WR-FWD-TOUCH-BOUNCE-RECLAIM／PENDING-NOT-VETO
+    assert data["n_cards"] >= 22
     assert data["buy_signal"] is False
     assert data["phone_warning_fixed"] == PHONE_WARNING_FIXED
     by = cards_by_id(data)

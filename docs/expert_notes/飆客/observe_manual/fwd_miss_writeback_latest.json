@@ -1,0 +1,502 @@
+{
+  "written_at": "2026-11-24T01:00:30+0800",
+  "tz": "Asia/Taipei",
+  "track": "bk_fwd",
+  "purpose_zh": "forward miss 回寫 observe_manual 下一版鍵／敘述修正／證據桶",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "not_buy_signal": true,
+  "mix_forbidden_zh": "勝率不准混進海選／黃金買點；觀測≠主買訊",
+  "current_variant": "bk_fwd_v1_miss_map",
+  "next_variant": {
+    "variant": "bk_fwd_v2_bounce_reclaim_priority",
+    "from_kind": "target_touch_bounce_elevate_reclaim",
+    "note_zh": "20261123 miss：目標觸及後收彈→升權 FB reclaim；同件再生收集中",
+    "gate_zh": "獨立交易日 n≥20 且贏該功能現況才替換（§13）；空名單不算"
+  },
+  "n_eod_miss": 11,
+  "n_actionable": 11,
+  "kind_counts": {
+    "condition_defer": 2,
+    "hold_fail_escalate": 4,
+    "pending_not_veto": 3,
+    "level_broke_follow_oral_band": 1,
+    "target_touch_bounce_elevate_reclaim": 1
+  },
+  "miss_to_fix": [
+    {
+      "as_of": "20261109",
+      "preferred_was": null,
+      "kind": "condition_defer",
+      "actionable": true,
+      "rule_ids": [
+        "WR-FWD-LOOP",
+        "WR-LEVEL-ORAL-ONLY",
+        "WR-OPS-TWO-BAR"
+      ],
+      "prefer_path_id": "",
+      "segment_labels": [
+        "condition_defer",
+        "premise_invalid"
+      ],
+      "code_fix_zh": "條件句『不過41760→很快再測週五低』：盤中刺穿但收未站穩時，回測時序可遞延，不准當日強制計B-b必發生",
+      "narrative_fix_zh": "文敘寫清前提失效／路徑遞延；不准硬套原必經。",
+      "rule_patch_src": "條件句『不過41760→很快再測週五低』：盤中刺穿但收未站穩時，回測時序可遞延，不准當日強制計B-b必發生",
+      "which_segment_broke": "B-b（今日未啟動）；B-a_cap「不過壓」同日敘事偏弱（有刺穿）",
+      "next_variant": "bk_fwd_v2d_condition_defer",
+      "phone_warning_fixed": "試標・推論／非他原文・非買訊・對質未過閘",
+      "buy_signal": false,
+      "not_buy_signal": true,
+      "phone_sync": "blocked",
+      "mix_forbidden_zh": "勝率不准混進海選／黃金買點",
+      "source_file": "docs/expert_notes/飆客/decade_lab/wave_eod_verify_20261109.json",
+      "expected_segments": [
+        "C3-5",
+        "B-a挑戰41760",
+        "B-b回測週五低"
+      ],
+      "actual_path": "B-a強彈刺穿41760後收回；未走B-b"
+    },
+    {
+      "as_of": "20261110",
+      "preferred_was": null,
+      "kind": "condition_defer",
+      "actionable": true,
+      "rule_ids": [
+        "WR-FWD-LOOP",
+        "WR-LEVEL-ORAL-ONLY",
+        "WR-OPS-TWO-BAR"
+      ],
+      "prefer_path_id": "",
+      "segment_labels": [
+        "condition_defer",
+        "premise_invalid"
+      ],
+      "code_fix_zh": "條件句『未站穩41760→再測週五低』：若日盤開盤即穩壓上且全日低＞41760，當日取消N1必經、改標B-a_hold；下一窗優先回測41760撐與更高壓43135，失守41760才把37837升回必經",
+      "narrative_fix_zh": "文敘寫清前提失效／路徑遞延；不准硬套原必經。",
+      "rule_patch_src": "條件句『未站穩41760→再測週五低』：若日盤開盤即穩壓上且全日低＞41760，當日取消N1必經、改標B-a_hold；下一窗優先回測41760撐與更高壓43135，失守41760才把37837升回必經",
+      "which_segment_broke": "N1/B-b（今日前提失效）；N3未啟動",
+      "next_variant": "bk_fwd_v2d_condition_defer",
+      "phone_warning_fixed": "試標・推論／非他原文・非買訊・對質未過閘",
+      "buy_signal": false,
+      "not_buy_signal": true,
+      "phone_sync": "blocked",
+      "mix_forbidden_zh": "勝率不准混進海選／黃金買點",
+      "source_file": "docs/expert_notes/飆客/decade_lab/wave_eod_verify_20261110.json",
+      "expected_segments": [
+        "B-a_hold或B-b回測週五低（條件分歧）",
+        "N1：未站穩41760→再測37837",
+        "N2：收穩41760壓轉撐",
+        "N3：破低假跌破抽回"
+      ],
+      "actual_path": "N2：開盤已過41760、全日低＞41760、收穩壓轉撐；高見43135後小回；未走N1／N3"
+    },
+    {
+      "as_of": "20261111",
+      "preferred_was": null,
+      "kind": "hold_fail_escalate",
+      "actionable": true,
+      "rule_ids": [
+        "WR-OPS-PRESS-TO-SUPPORT",
+        "WR-FWD-LOOP",
+        "WR-LEVEL-ORAL-ONLY",
+        "WR-SEGMENT-TRIAL-WARN"
+      ],
+      "prefer_path_id": "",
+      "segment_labels": [
+        "post_hold_fail",
+        "escalate_lower_level"
+      ],
+      "code_fix_zh": "條件句『站穩41760後回測41760』：若下一開市日開盤即貼／過更高壓43135，且全日低≫41760並收穩43135上，當日取消M1必經、標 post_hold→收穩43135；下一窗優先回測43135撐，失守43135才把41760升回必經，失守41760才把37837升回必經",
+      "narrative_fix_zh": "文敘改下一必經回測位；上一撐改為已失狀態。",
+      "rule_patch_src": "條件句『站穩41760後回測41760』：若下一開市日開盤即貼／過更高壓43135，且全日低≫41760並收穩43135上，當日取消M1必經、標 post_hold→收穩43135；下一窗優先回測43135撐，失守43135才把41760升回必經，失守41760才把37837升回必經",
+      "which_segment_broke": "M1/B-a_hold_retest（今日未啟動＝延後）；M3/B-b未啟動",
+      "next_variant": "bk_fwd_v2c_hold_fail_escalate",
+      "phone_warning_fixed": "試標・推論／非他原文・非買訊・對質未過閘",
+      "buy_signal": false,
+      "not_buy_signal": true,
+      "phone_sync": "blocked",
+      "mix_forbidden_zh": "勝率不准混進海選／黃金買點",
+      "source_file": "docs/expert_notes/飆客/decade_lab/wave_eod_verify_20261111.json",
+      "expected_segments": [
+        "M1：回測41760撐（B-a_hold_retest）",
+        "M2：挑戰／受制43135（post_hold／post_hold_cap）",
+        "M3：失守41760→再測37837（B-b）"
+      ],
+      "actual_path": "M2為主：開貼43135、盤中回42708仍≫41760、收穩44257站上43135；M1依失效句延後；M3未觸發"
+    },
+    {
+      "as_of": "20261112",
+      "preferred_was": null,
+      "kind": "hold_fail_escalate",
+      "actionable": true,
+      "rule_ids": [
+        "WR-OPS-PRESS-TO-SUPPORT",
+        "WR-FWD-LOOP",
+        "WR-LEVEL-ORAL-ONLY",
+        "WR-SEGMENT-TRIAL-WARN"
+      ],
+      "prefer_path_id": "",
+      "segment_labels": [
+        "post_hold_fail",
+        "escalate_lower_level"
+      ],
+      "code_fix_zh": "條件句『收穩43135後回測撐』：若回測當日收仍失43135，當日標 post_hold_fail，下一窗把41760升為必經回測；43000下若盤中觸及但收回上，標路徑觸／收未鎖，續追。",
+      "narrative_fix_zh": "文敘改下一必經回測位；上一撐改為已失狀態。",
+      "rule_patch_src": "條件句『收穩43135後回測撐』：若回測當日收仍失43135，當日標 post_hold_fail，下一窗把41760升為必經回測；43000下若盤中觸及但收回上，標路徑觸／收未鎖，續追。",
+      "which_segment_broke": "M2/post_hold_extend（收失43135）；M3/B-a_hold_retest與B-b尚未走完",
+      "next_variant": "bk_fwd_v2c_hold_fail_escalate",
+      "phone_warning_fixed": "試標・推論／非他原文・非買訊・對質未過閘",
+      "buy_signal": false,
+      "not_buy_signal": true,
+      "phone_sync": "blocked",
+      "mix_forbidden_zh": "勝率不准混進海選／黃金買點",
+      "source_file": "docs/expert_notes/飆客/decade_lab/wave_eod_verify_20261112.json",
+      "expected_segments": [
+        "M1：回測43135撐（post_hold_43135_retest）",
+        "M2：收維持43135上延續／整理",
+        "M3：失守43135→測41760；再失守→37837"
+      ],
+      "actual_path": "M1回測觸發＋收失→M2失效→M3第一段（43135撤銷）成立；41760／37837未測。低點已見43000下（路徑觸），收仍略回43000上。"
+    },
+    {
+      "as_of": "20261113",
+      "preferred_was": null,
+      "kind": "hold_fail_escalate",
+      "actionable": true,
+      "rule_ids": [
+        "WR-OPS-PRESS-TO-SUPPORT",
+        "WR-FWD-LOOP",
+        "WR-LEVEL-ORAL-ONLY",
+        "WR-SEGMENT-TRIAL-WARN"
+      ],
+      "prefer_path_id": "",
+      "segment_labels": [
+        "post_hold_fail",
+        "escalate_lower_level"
+      ],
+      "code_fix_zh": "條件句『收失43135後下一窗優先41760』：若下一開市日開盤即站回並全日低≫41760且收穩43135上，標 post_hold_reclaim，把preferred改回『回測43135撐』；失守43135才再升權41760。",
+      "narrative_fix_zh": "文敘改下一必經回測位；上一撐改為已失狀態。",
+      "rule_patch_src": "條件句『收失43135後下一窗優先41760』：若下一開市日開盤即站回並全日低≫41760且收穩43135上，標 post_hold_reclaim，把preferred改回『回測43135撐』；失守43135才再升權41760。",
+      "which_segment_broke": "M1/B-a_hold_retest與N1/path_below_43000本日未發生；M2/post_hold_reclaim走在對照升權",
+      "next_variant": "bk_fwd_v2c_hold_fail_escalate",
+      "phone_warning_fixed": "試標・推論／非他原文・非買訊・對質未過閘",
+      "buy_signal": false,
+      "not_buy_signal": true,
+      "phone_sync": "blocked",
+      "mix_forbidden_zh": "勝率不准混進海選／黃金買點",
+      "source_file": "docs/expert_notes/飆客/decade_lab/wave_eod_verify_20261113.json",
+      "expected_segments": [
+        "M1：回測41760撐（B-a_hold_retest）",
+        "N1：再探43000下／進41900～42700帶",
+        "M3：失守41760→測37837",
+        "M2對照：收復43135"
+      ],
+      "actual_path": "M2收復43135成立；M1／N1日盤／M3皆未走。夜盤TX曾進419～427帶但日盤未跟。"
+    },
+    {
+      "as_of": "20261116",
+      "preferred_was": null,
+      "kind": "hold_fail_escalate",
+      "actionable": true,
+      "rule_ids": [
+        "WR-OPS-PRESS-TO-SUPPORT",
+        "WR-FWD-LOOP",
+        "WR-LEVEL-ORAL-ONLY",
+        "WR-SEGMENT-TRIAL-WARN"
+      ],
+      "prefer_path_id": "",
+      "segment_labels": [
+        "post_hold_fail",
+        "escalate_lower_level"
+      ],
+      "code_fix_zh": "條件句『收復43135後下一窗優先回測當撐』：若下一開市日開盤後迅速失43135且日低遠低於41760，標 post_hold_43135_fail＋B-a_hold_fail，preferred 改『升權測37837／或收回波浪4帶』，不准把急殺標成新五波①。",
+      "narrative_fix_zh": "文敘改下一必經回測位；上一撐改為已失狀態。",
+      "rule_patch_src": "條件句『收復43135後下一窗優先回測當撐』：若下一開市日開盤後迅速失43135且日低遠低於41760，標 post_hold_43135_fail＋B-a_hold_fail，preferred 改『升權測37837／或收回波浪4帶』，不准把急殺標成新五波①。",
+      "which_segment_broke": "M2/post_hold_43135_retest 破裂；B-a_hold_retest 未完成守撐，轉 B-a_hold_fail；B-b/37837 尚未發生。",
+      "next_variant": "bk_fwd_v2c_hold_fail_escalate",
+      "phone_warning_fixed": "試標・推論／非他原文・非買訊・對質未過閘",
+      "buy_signal": false,
+      "not_buy_signal": true,
+      "phone_sync": "blocked",
+      "mix_forbidden_zh": "勝率不准混進海選／黃金買點",
+      "source_file": "docs/expert_notes/飆客/decade_lab/wave_eod_verify_20261116.json",
+      "expected_segments": [
+        "M2：回測43135撐",
+        "M1：失守43135→回測41760撐",
+        "N1：再探43000下／進41900～42700帶",
+        "M3：失守41760→測37837"
+      ],
+      "actual_path": "N1成立；M2否決；M1前半失43135成立但41760未守而貫穿；M3升權成立、37837未測。收41040在口頭波浪4帶（41800～42700）之下。"
+    },
+    {
+      "as_of": "20261117",
+      "preferred_was": "M3_seek_37837_after_41760_fail",
+      "kind": "pending_not_veto",
+      "actionable": true,
+      "rule_ids": [
+        "WR-FWD-PENDING-NOT-VETO",
+        "WR-FWD-LOOP",
+        "WR-LEVEL-ORAL-ONLY",
+        "WR-SEGMENT-TRIAL-WARN"
+      ],
+      "prefer_path_id": "M3_seek_37837_after_41760_fail",
+      "segment_labels": [
+        "M3_pending",
+        "N1_follow_through",
+        "pending_not_veto"
+      ],
+      "code_fix_zh": "未觸目標≠否決：標 pending＋N1_follow；L 靠近可升權 pending，仍非觸發。",
+      "narrative_fix_zh": "文敘維持升權測位句；寫清『尚未觸及、路徑未否決』；非買訊。",
+      "rule_patch_src": "preferred＝升權測37837 時：若下一開市日仍失41760且L落在『帶下～37837之上』（例 39000～41000），標 N1_follow_through＋M3_pending_37837，不准把『未測到37837』當M3否決，也不准標新①。",
+      "which_segment_broke": "B-b/37837 尚未發生；wave4_band_reclaim 未發生。B-a_hold_fail 狀態延續。",
+      "next_variant": "bk_fwd_v2b_pending_not_veto",
+      "phone_warning_fixed": "試標・推論／非他原文・非買訊・對質未過閘",
+      "buy_signal": false,
+      "not_buy_signal": true,
+      "phone_sync": "blocked",
+      "mix_forbidden_zh": "勝率不准混進海選／黃金買點",
+      "source_file": "docs/expert_notes/飆客/decade_lab/wave_eod_verify_20261117.json",
+      "expected_segments": [
+        "M3：失守41760後測37837",
+        "W4：收回41800～42700／42250",
+        "N1：帶下續弱",
+        "M2：收復43135（低權）"
+      ],
+      "actual_path": "N1成立（帶下續弱再探L39786）；W4收回否決；M2收復否決；M3升權維持但37837未測。收40092仍在波浪4帶下。"
+    },
+    {
+      "as_of": "20261118",
+      "preferred_was": "M3_seek_37837_continue",
+      "kind": "pending_not_veto",
+      "actionable": true,
+      "rule_ids": [
+        "WR-FWD-PENDING-NOT-VETO",
+        "WR-FWD-LOOP",
+        "WR-LEVEL-ORAL-ONLY",
+        "WR-SEGMENT-TRIAL-WARN"
+      ],
+      "prefer_path_id": "M3_seek_37837_continue",
+      "segment_labels": [
+        "M3_pending",
+        "N1_follow_through",
+        "pending_not_veto"
+      ],
+      "code_fix_zh": "未觸目標≠否決：標 pending＋N1_follow；L 靠近可升權 pending，仍非觸發。",
+      "narrative_fix_zh": "文敘維持升權測位句；寫清『尚未觸及、路徑未否決』；非買訊。",
+      "rule_patch_src": "preferred＝升權測37837 時：若下一開市日仍失41760且L落在『帶下～37837之上』（例 39000～41000），標 N1_follow_through＋M3_pending_37837，不准把『未測到37837』當M3否決，也不准標新①。",
+      "which_segment_broke": "B-b/37837 尚未發生；wave4_band_reclaim 未發生。B-a_hold_fail 狀態延續。",
+      "next_variant": "bk_fwd_v2b_pending_not_veto",
+      "phone_warning_fixed": "試標・推論／非他原文・非買訊・對質未過閘",
+      "buy_signal": false,
+      "not_buy_signal": true,
+      "phone_sync": "blocked",
+      "mix_forbidden_zh": "勝率不准混進海選／黃金買點",
+      "source_file": "docs/expert_notes/飆客/decade_lab/wave_eod_verify_20261118.json",
+      "expected_segments": [
+        "M3：續弱測37837",
+        "W4：收回41800～42700／42250",
+        "N1：帶下續弱",
+        "M2：收復43135（低權）"
+      ],
+      "actual_path": "N1成立（帶下續弱再探L39261）；W4收回否決；M2收復否決；M3升權維持但37837未測。收40195仍在波浪4帶下。"
+    },
+    {
+      "as_of": "20261119",
+      "preferred_was": "M3_seek_37837_continue",
+      "kind": "pending_not_veto",
+      "actionable": true,
+      "rule_ids": [
+        "WR-FWD-PENDING-NOT-VETO",
+        "WR-FWD-LOOP",
+        "WR-LEVEL-ORAL-ONLY",
+        "WR-SEGMENT-TRIAL-WARN"
+      ],
+      "prefer_path_id": "M3_seek_37837_continue",
+      "segment_labels": [
+        "M3_pending",
+        "N1_follow_through",
+        "pending_not_veto"
+      ],
+      "code_fix_zh": "未觸目標≠否決：標 pending＋N1_follow；L 靠近可升權 pending，仍非觸發。",
+      "narrative_fix_zh": "文敘維持升權測位句；寫清『尚未觸及、路徑未否決』；非買訊。",
+      "rule_patch_src": "preferred＝升權測37837 時：若下一開市日仍失41760且L落在『帶下～37837之上』（例 38000～40500），標 N1_follow_through＋M3_pending_37837，不准把『未測到37837』當M3否決，也不准標新①。L每靠近一檔可升權pending，仍非觸發。",
+      "which_segment_broke": "B-b/37837 尚未發生；wave4_band_reclaim 未發生。B-a_hold_fail 狀態延續。",
+      "next_variant": "bk_fwd_v2b_pending_not_veto",
+      "phone_warning_fixed": "試標・推論／非他原文・非買訊・對質未過閘",
+      "buy_signal": false,
+      "not_buy_signal": true,
+      "phone_sync": "blocked",
+      "mix_forbidden_zh": "勝率不准混進海選／黃金買點",
+      "source_file": "docs/expert_notes/飆客/decade_lab/wave_eod_verify_20261119.json",
+      "expected_segments": [
+        "M3：續弱測37837",
+        "W4：收回41800～42700／42250",
+        "N1：帶下續弱",
+        "M2：收復43135（低權）"
+      ],
+      "actual_path": "N1成立（帶下續弱再探L38260）；W4收回否決；M2收復否決；M3升權維持但37837未測（距約423點）。收38427仍在波浪4帶下。"
+    },
+    {
+      "as_of": "20261120",
+      "preferred_was": "M3_seek_37837_continue",
+      "kind": "level_broke_follow_oral_band",
+      "actionable": true,
+      "rule_ids": [
+        "WR-OPS-FAKE-BREAK",
+        "WR-LEVEL-ORAL-ONLY",
+        "WR-FWD-LOOP",
+        "WR-SEGMENT-TRIAL-WARN"
+      ],
+      "prefer_path_id": "N1_follow_through_below_band",
+      "segment_labels": [
+        "M3_triggered_broke",
+        "N1_follow_through",
+        "false_break_reclaim"
+      ],
+      "code_fix_zh": "preferred＝測位且 L／收皆破 → 標觸發＋續弱 follow；下一窗改口頭已有之更低帶為對照、原位收回為假跌破觀察；不准發明未口述新低。",
+      "narrative_fix_zh": "文敘：已破位改對照口頭下一帶；收回＝假跌破觀察；不准當新①。",
+      "rule_patch_src": "preferred＝測37837 時：若L已＜37837且收仍＜37837，標 M3_triggered_broke_37837＋N1_follow_through，下一窗改口頭已有之35579為續弱對照、37837收回為假跌破觀察；不准把深破當新五波①，也不准發明未口述之新低目標。",
+      "which_segment_broke": "B-b/37837 已發生並跌破；wave4_band_reclaim 未發生；B-a_hold_fail 延續。",
+      "next_variant": "bk_fwd_v2_bounce_reclaim_priority",
+      "phone_warning_fixed": "試標・推論／非他原文・非買訊・對質未過閘",
+      "buy_signal": false,
+      "not_buy_signal": true,
+      "phone_sync": "blocked",
+      "mix_forbidden_zh": "勝率不准混進海選／黃金買點",
+      "source_file": "docs/expert_notes/飆客/decade_lab/wave_eod_verify_20261120.json",
+      "expected_segments": [
+        "M3：續弱測37837",
+        "W4：收回41800～42700／42250",
+        "N1：帶下續弱",
+        "M2：收復43135（低權）"
+      ],
+      "actual_path": "M3成立且過測（L35739破37837）；N1成立並加速；W4收回否決；M2收復否決。收36033仍在37837下、波浪4帶下。"
+    },
+    {
+      "as_of": "20261123",
+      "preferred_was": "M3_extend_toward_35579",
+      "kind": "target_touch_bounce_elevate_reclaim",
+      "actionable": true,
+      "rule_ids": [
+        "WR-FWD-TOUCH-BOUNCE-RECLAIM",
+        "WR-OPS-FAKE-BREAK",
+        "WR-FWD-LOOP",
+        "WR-LEVEL-ORAL-ONLY",
+        "WR-SEGMENT-TRIAL-WARN"
+      ],
+      "prefer_path_id": "FB_reclaim_37837_watch",
+      "segment_labels": [
+        "M3_touched_then_bounce",
+        "N1_partial",
+        "false_break_reclaim"
+      ],
+      "code_fix_zh": "preferred 續弱測口頭目標時：L 觸／切入帶＋收彈且仍＜收回位 → 標 M3_touched_then_bounce＋N1_partial，下一窗升權 FB_reclaim；不准把反彈當新五波①。",
+      "narrative_fix_zh": "文敘改口：目標帶曾觸、收彈觀察假跌破收回；續弱句降權為備援；段號試標＋固定警語；非買訊。",
+      "rule_patch_src": "preferred＝M3延伸35579 時：若L已＜35579（或切入35000～35500）但收明顯反彈且仍＜37837，標 M3_touched_then_bounce＋N1_partial；下一窗升權 FB_reclaim_37837，續弱失敗再回 M3／35000帶；不准把反彈當新五波①，也不准發明未口述新低。",
+      "which_segment_broke": "oral_target_hi／35579 盤中已觸及；false_break_reclaim／37837 未發生；wave4_band_reclaim 未發生；B-b_broke 延續。",
+      "next_variant": "bk_fwd_v2_bounce_reclaim_priority",
+      "phone_warning_fixed": "試標・推論／非他原文・非買訊・對質未過閘",
+      "buy_signal": false,
+      "not_buy_signal": true,
+      "phone_sync": "blocked",
+      "mix_forbidden_zh": "勝率不准混進海選／黃金買點",
+      "source_file": "docs/expert_notes/飆客/decade_lab/wave_eod_verify_20261123.json",
+      "expected_segments": [
+        "M3：延伸測35579／口頭35000～35500",
+        "FB：收回站穩37837",
+        "W4：收回41800～42700／42250",
+        "N1：37837下續弱往35579",
+        "M2：收復43135（低權）"
+      ],
+      "actual_path": "M3盤中部分成立（L35442過35579／切入35500下）；N1部分成立（仍＜37837且L過35579）但收彈；FB收回37837否決；W4/M2否決。收36812仍在37837下、波浪4帶下。"
+    }
+  ],
+  "latest_actionable": {
+    "as_of": "20261123",
+    "preferred_was": "M3_extend_toward_35579",
+    "kind": "target_touch_bounce_elevate_reclaim",
+    "actionable": true,
+    "rule_ids": [
+      "WR-FWD-TOUCH-BOUNCE-RECLAIM",
+      "WR-OPS-FAKE-BREAK",
+      "WR-FWD-LOOP",
+      "WR-LEVEL-ORAL-ONLY",
+      "WR-SEGMENT-TRIAL-WARN"
+    ],
+    "prefer_path_id": "FB_reclaim_37837_watch",
+    "segment_labels": [
+      "M3_touched_then_bounce",
+      "N1_partial",
+      "false_break_reclaim"
+    ],
+    "code_fix_zh": "preferred 續弱測口頭目標時：L 觸／切入帶＋收彈且仍＜收回位 → 標 M3_touched_then_bounce＋N1_partial，下一窗升權 FB_reclaim；不准把反彈當新五波①。",
+    "narrative_fix_zh": "文敘改口：目標帶曾觸、收彈觀察假跌破收回；續弱句降權為備援；段號試標＋固定警語；非買訊。",
+    "rule_patch_src": "preferred＝M3延伸35579 時：若L已＜35579（或切入35000～35500）但收明顯反彈且仍＜37837，標 M3_touched_then_bounce＋N1_partial；下一窗升權 FB_reclaim_37837，續弱失敗再回 M3／35000帶；不准把反彈當新五波①，也不准發明未口述新低。",
+    "which_segment_broke": "oral_target_hi／35579 盤中已觸及；false_break_reclaim／37837 未發生；wave4_band_reclaim 未發生；B-b_broke 延續。",
+    "next_variant": "bk_fwd_v2_bounce_reclaim_priority",
+    "phone_warning_fixed": "試標・推論／非他原文・非買訊・對質未過閘",
+    "buy_signal": false,
+    "not_buy_signal": true,
+    "phone_sync": "blocked",
+    "mix_forbidden_zh": "勝率不准混進海選／黃金買點",
+    "source_file": "docs/expert_notes/飆客/decade_lab/wave_eod_verify_20261123.json",
+    "expected_segments": [
+      "M3：延伸測35579／口頭35000～35500",
+      "FB：收回站穩37837",
+      "W4：收回41800～42700／42250",
+      "N1：37837下續弱往35579",
+      "M2：收復43135（低權）"
+    ],
+    "actual_path": "M3盤中部分成立（L35442過35579／切入35500下）；N1部分成立（仍＜37837且L過35579）但收彈；FB收回37837否決；W4/M2否決。收36812仍在37837下、波浪4帶下。"
+  },
+  "narrative_fix": {
+    "phone_warning_fixed": "試標・推論／非他原文・非買訊・對質未過閘",
+    "prefer_path_id": "FB_reclaim_37837_watch",
+    "segment_labels": [
+      "M3_touched_then_bounce",
+      "N1_partial",
+      "false_break_reclaim"
+    ],
+    "fix_zh": "文敘改口：目標帶曾觸、收彈觀察假跌破收回；續弱句降權為備援；段號試標＋固定警語；非買訊。",
+    "forbid_zh": [
+      "不准把反彈／收彈當新五波①",
+      "不准發明未口述之新低目標",
+      "不准改黃金買點／不當買訊",
+      "DC／我估句不准寫成他說"
+    ],
+    "as_of": "20261123",
+    "kind": "target_touch_bounce_elevate_reclaim"
+  },
+  "wave_rules_ref": {
+    "track": "BK-WAVE",
+    "cards_file": "docs/expert_notes/飆客/observe_manual/wave_rules_cards.json",
+    "evidence_file": "docs/expert_notes/飆客/observe_manual/segment_evidence.json",
+    "rule_ids": [
+      "WR-FWD-TOUCH-BOUNCE-RECLAIM",
+      "WR-OPS-FAKE-BREAK",
+      "WR-FWD-LOOP",
+      "WR-LEVEL-ORAL-ONLY",
+      "WR-SEGMENT-TRIAL-WARN"
+    ],
+    "phone_warning_fixed": "試標・推論／非他原文・非買訊・對質未過閘",
+    "buy_signal": false,
+    "phone_sync": "blocked",
+    "gap_file_zh": "wave_rules_cards.json#gap_vs_live_wave_code"
+  },
+  "new_card_ids": [
+    "WR-FWD-TOUCH-BOUNCE-RECLAIM",
+    "WR-FWD-PENDING-NOT-VETO"
+  ],
+  "deps_zh": [
+    "observe_wave_rules.py",
+    "wave_eod_verify_*.json",
+    "wave_forward_infer_*.json",
+    "MISSION_LOCK_20261123.md A7／C12"
+  ],
+  "cards_added": [
+    "WR-FWD-TOUCH-BOUNCE-RECLAIM",
+    "WR-FWD-PENDING-NOT-VETO"
+  ],
+  "evidence_samples_added": 7
+}

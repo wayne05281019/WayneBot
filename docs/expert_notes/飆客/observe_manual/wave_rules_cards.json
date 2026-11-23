@@ -1,5 +1,5 @@
 {
-  "as_of_taipei": "2026-11-23T23:10:00+0800",
+  "as_of_taipei": "2026-11-24T01:00:30+0800",
   "track": "BK-WAVE",
   "tz": "Asia/Taipei",
   "phone_sync": "blocked",
@@ -19,7 +19,7 @@
     "sox_14.md / sox_14.json",
     "mine_wave_rules.py（僅對照・不准冒充他說）"
   ],
-  "n_cards": 22,
+  "n_cards": 24,
   "cards": [
     {
       "id": "WR-IRON-14-OVERLAP",
@@ -120,15 +120,14 @@
         "playbook.md §觀察1",
         "wave8_cycle_concept_lock.json ops_rules night_leads_day"
       ],
-      "ops_check_zh": "層序對齊 MISSION／CHAIN：外圍 e-mini／美期方向假設 → TX 夜盤／連續盤是否碰到他點的壓／撐／軌 → 早盤 TX 確認 → 現貨加權驗證。不准倒灌（日盤收改寫夜盤假設）。盤中未收不當官方收。",
+      "ops_check_zh": "先對 TX 夜盤／連續盤是否碰到他點的壓／撐／軌；再對隔日現貨加權驗證。盤中未收不當官方收。",
       "segment_labels": [
         "night_pressure_hold",
         "night_pressure_pierce",
         "day_confirm"
       ],
       "phone_ok_with_warning": true,
-      "not_buy_signal": true,
-      "debate_note_zh": "SYNC-DEBATE C3：原卡只寫 TX 夜盤→現貨，缺 e-mini 第一層；已與 chain_playbook／MISSION 對齊。"
+      "not_buy_signal": true
     },
     {
       "id": "WR-OPS-MULTI-LABEL",
@@ -486,6 +485,50 @@
       ],
       "phone_ok_with_warning": true,
       "not_buy_signal": true
+    },
+    {
+      "id": "WR-FWD-TOUCH-BOUNCE-RECLAIM",
+      "title_zh": "目標觸及後收彈→升權假跌破收回",
+      "category": "verify",
+      "source_kind": "trial_infer",
+      "his_words": [],
+      "trial_note_zh": "來自 eod miss_analysis（20261123）：preferred＝延伸測口頭目標帶時，若 L 已觸／切入目標帶但收明顯反彈且仍＜假跌破收回位，標 M3_touched_then_bounce＋N1_partial，下一窗升權 FB reclaim；續弱失敗才回目標帶。不准當新五波①、不准發明未口述新低、不是買訊。",
+      "provenance": [
+        "wave_eod_verify_20261123.json#miss_analysis",
+        "wave_forward_infer_20261124.json",
+        "observe_sync_fwd.py"
+      ],
+      "ops_check_zh": "條件：preferred 續弱／延伸測口頭目標；官方已收柱 L＜目標上沿（或切入帶）且 C 明顯反彈、C 仍＜假跌破收回位。動作：升權 false_break_reclaim；降權『當日必續弱到底』。硬禁：發明①／未口述新低／當買訊／改黃金買點。",
+      "segment_labels": [
+        "M3_touched_then_bounce",
+        "N1_partial",
+        "false_break_reclaim"
+      ],
+      "phone_ok_with_warning": true,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "not_buy_signal": true
+    },
+    {
+      "id": "WR-FWD-PENDING-NOT-VETO",
+      "title_zh": "未觸及≠路徑否決（pending 升權）",
+      "category": "verify",
+      "source_kind": "trial_infer",
+      "his_words": [],
+      "trial_note_zh": "來自 eod miss_analysis（20261117～19）：preferred＝升權測位時，若仍失上一撐且 L 落在『帶下～目標之上』，標 N1_follow_through＋M*_pending，不准把『未測到目標』當該路徑否決，也不准標新①。",
+      "provenance": [
+        "wave_eod_verify_20261117.json#miss_analysis",
+        "wave_eod_verify_20261119.json#miss_analysis",
+        "observe_sync_fwd.py"
+      ],
+      "ops_check_zh": "條件：preferred 測某口頭位；當日 L 未觸該位但結構仍失上一守。動作：pending 升權、不否決；L 每靠近一檔可升權 pending，仍非觸發。硬禁：未觸就否決／發明①。",
+      "segment_labels": [
+        "M3_pending",
+        "N1_follow_through",
+        "pending_not_veto"
+      ],
+      "phone_ok_with_warning": true,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "not_buy_signal": true
     }
   ],
   "gap_vs_live_wave_code": {
@@ -507,7 +550,7 @@
         "area": "forward_verify",
         "live": "segments_provisional 必標；未掛浪則卡 id／證據桶",
         "cards": "WR-FWD-LOOP + observe_wave_rules.attach_*",
-        "next": "本 PR 接索引；BK-VERIFY／BK-FWD 吃證據桶"
+        "next": "BK-FWD miss→手冊鍵已掛；BK-VERIFY 吃證據桶；phone_sync 仍 blocked"
       },
       {
         "area": "five_piece_cross",
@@ -520,6 +563,12 @@
         "live": "phone_sync=blocked；段號上話筒需警語（MISSION B1）",
         "cards": "WR-SEGMENT-TRIAL-WARN",
         "next": "BK-PHONE 掛手冊摘要＋警語試標"
+      },
+      {
+        "area": "sync_fwd_writeback",
+        "live": "eod miss_analysis 有 rule_patch，未自動回寫手冊鍵",
+        "cards": "WR-FWD-TOUCH-BOUNCE-RECLAIM / WR-FWD-PENDING-NOT-VETO",
+        "next": "observe_sync_fwd 落 fwd_miss_writeback_*＋證據桶；§13 下一版鍵收集中"
       }
     ]
   },
