@@ -21,3 +21,5 @@
 介面鍵穩定：`load_observe_atoms`／`load_observe_chain`／`format_wave_observe_slot`／`chain_one_liner`／`format_market_observe_footer`；缺檔回 playbook／lock placeholder，不准假資料。
 
 固定警語：`試標・推論／非他原文・非買訊・對質未過閘`
+
+- `debate_arbitration_20261123.md`／`.json`：SYNC-DEBATE 仲裁（C1/C2/C3）

@@ -84,6 +84,11 @@ _LEVEL_CTX = re.compile(
     r"低點|高點|軌道|下降壓|上升軌|回測|有效)"
 )
 _INDEX_BATTLE = re.compile(r"(大盤|加權|台指|台指期|夜盤|細微波|TWII)")
+# 個股戰場（SYNC-DEBATE：不准把台積電價／股票代號寫成大盤夜盤位）
+_STOCK_BATTLE = re.compile(r"(台積電|2330|聯發科|2454|鴻海|2317|股票|個股)")
+# 「修正6000點／下影2000點」＝振幅，不是觀測位
+_AMPLITUDE_BEFORE = re.compile(r"(修正|大漲|大跌|下影|爆量?|拉回|反彈|區間).{0,8}$")
+_AMPLITUDE_AFTER = re.compile(r"^\s*點")
 
 _RETRACT = re.compile(
     r"("
@@ -209,6 +214,15 @@ def _best_sentence(text: str, needle: re.Pattern[str]) -> str:
     return _clip(blob[i : m.end() + 48], 96)
 
 
+def _is_tw_index_level(raw: str) -> bool:
+    """加權／台指觀測位（現代語料 ≥10000）。股價／代號／振幅點數一律 False。"""
+    try:
+        v = float(raw)
+    except ValueError:
+        return False
+    return 10000.0 <= v <= 100000.0
+
+
 def _levels_in(text: str) -> List[str]:
     blob = _norm(text)
     out: List[str] = []
@@ -216,6 +230,9 @@ def _levels_in(text: str) -> List[str]:
         raw = m.group(1)
         before = blob[max(0, m.start() - 14) : m.start()]
         after = blob[m.end() : m.end() + 10]
+        # 振幅「…6000點」不准當觀測位
+        if _AMPLITUDE_AFTER.search(after) and _AMPLITUDE_BEFORE.search(before):
+            continue
         if not _LEVEL_CTX.search(before + after) and not _INDEX_BATTLE.search(
             before + blob[m.start() : m.end() + 20]
         ):
@@ -350,6 +367,18 @@ def load_corpus_rows(
     return rows, meta
 
 
+def _levels_for_theme(theme: str, rule: str, text: str) -> List[str]:
+    """依主題濾位：三層／大盤只留指數級；個股鍋留非指數。"""
+    raw = _levels_in(text)
+    if theme == "three_layer" or (
+        theme == "level" and rule.startswith("大盤")
+    ):
+        return [x for x in raw if _is_tw_index_level(x)]
+    if theme == "level" and rule.startswith("個股"):
+        return [x for x in raw if not _is_tw_index_level(x)]
+    return raw
+
+
 def _ensure_bucket(
     buckets: Dict[str, Dict[str, Any]],
     *,
@@ -366,6 +395,10 @@ def _ensure_bucket(
     core_flag = bool(core) and not leave and not club
     # 社團只後台內化：可進原子但 core=False、source=club_backend
     source = "club_backend" if club else "self"
+    seed_text = excerpt or str(row.get("text") or "")
+    levels0 = _levels_for_theme(theme, rule, seed_text) or _levels_for_theme(
+        theme, rule, str(row.get("text") or "")
+    )
     if key not in buckets:
         # atom_id 帶 rule 指紋，避免同 slug 不同規則撞名
         buckets[key] = {
@@ -375,7 +408,7 @@ def _ensure_bucket(
             "rule": rule,
             "core": core_flag,
             "source": source,
-            "levels": _levels_in(excerpt) or _levels_in(str(row.get("text") or "")),
+            "levels": levels0,
             "provenance": [_prov(row, excerpt, club=club)],
             "hit_n": 1,
             "leave_noise": bool(leave),
@@ -393,9 +426,9 @@ def _ensure_bucket(
     if pid and all(str(p.get("post_id")) != pid for p in prov):
         if len(prov) < 5:
             prov.append(_prov(row, excerpt, club=club))
-    # 補位階數字
+    # 補位階數字（主題過濾）
     lv = atom.setdefault("levels", [])
-    for x in _levels_in(excerpt):
+    for x in _levels_for_theme(theme, rule, excerpt):
         if x not in lv and len(lv) < 8:
             lv.append(x)
 
@@ -432,12 +465,20 @@ def extract_atoms(rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 row=row,
                 excerpt=excerpt,
             )
-            # 具體夜盤條件句另成原子（指數級 4+ 位數字才 core）
+            # 具體夜盤條件句另成原子（只認加權／台指指數級 ≥10000；不准股價／代號）
             if _NIGHT.search(text) and _LEVEL_NUM.search(text) and _LEVEL_CTX.search(text):
                 ex2 = _best_sentence(text, _NIGHT)
                 raw_lv = _levels_in(ex2) or _levels_in(text)
-                idx_lv = [x for x in raw_lv if len(x.split(".")[0]) >= 4]
-                if idx_lv and _INDEX_BATTLE.search(text):
+                idx_lv = [x for x in raw_lv if _is_tw_index_level(x)]
+                # 句主是個股價（台積電破1935）→ 不進夜盤指數位
+                if (
+                    idx_lv
+                    and _INDEX_BATTLE.search(text)
+                    and not (
+                        _STOCK_BATTLE.search(ex2)
+                        and not any(_is_tw_index_level(x) for x in _levels_in(ex2))
+                    )
+                ):
                     lv = "／".join(idx_lv[:3])
                     _ensure_bucket(
                         buckets,
@@ -500,12 +541,14 @@ def extract_atoms(rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 excerpt=excerpt,
             )
 
-        # --- 他點過的位（深度優先：大盤／夜盤戰場；個股短價不堆）---
+        # --- 他點過的位（深度優先：大盤／夜盤戰場；個股短價不堆進大盤鍋）---
         if _LEVEL_CTX.search(text) and _LEVEL_NUM.search(text):
             indexish = bool(_INDEX_BATTLE.search(text))
+            stockish = bool(_STOCK_BATTLE.search(text))
             levels = _levels_in(text)
-            # 指數位通常 ≥4 位數；過濾明顯個股短價堆疊
-            idx_levels = [x for x in levels if len(x.split(".")[0]) >= 4]
+            # SYNC-DEBATE：大盤／期點只留指數級 ≥10000
+            idx_levels = [x for x in levels if _is_tw_index_level(x)]
+            stock_levels = [x for x in levels if not _is_tw_index_level(x)]
             if indexish and idx_levels:
                 excerpt = _best_sentence(text, _LEVEL_CTX)
                 lv = "／".join(idx_levels[:4])
@@ -516,6 +559,19 @@ def extract_atoms(rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
                     slug=f"lv_{'_'.join(idx_levels[:3]).replace('.', '')[:28]}",
                     rule=rule,
                     core=True,
+                    row=row,
+                    excerpt=excerpt,
+                )
+            if stockish and stock_levels:
+                # 個股價另鍋／附檔，不准標成大盤觀測位
+                excerpt = _best_sentence(text, _LEVEL_CTX)
+                lv = "／".join(stock_levels[:3])
+                _ensure_bucket(
+                    buckets,
+                    theme="level",
+                    slug=f"lv_stock_{'_'.join(stock_levels[:2]).replace('.', '')[:24]}",
+                    rule=f"個股觀測位（非大盤）：{lv}",
+                    core=False,
                     row=row,
                     excerpt=excerpt,
                 )
