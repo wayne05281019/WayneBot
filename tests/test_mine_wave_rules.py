@@ -5,12 +5,15 @@ from __future__ import annotations
 from mine_wave_rules import (
     EXT_RATIO,
     alternation_2_4_hint,
+    analyze_motive_from_pivot_prices,
     check_w1_w4_overlap,
     detect_extension_1618,
+    ending_diagonal_flags,
     fib_extension_targets,
     fib_retracement_levels,
     leading_diagonal_flags,
     lengths_from_pivots,
+    mine_wave_from_impulse_nodes,
     price_ranges_overlap,
     wave_equality_guide,
     wave_price_length,
@@ -121,3 +124,51 @@ def test_wave_equality_and_alternation():
     assert alt["w4_kind"] == "flat_or_deep"
     same = alternation_2_4_hint(0.6, 0.65)
     assert same["alternates"] is False
+
+
+def test_ending_diagonal_curriculum_gate():
+    pending = ending_diagonal_flags(
+        w1_w4_overlap=True,
+        position_at_w5_or_C=True,
+        wedge_converging=True,
+        structure_53535=True,
+        curriculum_ready=False,
+    )
+    assert pending["confirmed"] is False
+    assert pending["candidate"] is False
+    assert pending["status"] == "curriculum_pending"
+    ready = ending_diagonal_flags(
+        w1_w4_overlap=True,
+        position_at_w5_or_C=True,
+        wedge_converging=True,
+        structure_53535=True,
+        curriculum_ready=True,
+    )
+    assert ready["confirmed"] is True
+    assert ready["implication"] == "termination"
+    assert ready["source"] == "mine"
+
+
+def test_analyze_and_mine_wave_from_impulse_nodes():
+    # start=100 →(1)200 →(2)150 →(3)310 →(4)180 →(5)250
+    # L1=100, L3=160, L5=70 → 160/100=1.6 < 1.618；①④ 100–200 vs 310–180 重疊
+    prices = [100, 200, 150, 310, 180, 250]
+    pack = analyze_motive_from_pivot_prices(prices)
+    assert pack["source"] == "mine" and pack["pot"] == "DC→我估"
+    assert pack["extension"]["pass"] is False
+    assert pack["leading_diagonal"]["candidate"] is True
+    assert pack["leading_diagonal"]["confirmed"] is False
+    assert pack["ending_diagonal"]["status"] == "curriculum_pending"
+
+    nodes = [
+        {"label": "(1)", "price": 200},
+        {"label": "(2)", "price": 150},
+        {"label": "(3)", "price": 310},
+        {"label": "(4)", "price": 180},
+        {"label": "(5)", "price": 250},
+    ]
+    mw = mine_wave_from_impulse_nodes(100, nodes)
+    assert mw["ok"] is True
+    assert mw["has_full_five"] is True
+    assert mw["extension"]["pass"] is False
+    assert mw["source"] == "mine"

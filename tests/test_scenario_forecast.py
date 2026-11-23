@@ -219,6 +219,11 @@ def test_dc_wave_labels_and_projection():
     assert "不是買訊" in str(wave.get("bubble") or "")
     # 虛線點存在或已完整
     assert wave.get("path_done")
+    # DC→我估結構閘附加；三鍋分標不准當他說
+    mw = wave.get("mine_wave") or {}
+    assert mw.get("source") == "mine"
+    assert mw.get("pot") == "DC→我估"
+    assert "extension" in mw or mw.get("ok") is False
     meta = build_scenario_meta(rows)
     cap = format_scenario_caption("4927", "泰鼎-KY", meta)
     assert "不是買訊" in cap and "不保證" in cap

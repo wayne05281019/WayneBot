@@ -1,6 +1,6 @@
 # MINE vs 飆大課綱邊界（勿混鍋）
 
-時區：`Asia/Taipei`。2026-11-01。  
+時區：`Asia/Taipei`。2026-11-01；核對 2026-11-23（練習再開仍守本邊界）。  
 對照：`docs/expert_notes/飆客/wave_fib_morph_curriculum.md`（老師＝飆大）× 本目錄 DC→**我的**規則。
 
 ## 角色

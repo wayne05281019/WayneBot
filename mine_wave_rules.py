@@ -11,7 +11,7 @@
 """
 from __future__ import annotations
 
-from typing import Any, Dict, Mapping, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
 EXT_RATIO = 1.618
 
@@ -169,7 +169,168 @@ def leading_diagonal_flags(
         "implication": "continuation",
         "vs_ending": "ending_diagonal=termination",
         "basis": "leading_diagonal: overlap(+pos+5-3-5-3-5)",
+        "source": "mine",
+        "pot": "DC→我估",
     }
+
+
+def ending_diagonal_flags(
+    *,
+    w1_w4_overlap: Optional[bool] = None,
+    position_at_w5_or_C: Optional[bool] = None,
+    wedge_converging: Optional[bool] = None,
+    structure_53535: Optional[bool] = None,
+    curriculum_ready: bool = False,
+) -> Dict[str, Any]:
+    """末端傾斜旗標（終結意涵）。
+
+    DC 末端完整教材尚未進 ``sources/`` 前：``curriculum_ready=False`` →
+    永不 ``confirmed``，只留 candidate／缺件（不准假標 ending_diagonal）。
+    對照前端：``implication=termination``。
+    """
+    overlap = None if w1_w4_overlap is None else bool(w1_w4_overlap)
+    pos = None if position_at_w5_or_C is None else bool(position_at_w5_or_C)
+    wedge = None if wedge_converging is None else bool(wedge_converging)
+    struct = None if structure_53535 is None else bool(structure_53535)
+    candidate = overlap is True and (pos is True or pos is None)
+    # 教材未齊：confirmed 永遠 False
+    confirmed = bool(
+        curriculum_ready
+        and candidate
+        and pos is True
+        and wedge is True
+        and struct is True
+    )
+    return {
+        "candidate": bool(candidate) if curriculum_ready else False,
+        "confirmed": confirmed,
+        "w1_w4_overlap": overlap,
+        "position_at_w5_or_C": pos,
+        "wedge_converging": wedge,
+        "structure_53535": struct,
+        "curriculum_ready": bool(curriculum_ready),
+        "implication": "termination",
+        "vs_leading": "leading_diagonal=continuation",
+        "status": "ok" if curriculum_ready else "curriculum_pending",
+        "basis": "ending_diagonal: need DC ending page; pot=DC→我估",
+        "source": "mine",
+        "pot": "DC→我估",
+    }
+
+
+def analyze_motive_from_pivot_prices(
+    pivot_prices: Sequence[Number],
+    *,
+    position_ok: Optional[bool] = None,
+    structure_53535: Optional[bool] = None,
+    ending_position_ok: Optional[bool] = None,
+    wedge_converging: Optional[bool] = None,
+) -> Dict[str, Any]:
+    """由連續轉折價做擴延閘＋前後端傾斜粗檢（一律 source=mine／DC→我估）。
+
+    需要 ≥6 個價（起點＋五浪終點）才有完整 1/3/5 與 ①④ 重疊；
+    不足時 ``pass=False``／``variant=insufficient_pivots``，不腦補浪號。
+    **不准**冒充飆大「他說」。
+    """
+    pts: List[float] = []
+    for p in pivot_prices or []:
+        fv = _f(p)
+        if fv is not None:
+            pts.append(float(fv))
+    if len(pts) < 6:
+        return {
+            "source": "mine",
+            "pot": "DC→我估",
+            "ok": False,
+            "extension": {
+                "pass": False,
+                "variant": "insufficient_pivots",
+                "basis": "need≥6 pivot prices (start+5 ends)",
+                "lengths": {},
+            },
+            "leading_diagonal": leading_diagonal_flags(
+                w1_w4_overlap=None,
+                position_ok=position_ok,
+                structure_53535=structure_53535,
+            ),
+            "ending_diagonal": ending_diagonal_flags(
+                w1_w4_overlap=None,
+                position_at_w5_or_C=ending_position_ok,
+                wedge_converging=wedge_converging,
+            ),
+            "pivot_n": len(pts),
+            "basis": "analyze_motive_from_pivot_prices",
+        }
+
+    # 取前 6 點：start, w1, w2, w3, w4, w5
+    six = pts[:6]
+    lengths_all = lengths_from_pivots([(x,) for x in six])
+    motive = {k: lengths_all[k] for k in ("1", "3", "5") if k in lengths_all}
+    ext = detect_extension_1618(motive)
+    ov = check_w1_w4_overlap(six[0], six[1], six[3], six[4])
+    ld = leading_diagonal_flags(
+        w1_w4_overlap=ov.get("overlap"),
+        position_ok=position_ok,
+        structure_53535=structure_53535,
+    )
+    ld["w1_w4_check"] = ov
+    ed = ending_diagonal_flags(
+        w1_w4_overlap=ov.get("overlap"),
+        position_at_w5_or_C=ending_position_ok,
+        wedge_converging=wedge_converging,
+        structure_53535=structure_53535,
+        curriculum_ready=False,
+    )
+    return {
+        "source": "mine",
+        "pot": "DC→我估",
+        "ok": True,
+        "pivot_prices": [float(x) for x in six],
+        "lengths": lengths_all,
+        "extension": ext,
+        "leading_diagonal": ld,
+        "ending_diagonal": ed,
+        "basis": "analyze_motive_from_pivot_prices; ≠他說",
+    }
+
+
+def mine_wave_from_impulse_nodes(
+    start_price: Number,
+    confirmed: Sequence[Mapping[str, Any]],
+    *,
+    projected: Optional[Sequence[Mapping[str, Any]]] = None,
+) -> Dict[str, Any]:
+    """從 ``infer_dc_wave_scenario`` 的 start＋confirmed（可選 projected）組 mine_wave。
+
+    標籤 ``(1)``…``(5)`` 價依序；缺段不腦補。結果欄位對齊 activate checklist。
+    """
+    by_lab: Dict[str, float] = {}
+    for node in list(confirmed or []) + list(projected or []):
+        lab = str((node or {}).get("label") or "").strip()
+        px = _f((node or {}).get("price"))
+        if lab in ("(1)", "(2)", "(3)", "(4)", "(5)") and px is not None:
+            by_lab[lab] = float(px)
+    start = _f(start_price)
+    ordered: List[float] = []
+    if start is not None:
+        ordered.append(float(start))
+    for lab in ("(1)", "(2)", "(3)", "(4)", "(5)"):
+        if lab in by_lab:
+            ordered.append(by_lab[lab])
+        else:
+            break
+    # 位置提示：有完整五浪 → 前端位置不預設 True（缺內部結構）；末端同理
+    has_five = all(k in by_lab for k in ("(1)", "(2)", "(3)", "(4)", "(5)"))
+    pack = analyze_motive_from_pivot_prices(
+        ordered,
+        position_ok=None,  # 不腦補 wave1_or_A
+        structure_53535=None,
+        ending_position_ok=True if has_five else None,
+        wedge_converging=None,
+    )
+    pack["labels_present"] = sorted(by_lab.keys())
+    pack["has_full_five"] = has_five
+    return pack
 
 
 def lengths_from_pivots(
