@@ -1,0 +1,4132 @@
+{
+  "as_of_taipei": "2026-11-24T01:00:30+0800",
+  "track": "BK-WAVE",
+  "tz": "Asia/Taipei",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "phone_warning_fixed": "試標・推論／非他原文・非買訊・對質未過閘",
+  "purpose_zh": "段號證據桶：每列掛規則卡＋出處＋官方柱（有則凍）；試標必標試標；不准發明無憑據5/9當他原文；非買訊。",
+  "n_samples": 73,
+  "n_with_official_twii": 69,
+  "n_trial_infer": 44,
+  "n_biaoke_oral": 29,
+  "forward_verify_hook": "observe_sync_fwd.writeback + observe_wave_rules.attach_wave_rules_ref",
+  "gap_vs_live_wave_zh": [
+    "現況 forward／eod 已強制 segments_provisional，但未掛浪則卡 id",
+    "mine_wave_rules＝DC／我估閘，不准冒充他鐵律",
+    "wave8_* 概念鎖已有，尚未編成可餵話筒／自測的浪則卡索引",
+    "碎形交叉／五件同窗尚未有可執行對質函式",
+    "靜默對質 n≥20 且贏現況才准換；現況 phone_sync=blocked",
+    "SYNC-FWD：miss_analysis 可回寫下一版鍵／敘述修正＋證據桶（phone_sync=blocked）"
+  ],
+  "samples": [
+    {
+      "id": "SE-20250424-14-overlap-near",
+      "rule_ids": [
+        "WR-IRON-14-OVERLAP",
+        "WR-OPS-NIGHT-LEADS"
+      ],
+      "as_of": "20250424",
+      "tz": "Asia/Taipei",
+      "source_kind": "his_words",
+      "provenance": "knowhow.md §D 2025-04-24",
+      "his_claim_zh": "19340支撐前止跌、1-4重疊、9:30後夜盤",
+      "his_levels": [
+        19340.0
+      ],
+      "segments_provisional": [
+        {
+          "label": "down_impulse_14_overlap_candidate",
+          "status": "他標／原文鏈",
+          "phone_warning": null
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20250424",
+          "o": 19752.58984375,
+          "h": 19752.58984375,
+          "l": 19433.369140625,
+          "c": 19478.810546875,
+          "v": 2418200.0,
+          "source": "index_daily"
+        },
+        "tx": [
+          {
+            "symbol": "TX",
+            "date": "20250424",
+            "session": "night",
+            "o": 19566.0,
+            "h": 19776.0,
+            "l": 19511.0,
+            "c": 19648.0,
+            "source": "futures_daily"
+          },
+          {
+            "symbol": "TX",
+            "date": "20250424",
+            "session": "regular",
+            "o": 19636.0,
+            "h": 19682.0,
+            "l": 19413.0,
+            "c": 19466.0,
+            "source": "futures_daily"
+          }
+        ]
+      },
+      "has_official_twii": true,
+      "note_zh": "量級接近（19340多半期點）",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": null,
+      "label_pot": "biaoke_oral"
+    },
+    {
+      "id": "SE-20250509-pierce-20885",
+      "rule_ids": [
+        "WR-OPS-EFF-PIERCE",
+        "WR-OPS-TWO-BAR"
+      ],
+      "as_of": "20250509",
+      "tz": "Asia/Taipei",
+      "source_kind": "his_words",
+      "provenance": "knowhow.md §D 2025-05-09",
+      "his_claim_zh": "再測5/5高20885",
+      "his_levels": [
+        20885.0
+      ],
+      "segments_provisional": [
+        {
+          "label": "retest_prior_high",
+          "status": "他標／原文鏈",
+          "phone_warning": null
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20250509",
+          "o": 20690.80078125,
+          "h": 20915.0390625,
+          "l": 20643.560546875,
+          "c": 20915.0390625,
+          "v": 2744700.0,
+          "source": "index_daily"
+        },
+        "tx": [
+          {
+            "symbol": "TX",
+            "date": "20250509",
+            "session": "night",
+            "o": 20561.0,
+            "h": 20822.0,
+            "l": 20504.0,
+            "c": 20680.0,
+            "source": "futures_daily"
+          },
+          {
+            "symbol": "TX",
+            "date": "20250509",
+            "session": "regular",
+            "o": 20649.0,
+            "h": 20872.0,
+            "l": 20596.0,
+            "c": 20848.0,
+            "source": "futures_daily"
+          }
+        ]
+      },
+      "has_official_twii": true,
+      "note_zh": "當日高20915過了",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": null,
+      "label_pot": "biaoke_oral"
+    },
+    {
+      "id": "SE-20250611-yellow-pressure",
+      "rule_ids": [
+        "WR-OPS-NIGHT-LEADS",
+        "WR-EXT-CRISIS"
+      ],
+      "as_of": "20250611",
+      "tz": "Asia/Taipei",
+      "source_kind": "his_words+chart",
+      "provenance": "knowhow.md §B 2026-06-11",
+      "his_claim_zh": "要過夜盤60分下降壓才能B波；目前只有點到沒突破；低標40779",
+      "his_levels": [
+        40779.0
+      ],
+      "segments_provisional": [
+        {
+          "label": "B_wave_pending_pressure_break",
+          "status": "他標／原文鏈",
+          "phone_warning": null
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20250611",
+          "o": 22376.369140625,
+          "h": 22470.099609375,
+          "l": 22294.599609375,
+          "c": 22470.099609375,
+          "v": 3669800.0,
+          "source": "index_daily"
+        },
+        "tx": [
+          {
+            "symbol": "TX",
+            "date": "20250611",
+            "session": "night",
+            "o": 22129.0,
+            "h": 22312.0,
+            "l": 22096.0,
+            "c": 22312.0,
+            "source": "futures_daily"
+          },
+          {
+            "symbol": "TX",
+            "date": "20250611",
+            "session": "regular",
+            "o": 22296.0,
+            "h": 22355.0,
+            "l": 22190.0,
+            "c": 22351.0,
+            "source": "futures_daily"
+          }
+        ]
+      },
+      "has_official_twii": true,
+      "note_zh": "現貨低42006；他後來說低42206差約200＝期點",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": null,
+      "label_pot": "biaoke_oral"
+    },
+    {
+      "id": "SE-20250623-48219-high",
+      "rule_ids": [
+        "WR-LEVEL-ORAL-ONLY",
+        "WR-OPS-TRACK-CONNECT"
+      ],
+      "as_of": "20250623",
+      "tz": "Asia/Taipei",
+      "source_kind": "his_words+chart",
+      "provenance": "knowhow.md §C／§5；TWII高48219",
+      "his_claim_zh": "60分高48218／下波至少測48218",
+      "his_levels": [
+        48218.0
+      ],
+      "segments_provisional": [
+        {
+          "label": "prior_high_48218",
+          "status": "他標／原文鏈",
+          "phone_warning": null
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20250623",
+          "o": 21750.69921875,
+          "h": 21801.3203125,
+          "l": 21551.580078125,
+          "c": 21732.01953125,
+          "v": 3015300.0,
+          "source": "index_daily"
+        },
+        "tx": [
+          {
+            "symbol": "TX",
+            "date": "20250623",
+            "session": "night",
+            "o": 21645.0,
+            "h": 21789.0,
+            "l": 21408.0,
+            "c": 21460.0,
+            "source": "futures_daily"
+          },
+          {
+            "symbol": "TX",
+            "date": "20250623",
+            "session": "regular",
+            "o": 21350.0,
+            "h": 21484.0,
+            "l": 21205.0,
+            "c": 21473.0,
+            "source": "futures_daily"
+          }
+        ]
+      },
+      "has_official_twii": true,
+      "note_zh": "庫內高48219對圖標48218.87",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": null,
+      "label_pot": "biaoke_oral"
+    },
+    {
+      "id": "SE-20250626-low-44454",
+      "rule_ids": [
+        "WR-RETRACT-COND",
+        "WR-OPS-NIGHT-LEADS"
+      ],
+      "as_of": "20250626",
+      "tz": "Asia/Taipei",
+      "source_kind": "his_words",
+      "provenance": "knowhow.md §B 2026-06-26",
+      "his_claim_zh": "6/26低（夜盤改口偏早，日盤還有一段）",
+      "his_levels": [
+        44454.0
+      ],
+      "segments_provisional": [
+        {
+          "label": "A_a_extension_miss",
+          "status": "他標／原文鏈",
+          "phone_warning": null
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20250626",
+          "o": 22425.390625,
+          "h": 22587.669921875,
+          "l": 22391.26953125,
+          "c": 22492.33984375,
+          "v": 3685100.0,
+          "source": "index_daily"
+        },
+        "tx": [
+          {
+            "symbol": "TX",
+            "date": "20250626",
+            "session": "night",
+            "o": 22150.0,
+            "h": 22213.0,
+            "l": 22106.0,
+            "c": 22175.0,
+            "source": "futures_daily"
+          },
+          {
+            "symbol": "TX",
+            "date": "20250626",
+            "session": "regular",
+            "o": 22161.0,
+            "h": 22263.0,
+            "l": 22078.0,
+            "c": 22117.0,
+            "source": "futures_daily"
+          }
+        ]
+      },
+      "has_official_twii": true,
+      "note_zh": "改口樣本：夜盤改口偏早",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": null,
+      "label_pot": "biaoke_oral"
+    },
+    {
+      "id": "SE-20250729-A-wave-low",
+      "rule_ids": [
+        "WR-OPS-NIGHT-LEADS",
+        "WR-VOL-NO-STABILIZE",
+        "WR-MICRO-4STEPS"
+      ],
+      "as_of": "20250729",
+      "tz": "Asia/Taipei",
+      "source_kind": "his_words+chart",
+      "provenance": "knowhow.md §A 2026-07-29",
+      "his_claim_zh": "A波低／日線低39385；15分圖低39442；過第一關40816",
+      "his_levels": [
+        39385.0
+      ],
+      "segments_provisional": [
+        {
+          "label": "A_wave_low",
+          "status": "他標／原文鏈",
+          "phone_warning": null
+        },
+        {
+          "label": "pressure_40816",
+          "status": "他標／原文鏈",
+          "phone_warning": null
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20250729",
+          "o": 23414.359375,
+          "h": 23422.169921875,
+          "l": 23094.669921875,
+          "c": 23201.51953125,
+          "v": 3565200.0,
+          "source": "index_daily"
+        },
+        "tx": [
+          {
+            "symbol": "TX",
+            "date": "20250729",
+            "session": "night",
+            "o": 23398.0,
+            "h": 23400.0,
+            "l": 23246.0,
+            "c": 23317.0,
+            "source": "futures_daily"
+          },
+          {
+            "symbol": "TX",
+            "date": "20250729",
+            "session": "regular",
+            "o": 23326.0,
+            "h": 23359.0,
+            "l": 23027.0,
+            "c": 23163.0,
+            "source": "futures_daily"
+          }
+        ]
+      },
+      "has_official_twii": true,
+      "note_zh": "7/16不破40000錯案鏈的真低",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": null,
+      "label_pot": "biaoke_oral"
+    },
+    {
+      "id": "SE-20250902-45415-44210",
+      "rule_ids": [
+        "WR-LEVEL-ORAL-ONLY",
+        "WR-EXT-7-9",
+        "WR-MICRO-4STEPS"
+      ],
+      "as_of": "20250902",
+      "tz": "Asia/Taipei",
+      "source_kind": "his_words+chart",
+      "provenance": "knowhow.md §C 2026-09-02",
+      "his_claim_zh": "7段跌完應在前波低45415；9段更深前低44210；穿刺46746才不走9段",
+      "his_levels": [
+        45415.0,
+        44210.0,
+        46746.0
+      ],
+      "segments_provisional": [
+        {
+          "label": "down_7",
+          "status": "他標／原文鏈",
+          "phone_warning": null
+        },
+        {
+          "label": "down_9_backup",
+          "status": "他標／原文鏈",
+          "phone_warning": null
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20250902",
+          "o": 24113.900390625,
+          "h": 24295.029296875,
+          "l": 23890.330078125,
+          "c": 24016.779296875,
+          "v": 3621600.0,
+          "source": "index_daily"
+        },
+        "tx": [
+          {
+            "symbol": "TX",
+            "date": "20250902",
+            "session": "night",
+            "o": 24019.0,
+            "h": 24096.0,
+            "l": 24008.0,
+            "c": 24085.0,
+            "source": "futures_daily"
+          },
+          {
+            "symbol": "TX",
+            "date": "20250902",
+            "session": "regular",
+            "o": 24083.0,
+            "h": 24249.0,
+            "l": 23879.0,
+            "c": 23965.0,
+            "source": "futures_daily"
+          }
+        ]
+      },
+      "has_official_twii": true,
+      "note_zh": "TX15分點位庫內對得上；段號＝他標，非發明",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": null,
+      "label_pot": "biaoke_oral"
+    },
+    {
+      "id": "SE-20260324-32435",
+      "rule_ids": [
+        "WR-LEVEL-ORAL-ONLY"
+      ],
+      "as_of": "20260324",
+      "tz": "Asia/Taipei",
+      "source_kind": "his_words",
+      "provenance": "knowhow.md §D 2026-03-24",
+      "his_claim_zh": "觀盤32434",
+      "his_levels": [
+        32434.0
+      ],
+      "segments_provisional": [
+        {
+          "label": "oral_level_hit",
+          "status": "他標／原文鏈",
+          "phone_warning": null
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20260324",
+          "o": 33062.890625,
+          "h": 33361.4609375,
+          "l": 32434.5390625,
+          "c": 32612.240234375,
+          "v": 5184200.0,
+          "source": "index_daily"
+        },
+        "tx": [
+          {
+            "symbol": "TX",
+            "date": "20260324",
+            "session": "night",
+            "o": 32220.0,
+            "h": 33989.0,
+            "l": 32100.0,
+            "c": 33618.0,
+            "source": "futures_daily"
+          },
+          {
+            "symbol": "TX",
+            "date": "20260324",
+            "session": "regular",
+            "o": 33280.0,
+            "h": 33393.0,
+            "l": 32342.0,
+            "c": 32771.0,
+            "source": "futures_daily"
+          }
+        ]
+      },
+      "has_official_twii": true,
+      "note_zh": "庫內低32435完全同",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": null,
+      "label_pot": "biaoke_oral"
+    },
+    {
+      "id": "SE-20260407-Bc3-34423",
+      "rule_ids": [
+        "WR-SEGMENT-NEST",
+        "WR-OPS-MULTI-LABEL"
+      ],
+      "as_of": "20260407",
+      "tz": "Asia/Taipei",
+      "source_kind": "his_words",
+      "provenance": "knowhow.md §D 2026-04-07",
+      "his_claim_zh": "清明向上變盤、B-c-3測34423",
+      "his_levels": [
+        34423.0
+      ],
+      "segments_provisional": [
+        {
+          "label": "B-c-3",
+          "status": "他標／原文鏈",
+          "phone_warning": null
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20260407",
+          "o": 32671.51953125,
+          "h": 33264.21875,
+          "l": 32671.51953125,
+          "c": 33229.8203125,
+          "v": 4475300.0,
+          "source": "index_daily"
+        },
+        "tx": [
+          {
+            "symbol": "TX",
+            "date": "20260407",
+            "session": "night",
+            "o": 32576.0,
+            "h": 33131.0,
+            "l": 32192.0,
+            "c": 32877.0,
+            "source": "futures_daily"
+          },
+          {
+            "symbol": "TX",
+            "date": "20260407",
+            "session": "regular",
+            "o": 33192.0,
+            "h": 33377.0,
+            "l": 32955.0,
+            "c": 33159.0,
+            "source": "futures_daily"
+          }
+        ]
+      },
+      "has_official_twii": true,
+      "note_zh": "4/8高34761過了；段號他標",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": null,
+      "label_pot": "biaoke_oral"
+    },
+    {
+      "id": "SE-20260520-night-rail-break",
+      "rule_ids": [
+        "WR-OPS-NIGHT-LEADS",
+        "WR-OPS-EFF-PIERCE"
+      ],
+      "as_of": "20260520",
+      "tz": "Asia/Taipei",
+      "source_kind": "his_words",
+      "provenance": "knowhow.md §D 2026-05-20",
+      "his_claim_zh": "夜盤沒破凌晨低、下降軌破壞→明後天反彈",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "downtrend_rail_break",
+          "status": "他標／原文鏈",
+          "phone_warning": null
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20260520",
+          "o": 40204.16015625,
+          "h": 40439.0390625,
+          "l": 39967.078125,
+          "c": 40020.8203125,
+          "v": 6049500.0,
+          "source": "index_daily"
+        },
+        "tx": [
+          {
+            "symbol": "TX",
+            "date": "20260520",
+            "session": "night",
+            "o": 40349.0,
+            "h": 40545.0,
+            "l": 39735.0,
+            "c": 40140.0,
+            "source": "futures_daily"
+          },
+          {
+            "symbol": "TX",
+            "date": "20260520",
+            "session": "regular",
+            "o": 40282.0,
+            "h": 40544.0,
+            "l": 40005.0,
+            "c": 40134.0,
+            "source": "futures_daily"
+          }
+        ]
+      },
+      "has_official_twii": true,
+      "note_zh": "5/21+3.37% 5/22+2.17% 方向對",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": null,
+      "label_pot": "biaoke_oral"
+    },
+    {
+      "id": "SE-20261105-14-puncture-fake",
+      "rule_ids": [
+        "WR-IRON-14-OVERLAP",
+        "WR-OPS-FAKE-BREAK",
+        "WR-OPS-EFF-PIERCE"
+      ],
+      "as_of": "20261105",
+      "tz": "Asia/Taipei",
+      "source_kind": "his_words",
+      "provenance": "wave8_14_overlap_resolved.json example_20261105",
+      "his_claim_zh": "夜盤1 4穿刺，照理重疊，但可能不是有效穿刺→假跌破、沒下空單",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "C3-5_14_puncture_unconfirmed",
+          "status": "他標／原文鏈",
+          "phone_warning": null
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261105",
+          "o": 42666.13,
+          "h": 42873.81,
+          "l": 41513.57,
+          "c": 41574.72,
+          "v": 14971065.0,
+          "source": "index_daily"
+        },
+        "tx": [
+          {
+            "symbol": "TX",
+            "date": "20261105",
+            "session": "night",
+            "o": 43430.0,
+            "h": 44274.0,
+            "l": 43141.0,
+            "c": 43404.0,
+            "source": "futures_daily"
+          },
+          {
+            "symbol": "TX",
+            "date": "20261105",
+            "session": "regular",
+            "o": 43013.0,
+            "h": 43114.0,
+            "l": 41666.0,
+            "c": 41915.0,
+            "source": "futures_daily"
+          }
+        ]
+      },
+      "has_official_twii": true,
+      "note_zh": "有效穿刺閘樣本",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": null,
+      "label_pot": "biaoke_oral"
+    },
+    {
+      "id": "SE-20261107-friday-low-37837",
+      "rule_ids": [
+        "WR-LEVEL-ORAL-ONLY",
+        "WR-OPS-FAKE-BREAK"
+      ],
+      "as_of": "20261107",
+      "tz": "Asia/Taipei",
+      "source_kind": "his_words",
+      "provenance": "wave8_cycle_concept_lock.json friday_low",
+      "his_claim_zh": "上週五低加權盤中低≈37837（非收盤、非夜盤低）",
+      "his_levels": [
+        37837.05
+      ],
+      "segments_provisional": [
+        {
+          "label": "C3-5_low_candidate",
+          "status": "他標／原文鏈",
+          "phone_warning": null
+        }
+      ],
+      "official_bars": {
+        "twii": null,
+        "tx": []
+      },
+      "has_official_twii": false,
+      "note_zh": "對質錨點",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": null,
+      "label_pot": "biaoke_oral"
+    },
+    {
+      "id": "SE-20261109-C35-14-confirm",
+      "rule_ids": [
+        "WR-IRON-14-OVERLAP",
+        "WR-RETRACT-COND",
+        "WR-OPS-FAKE-BREAK"
+      ],
+      "as_of": "20261109",
+      "tz": "Asia/Taipei",
+      "source_kind": "his_words",
+      "provenance": "wave8_14_overlap_resolved.json today_20261109",
+      "his_claim_zh": "C3-5＋1 4重疊＝底確認；必再測；破＝假跌破上車（他定義，非我買訊）",
+      "his_levels": [
+        37837.05
+      ],
+      "segments_provisional": [
+        {
+          "label": "C3-5",
+          "status": "他標／原文鏈",
+          "phone_warning": null
+        },
+        {
+          "label": "down_impulse_14_overlap_bottom",
+          "status": "他標／原文鏈",
+          "phone_warning": null
+        }
+      ],
+      "official_bars": {
+        "twii": null,
+        "tx": []
+      },
+      "has_official_twii": false,
+      "note_zh": "概念已拆清；靜默對質中",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": null,
+      "label_pot": "biaoke_oral"
+    },
+    {
+      "id": "SE-20261120-broke-37837",
+      "rule_ids": [
+        "WR-RETRACT-COND",
+        "WR-SEGMENT-TRIAL-WARN",
+        "WR-LEVEL-ORAL-ONLY"
+      ],
+      "as_of": "20261120",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261120.json",
+      "his_claim_zh": "forward M3測37837；官方L35739已破且收仍下方→改看口頭35579",
+      "his_levels": [
+        37837.05,
+        35579.0
+      ],
+      "segments_provisional": [
+        {
+          "label": "B-b",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        },
+        {
+          "label": "M3_triggered_broke_37837",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        },
+        {
+          "label": "N1_follow_through",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        }
+      ],
+      "official_bars": {
+        "twii": null,
+        "tx": []
+      },
+      "has_official_twii": false,
+      "note_zh": "試標段號；警語層；不准發明新五波①",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": null,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-SOX14-20250116-168065539",
+      "rule_ids": [
+        "WR-IRON-14-OVERLAP",
+        "WR-SOX-14-LEAD"
+      ],
+      "as_of": "20250116",
+      "tz": "Asia/Taipei",
+      "source_kind": "his_words",
+      "provenance": "sox_14.json#168065539",
+      "his_claim_zh": "台指期細微波 1 4重疊已經重疊，這代表大盤應該到新春開紅盤最差的狀況也不容易跌破1/13低點22400點左右。",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "overlap_14_event",
+          "status": "他標／原文鏈",
+          "phone_warning": null
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20250116",
+          "o": 22817.51953125,
+          "h": 23147.689453125,
+          "l": 22817.51953125,
+          "c": 23025.099609375,
+          "v": 2497000.0,
+          "source": "index_daily"
+        },
+        "tx": [
+          {
+            "symbol": "TX",
+            "date": "20250116",
+            "session": "night",
+            "o": 22530.0,
+            "h": 23007.0,
+            "l": 22511.0,
+            "c": 22973.0,
+            "source": "futures_daily"
+          },
+          {
+            "symbol": "TX",
+            "date": "20250116",
+            "session": "regular",
+            "o": 23080.0,
+            "h": 23217.0,
+            "l": 22990.0,
+            "c": 23031.0,
+            "source": "futures_daily"
+          }
+        ]
+      },
+      "has_official_twii": true,
+      "note_zh": "sox20={'date': '20250116', 'low': 5161.92, 'close': 5162.96, 'n': 20, 'broke': True, 'min_low': 4776.82, 'ret': -0.04} twii20={'date': '20250116', 'low': 22817.52, 'close': 23025.1, 'n': 20, 'broke': True, 'min_low': 22502.2, 'ret': 2.35}",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": {
+        "sox20": {
+          "date": "20250116",
+          "low": 5161.92,
+          "close": 5162.96,
+          "n": 20,
+          "broke": true,
+          "min_low": 4776.82,
+          "ret": -0.04
+        },
+        "twii20": {
+          "date": "20250116",
+          "low": 22817.52,
+          "close": 23025.1,
+          "n": 20,
+          "broke": true,
+          "min_low": 22502.2,
+          "ret": 2.35
+        }
+      },
+      "path_id": null,
+      "label_pot": "biaoke_oral"
+    },
+    {
+      "id": "SE-SOX14-20250307-169388108:a1",
+      "rule_ids": [
+        "WR-IRON-14-OVERLAP",
+        "WR-SOX-14-LEAD"
+      ],
+      "as_of": "20250307",
+      "tz": "Asia/Taipei",
+      "source_kind": "his_words",
+      "provenance": "sox_14.json#169388108:a1",
+      "his_claim_zh": "另外環與剛好反彈 1 4重疊的價位 130.5，但不是有效突破，所以下周回檔會不會破底還無法預測，如果回檔沒破這次修正低點，甚至有守在116~117附近，至少還會再測前高一次，這個時候就可以知道主力到底還要不要做這檔股票。",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "overlap_14_event",
+          "status": "他標／原文鏈",
+          "phone_warning": null
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20250307",
+          "o": 22696.23046875,
+          "h": 22747.109375,
+          "l": 22542.080078125,
+          "c": 22576.0703125,
+          "v": 2987500.0,
+          "source": "index_daily"
+        },
+        "tx": [
+          {
+            "symbol": "TX",
+            "date": "20250307",
+            "session": "night",
+            "o": 22756.0,
+            "h": 22809.0,
+            "l": 22408.0,
+            "c": 22419.0,
+            "source": "futures_daily"
+          },
+          {
+            "symbol": "TX",
+            "date": "20250307",
+            "session": "regular",
+            "o": 22499.0,
+            "h": 22685.0,
+            "l": 22480.0,
+            "c": 22520.0,
+            "source": "futures_daily"
+          }
+        ]
+      },
+      "has_official_twii": true,
+      "note_zh": "sox20={'date': '20250307', 'low': 4455.76, 'close': 4629.59, 'n': 20, 'broke': True, 'min_low': 3529.6, 'ret': -22.29} twii20={'date': '20250307', 'low': 22542.08, 'close': 22576.07, 'n': 20, 'broke': True, 'min_low': 18180.48, 'ret': -18.23}",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": {
+        "sox20": {
+          "date": "20250307",
+          "low": 4455.76,
+          "close": 4629.59,
+          "n": 20,
+          "broke": true,
+          "min_low": 3529.6,
+          "ret": -22.29
+        },
+        "twii20": {
+          "date": "20250307",
+          "low": 22542.08,
+          "close": 22576.07,
+          "n": 20,
+          "broke": true,
+          "min_low": 18180.48,
+          "ret": -18.23
+        }
+      },
+      "path_id": null,
+      "label_pot": "biaoke_oral"
+    },
+    {
+      "id": "SE-SOX14-20250327-170017535",
+      "rule_ids": [
+        "WR-IRON-14-OVERLAP",
+        "WR-SOX-14-LEAD"
+      ],
+      "as_of": "20250327",
+      "tz": "Asia/Taipei",
+      "source_kind": "his_words",
+      "provenance": "sox_14.json#170017535",
+      "his_claim_zh": "大盤是有可能已經開始主跌段的初跌段已經開始，要看反彈是否 14重疊來判定(用台指期細微波輔助判別)。有關僑威這檔股票的問題有兩道短支撐要守住，第一道是93元，剛剛已經測試過有守住。最後一道之稱在90附近。如果收盤前90沒守住，切記一定要停損",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "overlap_14_event",
+          "status": "他標／原文鏈",
+          "phone_warning": null
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20250327",
+          "o": 22093.19921875,
+          "h": 22093.19921875,
+          "l": 21919.400390625,
+          "c": 21951.759765625,
+          "v": 2674800.0,
+          "source": "index_daily"
+        },
+        "tx": [
+          {
+            "symbol": "TX",
+            "date": "20250327",
+            "session": "night",
+            "o": 22305.0,
+            "h": 22315.0,
+            "l": 21970.0,
+            "c": 22045.0,
+            "source": "futures_daily"
+          },
+          {
+            "symbol": "TX",
+            "date": "20250327",
+            "session": "regular",
+            "o": 22031.0,
+            "h": 22052.0,
+            "l": 21891.0,
+            "c": 21968.0,
+            "source": "futures_daily"
+          }
+        ]
+      },
+      "has_official_twii": true,
+      "note_zh": "sox20={'date': '20250327', 'low': 4394.8, 'close': 4415.25, 'n': 20, 'broke': True, 'min_low': 3388.62, 'ret': -3.71} twii20={'date': '20250327', 'low': 21919.4, 'close': 21951.76, 'n': 20, 'broke': True, 'min_low': 17306.97, 'ret': -8.73}",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": {
+        "sox20": {
+          "date": "20250327",
+          "low": 4394.8,
+          "close": 4415.25,
+          "n": 20,
+          "broke": true,
+          "min_low": 3388.62,
+          "ret": -3.71
+        },
+        "twii20": {
+          "date": "20250327",
+          "low": 21919.4,
+          "close": 21951.76,
+          "n": 20,
+          "broke": true,
+          "min_low": 17306.97,
+          "ret": -8.73
+        }
+      },
+      "path_id": null,
+      "label_pot": "biaoke_oral"
+    },
+    {
+      "id": "SE-SOX14-20250401-170190036",
+      "rule_ids": [
+        "WR-IRON-14-OVERLAP",
+        "WR-SOX-14-LEAD"
+      ],
+      "as_of": "20250401",
+      "tz": "Asia/Taipei",
+      "source_kind": "his_words",
+      "provenance": "sox_14.json#170190036",
+      "his_claim_zh": "我從台指期觀察有一組60分鐘線下跌推動脈動，應該已經 1 4重疊，大盤應該會區間整理至少到明天。但我總是認為現在大盤波浪位階是3-3轉3-4，應該下周還會有3-5末跌段，但昨天有說過跌得最多的3-3已經過去，3-5只是餘震，之後就會走波浪位",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "overlap_14_event",
+          "status": "他標／原文鏈",
+          "phone_warning": null
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20250401",
+          "o": 20884.529296875,
+          "h": 21315.51953125,
+          "l": 20884.529296875,
+          "c": 21280.169921875,
+          "v": 2753300.0,
+          "source": "index_daily"
+        },
+        "tx": [
+          {
+            "symbol": "TX",
+            "date": "20250401",
+            "session": "night",
+            "o": 20805.0,
+            "h": 21133.0,
+            "l": 20689.0,
+            "c": 21088.0,
+            "source": "futures_daily"
+          },
+          {
+            "symbol": "TX",
+            "date": "20250401",
+            "session": "regular",
+            "o": 21000.0,
+            "h": 21271.0,
+            "l": 20888.0,
+            "c": 21181.0,
+            "source": "futures_daily"
+          }
+        ]
+      },
+      "has_official_twii": true,
+      "note_zh": "sox20={'date': '20250401', 'low': 4179.45, 'close': 4282.46, 'n': 20, 'broke': True, 'min_low': 3388.62, 'ret': -1.22} twii20={'date': '20250401', 'low': 20884.53, 'close': 21280.17, 'n': 20, 'broke': True, 'min_low': 17306.97, 'ret': -2.31}",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": {
+        "sox20": {
+          "date": "20250401",
+          "low": 4179.45,
+          "close": 4282.46,
+          "n": 20,
+          "broke": true,
+          "min_low": 3388.62,
+          "ret": -1.22
+        },
+        "twii20": {
+          "date": "20250401",
+          "low": 20884.53,
+          "close": 21280.17,
+          "n": 20,
+          "broke": true,
+          "min_low": 17306.97,
+          "ret": -2.31
+        }
+      },
+      "path_id": null,
+      "label_pot": "biaoke_oral"
+    },
+    {
+      "id": "SE-SOX14-20250503-171103274",
+      "rule_ids": [
+        "WR-IRON-14-OVERLAP",
+        "WR-SOX-14-LEAD"
+      ],
+      "as_of": "20250503",
+      "tz": "Asia/Taipei",
+      "source_kind": "his_words",
+      "provenance": "sox_14.json#171103274",
+      "his_claim_zh": "這幾天都在忙家族遺產處理事情及辦百日法會我都沒有看盤，但我很早就說過到大盤至少反彈至２０７００因此也沒什麼好進一步發文說明。這周五大盤已經反彈到我初步設定的目標區到２０７８７，至於大盤未來還可以反彈到哪裡，可觀察美股那斯達克及費半指數，從星",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "overlap_14_event",
+          "status": "他標／原文鏈",
+          "phone_warning": null
+        }
+      ],
+      "official_bars": {
+        "twii": null,
+        "tx": []
+      },
+      "has_official_twii": false,
+      "note_zh": "sox20={'date': '20250505', 'low': 4348.73, 'close': 4356.18, 'n': 20, 'broke': True, 'min_low': 4252.67, 'ret': 13.96} twii20={'date': '20250505', 'low': 20320.8, 'close': 20532.99, 'n': 20, 'broke': False, 'min_low': 20349.56, 'ret': 2.89}",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": {
+        "sox20": {
+          "date": "20250505",
+          "low": 4348.73,
+          "close": 4356.18,
+          "n": 20,
+          "broke": true,
+          "min_low": 4252.67,
+          "ret": 13.96
+        },
+        "twii20": {
+          "date": "20250505",
+          "low": 20320.8,
+          "close": 20532.99,
+          "n": 20,
+          "broke": false,
+          "min_low": 20349.56,
+          "ret": 2.89
+        }
+      },
+      "path_id": null,
+      "label_pot": "biaoke_oral"
+    },
+    {
+      "id": "SE-SOX14-20250509-171276483",
+      "rule_ids": [
+        "WR-IRON-14-OVERLAP",
+        "WR-SOX-14-LEAD"
+      ],
+      "as_of": "20250509",
+      "tz": "Asia/Taipei",
+      "source_kind": "his_words",
+      "provenance": "sox_14.json#171276483",
+      "his_claim_zh": "大盤今天正式躍過下跌脈動的下降壓力線，再加上費半、那斯達科指數早就 １４重疊，所以已經完全確認不會有第５波的末跌段，也就是說４／９，１７３０６就是今年的低點，就算未來大盤下跌修正跌破１７３０６也是假跌破，會很快站回來。還有大盤波浪位階要重新",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "overlap_14_event",
+          "status": "他標／原文鏈",
+          "phone_warning": null
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20250509",
+          "o": 20690.80078125,
+          "h": 20915.0390625,
+          "l": 20643.560546875,
+          "c": 20915.0390625,
+          "v": 2744700.0,
+          "source": "index_daily"
+        },
+        "tx": [
+          {
+            "symbol": "TX",
+            "date": "20250509",
+            "session": "night",
+            "o": 20561.0,
+            "h": 20822.0,
+            "l": 20504.0,
+            "c": 20680.0,
+            "source": "futures_daily"
+          },
+          {
+            "symbol": "TX",
+            "date": "20250509",
+            "session": "regular",
+            "o": 20649.0,
+            "h": 20872.0,
+            "l": 20596.0,
+            "c": 20848.0,
+            "source": "futures_daily"
+          }
+        ]
+      },
+      "has_official_twii": true,
+      "note_zh": "sox20={'date': '20250509', 'low': 4433.26, 'close': 4466.5, 'n': 20, 'broke': False, 'min_low': 4647.32, 'ret': 15.0} twii20={'date': '20250509', 'low': 20643.56, 'close': 20915.04, 'n': 20, 'broke': False, 'min_low': 20940.98, 'ret': 4.18}",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": {
+        "sox20": {
+          "date": "20250509",
+          "low": 4433.26,
+          "close": 4466.5,
+          "n": 20,
+          "broke": false,
+          "min_low": 4647.32,
+          "ret": 15.0
+        },
+        "twii20": {
+          "date": "20250509",
+          "low": 20643.56,
+          "close": 20915.04,
+          "n": 20,
+          "broke": false,
+          "min_low": 20940.98,
+          "ret": 4.18
+        }
+      },
+      "path_id": null,
+      "label_pot": "biaoke_oral"
+    },
+    {
+      "id": "SE-SOX14-20250616-171921365",
+      "rule_ids": [
+        "WR-IRON-14-OVERLAP",
+        "WR-SOX-14-LEAD"
+      ],
+      "as_of": "20250616",
+      "tz": "Asia/Taipei",
+      "source_kind": "his_words",
+      "provenance": "sox_14.json#171921365",
+      "his_claim_zh": "大盤目前仍在下跌觀察有沒有5-5最後一小波推升脈動過6/11 22470 有兩個需觀察的地方。1. 21738 點位不能跌破，否則 1 4重疊 就沒有5-5推升脈動。2是5-4整理時間觀察到今天已經三天已經到極限，假設明天持續下跌雖然沒跌破",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "overlap_14_event",
+          "status": "他標／原文鏈",
+          "phone_warning": null
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20250616",
+          "o": 22058.5703125,
+          "h": 22094.599609375,
+          "l": 21936.380859375,
+          "c": 22049.900390625,
+          "v": 2521300.0,
+          "source": "index_daily"
+        },
+        "tx": [
+          {
+            "symbol": "TX",
+            "date": "20250616",
+            "session": "night",
+            "o": 21960.0,
+            "h": 22146.0,
+            "l": 21948.0,
+            "c": 21991.0,
+            "source": "futures_daily"
+          },
+          {
+            "symbol": "TX",
+            "date": "20250616",
+            "session": "regular",
+            "o": 22030.0,
+            "h": 22061.0,
+            "l": 21868.0,
+            "c": 22032.0,
+            "source": "futures_daily"
+          }
+        ]
+      },
+      "has_official_twii": true,
+      "note_zh": "sox20={'date': '20250616', 'low': 5178.35, 'close': 5267.3, 'n': 20, 'broke': True, 'min_low': 5140.38, 'ret': 8.14} twii20={'date': '20250616', 'low': 21936.38, 'close': 22049.9, 'n': 20, 'broke': True, 'min_low': 21551.58, 'ret': 2.56}",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": {
+        "sox20": {
+          "date": "20250616",
+          "low": 5178.35,
+          "close": 5267.3,
+          "n": 20,
+          "broke": true,
+          "min_low": 5140.38,
+          "ret": 8.14
+        },
+        "twii20": {
+          "date": "20250616",
+          "low": 21936.38,
+          "close": 22049.9,
+          "n": 20,
+          "broke": true,
+          "min_low": 21551.58,
+          "ret": 2.56
+        }
+      },
+      "path_id": null,
+      "label_pot": "biaoke_oral"
+    },
+    {
+      "id": "SE-SOX14-20250708-172314509",
+      "rule_ids": [
+        "WR-IRON-14-OVERLAP",
+        "WR-SOX-14-LEAD"
+      ],
+      "as_of": "20250708",
+      "tz": "Asia/Taipei",
+      "source_kind": "his_words",
+      "provenance": "sox_14.json#172314509",
+      "his_claim_zh": "川普對等關稅消息面問題就由市場解讀。有關大盤部分先看今日會不會跌破22200，波浪 1 4重疊點位區間，如果沒有還有5-5推升脈動機會，反之跌破22200 就代表第5漲勢結束會朝第3波高點21800點位附近拉回修正。輔助判別就是台積電的支撐",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "overlap_14_event",
+          "status": "他標／原文鏈",
+          "phone_warning": null
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20250708",
+          "o": 22375.650390625,
+          "h": 22375.650390625,
+          "l": 22190.4609375,
+          "c": 22362.26953125,
+          "v": 2661400.0,
+          "source": "index_daily"
+        },
+        "tx": [
+          {
+            "symbol": "TX",
+            "date": "20250708",
+            "session": "night",
+            "o": 22312.0,
+            "h": 22427.0,
+            "l": 22177.0,
+            "c": 22222.0,
+            "source": "futures_daily"
+          },
+          {
+            "symbol": "TX",
+            "date": "20250708",
+            "session": "regular",
+            "o": 22353.0,
+            "h": 22397.0,
+            "l": 22141.0,
+            "c": 22251.0,
+            "source": "futures_daily"
+          }
+        ]
+      },
+      "has_official_twii": true,
+      "note_zh": "sox20={'date': '20250708', 'low': 5572.88, 'close': 5641.22, 'n': 20, 'broke': True, 'min_low': 5418.32, 'ret': -1.41} twii20={'date': '20250708', 'low': 22190.46, 'close': 22362.27, 'n': 20, 'broke': False, 'min_low': 22211.1, 'ret': 5.81}",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": {
+        "sox20": {
+          "date": "20250708",
+          "low": 5572.88,
+          "close": 5641.22,
+          "n": 20,
+          "broke": true,
+          "min_low": 5418.32,
+          "ret": -1.41
+        },
+        "twii20": {
+          "date": "20250708",
+          "low": 22190.46,
+          "close": 22362.27,
+          "n": 20,
+          "broke": false,
+          "min_low": 22211.1,
+          "ret": 5.81
+        }
+      },
+      "path_id": null,
+      "label_pot": "biaoke_oral"
+    },
+    {
+      "id": "SE-SOX14-20251013-174265901",
+      "rule_ids": [
+        "WR-IRON-14-OVERLAP",
+        "WR-SOX-14-LEAD"
+      ],
+      "as_of": "20251013",
+      "tz": "Asia/Taipei",
+      "source_kind": "his_words",
+      "provenance": "sox_14.json#174265901",
+      "his_claim_zh": "大盤雖然今天下跌，但是26394(波浪1 4重疊點位)都沒碰到，雖然看收盤量沒有爆近期一個月最大量，無法完全確認已經籌碼換手成功。但是搭配台積電出現8/20最大量來輔助判別，非常有可能今日大盤的低點26470有非常大的機率(至少8成)已經確",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "overlap_14_event",
+          "status": "他標／原文鏈",
+          "phone_warning": null
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20251013",
+          "o": 26762.599609375,
+          "h": 26965.720703125,
+          "l": 26470.439453125,
+          "c": 26923.419921875,
+          "v": 4848200.0,
+          "source": "index_daily"
+        },
+        "tx": [
+          {
+            "symbol": "TX",
+            "date": "20251013",
+            "session": "night",
+            "o": 27342.0,
+            "h": 27396.0,
+            "l": 27059.0,
+            "c": 27108.0,
+            "source": "futures_daily"
+          },
+          {
+            "symbol": "TX",
+            "date": "20251013",
+            "session": "regular",
+            "o": 26450.0,
+            "h": 26945.0,
+            "l": 26390.0,
+            "c": 26904.0,
+            "source": "futures_daily"
+          }
+        ]
+      },
+      "has_official_twii": true,
+      "note_zh": "sox20={'date': '20251013', 'low': 6612.88, 'close': 6723.47, 'n': 20, 'broke': True, 'min_low': 6532.74, 'ret': 6.45} twii20={'date': '20251013', 'low': 26470.44, 'close': 26923.42, 'n': 20, 'broke': False, 'min_low': 26764.06, 'ret': 3.2}",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": {
+        "sox20": {
+          "date": "20251013",
+          "low": 6612.88,
+          "close": 6723.47,
+          "n": 20,
+          "broke": true,
+          "min_low": 6532.74,
+          "ret": 6.45
+        },
+        "twii20": {
+          "date": "20251013",
+          "low": 26470.44,
+          "close": 26923.42,
+          "n": 20,
+          "broke": false,
+          "min_low": 26764.06,
+          "ret": 3.2
+        }
+      },
+      "path_id": null,
+      "label_pot": "biaoke_oral"
+    },
+    {
+      "id": "SE-SOX14-20251014-174286038",
+      "rule_ids": [
+        "WR-IRON-14-OVERLAP",
+        "WR-SOX-14-LEAD"
+      ],
+      "as_of": "20251014",
+      "tz": "Asia/Taipei",
+      "source_kind": "his_words",
+      "provenance": "sox_14.json#174286038",
+      "his_claim_zh": "大盤目前走我昨天發文的第二種走勢abc修正，這個時候就希望大盤收盤量能大於昨天收盤量608 1E(現在已經大於6081E是好事，尤其是下跌)，再來一次洗盤並洗得徹底一點。不過由於反彈穿頭接下來c修正可能會破26470，所以觀察重點會不會破2",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "overlap_14_event",
+          "status": "他標／原文鏈",
+          "phone_warning": null
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20251014",
+          "o": 27282.099609375,
+          "h": 27507.16015625,
+          "l": 26764.060546875,
+          "c": 26793.150390625,
+          "v": 6407700.0,
+          "source": "index_daily"
+        },
+        "tx": [
+          {
+            "symbol": "TX",
+            "date": "20251014",
+            "session": "night",
+            "o": 26920.0,
+            "h": 27280.0,
+            "l": 26888.0,
+            "c": 27250.0,
+            "source": "futures_daily"
+          },
+          {
+            "symbol": "TX",
+            "date": "20251014",
+            "session": "regular",
+            "o": 27269.0,
+            "h": 27450.0,
+            "l": 26716.0,
+            "c": 26718.0,
+            "source": "futures_daily"
+          }
+        ]
+      },
+      "has_official_twii": true,
+      "note_zh": "sox20={'date': '20251014', 'low': 6532.74, 'close': 6570.33, 'n': 20, 'broke': False, 'min_low': 6547.37, 'ret': 6.23} twii20={'date': '20251014', 'low': 26764.06, 'close': 26793.15, 'n': 20, 'broke': False, 'min_low': 26773.15, 'ret': 4.31}",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": {
+        "sox20": {
+          "date": "20251014",
+          "low": 6532.74,
+          "close": 6570.33,
+          "n": 20,
+          "broke": false,
+          "min_low": 6547.37,
+          "ret": 6.23
+        },
+        "twii20": {
+          "date": "20251014",
+          "low": 26764.06,
+          "close": 26793.15,
+          "n": 20,
+          "broke": false,
+          "min_low": 26773.15,
+          "ret": 4.31
+        }
+      },
+      "path_id": null,
+      "label_pot": "biaoke_oral"
+    },
+    {
+      "id": "SE-SOX14-20251120-175038265",
+      "rule_ids": [
+        "WR-IRON-14-OVERLAP",
+        "WR-SOX-14-LEAD"
+      ],
+      "as_of": "20251120",
+      "tz": "Asia/Taipei",
+      "source_kind": "his_words",
+      "provenance": "sox_14.json#175038265",
+      "his_claim_zh": "大盤日線的下跌波浪浪已經確定 1 4重疊，所以我個人主張至少到年底左右都很難再持續探底、而且我認為到年底左右大盤都是在26500~28500之間區間整理，至於整理之後這要考慮到產業面、資金面、景氣面各方面因素才能決定是否能往上持續攻擊，因為",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "overlap_14_event",
+          "status": "他標／原文鏈",
+          "phone_warning": null
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20251120",
+          "o": 27212.91015625,
+          "h": 27493.630859375,
+          "l": 27183.029296875,
+          "c": 27426.359375,
+          "v": 4862100.0,
+          "source": "index_daily"
+        },
+        "tx": [
+          {
+            "symbol": "TX",
+            "date": "20251120",
+            "session": "night",
+            "o": 26685.0,
+            "h": 27073.0,
+            "l": 26658.0,
+            "c": 26979.0,
+            "source": "futures_daily"
+          },
+          {
+            "symbol": "TX",
+            "date": "20251120",
+            "session": "regular",
+            "o": 27308.0,
+            "h": 27492.0,
+            "l": 27201.0,
+            "c": 27482.0,
+            "source": "futures_daily"
+          }
+        ]
+      },
+      "has_official_twii": true,
+      "note_zh": "sox20={'date': '20251120', 'low': 6327.79, 'close': 6352.07, 'n': 20, 'broke': True, 'min_low': 6160.05, 'ret': 11.27} twii20={'date': '20251120', 'low': 27183.03, 'close': 27426.36, 'n': 20, 'broke': True, 'min_low': 26395.98, 'ret': 0.15}",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": {
+        "sox20": {
+          "date": "20251120",
+          "low": 6327.79,
+          "close": 6352.07,
+          "n": 20,
+          "broke": true,
+          "min_low": 6160.05,
+          "ret": 11.27
+        },
+        "twii20": {
+          "date": "20251120",
+          "low": 27183.03,
+          "close": 27426.36,
+          "n": 20,
+          "broke": true,
+          "min_low": 26395.98,
+          "ret": 0.15
+        }
+      },
+      "path_id": null,
+      "label_pot": "biaoke_oral"
+    },
+    {
+      "id": "SE-SOX14-20251215-175524137",
+      "rule_ids": [
+        "WR-IRON-14-OVERLAP",
+        "WR-SOX-14-LEAD"
+      ],
+      "as_of": "20251215",
+      "tz": "Asia/Taipei",
+      "source_kind": "his_words",
+      "provenance": "sox_14.json#175524137",
+      "his_claim_zh": "今天大盤觀盤重點在於這次反彈a波高點27796是否穿越跌破，如果穿越跌破就可以確定這次從11/24低點26482開始反彈到12/11高點28568是三段式abc反彈(因為已經 1 4重疊)。由於是三段式abc反彈推升脈動被破壞，至少是做二重",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "overlap_14_event",
+          "status": "他標／原文鏈",
+          "phone_warning": null
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20251215",
+          "o": 28119.7890625,
+          "h": 28119.7890625,
+          "l": 27684.869140625,
+          "c": 27866.939453125,
+          "v": 4157000.0,
+          "source": "index_daily"
+        },
+        "tx": [
+          {
+            "symbol": "TX",
+            "date": "20251215",
+            "session": "night",
+            "o": 28280.0,
+            "h": 28335.0,
+            "l": 27712.0,
+            "c": 27729.0,
+            "source": "futures_daily"
+          },
+          {
+            "symbol": "TX",
+            "date": "20251215",
+            "session": "regular",
+            "o": 27834.0,
+            "h": 27984.0,
+            "l": 27755.0,
+            "c": 27907.0,
+            "source": "futures_daily"
+          }
+        ]
+      },
+      "has_official_twii": true,
+      "note_zh": "sox20={'date': '20251215', 'low': 6971.4, 'close': 6990.41, 'n': 20, 'broke': True, 'min_low': 6680.68, 'ret': 10.17} twii20={'date': '20251215', 'low': 27684.87, 'close': 27866.94, 'n': 20, 'broke': True, 'min_low': 27350.77, 'ret': 11.03}",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": {
+        "sox20": {
+          "date": "20251215",
+          "low": 6971.4,
+          "close": 6990.41,
+          "n": 20,
+          "broke": true,
+          "min_low": 6680.68,
+          "ret": 10.17
+        },
+        "twii20": {
+          "date": "20251215",
+          "low": 27684.87,
+          "close": 27866.94,
+          "n": 20,
+          "broke": true,
+          "min_low": 27350.77,
+          "ret": 11.03
+        }
+      },
+      "path_id": null,
+      "label_pot": "biaoke_oral"
+    },
+    {
+      "id": "SE-SOX14-20260206-176759285",
+      "rule_ids": [
+        "WR-IRON-14-OVERLAP",
+        "WR-SOX-14-LEAD"
+      ],
+      "as_of": "20260206",
+      "tz": "Asia/Taipei",
+      "source_kind": "his_words",
+      "provenance": "sox_14.json#176759285",
+      "his_claim_zh": "之前有說過台積電反彈已經 1 4重疊，而 a波低點為1745，今天到c 就算跌破1745也要站在買方，也就是說今天台積電最低1740是假跌破，台積電是假跌破代表今天應該就是過年前大盤最低點。如果再配搭配量價結構來輔助判別分析，如果今天盤後台",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "overlap_14_event",
+          "status": "他標／原文鏈",
+          "phone_warning": null
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20260206",
+          "o": 31746.439453125,
+          "h": 31842.619140625,
+          "l": 31164.279296875,
+          "c": 31782.919921875,
+          "v": 5482300.0,
+          "source": "index_daily"
+        },
+        "tx": [
+          {
+            "symbol": "TX",
+            "date": "20260206",
+            "session": "night",
+            "o": 31951.0,
+            "h": 32052.0,
+            "l": 31484.0,
+            "c": 31760.0,
+            "source": "futures_daily"
+          },
+          {
+            "symbol": "TX",
+            "date": "20260206",
+            "session": "regular",
+            "o": 31458.0,
+            "h": 31883.0,
+            "l": 31220.0,
+            "c": 31807.0,
+            "source": "futures_daily"
+          }
+        ]
+      },
+      "has_official_twii": true,
+      "note_zh": "sox20={'date': '20260206', 'low': 7752.54, 'close': 8048.62, 'n': 20, 'broke': True, 'min_low': 7363.17, 'ret': -2.96} twii20={'date': '20260206', 'low': 31164.28, 'close': 31782.92, 'n': 20, 'broke': False, 'min_low': 31529.36, 'ret': 8.07}",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": {
+        "sox20": {
+          "date": "20260206",
+          "low": 7752.54,
+          "close": 8048.62,
+          "n": 20,
+          "broke": true,
+          "min_low": 7363.17,
+          "ret": -2.96
+        },
+        "twii20": {
+          "date": "20260206",
+          "low": 31164.28,
+          "close": 31782.92,
+          "n": 20,
+          "broke": false,
+          "min_low": 31529.36,
+          "ret": 8.07
+        }
+      },
+      "path_id": null,
+      "label_pot": "biaoke_oral"
+    },
+    {
+      "id": "SE-SOX14-20260304-177185078:a4",
+      "rule_ids": [
+        "WR-IRON-14-OVERLAP",
+        "WR-SOX-14-LEAD"
+      ],
+      "as_of": "20260304",
+      "tz": "Asia/Taipei",
+      "source_kind": "his_words",
+      "provenance": "sox_14.json#177185078:a4",
+      "his_claim_zh": "8000 今天早上又再做一次回測，其實就算短破860也是買點。因為之前 1 4重疊。",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "overlap_14_event",
+          "status": "他標／原文鏈",
+          "phone_warning": null
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20260304",
+          "o": 34228.75,
+          "h": 34228.75,
+          "l": 32828.87890625,
+          "c": 32828.87890625,
+          "v": 7817200.0,
+          "source": "index_daily"
+        },
+        "tx": [
+          {
+            "symbol": "TX",
+            "date": "20260304",
+            "session": "night",
+            "o": 34319.0,
+            "h": 34444.0,
+            "l": 32834.0,
+            "c": 33548.0,
+            "source": "futures_daily"
+          },
+          {
+            "symbol": "TX",
+            "date": "20260304",
+            "session": "regular",
+            "o": 33461.0,
+            "h": 33666.0,
+            "l": 32679.0,
+            "c": 32834.0,
+            "source": "futures_daily"
+          }
+        ]
+      },
+      "has_official_twii": true,
+      "note_zh": "sox20={'date': '20260304', 'low': 7807.26, 'close': 7914.48, 'n': 20, 'broke': True, 'min_low': 7084.13, 'ret': -1.42} twii20={'date': '20260304', 'low': 32828.88, 'close': 32828.88, 'n': 20, 'broke': True, 'min_low': 31529.36, 'ret': 1.05}",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": {
+        "sox20": {
+          "date": "20260304",
+          "low": 7807.26,
+          "close": 7914.48,
+          "n": 20,
+          "broke": true,
+          "min_low": 7084.13,
+          "ret": -1.42
+        },
+        "twii20": {
+          "date": "20260304",
+          "low": 32828.88,
+          "close": 32828.88,
+          "n": 20,
+          "broke": true,
+          "min_low": 31529.36,
+          "ret": 1.05
+        }
+      },
+      "path_id": null,
+      "label_pot": "biaoke_oral"
+    },
+    {
+      "id": "SE-SOX14-20260615-179869615",
+      "rule_ids": [
+        "WR-IRON-14-OVERLAP",
+        "WR-SOX-14-LEAD"
+      ],
+      "as_of": "20260615",
+      "tz": "Asia/Taipei",
+      "source_kind": "his_words",
+      "provenance": "sox_14.json#179869615",
+      "his_claim_zh": "1.週五的費城半導體指數已經確認 1 4重疊，也就是說費城半導體已經化解下跌趨勢盤，且轉為區間整理盤(長線多頭趨勢未變)。而今年以來費城半導體指數為台股大盤先行指標，代表大盤會跟隨費半指數轉為區間整理盤的可能性也大幅提升。 2.但是這次大盤",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "overlap_14_event",
+          "status": "他標／原文鏈",
+          "phone_warning": null
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20260615",
+          "o": 44447.87109375,
+          "h": 45483.62890625,
+          "l": 44447.87109375,
+          "c": 45396.98828125,
+          "v": 6161900.0,
+          "source": "index_daily"
+        },
+        "tx": [
+          {
+            "symbol": "TX",
+            "date": "20260615",
+            "session": "night",
+            "o": 43953.0,
+            "h": 44808.0,
+            "l": 43712.0,
+            "c": 44704.0,
+            "source": "futures_daily"
+          },
+          {
+            "symbol": "TX",
+            "date": "20260615",
+            "session": "regular",
+            "o": 45750.0,
+            "h": 45905.0,
+            "l": 45340.0,
+            "c": 45580.0,
+            "source": "futures_daily"
+          }
+        ]
+      },
+      "has_official_twii": true,
+      "note_zh": "sox20={'date': '20260615', 'low': 13860.32, 'close': 14099.62, 'n': 20, 'broke': True, 'min_low': 11960.84, 'ret': -12.06} twii20={'date': '20260615', 'low': 44447.87, 'close': 45396.99, 'n': 20, 'broke': True, 'min_low': 43654.04, 'ret': 0.52}",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": {
+        "sox20": {
+          "date": "20260615",
+          "low": 13860.32,
+          "close": 14099.62,
+          "n": 20,
+          "broke": true,
+          "min_low": 11960.84,
+          "ret": -12.06
+        },
+        "twii20": {
+          "date": "20260615",
+          "low": 44447.87,
+          "close": 45396.99,
+          "n": 20,
+          "broke": true,
+          "min_low": 43654.04,
+          "ret": 0.52
+        }
+      },
+      "path_id": null,
+      "label_pot": "biaoke_oral"
+    },
+    {
+      "id": "SE-SOX14-20260625-180128537",
+      "rule_ids": [
+        "WR-IRON-14-OVERLAP",
+        "WR-SOX-14-LEAD"
+      ],
+      "as_of": "20260625",
+      "tz": "Asia/Taipei",
+      "source_kind": "his_words",
+      "provenance": "sox_14.json#180128537",
+      "his_claim_zh": "1. 不要因為夜盤漲了500點，就進場買股票除非做當沖或隔日沖。夜盤60分鐘線我認為止跌了3段，除非 1 4重疊，才能化解跌5段危機，除非能穿刺47668(夜盤)，否則還有第5段下跌。 2. 今天是調節股票的時候，建議Cash至少拉高至3~",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "overlap_14_event",
+          "status": "他標／原文鏈",
+          "phone_warning": null
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20260625",
+          "o": 46339.6796875,
+          "h": 46785.44921875,
+          "l": 46048.69921875,
+          "c": 46255.26171875,
+          "v": 7621600.0,
+          "source": "index_daily"
+        },
+        "tx": [
+          {
+            "symbol": "TX",
+            "date": "20260625",
+            "session": "night",
+            "o": 46361.0,
+            "h": 46914.0,
+            "l": 45063.0,
+            "c": 46910.0,
+            "source": "futures_daily"
+          },
+          {
+            "symbol": "TX",
+            "date": "20260625",
+            "session": "regular",
+            "o": 46993.0,
+            "h": 46997.0,
+            "l": 46091.0,
+            "c": 46544.0,
+            "source": "futures_daily"
+          }
+        ]
+      },
+      "has_official_twii": true,
+      "note_zh": "sox20={'date': '20260625', 'low': 13379.94, 'close': 13940.87, 'n': 20, 'broke': True, 'min_low': 11194.6, 'ret': -15.22} twii20={'date': '20260625', 'low': 46048.7, 'close': 46255.26, 'n': 20, 'broke': True, 'min_low': 41967.75, 'ret': -5.62}",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": {
+        "sox20": {
+          "date": "20260625",
+          "low": 13379.94,
+          "close": 13940.87,
+          "n": 20,
+          "broke": true,
+          "min_low": 11194.6,
+          "ret": -15.22
+        },
+        "twii20": {
+          "date": "20260625",
+          "low": 46048.7,
+          "close": 46255.26,
+          "n": 20,
+          "broke": true,
+          "min_low": 41967.75,
+          "ret": -5.62
+        }
+      },
+      "path_id": null,
+      "label_pot": "biaoke_oral"
+    },
+    {
+      "id": "SE-EOD-20261109-P1_must_retest_friday",
+      "rule_ids": [
+        "WR-SEGMENT-TRIAL-WARN",
+        "WR-FWD-LOOP"
+      ],
+      "as_of": "20261109",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261109.json",
+      "his_claim_zh": "TWII L40347／TX L39996 皆遠高於週五低37837／37694；今日未回測。",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "C3-5",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        },
+        {
+          "label": "B-a",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        },
+        {
+          "label": "B-b",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261109",
+          "o": 40347.28125,
+          "h": 42349.359375,
+          "l": 40347.28125,
+          "c": 41661.7,
+          "v": 12127385.0,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "未完／失效於今日未發生",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": "P1_must_retest_friday",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-EOD-20261109-P2_41760_still_cap",
+      "rule_ids": [
+        "WR-SEGMENT-TRIAL-WARN",
+        "WR-FWD-LOOP"
+      ],
+      "as_of": "20261109",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261109.json",
+      "his_claim_zh": "台指日盤 H42317≥41760，C41423<41760；壓轉撐未成立。加權對照 H42349 C41662。",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "B-a_cap",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261109",
+          "o": 40347.28125,
+          "h": 42349.359375,
+          "l": 40347.28125,
+          "c": 41661.7,
+          "v": 12127385.0,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "偏不合／台指盤中刺穿收未站穩",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": "P2_41760_still_cap",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-EOD-20261109-P3_fake_break_board_zone",
+      "rule_ids": [
+        "WR-SEGMENT-TRIAL-WARN",
+        "WR-FWD-LOOP"
+      ],
+      "as_of": "20261109",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261109.json",
+      "his_claim_zh": "未破週五低，假跌破不計分。",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "B-b_spike",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        },
+        {
+          "label": "B-b_reclaim",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261109",
+          "o": 40347.28125,
+          "h": 42349.359375,
+          "l": 40347.28125,
+          "c": 41661.7,
+          "v": 12127385.0,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "未觸發",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": "P3_fake_break_board_zone",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-EOD-20261110-N1_still_retest_friday",
+      "rule_ids": [
+        "WR-SEGMENT-TRIAL-WARN",
+        "WR-FWD-LOOP"
+      ],
+      "as_of": "20261110",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261110.json",
+      "his_claim_zh": "TWII L41930／TX L41873 皆遠高於週五低37837／37694；且全日低亦高於41760→N1『未站穩才再測』前提不成立。",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "B-a",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        },
+        {
+          "label": "B-b",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261110",
+          "o": 42130.328125,
+          "h": 43135.921875,
+          "l": 41930.03125,
+          "c": 42711.92,
+          "v": 12821280.0,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "失效於今日／前提不成立",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": "N1_still_retest_friday",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-EOD-20261110-N2_hold_above_first_cap",
+      "rule_ids": [
+        "WR-SEGMENT-TRIAL-WARN",
+        "WR-FWD-LOOP"
+      ],
+      "as_of": "20261110",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261110.json",
+      "his_claim_zh": "TWII C42711.92／L41930＞41760；TX C42623／L41873＞41760。開盤即在壓上、全日未回失。",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "B-a_hold",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        },
+        {
+          "label": "post_hold",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261110",
+          "o": 42130.328125,
+          "h": 43135.921875,
+          "l": 41930.03125,
+          "c": 42711.92,
+          "v": 12821280.0,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "合／日盤收穩41760壓轉撐",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": "N2_hold_above_first_cap",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-EOD-20261110-N3_fake_break_if_retest",
+      "rule_ids": [
+        "WR-SEGMENT-TRIAL-WARN",
+        "WR-FWD-LOOP"
+      ],
+      "as_of": "20261110",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261110.json",
+      "his_claim_zh": "未破週五低，假跌破不計分。",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "B-b_spike",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        },
+        {
+          "label": "B-b_reclaim",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261110",
+          "o": 42130.328125,
+          "h": 43135.921875,
+          "l": 41930.03125,
+          "c": 42711.92,
+          "v": 12821280.0,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "未觸發",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": "N3_fake_break_if_retest",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-EOD-20261111-M1_retest_41760_as_support",
+      "rule_ids": [
+        "WR-SEGMENT-TRIAL-WARN",
+        "WR-FWD-LOOP"
+      ],
+      "as_of": "20261111",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261111.json",
+      "his_claim_zh": "TWII L42708.05／TX L42646 皆遠高於41760；且收再站穩43135上（C44257）→符合 forward 失效句『低遠高於41760且收再創新高並站穩43135上＝回測延後』。",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "B-a_hold",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        },
+        {
+          "label": "B-a_hold_retest",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261111",
+          "o": 43135.76171875,
+          "h": 44257.1484375,
+          "l": 42708.05078125,
+          "c": 44257.15,
+          "v": 11514264.0,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "未觸發／依失效句回測延後",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": "M1_retest_41760_as_support",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-EOD-20261111-M2_challenge_43135_cap",
+      "rule_ids": [
+        "WR-SEGMENT-TRIAL-WARN",
+        "WR-FWD-LOOP"
+      ],
+      "as_of": "20261111",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261111.json",
+      "his_claim_zh": "TWII 開≈昨高、高／收44257.15＞43135；TX 高44250收44091。盤中低42708曾回失43135後再站上＝挑戰成立、收盤壓轉撐候選升到43135。",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "post_hold",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        },
+        {
+          "label": "post_hold_cap",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261111",
+          "o": 43135.76171875,
+          "h": 44257.1484375,
+          "l": 42708.05078125,
+          "c": 44257.15,
+          "v": 11514264.0,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "合／挑戰並有效收穩43135上",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": "M2_challenge_43135_cap",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-EOD-20261111-M3_lose_41760_then_friday",
+      "rule_ids": [
+        "WR-SEGMENT-TRIAL-WARN",
+        "WR-FWD-LOOP"
+      ],
+      "as_of": "20261111",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261111.json",
+      "his_claim_zh": "全日低遠高於41760／37837；週五低回測不升權。",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "B-a_hold_fail",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        },
+        {
+          "label": "B-b",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261111",
+          "o": 43135.76171875,
+          "h": 44257.1484375,
+          "l": 42708.05078125,
+          "c": 44257.15,
+          "v": 11514264.0,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "未觸發",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": "M3_lose_41760_then_friday",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-EOD-20261112-M1_retest_43135_as_support",
+      "rule_ids": [
+        "WR-SEGMENT-TRIAL-WARN",
+        "WR-FWD-LOOP"
+      ],
+      "as_of": "20261112",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261112.json",
+      "his_claim_zh": "TWII 開44180高44525後殺到L42943.5＜43135.92，收43091.87仍＜撐；TX 日盤L43057收43178。回測發生且收盤未站回＝M1撐確認失敗，銜接M3失守句。",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "post_hold_43135",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        },
+        {
+          "label": "post_hold_43135_retest",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        },
+        {
+          "label": "post_hold_43135_fail_close",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261112",
+          "o": 44180.4609375,
+          "h": 44525.23828125,
+          "l": 42943.5,
+          "c": 43091.87,
+          "v": 13614522.0,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "觸發回測但撐不住／收失43135",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": "M1_retest_43135_as_support",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-EOD-20261112-M2_hold_or_extend_above_43135",
+      "rule_ids": [
+        "WR-SEGMENT-TRIAL-WARN",
+        "WR-FWD-LOOP"
+      ],
+      "as_of": "20261112",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261112.json",
+      "his_claim_zh": "TWII C43091.87＜43135.92；高44525＜昨收44257。延續／整理在撐上不成立。",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "post_hold_extend",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        },
+        {
+          "label": "post_hold_watch",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261112",
+          "o": 44180.4609375,
+          "h": 44525.23828125,
+          "l": 42943.5,
+          "c": 43091.87,
+          "v": 13614522.0,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "不合／失效",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": "M2_hold_or_extend_above_43135",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-EOD-20261112-M3_lose_43135_then_41760_friday",
+      "rule_ids": [
+        "WR-SEGMENT-TRIAL-WARN",
+        "WR-FWD-LOOP"
+      ],
+      "as_of": "20261112",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261112.json",
+      "his_claim_zh": "失守43135成立；全日低仍遠高於41760／37837。另：低42943.5已觸『43000下』路徑（教法T3），但收43091仍略高於43000。",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "post_hold_43135_fail",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        },
+        {
+          "label": "B-a_hold_retest",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        },
+        {
+          "label": "B-b",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261112",
+          "o": 44180.4609375,
+          "h": 44525.23828125,
+          "l": 42943.5,
+          "c": 43091.87,
+          "v": 13614522.0,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "部分觸發：43135失守；41760／37837未測",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": "M3_lose_43135_then_41760_friday",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-EOD-20261113-M1_retest_41760_after_43135_fail",
+      "rule_ids": [
+        "WR-SEGMENT-TRIAL-WARN",
+        "WR-FWD-LOOP"
+      ],
+      "as_of": "20261113",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261113.json",
+      "his_claim_zh": "日盤低43534.12遠高於41760；全日未回測該撐。preferred 未走完。",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "post_hold_43135_fail",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        },
+        {
+          "label": "B-a_hold_retest",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261113",
+          "o": 43719.75,
+          "h": 44489.48046875,
+          "l": 43534.12109375,
+          "c": 43675.12,
+          "v": 12357048.0,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "未觸發／延後",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": "M1_retest_41760_after_43135_fail",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-EOD-20261113-N1_continue_below_43000_then_band",
+      "rule_ids": [
+        "WR-SEGMENT-TRIAL-WARN",
+        "WR-FWD-LOOP"
+      ],
+      "as_of": "20261113",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261113.json",
+      "his_claim_zh": "TWII 開高走揚後收43675；日盤未再探43000下、未進419～427。夜盤曾探42371＝帶內先行，日盤未確認。",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "path_below_43000",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        },
+        {
+          "label": "enter_419_427",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261113",
+          "o": 43719.75,
+          "h": 44489.48046875,
+          "l": 43534.12109375,
+          "c": 43675.12,
+          "v": 12357048.0,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "日盤未續弱／未進帶",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": "N1_continue_below_43000_then_band",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-EOD-20261113-M3_lose_41760_then_friday",
+      "rule_ids": [
+        "WR-SEGMENT-TRIAL-WARN",
+        "WR-FWD-LOOP"
+      ],
+      "as_of": "20261113",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261113.json",
+      "his_claim_zh": "L43534≫41760／37837。",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "B-a_hold_fail",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        },
+        {
+          "label": "B-b",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261113",
+          "o": 43719.75,
+          "h": 44489.48046875,
+          "l": 43534.12109375,
+          "c": 43675.12,
+          "v": 12357048.0,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "未觸發",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": "M3_lose_41760_then_friday",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-EOD-20261113-M2_reclaim_43135",
+      "rule_ids": [
+        "WR-SEGMENT-TRIAL-WARN",
+        "WR-FWD-LOOP"
+      ],
+      "as_of": "20261113",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261113.json",
+      "his_claim_zh": "TWII O43719.75／H44489.48／C43675.12皆＞43135.92；TX日盤L43692／C43834亦在上。與昨收失反向。",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "post_hold_reclaim",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        },
+        {
+          "label": "post_hold_watch",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261113",
+          "o": 43719.75,
+          "h": 44489.48046875,
+          "l": 43534.12109375,
+          "c": 43675.12,
+          "v": 12357048.0,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "成立：日盤開／高／收皆在43135上",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": "M2_reclaim_43135",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-EOD-20261116-M2_retest_43135_as_support",
+      "rule_ids": [
+        "WR-SEGMENT-TRIAL-WARN",
+        "WR-FWD-LOOP"
+      ],
+      "as_of": "20261116",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261116.json",
+      "his_claim_zh": "TWII L41040.08／C41040.08 ≪43135.92；TX日盤 L40714／C40885 同向失守。preferred 回測當撐未成立。",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "post_hold_reclaim",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        },
+        {
+          "label": "post_hold_43135_fail",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261116",
+          "o": 43512.421875,
+          "h": 43512.421875,
+          "l": 41040.078125,
+          "c": 41040.078125,
+          "v": 14096888.0,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "否決：失守且收遠低於43135",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": "M2_retest_43135_as_support",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-EOD-20261116-M1_retest_41760_after_43135_fail",
+      "rule_ids": [
+        "WR-SEGMENT-TRIAL-WARN",
+        "WR-FWD-LOOP"
+      ],
+      "as_of": "20261116",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261116.json",
+      "his_claim_zh": "失43135後路徑穿過41760；TWII L41040.08／C41040.08 皆低於41760。不是『回測後守住』，是失守。",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "post_hold_43135_fail",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        },
+        {
+          "label": "B-a_hold_retest",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        },
+        {
+          "label": "B-a_hold_fail",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261116",
+          "o": 43512.421875,
+          "h": 43512.421875,
+          "l": 41040.078125,
+          "c": 41040.078125,
+          "v": 14096888.0,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "前半成立／撐未守：失43135後貫穿41760",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": "M1_retest_41760_after_43135_fail",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-EOD-20261116-N1_continue_below_43000_then_band",
+      "rule_ids": [
+        "WR-SEGMENT-TRIAL-WARN",
+        "WR-FWD-LOOP"
+      ],
+      "as_of": "20261116",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261116.json",
+      "his_claim_zh": "TWII C41040.08／L41040.08＜43000；自高位下穿419～427（及口頭418～427）。TX日盤 L40714／C40885 同步。",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "path_below_43000",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        },
+        {
+          "label": "enter_419_427",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        },
+        {
+          "label": "wave4_band_418_427_oral",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261116",
+          "o": 43512.421875,
+          "h": 43512.421875,
+          "l": 41040.078125,
+          "c": 41040.078125,
+          "v": 14096888.0,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "成立：再探43000下並穿越419～427帶",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": "N1_continue_below_43000_then_band",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-EOD-20261116-M3_lose_41760_then_friday",
+      "rule_ids": [
+        "WR-SEGMENT-TRIAL-WARN",
+        "WR-FWD-LOOP"
+      ],
+      "as_of": "20261116",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261116.json",
+      "his_claim_zh": "C/L 低於41760→M3升權；未到37837。",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "B-a_hold_fail",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        },
+        {
+          "label": "B-b",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261116",
+          "o": 43512.421875,
+          "h": 43512.421875,
+          "l": 41040.078125,
+          "c": 41040.078125,
+          "v": 14096888.0,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "升權成立／37837未測",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": "M3_lose_41760_then_friday",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-EOD-20261117-M3_seek_37837_after_41760_fail",
+      "rule_ids": [
+        "WR-SEGMENT-TRIAL-WARN",
+        "WR-FWD-LOOP"
+      ],
+      "as_of": "20261117",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261117.json",
+      "his_claim_zh": "TWII（60分補）H41533.84＜41760；L39786.45／C40092.11 皆未到37837。弱勢續但未測週五低。",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "B-a_hold_fail",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        },
+        {
+          "label": "B-b",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261117",
+          "o": 40546.640625,
+          "h": 41533.83984375,
+          "l": 39786.44921875,
+          "c": 40092.109375,
+          "v": 14624794.0,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "升權維持／37837未測",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": "M3_seek_37837_after_41760_fail",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-EOD-20261117-W4_reclaim_418_427_band",
+      "rule_ids": [
+        "WR-SEGMENT-TRIAL-WARN",
+        "WR-FWD-LOOP"
+      ],
+      "as_of": "20261117",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261117.json",
+      "his_claim_zh": "日高41533.84未到41800；收40092仍在帶下。",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "wave4_band_reclaim",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        },
+        {
+          "label": "wave4_mid_42250",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261117",
+          "o": 40546.640625,
+          "h": 41533.83984375,
+          "l": 39786.44921875,
+          "c": 40092.109375,
+          "v": 14624794.0,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "否決：未收回波浪4帶",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": "W4_reclaim_418_427_band",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-EOD-20261117-N1_follow_through_below_band",
+      "rule_ids": [
+        "WR-SEGMENT-TRIAL-WARN",
+        "WR-FWD-LOOP"
+      ],
+      "as_of": "20261117",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261117.json",
+      "his_claim_zh": "O40546／H41533／L39786／C40092 皆在41800下；較昨收41040再弱。",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "stay_below_wave4",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        },
+        {
+          "label": "path_to_B_b",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261117",
+          "o": 40546.640625,
+          "h": 41533.83984375,
+          "l": 39786.44921875,
+          "c": 40092.109375,
+          "v": 14624794.0,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "成立：帶下續弱並再探低",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": "N1_follow_through_below_band",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-EOD-20261117-M2_dead_reclaim_watch",
+      "rule_ids": [
+        "WR-SEGMENT-TRIAL-WARN",
+        "WR-FWD-LOOP"
+      ],
+      "as_of": "20261117",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261117.json",
+      "his_claim_zh": "日高遠低於43135；低權對照維持。",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "post_hold_reclaim",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261117",
+          "o": 40546.640625,
+          "h": 41533.83984375,
+          "l": 39786.44921875,
+          "c": 40092.109375,
+          "v": 14624794.0,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "否決：未收復43135",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": "M2_dead_reclaim_watch",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-EOD-20261118-M3_seek_37837_continue",
+      "rule_ids": [
+        "WR-SEGMENT-TRIAL-WARN",
+        "WR-FWD-LOOP"
+      ],
+      "as_of": "20261118",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261118.json",
+      "his_claim_zh": "TWII O40720.09/H40938.20/L39260.99/C40194.91 V13546190：H仍＜41760；L39261較昨39786更低但未到37837。",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "B-a_hold_fail",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        },
+        {
+          "label": "B-b",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261118",
+          "o": 40720.08984375,
+          "h": 40938.19921875,
+          "l": 39260.98828125,
+          "c": 40194.91,
+          "v": 13546190.0,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "升權維持／37837未測",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": "M3_seek_37837_continue",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-EOD-20261118-W4_reclaim_418_427_band",
+      "rule_ids": [
+        "WR-SEGMENT-TRIAL-WARN",
+        "WR-FWD-LOOP"
+      ],
+      "as_of": "20261118",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261118.json",
+      "his_claim_zh": "日高40938.20未到41800；收40194.91仍在帶下。",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "wave4_band_reclaim",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        },
+        {
+          "label": "wave4_mid_42250",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261118",
+          "o": 40720.08984375,
+          "h": 40938.19921875,
+          "l": 39260.98828125,
+          "c": 40194.91,
+          "v": 13546190.0,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "否決：未收回波浪4帶",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": "W4_reclaim_418_427_band",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-EOD-20261118-N1_follow_through_below_band",
+      "rule_ids": [
+        "WR-SEGMENT-TRIAL-WARN",
+        "WR-FWD-LOOP"
+      ],
+      "as_of": "20261118",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261118.json",
+      "his_claim_zh": "O40720/H40938/L39261/C40195皆在41800下；低點較昨39786再探至39261。",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "stay_below_wave4",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        },
+        {
+          "label": "path_to_B_b",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261118",
+          "o": 40720.08984375,
+          "h": 40938.19921875,
+          "l": 39260.98828125,
+          "c": 40194.91,
+          "v": 13546190.0,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "成立：帶下續弱並再探低",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": "N1_follow_through_below_band",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-EOD-20261118-M2_dead_reclaim_watch",
+      "rule_ids": [
+        "WR-SEGMENT-TRIAL-WARN",
+        "WR-FWD-LOOP"
+      ],
+      "as_of": "20261118",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261118.json",
+      "his_claim_zh": "日高遠低於43135；低權對照維持。",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "post_hold_reclaim",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261118",
+          "o": 40720.08984375,
+          "h": 40938.19921875,
+          "l": 39260.98828125,
+          "c": 40194.91,
+          "v": 13546190.0,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "否決：未收復43135",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": "M2_dead_reclaim_watch",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-EOD-20261119-M3_seek_37837_continue",
+      "rule_ids": [
+        "WR-SEGMENT-TRIAL-WARN",
+        "WR-FWD-LOOP"
+      ],
+      "as_of": "20261119",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261119.json",
+      "his_claim_zh": "TWII O40145.73/H40315.53/L38259.70/C38426.89 V15282043：H仍＜41760；L自昨39261再探至38260，未到37837。",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "B-a_hold_fail",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        },
+        {
+          "label": "B-b",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261119",
+          "o": 40145.73046875,
+          "h": 40315.53125,
+          "l": 38259.69921875,
+          "c": 38426.89,
+          "v": 15282043.0,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "升權維持／37837未測（更靠近）",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": "M3_seek_37837_continue",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-EOD-20261119-W4_reclaim_418_427_band",
+      "rule_ids": [
+        "WR-SEGMENT-TRIAL-WARN",
+        "WR-FWD-LOOP"
+      ],
+      "as_of": "20261119",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261119.json",
+      "his_claim_zh": "日高40315.53未到41800；收38426.89仍在帶下且更遠。",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "wave4_band_reclaim",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        },
+        {
+          "label": "wave4_mid_42250",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261119",
+          "o": 40145.73046875,
+          "h": 40315.53125,
+          "l": 38259.69921875,
+          "c": 38426.89,
+          "v": 15282043.0,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "否決：未收回波浪4帶",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": "W4_reclaim_418_427_band",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-EOD-20261119-N1_follow_through_below_band",
+      "rule_ids": [
+        "WR-SEGMENT-TRIAL-WARN",
+        "WR-FWD-LOOP"
+      ],
+      "as_of": "20261119",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261119.json",
+      "his_claim_zh": "O40146/H40316/L38260/C38427皆在41800下；低點較昨39261再探至38260。",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "stay_below_wave4",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        },
+        {
+          "label": "path_to_B_b",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261119",
+          "o": 40145.73046875,
+          "h": 40315.53125,
+          "l": 38259.69921875,
+          "c": 38426.89,
+          "v": 15282043.0,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "成立：帶下續弱並再探低",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": "N1_follow_through_below_band",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-EOD-20261119-M2_dead_reclaim_watch",
+      "rule_ids": [
+        "WR-SEGMENT-TRIAL-WARN",
+        "WR-FWD-LOOP"
+      ],
+      "as_of": "20261119",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261119.json",
+      "his_claim_zh": "日高遠低於43135；低權對照維持。",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "post_hold_reclaim",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261119",
+          "o": 40145.73046875,
+          "h": 40315.53125,
+          "l": 38259.69921875,
+          "c": 38426.89,
+          "v": 15282043.0,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "否決：未收復43135",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": "M2_dead_reclaim_watch",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-EOD-20261120-M3_seek_37837_continue",
+      "rule_ids": [
+        "WR-SEGMENT-TRIAL-WARN",
+        "WR-FWD-LOOP"
+      ],
+      "as_of": "20261120",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261120.json",
+      "his_claim_zh": "TWII（60分OHLC＋FMTQIK量）O37646.13/H37646.13/L35738.68/C36033.29 V17070331：L遠低於37837；收亦＜37837。",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "B-a_hold_fail",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        },
+        {
+          "label": "B-b",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261120",
+          "o": 37646.13,
+          "h": 37646.13,
+          "l": 35738.68,
+          "c": 36033.29,
+          "v": 17070331.0,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "成立且過測：L35739 已破 37837（約−2098點）",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": "M3_seek_37837_continue",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-EOD-20261120-W4_reclaim_418_427_band",
+      "rule_ids": [
+        "WR-SEGMENT-TRIAL-WARN",
+        "WR-FWD-LOOP"
+      ],
+      "as_of": "20261120",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261120.json",
+      "his_claim_zh": "日高37646.13遠低於41800；收36033.29更遠。",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "wave4_band_reclaim",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        },
+        {
+          "label": "wave4_mid_42250",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261120",
+          "o": 37646.13,
+          "h": 37646.13,
+          "l": 35738.68,
+          "c": 36033.29,
+          "v": 17070331.0,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "否決：未收回波浪4帶",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": "W4_reclaim_418_427_band",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-EOD-20261120-N1_follow_through_below_band",
+      "rule_ids": [
+        "WR-SEGMENT-TRIAL-WARN",
+        "WR-FWD-LOOP"
+      ],
+      "as_of": "20261120",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261120.json",
+      "his_claim_zh": "O/H/L/C皆在41800下；低點自昨38260再殺至35739，收36033。",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "stay_below_wave4",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        },
+        {
+          "label": "path_to_B_b",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261120",
+          "o": 37646.13,
+          "h": 37646.13,
+          "l": 35738.68,
+          "c": 36033.29,
+          "v": 17070331.0,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "成立：帶下續弱並貫穿37837",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": "N1_follow_through_below_band",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-EOD-20261120-M2_dead_reclaim_watch",
+      "rule_ids": [
+        "WR-SEGMENT-TRIAL-WARN",
+        "WR-FWD-LOOP"
+      ],
+      "as_of": "20261120",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261120.json",
+      "his_claim_zh": "日高遠低於43135；低權對照維持。",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "post_hold_reclaim",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261120",
+          "o": 37646.13,
+          "h": 37646.13,
+          "l": 35738.68,
+          "c": 36033.29,
+          "v": 17070331.0,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "否決：未收復43135",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": "M2_dead_reclaim_watch",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-FWD-MISS-20261120-level_broke_follow_oral_band",
+      "rule_ids": [
+        "WR-OPS-FAKE-BREAK",
+        "WR-LEVEL-ORAL-ONLY",
+        "WR-FWD-LOOP",
+        "WR-SEGMENT-TRIAL-WARN"
+      ],
+      "as_of": "20261120",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261120.json#miss_analysis",
+      "his_claim_zh": "preferred＝測37837 時：若L已＜37837且收仍＜37837，標 M3_triggered_broke_37837＋N1_follow_through，下一窗改口頭已有之35579為續弱對照、37837收回為假跌破觀察；不准把深破當新五波①，也不准發明未口述之新低目標。",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "M3_triggered_broke",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        },
+        {
+          "label": "N1_follow_through",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        },
+        {
+          "label": "false_break_reclaim",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261120",
+          "o": 37646.13,
+          "h": 37646.13,
+          "l": 35738.68,
+          "c": 36033.29,
+          "v": 17070331.0,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "preferred＝測位且 L／收皆破 → 標觸發＋續弱 follow；下一窗改口頭已有之更低帶為對照、原位收回為假跌破觀察；不准發明未口述新低。",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": {
+        "kind": "level_broke_follow_oral_band",
+        "prefer_path_id": "N1_follow_through_below_band",
+        "next_variant": "bk_fwd_v2_bounce_reclaim_priority"
+      },
+      "path_id": "N1_follow_through_below_band",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-FWD-MISS-20261123-target_touch_bounce_elevate_reclaim",
+      "rule_ids": [
+        "WR-FWD-TOUCH-BOUNCE-RECLAIM",
+        "WR-OPS-FAKE-BREAK",
+        "WR-FWD-LOOP",
+        "WR-LEVEL-ORAL-ONLY",
+        "WR-SEGMENT-TRIAL-WARN"
+      ],
+      "as_of": "20261123",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261123.json#miss_analysis",
+      "his_claim_zh": "preferred＝M3延伸35579 時：若L已＜35579（或切入35000～35500）但收明顯反彈且仍＜37837，標 M3_touched_then_bounce＋N1_partial；下一窗升權 FB_reclaim_37837，續弱失敗再回 M3／35000帶；不准把反彈當新五波①，也不准發明未口述新低。",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "M3_touched_then_bounce",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        },
+        {
+          "label": "N1_partial",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        },
+        {
+          "label": "false_break_reclaim",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261123",
+          "o": 35899.48,
+          "h": 37108.2,
+          "l": 35442.41,
+          "c": 36811.89,
+          "v": 15927149.387,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "preferred 續弱測口頭目標時：L 觸／切入帶＋收彈且仍＜收回位 → 標 M3_touched_then_bounce＋N1_partial，下一窗升權 FB_reclaim；不准把反彈當新五波①。",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": {
+        "kind": "target_touch_bounce_elevate_reclaim",
+        "prefer_path_id": "FB_reclaim_37837_watch",
+        "next_variant": "bk_fwd_v2_bounce_reclaim_priority"
+      },
+      "path_id": "FB_reclaim_37837_watch",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-EOD-20261123-M3_extend_toward_35579",
+      "rule_ids": [
+        "WR-FWD-TOUCH-BOUNCE-RECLAIM",
+        "WR-OPS-FAKE-BREAK",
+        "WR-FWD-LOOP",
+        "WR-LEVEL-ORAL-ONLY",
+        "WR-SEGMENT-TRIAL-WARN"
+      ],
+      "as_of": "20261123",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261123.json",
+      "his_claim_zh": "",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "B-b_broke",
+          "role": "37837仍失（H/C皆＜）",
+          "level": 37837.05,
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+          "status": "試標・推論"
+        },
+        {
+          "label": "oral_target_hi",
+          "role": "L35442＜35500 切入目標帶",
+          "level": 35500.0,
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+          "status": "試標・推論"
+        },
+        {
+          "label": "oral_target_lo",
+          "role": "未觸 35000（L仍高約 +442）",
+          "level": 35000.0,
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+          "status": "試標・推論"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261123",
+          "o": 35899.48,
+          "h": 37108.2,
+          "l": 35442.41,
+          "c": 36811.89,
+          "v": 15927149.387,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": "M3_extend_toward_35579",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-EOD-20261123-FB_reclaim_37837_watch",
+      "rule_ids": [
+        "WR-FWD-TOUCH-BOUNCE-RECLAIM",
+        "WR-OPS-FAKE-BREAK",
+        "WR-FWD-LOOP",
+        "WR-LEVEL-ORAL-ONLY",
+        "WR-SEGMENT-TRIAL-WARN"
+      ],
+      "as_of": "20261123",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261123.json",
+      "his_claim_zh": "",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "false_break_reclaim",
+          "role": "未收回週五低／C3底",
+          "level": 37837.05,
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+          "status": "試標・推論"
+        },
+        {
+          "label": "oral_37164_ref",
+          "role": "H37108 近貼 37164 對照（未站穩其上收）",
+          "level": 37164.0,
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+          "status": "試標・推論"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261123",
+          "o": 35899.48,
+          "h": 37108.2,
+          "l": 35442.41,
+          "c": 36811.89,
+          "v": 15927149.387,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": "FB_reclaim_37837_watch",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-EOD-20261123-W4_reclaim_418_427_band",
+      "rule_ids": [
+        "WR-FWD-TOUCH-BOUNCE-RECLAIM",
+        "WR-OPS-FAKE-BREAK",
+        "WR-FWD-LOOP",
+        "WR-LEVEL-ORAL-ONLY",
+        "WR-SEGMENT-TRIAL-WARN"
+      ],
+      "as_of": "20261123",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261123.json",
+      "his_claim_zh": "",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "wave4_band_reclaim",
+          "role": "未收回（H37108≪41800）",
+          "lo": 41800.0,
+          "hi": 42700.0,
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+          "status": "試標・推論"
+        },
+        {
+          "label": "wave4_mid_42250",
+          "role": "未觸",
+          "level": 42250.0,
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+          "status": "試標・推論"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261123",
+          "o": 35899.48,
+          "h": 37108.2,
+          "l": 35442.41,
+          "c": 36811.89,
+          "v": 15927149.387,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": "W4_reclaim_418_427_band",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-EOD-20261123-N1_follow_through_below_band",
+      "rule_ids": [
+        "WR-FWD-TOUCH-BOUNCE-RECLAIM",
+        "WR-OPS-FAKE-BREAK",
+        "WR-FWD-LOOP",
+        "WR-LEVEL-ORAL-ONLY",
+        "WR-SEGMENT-TRIAL-WARN"
+      ],
+      "as_of": "20261123",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261123.json",
+      "his_claim_zh": "",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "stay_below_37837",
+          "role": "全日H/C皆＜37837",
+          "level": 37837.05,
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+          "status": "試標・推論"
+        },
+        {
+          "label": "path_to_35579",
+          "role": "L35442已過35579",
+          "level": 35579.0,
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+          "status": "試標・推論"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261123",
+          "o": 35899.48,
+          "h": 37108.2,
+          "l": 35442.41,
+          "c": 36811.89,
+          "v": 15927149.387,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": "N1_follow_through_below_band",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-EOD-20261123-M2_dead_reclaim_watch",
+      "rule_ids": [
+        "WR-FWD-TOUCH-BOUNCE-RECLAIM",
+        "WR-OPS-FAKE-BREAK",
+        "WR-FWD-LOOP",
+        "WR-LEVEL-ORAL-ONLY",
+        "WR-SEGMENT-TRIAL-WARN"
+      ],
+      "as_of": "20261123",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261123.json",
+      "his_claim_zh": "",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "post_hold_reclaim",
+          "role": "H37108≪43135",
+          "level": 43135.92,
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+          "status": "試標・推論"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261123",
+          "o": 35899.48,
+          "h": 37108.2,
+          "l": 35442.41,
+          "c": 36811.89,
+          "v": 15927149.387,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": "M2_dead_reclaim_watch",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    }
+  ]
+}

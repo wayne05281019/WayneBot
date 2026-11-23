@@ -1,0 +1,578 @@
+{
+  "as_of_taipei": "2026-11-24T01:00:30+0800",
+  "track": "BK-WAVE",
+  "tz": "Asia/Taipei",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "mission": "MISSION_LOCK_20261123.md",
+  "allocation": "AGENT_ALLOCATION_BIAOKE.md#BK-WAVE",
+  "phone_warning_fixed": "試標・推論／非他原文・非買訊・對質未過閘",
+  "purpose_zh": "浪則卡＝把他波浪實作消化成可對質、可掛段號的規則索引。每卡必有原文／圖出處，或明確標試標推論。DC／我估分鍋。非買訊；主買訊仍＝leave_zero＋已過閘紅箭。",
+  "sources": [
+    "wave_fib_morph_curriculum.md",
+    "knowhow.md",
+    "playbook.md",
+    "decade_lab/wave8_cycle_concept_lock.json",
+    "decade_lab/wave8_14_overlap_resolved.json",
+    "decade_lab/wave8_extension_rules_lock.json",
+    "decade_lab/phone_wave_infer_verify_doctrine.json",
+    "sox_14.md / sox_14.json",
+    "mine_wave_rules.py（僅對照・不准冒充他說）"
+  ],
+  "n_cards": 24,
+  "cards": [
+    {
+      "id": "WR-IRON-14-OVERLAP",
+      "title_zh": "鐵律・1 與 4 不重疊",
+      "category": "iron_law",
+      "source_kind": "his_words",
+      "his_words": [
+        "1和4浪不重疊鐵律，一旦重疊，推升或下跌脈動就被破壞，重新轉為區間整理型態（2024-10-04）",
+        "除非反彈能穿刺關鍵帶才能1 4不重疊，否則反彈不過壓→另一組真正主跌段至少走5波（2026-10-21 48066）"
+      ],
+      "provenance": [
+        "wave_fib_morph_curriculum.md §1",
+        "wave8_cycle_concept_lock.json iron_laws_biaoke.law_1",
+        "wave8_14_overlap_resolved.json"
+      ],
+      "ops_check_zh": "同一次級脈動內，第4浪價區是否進入第1浪價區；上升脈動重疊＝推升結束／轉整理；下跌脈動有效重疊＝下跌化解／筑底候選。碰到≠有效穿刺。",
+      "segment_labels": [
+        "overlap_14",
+        "down_impulse_14_overlap_bottom",
+        "up_impulse_14_overlap_end"
+      ],
+      "phone_ok_with_warning": true,
+      "not_buy_signal": true,
+      "vs_mine_zh": "不准自動改標前端傾斜（mine leading_diagonal）；標準 impulse 1-4 失敗≠DC句"
+    },
+    {
+      "id": "WR-IRON-W3-NOT-SHORTEST",
+      "title_zh": "鐵律・③非最短",
+      "category": "iron_law",
+      "source_kind": "his_words",
+      "his_words": [
+        "按照波浪理論鐵律第三浪不會是漲幅最小（2024-05-27）"
+      ],
+      "provenance": [
+        "wave_fib_morph_curriculum.md §1",
+        "wave8_cycle_concept_lock.json iron_laws_biaoke.law_2"
+      ],
+      "ops_check_zh": "同窗同層①③⑤價距：③不得為最短。違規＝該標籤組失效→重訂位階。",
+      "segment_labels": [
+        "w3_length_ok",
+        "w3_shortest_fail"
+      ],
+      "phone_ok_with_warning": true,
+      "not_buy_signal": true,
+      "live_paint_extra_zh": "活畫另硬卡：⑤高必須＞B高（否則教錯）—見 WR-LIVE-W5-GT-B"
+    },
+    {
+      "id": "WR-LIVE-W5-GT-B",
+      "title_zh": "活畫硬卡・⑤高＞B高",
+      "category": "iron_law",
+      "source_kind": "his_words",
+      "his_words": [
+        "課綱／wave8：活畫硬卡⑤高必須＞B高，否則教錯"
+      ],
+      "provenance": [
+        "wave_fib_morph_curriculum.md §1",
+        "wave8_cycle_concept_lock.json law_2.live_paint_card_zh"
+      ],
+      "ops_check_zh": "教具／遠近窗若畫出⑤，其高必須高於已標B高；否則重畫，不准硬貼段號。",
+      "segment_labels": [
+        "w5_gt_b_ok",
+        "w5_gt_b_fail"
+      ],
+      "phone_ok_with_warning": true,
+      "not_buy_signal": true
+    },
+    {
+      "id": "WR-MICRO-4STEPS",
+      "title_zh": "細微波四步",
+      "category": "method",
+      "source_kind": "his_words",
+      "his_words": [
+        "先了解細微波調整型態→正確拆解→完整結構後消去不符→用上升／下降軌道判結構破壞轉折（2026-04-07）"
+      ],
+      "provenance": [
+        "knowhow.md §1",
+        "wave8_cycle_concept_lock.json micro_four_steps"
+      ],
+      "ops_check_zh": "工具＝台指期15分＋60分＋夜盤連續盤，不是只看加權日K。完整結構＝5段或9段（③或⑤擴延）。1-4重疊＝下跌趨勢化解候選。",
+      "segment_labels": [
+        "micro_5",
+        "micro_9",
+        "rail_break"
+      ],
+      "phone_ok_with_warning": true,
+      "not_buy_signal": true
+    },
+    {
+      "id": "WR-OPS-NIGHT-LEADS",
+      "title_zh": "夜盤先於日盤",
+      "category": "ops",
+      "source_kind": "his_words",
+      "his_words": [
+        "轉折幾乎先講夜盤，隔日才講日盤；夜盤沒過下降壓＝還可能擴延；夜盤有效穿刺他設的帶＝化解"
+      ],
+      "provenance": [
+        "knowhow.md §2",
+        "playbook.md §觀察1",
+        "wave8_cycle_concept_lock.json ops_rules night_leads_day"
+      ],
+      "ops_check_zh": "先對 TX 夜盤／連續盤是否碰到他點的壓／撐／軌；再對隔日現貨加權驗證。盤中未收不當官方收。",
+      "segment_labels": [
+        "night_pressure_hold",
+        "night_pressure_pierce",
+        "day_confirm"
+      ],
+      "phone_ok_with_warning": true,
+      "not_buy_signal": true
+    },
+    {
+      "id": "WR-OPS-MULTI-LABEL",
+      "title_zh": "多標籤並存・台積電量價決勝",
+      "category": "ops",
+      "source_kind": "his_words",
+      "his_words": [
+        "同一晚可並存 B-a-2／B-a-4／A-c 擴延；用台積電量價結構選一條（2026-07-16：第一種九成以上）"
+      ],
+      "provenance": [
+        "knowhow.md §3",
+        "wave8_cycle_concept_lock.json ops_rules multi_label"
+      ],
+      "ops_check_zh": "實務並存≤2~3標；決勝看2330低檔爆大量＋收在撐上（他稱不公開細節，只從結果還原）。不符就改口。",
+      "segment_labels": [
+        "multi_label_A",
+        "multi_label_B",
+        "tsmc_vol_tiebreak"
+      ],
+      "phone_ok_with_warning": true,
+      "not_buy_signal": true,
+      "note_zh": "不公開量價結構細節不准發明公式"
+    },
+    {
+      "id": "WR-OPS-EFF-PIERCE",
+      "title_zh": "有效穿刺閘",
+      "category": "ops",
+      "source_kind": "his_words",
+      "his_words": [
+        "區分「碰到／照理重疊」vs「有效穿刺」；無效穿刺→可判假跌破，不立刻當趨勢真結束"
+      ],
+      "provenance": [
+        "wave8_14_overlap_resolved.json effective_puncture_gate",
+        "knowhow.md 細微波"
+      ],
+      "ops_check_zh": "穿刺他點的帶／軌後，需有效站穩（常配兩根收盤確認）。僅影線點到＝未確認。",
+      "segment_labels": [
+        "pierce_touch",
+        "pierce_effective",
+        "pierce_fail"
+      ],
+      "phone_ok_with_warning": true,
+      "not_buy_signal": true
+    },
+    {
+      "id": "WR-OPS-FAKE-BREAK",
+      "title_zh": "假跌破（他定義）",
+      "category": "ops",
+      "source_kind": "his_words",
+      "his_words": [
+        "結構完成／1 4重疊底確認後，戳破低點再站回＝假跌破＝他定義上車點"
+      ],
+      "provenance": [
+        "wave8_14_overlap_resolved.json",
+        "wave8_cycle_concept_lock.json fake_break_zh",
+        "teach phrase 假跌破"
+      ],
+      "ops_check_zh": "先確認下跌脈動完成候選＋他鎖的低；戳破後需快速站回。對質用，不准當我方買訊／不准改黃金買點。",
+      "segment_labels": [
+        "fake_breakdown",
+        "fake_breakdown_fail"
+      ],
+      "phone_ok_with_warning": true,
+      "not_buy_signal": true,
+      "hard_forbid_zh": "他的上車點≠WayneBot主買訊"
+    },
+    {
+      "id": "WR-OPS-TWO-BAR",
+      "title_zh": "兩根收盤確認",
+      "category": "key_k",
+      "source_kind": "his_words",
+      "his_words": [
+        "連2根收盤破／過才確認（他認同裸K用法）"
+      ],
+      "provenance": [
+        "wave_fib_morph_curriculum.md §4",
+        "wave8_cycle_concept_lock.json two_bar_confirm"
+      ],
+      "ops_check_zh": "單根轉折K只標「待第二根確認」；第二根收盤同向破／過才升確認。",
+      "segment_labels": [
+        "bar1_pending",
+        "bar2_confirm"
+      ],
+      "phone_ok_with_warning": true,
+      "not_buy_signal": true
+    },
+    {
+      "id": "WR-OPS-PRESS-TO-SUPPORT",
+      "title_zh": "壓轉撐",
+      "category": "ops",
+      "source_kind": "his_words",
+      "his_words": [
+        "反彈第一道壓要壓轉撐；從來沒壓轉撐＝續空風險"
+      ],
+      "provenance": [
+        "wave8_cycle_concept_lock.json pressure_to_support",
+        "teach phrase 壓轉撐"
+      ],
+      "ops_check_zh": "他點過的第一道壓：收／站穩其上才算壓轉撐；否則標續空風險、預期再測低。",
+      "segment_labels": [
+        "resist_to_support",
+        "resist_hold_fail"
+      ],
+      "phone_ok_with_warning": true,
+      "not_buy_signal": true
+    },
+    {
+      "id": "WR-OPS-TRACK-CONNECT",
+      "title_zh": "軌道連點",
+      "category": "ops",
+      "source_kind": "his_words",
+      "his_words": [
+        "上升軌：同一次級浪2低連浪4低；下降壓：同一次級高點連更低的高；三角：兩者一起"
+      ],
+      "provenance": [
+        "knowhow.md §5"
+      ],
+      "ops_check_zh": "只連他點名或圖上標出的兩日；用官方低／高對圖，不准自補第三點發明軌。",
+      "segment_labels": [
+        "up_rail_2_4",
+        "down_rail_hh"
+      ],
+      "phone_ok_with_warning": true,
+      "not_buy_signal": true
+    },
+    {
+      "id": "WR-FIB-REBOUND",
+      "title_zh": "他公開 Fib 反彈壓",
+      "category": "fib",
+      "source_kind": "his_words",
+      "his_words": [
+        "0.382／0.618／0.75 反彈壓讀法（台指日盤一版；切割位隨重新修訂換版）"
+      ],
+      "provenance": [
+        "wave_fib_morph_curriculum.md §2",
+        "wave8_cycle_concept_lock.json fib_rebound_pressures"
+      ],
+      "ops_check_zh": "近窗才細標；鎖死舊價＝教錯。0.382不過／橫台→偏續主跌；過0.75仍可能打下來。≠DC擴延1618閘。",
+      "segment_labels": [
+        "fib_0382",
+        "fib_0618",
+        "fib_075"
+      ],
+      "phone_ok_with_warning": true,
+      "not_buy_signal": true,
+      "vs_mine_zh": "mine_wave_rules.detect_extension_1618 是我估工具，不准寫成他說"
+    },
+    {
+      "id": "WR-EXT-7-9",
+      "title_zh": "擴延 7／9（他用語）",
+      "category": "extension",
+      "source_kind": "his_words",
+      "his_words": [
+        "一組五浪裡某一浪拉長，細微波可數成7／9段；夜盤沒過下降壓＝還可能擴延"
+      ],
+      "provenance": [
+        "wave8_extension_rules_lock.json",
+        "knowhow.md §C 9段"
+      ],
+      "ops_check_zh": "只在他點過或原文鏈出現7／9／C-7…C-9時標；不准無憑據發明5／9當他原文。備線（如35579→31705）主線未重申≠刪除。",
+      "segment_labels": [
+        "ext_7",
+        "ext_9",
+        "C-7",
+        "C-8",
+        "C-9"
+      ],
+      "phone_ok_with_warning": true,
+      "not_buy_signal": true,
+      "hard_forbid_zh": "無原文／圖憑據不准發明9段當他說"
+    },
+    {
+      "id": "WR-EXT-CRISIS",
+      "title_zh": "跌5／擴延危機與化解",
+      "category": "extension",
+      "source_kind": "his_words",
+      "his_words": [
+        "止跌只有3段且尚未1 4重疊→仍有跌5／擴延危機；有效1 4重疊或穿刺下降壓→化解候選"
+      ],
+      "provenance": [
+        "wave8_extension_rules_lock.json when_he_expects_extension / when_extension_crisis_eases"
+      ],
+      "ops_check_zh": "夜盤／細微波結構數＋他設的壓是否有效穿刺；錯估擴延要留錯案（如2026-02-02、7/16不破40000）。",
+      "segment_labels": [
+        "ext_crisis",
+        "ext_crisis_eased"
+      ],
+      "phone_ok_with_warning": true,
+      "not_buy_signal": true
+    },
+    {
+      "id": "WR-MORPH-CROSS",
+      "title_zh": "形態／量價／關鍵K／碎形交叉",
+      "category": "five_piece",
+      "source_kind": "his_words",
+      "his_words": [
+        "型態要疊在同一個他點過的位才叫交叉（五件：波浪／形態／量價／關鍵K／碎形）",
+        "漲幅愈來愈短＋重疊＝B波或末端盤頭觀察；上升楔形＝風險形態；頭肩讀費半先行"
+      ],
+      "provenance": [
+        "wave_fib_morph_curriculum.md §3–4",
+        "AGENTS.md §12 五件"
+      ],
+      "ops_check_zh": "同窗同位同時出現≥2件才標交叉；加權不發明頭肩；碎形線只對他圖／原文點過的位。",
+      "segment_labels": [
+        "morph_wedge",
+        "morph_shortening",
+        "vol_structure",
+        "key_k",
+        "fractal_line",
+        "cross_hit"
+      ],
+      "phone_ok_with_warning": true,
+      "not_buy_signal": true,
+      "code_gap_zh": "現況尚無五件同窗可執行對質函式；本卡先收證據"
+    },
+    {
+      "id": "WR-VOL-NO-STABILIZE",
+      "title_zh": "無量下跌≠止穩・沒爆量＝沒換籌碼",
+      "category": "vol_price",
+      "source_kind": "his_words",
+      "his_words": [
+        "今天是無量下跌，後續就是持續下跌（不要搞錯量縮止穩）（2026-10-30）",
+        "破前低但預估量沒放＝沒止跌訊號（2026-10-22）"
+      ],
+      "provenance": [
+        "wave_fib_morph_curriculum.md §4"
+      ],
+      "ops_check_zh": "綠跌＋量縮→註無量續跌風險；深跌無爆量→籌碼未換完・止跌未確認。禁止把量縮＝止穩寫進產品。",
+      "segment_labels": [
+        "vol_dry_decline",
+        "no_chip_exchange"
+      ],
+      "phone_ok_with_warning": true,
+      "not_buy_signal": true
+    },
+    {
+      "id": "WR-SOX-14-LEAD",
+      "title_zh": "費半先行／費半1-4",
+      "category": "peripheral",
+      "source_kind": "his_words",
+      "his_words": [
+        "費半1-4重疊＝下跌趨勢化解，台股跟進轉區間（2026-06）"
+      ],
+      "provenance": [
+        "playbook.md §觀察2",
+        "sox_14.md",
+        "sox_14.json"
+      ],
+      "ops_check_zh": "費半日K對表；重疊≠大盤低點保證（sox_14：重疊後加權20根沒再破低僅37.5%@n=16）。",
+      "segment_labels": [
+        "sox_14_overlap",
+        "twii_follow"
+      ],
+      "phone_ok_with_warning": true,
+      "not_buy_signal": true
+    },
+    {
+      "id": "WR-RETRACT-COND",
+      "title_zh": "改口／重訂位階條件",
+      "category": "retract",
+      "source_kind": "his_words",
+      "his_words": [
+        "不符兩則鐵律／穿刺原規劃／被誤導→動態修正重訂位階（實戰靈魂）"
+      ],
+      "provenance": [
+        "wave_fib_morph_curriculum.md §怎麼教5",
+        "wave8_cycle_concept_lock.json soul_zh",
+        "knowhow 錯案鏈"
+      ],
+      "ops_check_zh": "官方柱有效失守他鎖的帶、或鐵律違規、或多標籤被台積電量價否決→改口；沒說過的價不准當他的下一步。",
+      "segment_labels": [
+        "retract",
+        "replan",
+        "invalidate"
+      ],
+      "phone_ok_with_warning": true,
+      "not_buy_signal": true
+    },
+    {
+      "id": "WR-SEGMENT-NEST",
+      "title_zh": "級別同一性／嵌套",
+      "category": "segment",
+      "source_kind": "his_words",
+      "his_words": [
+        "各大浪可再嵌細微波：例大C內C1…C5；C3內再C3-1…C3-5。同窗同層才對數。"
+      ],
+      "provenance": [
+        "wave8_cycle_concept_lock.json cycle_basic.nesting_zh"
+      ],
+      "ops_check_zh": "標段號必寫層級；跨層比長短／重疊＝錯。遠窗先升完⑤，近窗才特寫ABC。",
+      "segment_labels": [
+        "degree_macro",
+        "degree_C",
+        "degree_C3",
+        "degree_micro"
+      ],
+      "phone_ok_with_warning": true,
+      "not_buy_signal": true
+    },
+    {
+      "id": "WR-LEVEL-ORAL-ONLY",
+      "title_zh": "只認他點過的位",
+      "category": "level",
+      "source_kind": "his_words",
+      "his_words": [
+        "沒說過的價不准當他的下一步；問到位階才講還在等哪個位"
+      ],
+      "provenance": [
+        "AGENTS.md §12 想／說",
+        "MISSION_LOCK A2／B4"
+      ],
+      "ops_check_zh": "有憑據可推論，但必須標試標；話筒固定警語。個股不准發明5／9。",
+      "segment_labels": [
+        "oral_level",
+        "trial_level"
+      ],
+      "phone_ok_with_warning": true,
+      "not_buy_signal": true
+    },
+    {
+      "id": "WR-SEGMENT-TRIAL-WARN",
+      "title_zh": "試標段號警語層",
+      "category": "segment",
+      "source_kind": "trial_infer",
+      "his_words": [],
+      "trial_note_zh": "後台／forward 可標暫定段號以便對質；上話筒必須帶固定警語。非他原文。",
+      "provenance": [
+        "MISSION_LOCK_20261123.md B1／B4",
+        "phone_wave_infer_verify_doctrine.json"
+      ],
+      "ops_check_zh": "每路 segments_provisional 必有 label；試標加 status=試標・推論＋phone_warning。對質未過閘不准當定論。",
+      "segment_labels": [
+        "segments_provisional"
+      ],
+      "phone_ok_with_warning": true,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "not_buy_signal": true
+    },
+    {
+      "id": "WR-FWD-LOOP",
+      "title_zh": "Forward 對質迴圈",
+      "category": "verify",
+      "source_kind": "trial_infer",
+      "his_words": [],
+      "trial_note_zh": "先自推（段號必標）→對他→對官方→收盤再推隔日；不懂必拆清寫回 wave8_*。",
+      "provenance": [
+        "phone_wave_infer_verify_doctrine.json",
+        "decade_lab_wave_infer_verify_daily.py"
+      ],
+      "ops_check_zh": "掛本手冊浪則卡 id＋segment_evidence 樣本；錯案寫 miss_analysis／rule_patch。phone_sync 正確率閘前 blocked。",
+      "segment_labels": [
+        "forward_path",
+        "eod_verify"
+      ],
+      "phone_ok_with_warning": true,
+      "not_buy_signal": true
+    },
+    {
+      "id": "WR-FWD-TOUCH-BOUNCE-RECLAIM",
+      "title_zh": "目標觸及後收彈→升權假跌破收回",
+      "category": "verify",
+      "source_kind": "trial_infer",
+      "his_words": [],
+      "trial_note_zh": "來自 eod miss_analysis（20261123）：preferred＝延伸測口頭目標帶時，若 L 已觸／切入目標帶但收明顯反彈且仍＜假跌破收回位，標 M3_touched_then_bounce＋N1_partial，下一窗升權 FB reclaim；續弱失敗才回目標帶。不准當新五波①、不准發明未口述新低、不是買訊。",
+      "provenance": [
+        "wave_eod_verify_20261123.json#miss_analysis",
+        "wave_forward_infer_20261124.json",
+        "observe_sync_fwd.py"
+      ],
+      "ops_check_zh": "條件：preferred 續弱／延伸測口頭目標；官方已收柱 L＜目標上沿（或切入帶）且 C 明顯反彈、C 仍＜假跌破收回位。動作：升權 false_break_reclaim；降權『當日必續弱到底』。硬禁：發明①／未口述新低／當買訊／改黃金買點。",
+      "segment_labels": [
+        "M3_touched_then_bounce",
+        "N1_partial",
+        "false_break_reclaim"
+      ],
+      "phone_ok_with_warning": true,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "not_buy_signal": true
+    },
+    {
+      "id": "WR-FWD-PENDING-NOT-VETO",
+      "title_zh": "未觸及≠路徑否決（pending 升權）",
+      "category": "verify",
+      "source_kind": "trial_infer",
+      "his_words": [],
+      "trial_note_zh": "來自 eod miss_analysis（20261117～19）：preferred＝升權測位時，若仍失上一撐且 L 落在『帶下～目標之上』，標 N1_follow_through＋M*_pending，不准把『未測到目標』當該路徑否決，也不准標新①。",
+      "provenance": [
+        "wave_eod_verify_20261117.json#miss_analysis",
+        "wave_eod_verify_20261119.json#miss_analysis",
+        "observe_sync_fwd.py"
+      ],
+      "ops_check_zh": "條件：preferred 測某口頭位；當日 L 未觸該位但結構仍失上一守。動作：pending 升權、不否決；L 每靠近一檔可升權 pending，仍非觸發。硬禁：未觸就否決／發明①。",
+      "segment_labels": [
+        "M3_pending",
+        "N1_follow_through",
+        "pending_not_veto"
+      ],
+      "phone_ok_with_warning": true,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "not_buy_signal": true
+    }
+  ],
+  "gap_vs_live_wave_code": {
+    "zh": "與現況 wave 碼落差（BK-WAVE 收斂目標）",
+    "items": [
+      {
+        "area": "iron_laws",
+        "live": "wave8_* JSON 鎖＋teach phrase 標籤；無純函式強制①④／③非最短",
+        "cards": "WR-IRON-*",
+        "next": "對質閘過後才考慮可執行 check；仍≠買訊"
+      },
+      {
+        "area": "mine_vs_biaoke",
+        "live": "mine_wave_rules＝擴延1618／前端傾斜（DC→我估）",
+        "cards": "WR-FIB-REBOUND / WR-EXT-* 分鍋註記",
+        "next": "永遠分標；不准DC句寫成他說"
+      },
+      {
+        "area": "forward_verify",
+        "live": "segments_provisional 必標；未掛浪則卡 id／證據桶",
+        "cards": "WR-FWD-LOOP + observe_wave_rules.attach_*",
+        "next": "BK-FWD miss→手冊鍵已掛；BK-VERIFY 吃證據桶；phone_sync 仍 blocked"
+      },
+      {
+        "area": "five_piece_cross",
+        "live": "課綱有、教具語有；無同窗交叉對質函式",
+        "cards": "WR-MORPH-CROSS",
+        "next": "BK-CHART 圖註解齊了再可執行化"
+      },
+      {
+        "area": "phone",
+        "live": "phone_sync=blocked；段號上話筒需警語（MISSION B1）",
+        "cards": "WR-SEGMENT-TRIAL-WARN",
+        "next": "BK-PHONE 掛手冊摘要＋警語試標"
+      },
+      {
+        "area": "sync_fwd_writeback",
+        "live": "eod miss_analysis 有 rule_patch，未自動回寫手冊鍵",
+        "cards": "WR-FWD-TOUCH-BOUNCE-RECLAIM / WR-FWD-PENDING-NOT-VETO",
+        "next": "observe_sync_fwd 落 fwd_miss_writeback_*＋證據桶；§13 下一版鍵收集中"
+      }
+    ]
+  },
+  "not_buy_signal": true,
+  "leave_narrative_forbidden": true,
+  "dc_as_biaoke_forbidden": true
+}

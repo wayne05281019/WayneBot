@@ -1,0 +1,92 @@
+# 段號證據桶（BK-WAVE）
+
+- as_of：`2026-11-24T01:00:30+0800`（Asia/Taipei）
+- 樣本：**73**（有官方 TWII 柱 **69**）
+- 他標／原文鏈：**29**；試標推論：**44**
+- 話筒警語（固定）：`試標・推論／非他原文・非買訊・對質未過閘`
+- 非買訊；不准發明無憑據 5／9 當他原文。
+
+## 落差（摘）
+
+- 現況 forward／eod 已強制 segments_provisional，但未掛浪則卡 id
+- mine_wave_rules＝DC／我估閘，不准冒充他鐵律
+- wave8_* 概念鎖已有，尚未編成可餵話筒／自測的浪則卡索引
+- 碎形交叉／五件同窗尚未有可執行對質函式
+- 靜默對質 n≥20 且贏現況才准換；現況 phone_sync=blocked
+- SYNC-FWD：miss_analysis 可回寫下一版鍵／敘述修正＋證據桶（phone_sync=blocked）
+
+## 樣本索引（id → rules）
+
+- `SE-20250424-14-overlap-near` @ 20250424 bar=Y pot=biaoke_oral ← WR-IRON-14-OVERLAP,WR-OPS-NIGHT-LEADS
+- `SE-20250509-pierce-20885` @ 20250509 bar=Y pot=biaoke_oral ← WR-OPS-EFF-PIERCE,WR-OPS-TWO-BAR
+- `SE-20250611-yellow-pressure` @ 20250611 bar=Y pot=biaoke_oral ← WR-OPS-NIGHT-LEADS,WR-EXT-CRISIS
+- `SE-20250623-48219-high` @ 20250623 bar=Y pot=biaoke_oral ← WR-LEVEL-ORAL-ONLY,WR-OPS-TRACK-CONNECT
+- `SE-20250626-low-44454` @ 20250626 bar=Y pot=biaoke_oral ← WR-RETRACT-COND,WR-OPS-NIGHT-LEADS
+- `SE-20250729-A-wave-low` @ 20250729 bar=Y pot=biaoke_oral ← WR-OPS-NIGHT-LEADS,WR-VOL-NO-STABILIZE,WR-MICRO-4STEPS
+- `SE-20250902-45415-44210` @ 20250902 bar=Y pot=biaoke_oral ← WR-LEVEL-ORAL-ONLY,WR-EXT-7-9,WR-MICRO-4STEPS
+- `SE-20260324-32435` @ 20260324 bar=Y pot=biaoke_oral ← WR-LEVEL-ORAL-ONLY
+- `SE-20260407-Bc3-34423` @ 20260407 bar=Y pot=biaoke_oral ← WR-SEGMENT-NEST,WR-OPS-MULTI-LABEL
+- `SE-20260520-night-rail-break` @ 20260520 bar=Y pot=biaoke_oral ← WR-OPS-NIGHT-LEADS,WR-OPS-EFF-PIERCE
+- `SE-20261105-14-puncture-fake` @ 20261105 bar=Y pot=biaoke_oral ← WR-IRON-14-OVERLAP,WR-OPS-FAKE-BREAK,WR-OPS-EFF-PIERCE
+- `SE-20261107-friday-low-37837` @ 20261107 bar=N pot=biaoke_oral ← WR-LEVEL-ORAL-ONLY,WR-OPS-FAKE-BREAK
+- `SE-20261109-C35-14-confirm` @ 20261109 bar=N pot=biaoke_oral ← WR-IRON-14-OVERLAP,WR-RETRACT-COND,WR-OPS-FAKE-BREAK
+- `SE-20261120-broke-37837` @ 20261120 bar=N pot=trial_infer ← WR-RETRACT-COND,WR-SEGMENT-TRIAL-WARN,WR-LEVEL-ORAL-ONLY
+- `SE-SOX14-20250116-168065539` @ 20250116 bar=Y pot=biaoke_oral ← WR-IRON-14-OVERLAP,WR-SOX-14-LEAD
+- `SE-SOX14-20250307-169388108:a1` @ 20250307 bar=Y pot=biaoke_oral ← WR-IRON-14-OVERLAP,WR-SOX-14-LEAD
+- `SE-SOX14-20250327-170017535` @ 20250327 bar=Y pot=biaoke_oral ← WR-IRON-14-OVERLAP,WR-SOX-14-LEAD
+- `SE-SOX14-20250401-170190036` @ 20250401 bar=Y pot=biaoke_oral ← WR-IRON-14-OVERLAP,WR-SOX-14-LEAD
+- `SE-SOX14-20250503-171103274` @ 20250503 bar=N pot=biaoke_oral ← WR-IRON-14-OVERLAP,WR-SOX-14-LEAD
+- `SE-SOX14-20250509-171276483` @ 20250509 bar=Y pot=biaoke_oral ← WR-IRON-14-OVERLAP,WR-SOX-14-LEAD
+- `SE-SOX14-20250616-171921365` @ 20250616 bar=Y pot=biaoke_oral ← WR-IRON-14-OVERLAP,WR-SOX-14-LEAD
+- `SE-SOX14-20250708-172314509` @ 20250708 bar=Y pot=biaoke_oral ← WR-IRON-14-OVERLAP,WR-SOX-14-LEAD
+- `SE-SOX14-20251013-174265901` @ 20251013 bar=Y pot=biaoke_oral ← WR-IRON-14-OVERLAP,WR-SOX-14-LEAD
+- `SE-SOX14-20251014-174286038` @ 20251014 bar=Y pot=biaoke_oral ← WR-IRON-14-OVERLAP,WR-SOX-14-LEAD
+- `SE-SOX14-20251120-175038265` @ 20251120 bar=Y pot=biaoke_oral ← WR-IRON-14-OVERLAP,WR-SOX-14-LEAD
+- `SE-SOX14-20251215-175524137` @ 20251215 bar=Y pot=biaoke_oral ← WR-IRON-14-OVERLAP,WR-SOX-14-LEAD
+- `SE-SOX14-20260206-176759285` @ 20260206 bar=Y pot=biaoke_oral ← WR-IRON-14-OVERLAP,WR-SOX-14-LEAD
+- `SE-SOX14-20260304-177185078:a4` @ 20260304 bar=Y pot=biaoke_oral ← WR-IRON-14-OVERLAP,WR-SOX-14-LEAD
+- `SE-SOX14-20260615-179869615` @ 20260615 bar=Y pot=biaoke_oral ← WR-IRON-14-OVERLAP,WR-SOX-14-LEAD
+- `SE-SOX14-20260625-180128537` @ 20260625 bar=Y pot=biaoke_oral ← WR-IRON-14-OVERLAP,WR-SOX-14-LEAD
+- `SE-EOD-20261109-P1_must_retest_friday` @ 20261109 bar=Y pot=trial_infer ← WR-SEGMENT-TRIAL-WARN,WR-FWD-LOOP
+- `SE-EOD-20261109-P2_41760_still_cap` @ 20261109 bar=Y pot=trial_infer ← WR-SEGMENT-TRIAL-WARN,WR-FWD-LOOP
+- `SE-EOD-20261109-P3_fake_break_board_zone` @ 20261109 bar=Y pot=trial_infer ← WR-SEGMENT-TRIAL-WARN,WR-FWD-LOOP
+- `SE-EOD-20261110-N1_still_retest_friday` @ 20261110 bar=Y pot=trial_infer ← WR-SEGMENT-TRIAL-WARN,WR-FWD-LOOP
+- `SE-EOD-20261110-N2_hold_above_first_cap` @ 20261110 bar=Y pot=trial_infer ← WR-SEGMENT-TRIAL-WARN,WR-FWD-LOOP
+- `SE-EOD-20261110-N3_fake_break_if_retest` @ 20261110 bar=Y pot=trial_infer ← WR-SEGMENT-TRIAL-WARN,WR-FWD-LOOP
+- `SE-EOD-20261111-M1_retest_41760_as_support` @ 20261111 bar=Y pot=trial_infer ← WR-SEGMENT-TRIAL-WARN,WR-FWD-LOOP
+- `SE-EOD-20261111-M2_challenge_43135_cap` @ 20261111 bar=Y pot=trial_infer ← WR-SEGMENT-TRIAL-WARN,WR-FWD-LOOP
+- `SE-EOD-20261111-M3_lose_41760_then_friday` @ 20261111 bar=Y pot=trial_infer ← WR-SEGMENT-TRIAL-WARN,WR-FWD-LOOP
+- `SE-EOD-20261112-M1_retest_43135_as_support` @ 20261112 bar=Y pot=trial_infer ← WR-SEGMENT-TRIAL-WARN,WR-FWD-LOOP
+- `SE-EOD-20261112-M2_hold_or_extend_above_43135` @ 20261112 bar=Y pot=trial_infer ← WR-SEGMENT-TRIAL-WARN,WR-FWD-LOOP
+- `SE-EOD-20261112-M3_lose_43135_then_41760_friday` @ 20261112 bar=Y pot=trial_infer ← WR-SEGMENT-TRIAL-WARN,WR-FWD-LOOP
+- `SE-EOD-20261113-M1_retest_41760_after_43135_fail` @ 20261113 bar=Y pot=trial_infer ← WR-SEGMENT-TRIAL-WARN,WR-FWD-LOOP
+- `SE-EOD-20261113-N1_continue_below_43000_then_band` @ 20261113 bar=Y pot=trial_infer ← WR-SEGMENT-TRIAL-WARN,WR-FWD-LOOP
+- `SE-EOD-20261113-M3_lose_41760_then_friday` @ 20261113 bar=Y pot=trial_infer ← WR-SEGMENT-TRIAL-WARN,WR-FWD-LOOP
+- `SE-EOD-20261113-M2_reclaim_43135` @ 20261113 bar=Y pot=trial_infer ← WR-SEGMENT-TRIAL-WARN,WR-FWD-LOOP
+- `SE-EOD-20261116-M2_retest_43135_as_support` @ 20261116 bar=Y pot=trial_infer ← WR-SEGMENT-TRIAL-WARN,WR-FWD-LOOP
+- `SE-EOD-20261116-M1_retest_41760_after_43135_fail` @ 20261116 bar=Y pot=trial_infer ← WR-SEGMENT-TRIAL-WARN,WR-FWD-LOOP
+- `SE-EOD-20261116-N1_continue_below_43000_then_band` @ 20261116 bar=Y pot=trial_infer ← WR-SEGMENT-TRIAL-WARN,WR-FWD-LOOP
+- `SE-EOD-20261116-M3_lose_41760_then_friday` @ 20261116 bar=Y pot=trial_infer ← WR-SEGMENT-TRIAL-WARN,WR-FWD-LOOP
+- `SE-EOD-20261117-M3_seek_37837_after_41760_fail` @ 20261117 bar=Y pot=trial_infer ← WR-SEGMENT-TRIAL-WARN,WR-FWD-LOOP
+- `SE-EOD-20261117-W4_reclaim_418_427_band` @ 20261117 bar=Y pot=trial_infer ← WR-SEGMENT-TRIAL-WARN,WR-FWD-LOOP
+- `SE-EOD-20261117-N1_follow_through_below_band` @ 20261117 bar=Y pot=trial_infer ← WR-SEGMENT-TRIAL-WARN,WR-FWD-LOOP
+- `SE-EOD-20261117-M2_dead_reclaim_watch` @ 20261117 bar=Y pot=trial_infer ← WR-SEGMENT-TRIAL-WARN,WR-FWD-LOOP
+- `SE-EOD-20261118-M3_seek_37837_continue` @ 20261118 bar=Y pot=trial_infer ← WR-SEGMENT-TRIAL-WARN,WR-FWD-LOOP
+- `SE-EOD-20261118-W4_reclaim_418_427_band` @ 20261118 bar=Y pot=trial_infer ← WR-SEGMENT-TRIAL-WARN,WR-FWD-LOOP
+- `SE-EOD-20261118-N1_follow_through_below_band` @ 20261118 bar=Y pot=trial_infer ← WR-SEGMENT-TRIAL-WARN,WR-FWD-LOOP
+- `SE-EOD-20261118-M2_dead_reclaim_watch` @ 20261118 bar=Y pot=trial_infer ← WR-SEGMENT-TRIAL-WARN,WR-FWD-LOOP
+- `SE-EOD-20261119-M3_seek_37837_continue` @ 20261119 bar=Y pot=trial_infer ← WR-SEGMENT-TRIAL-WARN,WR-FWD-LOOP
+- `SE-EOD-20261119-W4_reclaim_418_427_band` @ 20261119 bar=Y pot=trial_infer ← WR-SEGMENT-TRIAL-WARN,WR-FWD-LOOP
+- `SE-EOD-20261119-N1_follow_through_below_band` @ 20261119 bar=Y pot=trial_infer ← WR-SEGMENT-TRIAL-WARN,WR-FWD-LOOP
+- `SE-EOD-20261119-M2_dead_reclaim_watch` @ 20261119 bar=Y pot=trial_infer ← WR-SEGMENT-TRIAL-WARN,WR-FWD-LOOP
+- `SE-EOD-20261120-M3_seek_37837_continue` @ 20261120 bar=Y pot=trial_infer ← WR-SEGMENT-TRIAL-WARN,WR-FWD-LOOP
+- `SE-EOD-20261120-W4_reclaim_418_427_band` @ 20261120 bar=Y pot=trial_infer ← WR-SEGMENT-TRIAL-WARN,WR-FWD-LOOP
+- `SE-EOD-20261120-N1_follow_through_below_band` @ 20261120 bar=Y pot=trial_infer ← WR-SEGMENT-TRIAL-WARN,WR-FWD-LOOP
+- `SE-EOD-20261120-M2_dead_reclaim_watch` @ 20261120 bar=Y pot=trial_infer ← WR-SEGMENT-TRIAL-WARN,WR-FWD-LOOP
+- `SE-FWD-MISS-20261120-level_broke_follow_oral_band` @ 20261120 bar=Y pot=trial_infer ← WR-OPS-FAKE-BREAK,WR-LEVEL-ORAL-ONLY,WR-FWD-LOOP,WR-SEGMENT-TRIAL-WARN
+- `SE-FWD-MISS-20261123-target_touch_bounce_elevate_reclaim` @ 20261123 bar=Y pot=trial_infer ← WR-FWD-TOUCH-BOUNCE-RECLAIM,WR-OPS-FAKE-BREAK,WR-FWD-LOOP,WR-LEVEL-ORAL-ONLY,WR-SEGMENT-TRIAL-WARN
+- `SE-EOD-20261123-M3_extend_toward_35579` @ 20261123 bar=Y pot=trial_infer ← WR-FWD-TOUCH-BOUNCE-RECLAIM,WR-OPS-FAKE-BREAK,WR-FWD-LOOP,WR-LEVEL-ORAL-ONLY,WR-SEGMENT-TRIAL-WARN
+- `SE-EOD-20261123-FB_reclaim_37837_watch` @ 20261123 bar=Y pot=trial_infer ← WR-FWD-TOUCH-BOUNCE-RECLAIM,WR-OPS-FAKE-BREAK,WR-FWD-LOOP,WR-LEVEL-ORAL-ONLY,WR-SEGMENT-TRIAL-WARN
+- `SE-EOD-20261123-W4_reclaim_418_427_band` @ 20261123 bar=Y pot=trial_infer ← WR-FWD-TOUCH-BOUNCE-RECLAIM,WR-OPS-FAKE-BREAK,WR-FWD-LOOP,WR-LEVEL-ORAL-ONLY,WR-SEGMENT-TRIAL-WARN
+- `SE-EOD-20261123-N1_follow_through_below_band` @ 20261123 bar=Y pot=trial_infer ← WR-FWD-TOUCH-BOUNCE-RECLAIM,WR-OPS-FAKE-BREAK,WR-FWD-LOOP,WR-LEVEL-ORAL-ONLY,WR-SEGMENT-TRIAL-WARN
+- `SE-EOD-20261123-M2_dead_reclaim_watch` @ 20261123 bar=Y pot=trial_infer ← WR-FWD-TOUCH-BOUNCE-RECLAIM,WR-OPS-FAKE-BREAK,WR-FWD-LOOP,WR-LEVEL-ORAL-ONLY,WR-SEGMENT-TRIAL-WARN
