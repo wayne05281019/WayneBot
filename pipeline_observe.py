@@ -626,7 +626,8 @@ def _sid_label(sid: str, name: str = "", *, days: Any = None) -> str:
     return lab
 
 
-def _join_sid_labels(items: Sequence[Dict[str, Any]], *, limit: int = 12) -> str:
+def _label_bits(items: Sequence[Dict[str, Any]], *, limit: int = 12) -> Tuple[List[str], int]:
+    """回 (可見標籤列, 未列出筆數)。整檔為單位，不准切開代號／股名／括註。"""
     labels: List[str] = []
     for it in list(items)[: max(0, int(limit))]:
         lab = _sid_label(
@@ -650,11 +651,42 @@ def _join_sid_labels(items: Sequence[Dict[str, Any]], *, limit: int = 12) -> str
             else:
                 lab = f"{lab}{paren}"
         labels.append(lab)
+    more = max(0, len(items) - len(labels))
+    return labels, more
+
+
+def _join_sid_labels(items: Sequence[Dict[str, Any]], *, limit: int = 12) -> str:
+    labels, more = _label_bits(items, limit=limit)
     if not labels:
         return "今日無"
-    more = len(items) - len(labels)
     tail = f"…另{more}" if more > 0 else ""
     return "、".join(labels) + tail
+
+
+def _wrap_sid_labels(items: Sequence[Dict[str, Any]], *, limit: int = 12, width: int = 36) -> str:
+    """氣泡折行：以整檔標籤為單位（同復原路），不准 wrap_cjk 切開括註數字。"""
+    labels, more = _label_bits(items, limit=limit)
+    if not labels:
+        return "今日無"
+    width = max(8, int(width))
+
+    def _dw(s: str) -> int:
+        return sum(2 if ord(ch) > 127 else 1 for ch in s)
+
+    lines: List[str] = []
+    cur = ""
+    for lab in labels:
+        piece = f"{cur}、{lab}" if cur else lab
+        if cur and _dw(piece) > width:
+            lines.append(cur)
+            cur = lab
+        else:
+            cur = piece
+    if cur:
+        lines.append(cur)
+    if more > 0:
+        lines.append(f"…另{more}")
+    return "\n".join(lines)
 
 
 def _live_judge_pack(
@@ -833,34 +865,54 @@ def build_combo_screen(
     # 剛離零：優先海選 leave_zero 桶（過閘才可進場臉）；雷達只觀察
     lz = _items_from_bucket(screen_res, "leave_zero", limit=24)
     lz_as = desk if lz else ""
-    lz_source = "screen"
+    lz_source = "screen" if lz else ""
     if not lz and path:
         lz_as, lz = _live_judge_pack(path, "leave_zero", desk, limit=24)
         lz_source = "radar" if lz else ""
+    lz_day = _ymd(lz_as) or ""
+    lz_stale = bool(desk and lz_day and lz_day < desk and lz_source == "radar")
+    lz_buy = bool(lz) and lz_source == "screen" and not lz_stale
+    if lz_stale:
+        lz_face = "名單舊日・觀察"
+    elif lz_buy:
+        lz_face = "可進場"
+    elif lz_source == "radar":
+        lz_face = "雷達／觀察"
+    else:
+        lz_face = "雷達／觀察"
     lists["leave_zero"] = {
         "as_of": lz_as or desk,
         "items": lz,
-        "buy_ok": bool(lz) and lz_source == "screen",
-        "face": "可進場" if (lz and lz_source == "screen") else "雷達／觀察",
+        "buy_ok": lz_buy,
+        "face": lz_face,
         "source": lz_source or "none",
+        "stale": lz_stale,
     }
 
-    # 紅箭：live_judge → 退海選桶；有檔＝確認紅箭可進場臉
-    ma_as, ma = (
-        _live_judge_pack(path, "ma60_lower", desk, limit=24) if path else ("", [])
-    )
-    ma_source = "radar" if ma else ""
-    if not ma and path and desk:
-        ma = _items_from_bucket(screen_res, "ma60_lower", limit=24)
-        if ma:
-            ma_as = desk
-            ma_source = "screen"
+    # 紅箭：海選桶優先（與剛離零同源）；live_judge 只補缺。
+    # as_of≪desk 的舊日 live_judge 不准標可進場。
+    ma = _items_from_bucket(screen_res, "ma60_lower", limit=24) if path and desk else []
+    ma_as = desk if ma else ""
+    ma_source = "screen" if ma else ""
+    if not ma and path:
+        ma_as, ma = _live_judge_pack(path, "ma60_lower", desk, limit=24)
+        ma_source = "radar" if ma else ""
+    ma_day = _ymd(ma_as) or ""
+    ma_stale = bool(desk and ma_day and ma_day < desk)
+    ma_buy = bool(ma) and not ma_stale
+    if ma_stale:
+        ma_face = "名單舊日・觀察"
+    elif ma_buy:
+        ma_face = "可進場"
+    else:
+        ma_face = "觀察非買"
     lists["ma60_lower"] = {
         "as_of": ma_as or desk,
         "items": ma,
-        "buy_ok": bool(ma),
-        "face": "可進場" if ma else "觀察非買",
+        "buy_ok": ma_buy,
+        "face": ma_face,
         "source": ma_source or "none",
+        "stale": ma_stale,
     }
 
     # 低估★（估值≠買訊）
@@ -952,7 +1004,7 @@ def format_combo_screen_html(
     真可買≠下方勝率節點原名單（可集合不同）。
     """
     from html import escape
-    from tg_layout import join_dashed, title_line, wrap_cjk_lines
+    from tg_layout import join_dashed, title_line
 
     # 復原路漏斗兩欄（若有）
     recovery = payload.get("recovery")
@@ -1019,8 +1071,8 @@ def format_combo_screen_html(
         as_raw = _ymd(pack.get("as_of") or "")
         if as_raw:
             line += f"｜{_zh(as_raw)}"
-        body = _join_sid_labels(items, limit=limit)
-        wrapped = "\n".join(wrap_cjk_lines(body, 36)) or body
+        # 整檔折行，不准切開代號／括註數字
+        wrapped = _wrap_sid_labels(items, limit=limit, width=36)
         chunk = line + "\n" + escape(wrapped)
         if note:
             chunk += "\n" + escape(note)
@@ -1042,32 +1094,52 @@ def format_combo_screen_html(
     )
     lz_pack = lists.get("leave_zero") or {}
     lz_src = str(lz_pack.get("source") or "")
+    lz_buy = bool(lz_pack.get("buy_ok"))
     lz_note = (
         "海選 leave_zero 桶過閘"
-        if lz_src == "screen"
+        if lz_src == "screen" and lz_buy
         else (
-            "雷達≠海選離零；只觀察"
-            if lz_src == "radar"
-            else "今日無海選離零／雷達"
+            "名單舊日≠基準；只觀察"
+            if lz_pack.get("stale")
+            else (
+                "雷達≠海選離零；只觀察"
+                if lz_src == "radar"
+                else "今日無海選離零／雷達"
+            )
         )
     )
     _sec(wr_title, "winrate", note=wr_note)
     _sec(
-        "進場｜剛離零" if lz_src == "screen" else "觀察｜剛離零雷達",
+        "進場｜剛離零" if lz_buy else "觀察｜剛離零雷達",
         "leave_zero",
         note=lz_note,
     )
-    _sec("進場｜紅箭確認", "ma60_lower", note="未確認紅箭不算買訊")
+    ma_pack = lists.get("ma60_lower") or {}
+    ma_buy = bool(ma_pack.get("buy_ok"))
+    ma_note = (
+        "海選／確認紅箭過閘"
+        if ma_buy
+        else (
+            "名單舊日≠基準；只觀察"
+            if ma_pack.get("stale")
+            else "未確認紅箭不算買訊"
+        )
+    )
+    _sec(
+        "進場｜紅箭確認" if ma_buy else "觀察｜紅箭確認",
+        "ma60_lower",
+        note=ma_note,
+    )
 
     # 低估：只留 n＋前幾檔，不堆長 disclaimer
     uv = lists.get("undervalue_star") or {}
     uv_items = list(uv.get("items") or [])
-    uv_body = _join_sid_labels(uv_items, limit=6)
+    uv_body = _wrap_sid_labels(uv_items, limit=6, width=36)
     blocks.append(
         f"<b>觀察｜低估★</b>〔觀察非買〕 n={len(uv_items)}"
         + (f"｜{_zh(_ymd(uv.get('as_of') or ''))}" if _ymd(uv.get("as_of") or "") else "")
         + "\n"
-        + escape("\n".join(wrap_cjk_lines(uv_body, 36)) or uv_body)
+        + escape(uv_body)
     )
 
     # 連買三桶縮一行：復原路當下決策不靠籌碼明細；舊日警告保留
