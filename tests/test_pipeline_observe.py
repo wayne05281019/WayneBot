@@ -119,10 +119,12 @@ def test_pipeline_observe_builds_layers(tmp_path):
     # 無 lists 時仍可渲染（今日無），不准炸
     combo_bare = format_combo_screen_html(payload)
     assert "綜合篩選" in combo_bare
-    assert "機構式節點" in combo_bare
+    assert "機構式節點" not in combo_bare
     assert "非買訊" in combo_bare
     assert "總分" in combo_bare
-    assert "進場｜勝率買點" in combo_bare
+    # 無 buy_ok → 節點｜勝率（不准冒充進場臉與真可買互打）
+    assert "節點｜勝率買點" in combo_bare
+    assert "見連買鈕" in combo_bare
     # 有名單：勝率買點必須出現真實代號，不准只剩對質統計
     # tmp DB 無產業鏈標 → AI-only 會清空；測組頁路徑時放行 roster
     with patch(
@@ -142,8 +144,9 @@ def test_pipeline_observe_builds_layers(tmp_path):
     assert "勝率軌≠海選離零" in str(wr.get("face") or "")
     combo = format_combo_screen_html(combo_payload)
     assert "2317" in combo and "鴻海" in combo
-    assert "進場｜勝率買點" in combo
+    assert "節點｜勝率買點" in combo
     assert "勝率軌≠海選離零" in combo
+    assert "真可買另過估值硬閘" in combo
     # 勝率有檔、海選桶空＝產品層差異說明，不准當失真 issues
     gate = next((L for L in payload["layers"] if getattr(L, "id", None) == "gate"), None)
     assert gate is not None
@@ -318,8 +321,111 @@ def test_combo_streak_stale_chip_face():
     }
     html = format_combo_screen_html(payload)
     assert "籌碼舊日≠基準" in html
-    assert "籌碼舊日・觀察" in html
-    assert "2330" in html
+    assert "見連買鈕" in html
+    # 連買縮一行：不堆個股明細／YoY，只留桶計數＋舊日警告
+    assert "外資1" in html or "外資 1" in html or "外資1" in html.replace(" ", "")
+    assert "連買外資最長" not in html
+
+def test_combo_face_issues_before_nodes_and_no_dup_disclaimer():
+    """對質異常置前；砍機構式流水帳／重複 disclaimer；勝率異集合標節點｜。"""
+    from pipeline_observe import format_combo_screen_html
+
+    class _Iss:
+        def __init__(self, node, detail):
+            self.node, self.detail = node, detail
+
+    recovery = {
+        "as_of": "20261120",
+        "regime": "bear",
+        "twii": {"date": "20261120", "c": 36033.0},
+        "buy_ok": [
+            {"sid": "6672", "name": "騰輝電子-KY", "entry": ["ma60_lower"], "labels": ["KY"]}
+        ],
+        "observe": [
+            {
+                "sid": "3002",
+                "name": "歐格",
+                "entry": ["leave_zero"],
+                "labels": ["首日"],
+                "reasons": ["本益缺"],
+                "signals": ["leave_zero"],
+            }
+        ],
+        "punish_n": 0,
+    }
+    html = format_combo_screen_html(
+        {
+            "desk_as_of": "20261120",
+            "fuse_as_of": "20261120",
+            "today": "20261123",
+            "summary": {"ok_n": 6, "layer_n": 6, "bad_n": 0, "issue_n": 1},
+            "recovery": recovery,
+            "lists": {
+                "winrate": {
+                    "as_of": "20261120",
+                    "items": [{"sid": "3002", "name": "歐格"}, {"sid": "3045", "name": "台灣精材"}],
+                    "buy_ok": False,
+                    "face": "勝率軌≠海選離零",
+                    "vs_screen_lz": "diff",
+                },
+                "leave_zero": {
+                    "as_of": "20261120",
+                    "items": [{"sid": "4728", "name": "雙美"}],
+                    "buy_ok": True,
+                    "face": "可進場",
+                    "source": "screen",
+                },
+                "ma60_lower": {
+                    "as_of": "20261120",
+                    "items": [{"sid": "6672", "name": "騰輝電子-KY"}],
+                    "buy_ok": True,
+                    "face": "可進場",
+                },
+                "undervalue_star": {
+                    "as_of": "20261120",
+                    "items": [],
+                    "buy_ok": False,
+                    "face": "觀察非買",
+                },
+                "streak_foreign": {
+                    "as_of": "20261103",
+                    "items": [{"sid": "2330", "name": "台積電", "days": 5}],
+                    "buy_ok": False,
+                    "face": "籌碼舊日・觀察",
+                    "stale": True,
+                },
+                "streak_trust": {
+                    "as_of": "20261103",
+                    "items": [],
+                    "buy_ok": False,
+                    "face": "籌碼舊日・觀察",
+                    "stale": True,
+                },
+                "streak_both": {
+                    "as_of": "20261103",
+                    "items": [],
+                    "buy_ok": False,
+                    "face": "籌碼舊日・觀察",
+                    "stale": True,
+                },
+            },
+            "layers": [],
+            "issues": [_Iss("TWII", "最新 11/23＞現貨完整日 11/20")],
+        }
+    )
+    assert "對質異常" in html and "TWII" in html
+    # 異常必須在節點分欄／勝率之前
+    assert html.index("對質異常") < html.index("節點分欄")
+    assert html.index("對質異常") < html.index("勝率買點")
+    assert "機構式節點" not in html
+    assert "節點狀態" not in html
+    assert "節點｜勝率買點" in html
+    assert "≠上方真可買" in html
+    assert "見連買鈕" in html
+    assert "可進場只認" in html
+    # 重複長 disclaimer 砍掉
+    assert "雷達・勝率異集合・低估・連買只觀察" not in html
+    assert html.count("不准總分榜") <= 2
 
 def test_pipeline_observe_empty_buckets_not_ok(tmp_path):
     """海選有 session 但三桶皆空＝空，不是齊。"""

@@ -946,9 +946,13 @@ def format_combo_screen_html(
     *,
     db_path: str = "",
 ) -> str:
-    """綜合篩選：復原路兩欄優先，再附各節點真名單／對質；不准合成總分榜。"""
+    """綜合篩選：復原路兩欄優先，再附進場節點對質；不准合成總分榜。
+
+    臉規則：對質異常置前；連買／YoY 不當復原路主判（縮成一行）；
+    真可買≠下方勝率節點原名單（可集合不同）。
+    """
     from html import escape
-    from tg_layout import join_dashed, title_line
+    from tg_layout import join_dashed, title_line, wrap_cjk_lines
 
     # 復原路漏斗兩欄（若有）
     recovery = payload.get("recovery")
@@ -969,13 +973,14 @@ def format_combo_screen_html(
     today = _zh(payload.get("today") or "")
     summ = payload.get("summary") or {}
     lists = payload.get("lists") or {}
-    # 組字時補官方 YoY／毛利括註（只顯示，不改節點名單）
+    # 只幫進場三節點補 YoY／毛（復原決策用）；連買桶不堆括註
     fund_db = str(db_path or payload.get("_db_path") or "").strip()
     if fund_db and isinstance(lists, dict):
         try:
             from screen_fund_annotate import hydrate_items_fund_side
 
-            for pack in lists.values():
+            for key in ("winrate", "leave_zero", "ma60_lower"):
+                pack = lists.get(key)
                 if not isinstance(pack, dict):
                     continue
                 items = pack.get("items")
@@ -983,44 +988,57 @@ def format_combo_screen_html(
                     hydrate_items_fund_side(items, fund_db)
         except Exception:
             pass
+
     blocks: List[str] = []
     if head:
         blocks.append(head)
-        blocks.append(title_line("節點分欄", desk, "對質"))
     else:
         blocks.append(title_line("綜合篩選", desk, "非買訊"))
-    blocks.extend(
-        [
-            "機構式節點：環境→主題→候選池→進場閘→連買／帳簿",
-            f"日曆 {escape(today)}｜基準 {escape(desk)}｜fuse上限 {escape(fuse)}",
-            f"節點齊 {summ.get('ok_n', 0)}／{summ.get('layer_n', 0)}｜失真 {summ.get('bad_n', 0)}｜問題 {summ.get('issue_n', 0)}",
-        ]
-    )
 
-    def _sec(title: str, key: str, *, note: str = "") -> None:
+    # 對質異常置頂（緊接復原路／標題後），不准埋在文末
+    issues: Sequence[LayerIssue] = payload.get("issues") or []
+    if issues:
+        lines = [f"· {escape(i.node)}：{escape(i.detail)}" for i in list(issues)[:8]]
+        blocks.append("<b>對質異常</b>\n" + "\n".join(lines))
+
+    meta_lines = [
+        title_line("節點分欄", desk, "對質") if head else "",
+        f"日曆 {escape(today)}｜基準 {escape(desk)}｜fuse {escape(fuse)}",
+        f"節點齊 {summ.get('ok_n', 0)}／{summ.get('layer_n', 0)}｜失真 {summ.get('bad_n', 0)}｜問題 {summ.get('issue_n', 0)}",
+        "<i>下方＝節點原名單對質；真可買另過估值硬閘，集合可≠勝率節點。</i>",
+    ]
+    blocks.append("\n".join(x for x in meta_lines if x))
+
+    def _sec(title: str, key: str, *, note: str = "", limit: int = 8) -> None:
         pack = lists.get(key) or {}
         items = list(pack.get("items") or [])
         face = str(pack.get("face") or "").strip()
         if not face:
             face = "可進場" if pack.get("buy_ok") else "觀察非買"
-        head = f"<b>{escape(title)}</b>〔{escape(face)}〕 n={len(items)}"
+        line = f"<b>{escape(title)}</b>〔{escape(face)}〕 n={len(items)}"
         as_raw = _ymd(pack.get("as_of") or "")
         if as_raw:
-            head += f"｜{_zh(as_raw)}"
-            if pack.get("stale"):
-                head += "｜⚠籌碼舊日≠基準"
-        body = _join_sid_labels(items, limit=12)
-        chunk = head + "\n" + escape(body)
+            line += f"｜{_zh(as_raw)}"
+        body = _join_sid_labels(items, limit=limit)
+        wrapped = "\n".join(wrap_cjk_lines(body, 36)) or body
+        chunk = line + "\n" + escape(wrapped)
         if note:
             chunk += "\n" + escape(note)
         blocks.append(chunk)
 
-    # 名單在前：使用者按這顆就是要看股票；臉標不准與復原路真可買互打
+    # 進場節點：臉標不准與復原路真可買互打；異集合改「節點｜」不冒充進場
     wr_pack = lists.get("winrate") or {}
+    wr_buy = bool(wr_pack.get("buy_ok"))
+    wr_diff = str(wr_pack.get("vs_screen_lz") or "") == "diff"
+    wr_title = "進場｜勝率買點" if wr_buy else "節點｜勝率買點"
     wr_note = (
-        "勝率軌≠海選離零；復原路真可買另過估值硬閘"
-        if str(wr_pack.get("vs_screen_lz") or "") == "diff"
-        else "母閘剛離零＋出圖確認（與海選離零同集合才標可進場）"
+        "≠上方真可買；勝率軌≠海選離零"
+        if wr_diff
+        else (
+            "與海選離零同集合才標可進場"
+            if wr_buy
+            else "母閘剛離零＋出圖確認"
+        )
     )
     lz_pack = lists.get("leave_zero") or {}
     lz_src = str(lz_pack.get("source") or "")
@@ -1028,41 +1046,69 @@ def format_combo_screen_html(
         "海選 leave_zero 桶過閘"
         if lz_src == "screen"
         else (
-            "雷達窄母體≠海選離零；只觀察不准進場臉"
+            "雷達≠海選離零；只觀察"
             if lz_src == "radar"
             else "今日無海選離零／雷達"
         )
     )
-    _sec("進場｜勝率買點", "winrate", note=wr_note)
+    _sec(wr_title, "winrate", note=wr_note)
     _sec(
         "進場｜剛離零" if lz_src == "screen" else "觀察｜剛離零雷達",
         "leave_zero",
         note=lz_note,
     )
     _sec("進場｜紅箭確認", "ma60_lower", note="未確認紅箭不算買訊")
-    _sec("觀察｜低估★", "undervalue_star", note="估值≠買訊")
-    _sec("觀察｜連買外資最長", "streak_foreign", note="籌碼日≠基準＝舊日觀察")
-    _sec("觀察｜連買投信最長", "streak_trust", note="籌碼日≠基準＝舊日觀察")
-    _sec("觀察｜連買雙買最長", "streak_both", note="籌碼日≠基準＝舊日觀察")
 
-    issues: Sequence[LayerIssue] = payload.get("issues") or []
-    if issues:
-        lines = [f"· {escape(i.node)}：{escape(i.detail)}" for i in list(issues)[:8]]
-        blocks.append("<b>節點對質</b>\n" + "\n".join(lines))
+    # 低估：只留 n＋前幾檔，不堆長 disclaimer
+    uv = lists.get("undervalue_star") or {}
+    uv_items = list(uv.get("items") or [])
+    uv_body = _join_sid_labels(uv_items, limit=6)
+    blocks.append(
+        f"<b>觀察｜低估★</b>〔觀察非買〕 n={len(uv_items)}"
+        + (f"｜{_zh(_ymd(uv.get('as_of') or ''))}" if _ymd(uv.get("as_of") or "") else "")
+        + "\n"
+        + escape("\n".join(wrap_cjk_lines(uv_body, 36)) or uv_body)
+    )
 
-    # 層狀態精簡一行，避免蓋住名單
-    layer_bits: List[str] = []
+    # 連買三桶縮一行：復原路當下決策不靠籌碼明細；舊日警告保留
+    streak_bits: List[str] = []
+    streak_stale = False
+    streak_as = ""
+    for key, lab in (
+        ("streak_foreign", "外資"),
+        ("streak_trust", "投信"),
+        ("streak_both", "雙買"),
+    ):
+        pack = lists.get(key) or {}
+        n = len(list(pack.get("items") or []))
+        streak_bits.append(f"{lab}{n}")
+        if pack.get("stale"):
+            streak_stale = True
+        as_raw = _ymd(pack.get("as_of") or "")
+        if as_raw and (not streak_as or as_raw < streak_as):
+            streak_as = as_raw
+    streak_line = f"<b>連買</b> {'／'.join(streak_bits) if streak_bits else '—'}｜見連買鈕"
+    if streak_as:
+        streak_line += f"｜籌碼{_zh(streak_as)}"
+    if streak_stale:
+        streak_line += "｜⚠籌碼舊日≠基準"
+    blocks.append(streak_line)
+
+    # 只報失真／問題層，不堆完整機構式流水帳
+    bad_bits: List[str] = []
     for L in payload.get("layers") or []:
         if isinstance(L, Layer):
-            layer_bits.append(f"{L.title}{L.status}")
+            st = str(L.status or "")
+            if st in ("失真", "缺", "空") or (L.issues):
+                bad_bits.append(f"{L.title}{st}")
         elif isinstance(L, dict):
-            layer_bits.append(f"{L.get('title') or ''}{L.get('status') or ''}")
-    if layer_bits:
-        blocks.append("<b>節點狀態</b> " + escape("｜".join(layer_bits)))
+            st = str(L.get("status") or "")
+            if st in ("失真", "缺", "空") or L.get("issues"):
+                bad_bits.append(f"{L.get('title') or ''}{st}")
+    if bad_bits:
+        blocks.append("<b>節點異常</b> " + escape("｜".join(bad_bits[:8])))
 
     blocks.append(
-        "<i>各節點分開列，不准合成總分榜。"
-        "可進場臉只認海選離零／確認紅箭／與海選同集合之勝率；"
-        "雷達・勝率異集合・低估・連買只觀察。復原路真可買另過估值硬閘。</i>"
+        "<i>可進場只認 leave_zero／確認紅箭／與海選同集合勝率。不准總分榜。</i>"
     )
     return join_dashed(*blocks)

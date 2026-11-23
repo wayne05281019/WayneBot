@@ -1053,100 +1053,150 @@ def format_recovery_funnel_html(payload: Dict[str, Any]) -> str:
     if isinstance(tw_c, (int, float)):
         tw_bit = f"｜加權 {_zh(str(tw.get('date') or ''))} 收 {tw_c:,.0f}"
 
-    def _fmt_rows(rows: Sequence[Dict[str, Any]], limit: int = 12) -> str:
-        parts = []
-        for r in list(rows)[:limit]:
-            raw_sid = r.get("sid") if r.get("sid") not in (None, "") else r.get("stock_id")
-            if isinstance(raw_sid, dict):
-                sid = escape(str(raw_sid.get("stock_id") or raw_sid.get("sid") or ""))
-                name = escape(
-                    str(
-                        r.get("name")
-                        or raw_sid.get("stock_name")
-                        or raw_sid.get("name")
-                        or ""
-                    )
+    def _row_sid_name(r: Dict[str, Any]) -> Tuple[str, str]:
+        raw_sid = r.get("sid") if r.get("sid") not in (None, "") else r.get("stock_id")
+        if isinstance(raw_sid, dict):
+            sid = escape(str(raw_sid.get("stock_id") or raw_sid.get("sid") or ""))
+            name = escape(
+                str(
+                    r.get("name")
+                    or raw_sid.get("stock_name")
+                    or raw_sid.get("name")
+                    or ""
                 )
-            else:
-                sid_s = str(raw_sid or "").strip()
-                # 防衛：舊列 sid 誤為 "{'stock_id': …}" 字串
-                if sid_s.startswith("{") and "stock_id" in sid_s:
-                    try:
-                        import ast
+            )
+            return sid, name
+        sid_s = str(raw_sid or "").strip()
+        # 防衛：舊列 sid 誤為 "{'stock_id': …}" 字串
+        if sid_s.startswith("{") and "stock_id" in sid_s:
+            try:
+                import ast
 
-                        d = ast.literal_eval(sid_s)
-                        if isinstance(d, dict):
-                            sid = escape(str(d.get("stock_id") or d.get("sid") or ""))
-                            name = escape(
-                                str(
-                                    r.get("name")
-                                    or d.get("stock_name")
-                                    or d.get("name")
-                                    or ""
-                                )
-                            )
-                        else:
-                            sid, name = "", escape(str(r.get("name") or ""))
-                    except Exception:
-                        sid, name = "", escape(str(r.get("name") or ""))
-                else:
-                    sid = escape(sid_s)
-                    name = escape(str(r.get("name") or ""))
-            if not sid:
-                continue
-            labs = "・".join(str(x) for x in (r.get("labels") or [])[:3] if not isinstance(x, dict))
-            entry = "/".join(str(x) for x in (r.get("entry") or [])[:3] if not isinstance(x, dict))
-            bit = f"{sid} {name}".strip()
+                d = ast.literal_eval(sid_s)
+                if isinstance(d, dict):
+                    sid = escape(str(d.get("stock_id") or d.get("sid") or ""))
+                    name = escape(
+                        str(
+                            r.get("name")
+                            or d.get("stock_name")
+                            or d.get("name")
+                            or ""
+                        )
+                    )
+                    return sid, name
+            except Exception:
+                return "", escape(str(r.get("name") or ""))
+        return escape(sid_s), escape(str(r.get("name") or ""))
+
+    def _bit(r: Dict[str, Any], *, show_entry: bool = True, show_labs: bool = True) -> str:
+        sid, name = _row_sid_name(r)
+        if not sid:
+            return ""
+        bit = f"{sid} {name}".strip()
+        if show_entry:
+            entry = "/".join(
+                str(x) for x in (r.get("entry") or [])[:3] if not isinstance(x, dict)
+            )
             if entry:
                 bit += f"〔{escape(entry)}〕"
+        if show_labs:
+            labs = "・".join(
+                str(x) for x in (r.get("labels") or [])[:2] if not isinstance(x, dict)
+            )
             if labs:
                 bit += f" {escape(labs)}"
-            parts.append(bit)
-        return "、".join(parts) if parts else "（空）"
+        return bit
+
+    def _csv_wrap(parts: Sequence[str], *, limit: int = 12) -> str:
+        use = [p for p in list(parts)[:limit] if p]
+        if not use:
+            return "（空）"
+        more = len(parts) - len(use)
+        # 氣泡約 18 全形＝disp 36；整檔為單位折行，不准切開代號／股名
+        lines: List[str] = []
+        cur = ""
+
+        def _dw(s: str) -> int:
+            return sum(2 if ord(ch) > 127 else 1 for ch in s)
+
+        for p in use:
+            piece = f"{cur}、{p}" if cur else p
+            if cur and _dw(piece) > 36:
+                lines.append(cur)
+                cur = p
+            else:
+                cur = piece
+        if cur:
+            lines.append(cur)
+        if more > 0:
+            lines.append(f"…另{more}")
+        return "\n".join(lines) if lines else "（空）"
 
     buy = list(payload.get("buy_ok") or [])
     obs = list(payload.get("observe") or [])
-    # 觀察欄口徑：已有買訊被估值／硬閘擋 ≠「尚等買點／還在零」
+    # 觀察分桶：已有買訊被估值／硬閘擋 ≠「尚等買點／還在零」≠連買等
     _ENTRY = {"winrate", "leave_zero", "ma60_lower"}
     _VAL_GATE = ("本益落後", "本益缺", "本益過熱", "本益無效", "近四季EPS≤0")
-    n_entry_blocked = 0
-    n_wait_zero = 0
-    n_other = 0
+    blocked: List[Dict[str, Any]] = []
+    wait_zero: List[Dict[str, Any]] = []
+    other: List[Dict[str, Any]] = []
     for row in obs:
         entry = set(row.get("entry") or []) & _ENTRY
         labels = [str(x) for x in (row.get("labels") or [])]
         if entry:
-            n_entry_blocked += 1
+            blocked.append(row)
         elif "還在零" in labels or "golden_buy" in set(row.get("signals") or []):
-            n_wait_zero += 1
+            wait_zero.append(row)
         else:
-            n_other += 1
-    obs_bits: List[str] = []
-    if n_entry_blocked:
-        obs_bits.append(f"已有買訊・估值／硬閘擋 {n_entry_blocked}")
-    if n_wait_zero:
-        obs_bits.append(f"尚等買點／還在零 {n_wait_zero}")
-    if n_other:
-        obs_bits.append(f"連買／估值等觀察 {n_other}")
-    obs_title = "／".join(obs_bits) if obs_bits else "過資格・未進真可買"
+            other.append(row)
     pe_blocked = any(
         set(row.get("entry") or []) & _ENTRY
         and any(g in [str(x) for x in (row.get("reasons") or [])] for g in _VAL_GATE)
-        for row in obs
+        for row in blocked
     )
-    blocks = [
-        title_line("綜合篩選・復原路", desk, "漏斗"),
-        f"regime={regime}{escape(tw_bit)}",
-        f"真可買 n={len(buy)}｜復原觀察 n={len(obs)}｜處置擋 {int(payload.get('punish_n') or 0)}",
-        "<b>真可買</b>（過硬閘＋三種買訊；可空）\n" + _fmt_rows(buy),
-        f"<b>復原觀察</b>（{escape(obs_title)}）\n" + _fmt_rows(obs),
-        (
-            "<i>硬閘：資格／流動性／破底／處置／真可買估值底。"
-            + ("已有買訊被估值閘擋≠尚等買點。" if pe_blocked else "")
-            + "軟縮排序不杀光。不准總分榜。非即時 tick。</i>"
-        ),
-    ]
-    return join_dashed(*blocks)
+    # 真可買：一檔一行（n 小、掃得快）；觀察：分桶＋頓號折行
+    buy_lines = [_bit(r) for r in buy]
+    buy_body = "\n".join(x for x in buy_lines if x) if buy_lines else "（空）"
+    obs_lines: List[str] = []
+    if blocked:
+        obs_lines.append(
+            f"·買訊被擋 {len(blocked)}："
+            + _csv_wrap([_bit(r, show_labs=False) for r in blocked], limit=10)
+        )
+    if wait_zero:
+        obs_lines.append(
+            f"·尚等買點 {len(wait_zero)}："
+            + _csv_wrap([_bit(r, show_entry=False) for r in wait_zero], limit=8)
+        )
+    if other:
+        # 連買／估值等：只留代號＋名，不堆 entry 標籤
+        obs_lines.append(
+            f"·連買／估值等 {len(other)}："
+            + _csv_wrap(
+                [_bit(r, show_entry=False, show_labs=False) for r in other], limit=8
+            )
+        )
+    if not obs_lines:
+        obs_lines.append("（空｜過資格・未進真可買）")
+    head = "\n".join(
+        [
+            title_line("綜合篩選・復原路", desk, "漏斗"),
+            f"regime={regime}{escape(tw_bit)}",
+            f"真可買 n={len(buy)}｜復原觀察 n={len(obs)}｜處置擋 {int(payload.get('punish_n') or 0)}",
+        ]
+    )
+    gate = (
+        "<i>硬閘：資格／流動／破底／處置／估值底。"
+        + ("買訊被擋≠尚等買點。" if pe_blocked or blocked else "")
+        + "不准總分榜。</i>"
+    )
+    # 四塊：抬頭／真可買／觀察分桶／硬閘一句（少虛線）
+    return join_dashed(
+        head,
+        "<b>真可買</b>（過硬閘＋三種買訊；可空）\n" + buy_body,
+        "<b>復原觀察</b>\n" + "\n".join(obs_lines),
+        gate,
+    )
 
 
 def run_recovery_job(
