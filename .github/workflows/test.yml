@@ -112,16 +112,51 @@ jobs:
         env:
           WAYNE_DB_PATH: data/wayne_market.db
           MPLBACKEND: Agg
-        run: python -m pytest -q --strict-markers -rs
+        # pipefail：pytest 紅要讓步驟失敗；tee 給下一步讀，不准再整包重跑 production_db
+        run: |
+          set -o pipefail
+          python -m pytest -q --strict-markers -rs 2>&1 | tee /tmp/full-suite.txt
 
       - name: 確認需要真實資料的測試真的跑了
         env:
           WAYNE_DB_PATH: data/wayne_market.db
           MPLBACKEND: Agg
+        # 全套已含 production_db；步驟「確認庫是生產規模」已擋小庫跳過。
+        # 舊式整包重跑 -m production_db ≈232 測／45–90 分，合主排程會拖垮。
+        # 這裡只驗：全套 log 有 passed、庫仍夠大、production_db 標記可收集 ≥1。
         run: |
-          python -m pytest -q --strict-markers -m production_db 2>&1 | tee /tmp/marked.txt
-          grep -qE "[0-9]+ passed" /tmp/marked.txt || exit 1
-          if grep -qE "^[0-9]+ skipped" /tmp/marked.txt; then
-            echo "production_db 測試全被跳過"
+          grep -qE '[1-9][0-9]* passed' /tmp/full-suite.txt || {
+            echo "全套 log 沒有 passed"
             exit 1
-          fi
+          }
+          python - <<'PY'
+          import os
+          import re
+          import subprocess
+          import sys
+
+          sys.path.insert(0, "tests")
+          from conftest import MIN_PRODUCTION_BYTES
+
+          size = os.path.getsize("data/wayne_market.db")
+          if size < MIN_PRODUCTION_BYTES:
+              sys.exit(f"庫太小 size={size} threshold={MIN_PRODUCTION_BYTES}")
+          out = subprocess.check_output(
+              [
+                  sys.executable,
+                  "-m",
+                  "pytest",
+                  "--collect-only",
+                  "-q",
+                  "--strict-markers",
+                  "-m",
+                  "production_db",
+              ],
+              text=True,
+          )
+          print(out.strip().splitlines()[-1] if out.strip() else out)
+          m = re.search(r"(\d+)/\d+ tests collected", out)
+          if not m or int(m.group(1)) < 1:
+              sys.exit("production_db 收集不到測試")
+          print(f"production_db collected={m.group(1)} db_size={size}")
+          PY
