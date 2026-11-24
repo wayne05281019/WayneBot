@@ -174,11 +174,10 @@ def _stub_official_http_offline(request, monkeypatch):
     def _no_bytes(*_a, **_k):
         return b""
 
-    def _no_month(*_a, **_k):
-        return []
-
     # _post_form＝MOPS ajax POST（timeout=60×3）；漏 stub 時空庫 ensure
     # 會連打數十次，CI smoke 卡在介紹圖／查股測（本機 durations 對質）。
+    # 不准 stub biaoke_walk.fetch_stock_month：月表補庫單元測會傳 mock session，
+    # 整函 stub 會讓 test_missing_months_skip_index_and_backfill_queue months=0（#1027 full 紅）。
     monkeypatch.setattr("fundamentals._get", _no_json, raising=False)
     monkeypatch.setattr("fundamentals._get_bytes", _no_bytes, raising=False)
     monkeypatch.setattr("fundamentals._post_form", _no_bytes, raising=False)
@@ -188,12 +187,6 @@ def _stub_official_http_offline(request, monkeypatch):
         monkeypatch.setattr(_fund, "_get", _no_json)
         monkeypatch.setattr(_fund, "_get_bytes", _no_bytes)
         monkeypatch.setattr(_fund, "_post_form", _no_bytes)
-    except Exception:
-        pass
-    try:
-        import biaoke_walk as _bw
-
-        monkeypatch.setattr(_bw, "fetch_stock_month", _no_month, raising=False)
     except Exception:
         pass
     yield
