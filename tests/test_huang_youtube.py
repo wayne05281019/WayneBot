@@ -256,6 +256,79 @@ def test_20261123_drive_and_oral_absorb():
     assert "20261123" in day["title"]
 
 
+def test_20261124_drive_and_oral_absorb():
+    """20261124：Drive 1124 片＋昨割肉今回歸；大盤仍五段／台積仍三段／南亞仍三三五。"""
+    import json
+    from pathlib import Path
+
+    from huang_youtube import (
+        extract_teach_tags,
+        parse_drive_name_ymd,
+        parse_rss_xml,
+        pick_day_video,
+        resolve_drive_file_id,
+    )
+
+    assert parse_drive_name_ymd("1124黃培碩.mp4") == "20261124"
+    assert resolve_drive_file_id("20261124") == "1-kBC6YRX5FTsFJFdFV82EjY9QbeuB6Py"
+    title = "昨割肉 今回歸！逆向思維靠謀略 20261124 黃培碩 分析師 運達證券投顧"
+    oral = (
+        "現在是剛好第五波 從最高四九九六八下來。台積電我還是認定三段式的；"
+        "南亞科 ABC 是一個三三五的整理；A波三段 B波三段 C波五段。"
+    )
+    tags = extract_teach_tags(title, oral)
+    assert "fifth_leg" in tags
+    assert "three_leg" in tags
+    absorb = json.loads(
+        Path("docs/expert_notes/飆客/decade_lab/huang_oral_absorb_20261124.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert absorb.get("as_of_day") == "20261124"
+    assert absorb.get("buy_signal") is False
+    assert absorb.get("not_buy_signal") is True
+    mv = absorb.get("market_verdict_zh") or {}
+    assert "五段" in str(mv.get("now") or "") or "第五" in str(mv.get("now") or "")
+    tsmc = absorb.get("tsmc_contrast_zh") or {}
+    assert "三段" in str(tsmc.get("verdict_zh") or "")
+    nanya = (absorb.get("sox_adr_micron_nanya_zh") or {}).get("2408") or {}
+    assert "3-3-5" in str(nanya.get("verdict_zh") or "") or "三三五" in str(
+        nanya.get("verdict_zh") or ""
+    )
+    yt = absorb.get("youtube") or {}
+    assert yt.get("drive_file_id") == "1-kBC6YRX5FTsFJFdFV82EjY9QbeuB6Py"
+    assert yt.get("video_id") == "UG-im-ykwLU"
+    latest = json.loads(
+        Path("docs/expert_notes/飆客/decade_lab/huang_oral_absorb_latest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert latest.get("as_of_day") == "20261124"
+    sample = f"""<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns:yt="http://www.youtube.com/xml/schemas/2015"
+ xmlns:media="http://search.yahoo.com/mrss/"
+ xmlns="http://www.w3.org/2005/Atom">
+ <entry>
+  <id>yt:video:1nyuE48qUjU</id>
+  <yt:videoId>1nyuE48qUjU</yt:videoId>
+  <title>期股戰</title>
+  <published>2026-11-24T06:54:40+00:00</published>
+  <media:group><media:description></media:description></media:group>
+ </entry>
+ <entry>
+  <id>yt:video:UG-im-ykwLU</id>
+  <yt:videoId>UG-im-ykwLU</yt:videoId>
+  <title>{title}</title>
+  <published>2026-11-24T07:34:36+00:00</published>
+  <media:group><media:description>x</media:description></media:group>
+ </entry>
+</feed>
+"""
+    day = pick_day_video(parse_rss_xml(sample), "20261124")
+    assert day["video_id"] == "UG-im-ykwLU"
+    assert "20261124" in day["title"]
+
+
 def test_vtt_to_text_strips_timestamps(tmp_path):
     from huang_youtube import _vtt_to_text
 
