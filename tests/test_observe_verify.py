@@ -122,8 +122,9 @@ def test_run_suite_writes_verify_latest(tmp_path: Path):
         (CASES / "case_empty_skip.json").read_text(encoding="utf-8"),
         encoding="utf-8",
     )
+    # 不准依賴 CI／本機是否有完整 wayne_market.db（smoke 常缺 index_daily）
     summary = ov.run_suite(
-        db_path=ROOT / "data" / "wayne_market.db",
+        db_path=tmp_path / "missing_wayne_market.db",
         cases_dir=cases,
         out_dir=out,
         write=True,

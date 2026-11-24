@@ -698,9 +698,14 @@ def run_suite(
     if db_ok:
         con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
         try:
-            twii = load_twii_bars(con)
-            tx_reg = load_tx_bars(con, session="regular")
-            overnight = load_us_overnight(con)
+            # smoke／缺表庫：不准炸；改走嵌在 case 裡的官方柱（空名單仍可寫 latest）
+            try:
+                twii = load_twii_bars(con)
+                tx_reg = load_tx_bars(con, session="regular")
+                overnight = load_us_overnight(con)
+            except sqlite3.OperationalError:
+                twii, tx_reg, overnight = [], [], {}
+                db_ok = False
         finally:
             con.close()
 
