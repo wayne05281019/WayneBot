@@ -44,6 +44,7 @@ jobs:
 
       - name: 不需資料庫的全部測試
         # 不加 per-test timeout：會誤殺會打官方 ISIN 外網的測（見 #501 3m52s 紅）
+        # 外網掛死主因：conftest stub MOPS／_post_form／月表（查股 ensure→SSL→executor 300s）
         # 整 job 仍有 timeout-minutes:180；真掛靠 concurrency 取消重跑
         run: python -m pytest -q --strict-markers -m "not production_db" --durations=25
 
