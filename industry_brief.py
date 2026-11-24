@@ -77,10 +77,21 @@ def _universe_row(conn: sqlite3.Connection, sid: str) -> Dict[str, Any]:
     }
 
 
-COPY_CHAIN_SRC = "產業鏈來自櫃買價值鏈；「其他」不當同業。已教過的跨族仍用點名檔。"
-COPY_PEER_RULE = "同業＝同一產業鏈才比；跨族檔另標他還有的鏈。"
-COPY_PEER_NOTE = "小框是產業鏈／跨族標籤。有一樣才比，不是證交所半導體業全組。"
+COPY_CHAIN_SRC = "產業鏈來自櫃買價值鏈；「其他」不當同業。已教過的主題鏈另標★。"
+COPY_PEER_RULE = "同業＝同一產業鏈才比；主題鏈已教過檔另標。"
+COPY_PEER_NOTE = "小框是產業鏈／主題鏈標籤。有一樣才比，不是證交所半導體業全組。"
 COPY_NO_CHAIN = "還沒產業鏈，不拿證交所粗分類硬比。"
+
+
+def theme_chain_layer_text(extras) -> str:
+    """主題鏈加層字面。有 TAUGHT_GROUPS 命中才回「組名（已教過★）」；沒命中＝空。
+
+    加層不換底：底標仍用 stock_fine_industry 鏈／membership_face；此字只上產業卡臉。
+    """
+    tags = [str(t).strip() for t in list(extras or []) if str(t).strip()]
+    if not tags:
+        return ""
+    return f"{'／'.join(tags)}（已教過★）"
 
 
 def membership_label(snap: Dict[str, Any]) -> str:
@@ -184,9 +195,11 @@ def industry_card_spec(snap: Dict[str, Any]) -> Dict[str, Any]:
 
     extras = [str(t) for t in list(snap.get("extra_tags") or []) if str(t).strip()]
     tags = peer_chip_tags(list(snap.get("fine_tags") or []))
+    theme = theme_chain_layer_text(extras)
     return {
         "tags": tags,
         "extras": extras,
+        "theme_layer": theme,  # 空＝不加層；有＝「組名（已教過★）」
         "chain": str(snap.get("fine_chain") or "").strip(),
         "finest": str(snap.get("fine_finest") or "").strip(),
         "membership": membership_label(snap),
@@ -979,12 +992,18 @@ def _rebuild_peers_from_chain(snap: Dict[str, Any], db_path: str) -> None:
 def attach_fine_industry(
     snap: Dict[str, Any], db_path: str, *, allow_fetch: bool = False, max_fetch: int = 1
 ) -> Dict[str, Any]:
-    """把櫃買／籌碼K產業鏈掛上這檔與對照檔。其他桶不拿來比。同業改走最細標／跨族。"""
+    """把櫃買／籌碼K產業鏈掛上這檔與對照檔。其他桶不拿來比。同業改走最細標／跨族。
+
+    加層不換底：``fine_chain`` 永遠保留籌碼K／櫃買底標（過期列仍可當底標）；
+    TAUGHT_GROUPS 只進 ``extra_tags``／主題鏈臉，不准用教過組字串蓋掉底標鏈。
+    """
     from industry_fine import (
         display_tags,
         extra_tags_for,
         is_catchall_finest,
         load_or_fetch_fine_industry,
+        peek_raw_fine_chain,
+        split_chain,
     )
 
     sid = str(snap.get("stock_id") or "")
@@ -994,9 +1013,16 @@ def attach_fine_industry(
     mine = fine.get(sid) or {}
     extras = extra_tags_for(sid)
     tags = display_tags(list(mine.get("tags") or []), sid)
-    chain = str(mine.get("chain") or "")
-    finest = str(mine.get("finest") or "")
+    chain = str(mine.get("chain") or "").strip()
+    if not chain:
+        # 快取過期時 load_cached 會空；底標仍讀庫內 chain（不加層換底）
+        chain = peek_raw_fine_chain(db_path, sid)
+    finest = str(mine.get("finest") or "").strip()
+    if not finest and chain:
+        parts = split_chain(chain)
+        finest = parts[-1] if parts else ""
     source = str(mine.get("source") or "")
+    base_chain = chain  # 底標鎖死；後面只調 tags／比對，不准改寫成教過組
     try:
         from universe import stock_is_emerging
 
@@ -1008,8 +1034,7 @@ def attach_fine_industry(
         from tpex_industry_chain import SOURCE as TPEX_SRC
 
         if extras:
-            chain = "／".join(extras)
-            finest = extras[0]
+            # 小框只放教過組（過粗／興櫃不當小框）；底標 chain 不換
             tags = display_tags(extras, sid)
         elif finest and not is_catchall_finest(finest) and source != TPEX_SRC:
             tags = display_tags(list(mine.get("tags") or []), sid)
@@ -1017,17 +1042,19 @@ def attach_fine_industry(
             chain = ""
             finest = ""
             tags = extras
+            base_chain = ""
     elif is_catchall_finest(finest):
         if extras:
-            chain = "／".join(extras)
-            finest = extras[0]
+            # 底標鏈仍顯示原字（加層不換底）；小框／同業吃教過組，不准把鏈改寫成「散熱」
             tags = display_tags(extras, sid)
         else:
             chain = ""
             finest = ""
             tags = extras
+            base_chain = ""
     snap["fine_tags"] = tags
-    snap["fine_chain"] = chain
+    snap["fine_chain"] = base_chain
+    snap["fine_chain_base"] = base_chain
     snap["fine_finest"] = finest
     snap["extra_tags"] = extras
     _rebuild_peers_from_chain(snap, db_path)
@@ -1283,8 +1310,10 @@ def attach_price_eps_bijia(snap: Dict[str, Any], db_path: str) -> Dict[str, Any]
 
     extras = [str(t) for t in list(snap.get("extra_tags") or []) if str(t)]
     chain_label = chain
-    if extras:
-        chain_label = f"{chain}；跨族 {'／'.join(extras)}" if chain else "跨族 " + "／".join(extras)
+    theme = theme_chain_layer_text(extras)
+    if theme:
+        # 比價範圍標示加層；同鏈比價母體仍只吃底標 chain／membership
+        chain_label = f"{chain}；主題鏈 {theme}" if chain else f"主題鏈 {theme}"
 
     if mult_med is not None and my_mult <= float(mult_med) * 0.92:
         read = f"價／近季EPS {my_mult:.0f}　中位 {float(mult_med):.0f}　相對便宜"
@@ -1415,9 +1444,9 @@ def format_industry_html(stock_id: str, db_path: str = None, *, allow_fetch: boo
     ]
     if chain:
         who_lines.append(kv_compact("產業鏈", chain))
-    extras = spec["extras"]
-    if extras:
-        who_lines.append(kv_compact("跨族", "／".join(extras)))
+    theme = str(spec.get("theme_layer") or "").strip()
+    if theme:
+        who_lines.append(kv_compact("主題鏈", theme))
     who_lines.append(kv_compact("同業", spec["peer_lab"]))
     if spec["tags"]:
         who_lines.append(spec["copy_src"])

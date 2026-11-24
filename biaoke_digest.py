@@ -448,7 +448,9 @@ _BOARD = re.compile(
     r"台股|股王|股后|"
     r"主跌|止跌|抄底|空手|減碼|48066|45000|47729|48697|49239|"
     r"47000|47600|47300|反彈不過壓|下降軌道|"
-    r"下降壓力線|不可能假跌破|清洗籌碼|C\s*3)"
+    r"下降壓力線|不可能假跌破|清洗籌碼|C\s*3|"
+    r"35000|35500|35700|33000|31700|31500|37837|防線|系統性風險|"
+    r"9\s*波|1\s*[-–]?\s*4\s*重疊|波浪位階|費半)"
     # 不准用「回測／前波高點／主升段」當大盤鍵：個股（智邦回測季線）會誤吸進大盤欄
 )
 _FIELD = re.compile(
@@ -461,6 +463,10 @@ _BOARD_REPLY = re.compile(
     r"(C\s*波|B\s*[-‐‑‒–—]?c|B\s*波|主跌|止跌|抄底|空手|減碼|逃命|"
     r"下降軌道|反彈不過|做多安全|無止跌|破前低|"
     r"48066|45000|47729|48697|49239|47000|47600|47300|"
+    # 11/20～23 當令：防線／系統風險／修正帶／費半假突破（自回重點必併大盤欄）
+    r"35000|35500|35700|33000|31700|31500|31000|37837|"
+    r"防線|系統性風險|崩盤|9\s*波|1\s*[-–]?\s*4\s*重疊|波浪位階|"
+    r"台指期|加權|費半|8336|8498|假突破|"
     r"下星期[一二]|星期二絕對|不要再介入|撤出觀望|"
     r"要去休息|反向下殺|不要亂下單|夜盤前|盈虧自負|洗盤|震盪往下)"
 )
@@ -1304,6 +1310,9 @@ def format_focus_oral(
     if not cleaned_mains:
         return ""
     mains = sorted(cleaned_mains, key=_row_key, reverse=True)
+    # 兩串窗＝傳入主文的日期下沿；更早自回（例 9/16 C-5）不准混進「現在在講」
+    _main_days = [str(p.get("date") or "") for p in mains if str(p.get("date") or "")]
+    _oldest_main_day = min(_main_days) if _main_days else ""
     cleaned_replies: List[Dict[str, Any]] = []
     for p in replies:
         if str(p.get("kind") or "") == "bystander":
@@ -1375,7 +1384,6 @@ def format_focus_oral(
                 if _FIELD.search(bit) and not _BOARD.search(bit):
                     field = _speak(bit, 120)
                     break
-    latest_day = str(latest.get("date") or "")
     for p in replies:
         t = str(p.get("text") or "")
         if _PREVIEW.search(t) and not preview:
@@ -1394,25 +1402,34 @@ def format_focus_oral(
                 t, str(p.get("reply_to_text") or ""), limit=160
             ) or _speak(t, 140)
             continue
-        day = str(p.get("date") or "")
-        if day and latest_day and day < latest_day:
-            continue
+        # 兩串都要：前一則主文日的自回不准因 day < 最新主文日被整段丢掉。
+        # 但早於兩串窗下沿的舊自回（過期 C-5 等）仍丢掉，不准灌進現在在講。
         # 最新主文之後的自回：大盤／關卡／空手句併大盤欄；其餘自回（含回別人）進「他還說」。
         # 有 reply_to 要標他在回什麼，不准上文不接下文。
+        day = str(p.get("date") or "")
+        if _oldest_main_day and day and day < _oldest_main_day:
+            continue
         if _row_key(p) >= _row_key(latest):
             bit = _reply_answer_line(
                 t, str(p.get("reply_to_text") or ""), limit=220
             )
             if not bit:
                 continue
-            if _BOARD_REPLY.search(t):
+            if _BOARD_REPLY.search(t) or _BOARD.search(t) or _is_focus_level_reply(t):
                 after_board.append(bit)
             else:
                 extra.append(bit)
             continue
-        extra.append(
-            _reply_answer_line(t, str(p.get("reply_to_text") or ""), limit=160)
+        # 前一串／較早自回：點位／大盤改口仍進大盤欄備援，其餘進他還說
+        bit_prev = _reply_answer_line(
+            t, str(p.get("reply_to_text") or ""), limit=160
         )
+        if not bit_prev:
+            continue
+        if _is_focus_level_reply(t):
+            after_board.append(bit_prev)
+        else:
+            extra.append(bit_prev)
     if older_long and newer_short:
         pcb = (
             "前一天還說台光電至少整理三個月、PCB 全面減碼；"
@@ -2103,6 +2120,51 @@ def _thread_root_id(post: Dict[str, Any]) -> str:
     return aid.split(":", 1)[0] if aid else ""
 
 
+def _is_focus_level_reply(text: str) -> bool:
+    """自回是否帶大盤／費半點位或當令改口（優先保留，不准被尾端閒聊擠掉）。"""
+    t = _scrub_post_text(str(text or ""))
+    if not t:
+        return False
+    if _BOARD_REPLY.search(t) or _BOARD.search(t):
+        return True
+    # 裸點位＋戰場語：31xxx～50xxx／費半四位數
+    if re.search(
+        r"(?<![0-9])(?:3[0-9]|4[0-9]|5[0-9])\d{3}(?:\.\d+)?(?![0-9])|"
+        r"(?<![0-9])(?:8|9|10)\d{3}(?:\.\d+)?(?![0-9])",
+        t,
+    ) and re.search(
+        r"大盤|台指|加權|費半|防線|系統|崩盤|止跌|波浪|夜盤|多頭|空頭",
+        t,
+    ):
+        return True
+    return False
+
+
+def _pick_focus_replies(
+    thread_replies: Sequence[Dict[str, Any]], *, n_reply: int = 24
+) -> List[Dict[str, Any]]:
+    """兩串自回：點位／大盤改口優先保留，其餘用最近則填滿；總量 ≤ n_reply。
+
+    根因：討論串一長，尾端 24 則常被下午閒聊塞滿，早上 33000／31700／35700
+    自回被裁掉 → 話筒文敘／三窗標像沒更新。
+    """
+    rows = list(thread_replies or [])
+    cap = max(0, int(n_reply or 0))
+    if not rows or cap <= 0:
+        return []
+    if len(rows) <= cap:
+        return rows
+    must = [p for p in rows if _is_focus_level_reply(str(p.get("text") or ""))]
+    if len(must) > cap:
+        # 點位也過多：留最近 cap 則（改口壓前）
+        return must[-cap:]
+    must_ids = {str(p.get("id") or "") for p in must}
+    rest = [p for p in rows if str(p.get("id") or "") not in must_ids]
+    budget = cap - len(must)
+    recent = rest[-budget:] if budget else []
+    return sorted(must + recent, key=_row_key)
+
+
 def format_latest_focus(db_path: str = "", *, n_main: int = 2, n_reply: int = 24) -> str:
     """按飆大空白進去：口語重述最新重點。不准倒原文、不念課綱、不疊舊位階。
 
@@ -2141,10 +2203,8 @@ def format_latest_focus(db_path: str = "", *, n_main: int = 2, n_reply: int = 24
         [p for p in replies if _thread_root_id(p) in root_ids],
         key=_row_key,
     )
-    # 兩串內取最近 n_reply 則；傳入 oral 時維持時間由舊到新，改口才壓得住
-    latest_replies = (
-        thread_replies[-max(0, int(n_reply)) :] if n_reply else []
-    )
+    # 點位自回優先＋最近則填滿（不准尾端閒聊擠掉兩串重點）
+    latest_replies = _pick_focus_replies(thread_replies, n_reply=n_reply)
     return format_focus_oral(
         latest,
         latest_replies,

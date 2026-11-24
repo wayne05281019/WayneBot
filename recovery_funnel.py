@@ -554,21 +554,32 @@ def _collect_signal_maps(
         _, items = _live_judge_pack(db_path, "winrate_buypoint", desk, limit=24)
         _ingest("winrate", items)
 
-    _, lz = _live_judge_pack(db_path, "leave_zero", desk, limit=24)
-    _ingest("leave_zero", lz)
-    _, ma = _live_judge_pack(db_path, "ma60_lower", desk, limit=24)
-    if not ma and desk:
+    # 剛離零／紅箭：與綜合篩選同源＝海選桶優先，live_judge 只補缺；
+    # 不准只吃雷達／舊日 live_judge 而漏海選過閘集合。
+    def _screen_bucket(key: str) -> List[Any]:
+        if not desk:
+            return []
         try:
             from screen_sessions import load_session_results, screen_session_has_data
 
-            if screen_session_has_data(db_path, desk):
-                res = load_session_results(db_path, desk, "morning") or {}
-                if not any(res.values()):
-                    res = load_session_results(db_path, desk, "evening") or {}
-                # 桶列可能是 dict 或代號；交給 _ingest 正規化，不准 str(dict) 當 sid
-                ma = list(res.get("ma60_lower") or [])
+            if not screen_session_has_data(db_path, desk):
+                return []
+            res = load_session_results(db_path, desk, "morning") or {}
+            if not any(res.values()):
+                res = load_session_results(db_path, desk, "evening") or {}
+            return list(res.get(key) or [])
         except Exception:
-            pass
+            return []
+
+    lz = _screen_bucket("leave_zero")
+    if not lz:
+        _, lz = _live_judge_pack(db_path, "leave_zero", desk, limit=24)
+    _ingest("leave_zero", lz)
+
+    ma = _screen_bucket("ma60_lower")
+    if not ma:
+        _, ma = _live_judge_pack(db_path, "ma60_lower", desk, limit=24)
+    # 桶列可能是 dict 或代號；交給 _ingest 正規化，不准 str(dict) 當 sid
     _ingest("ma60_lower", ma)
 
     try:

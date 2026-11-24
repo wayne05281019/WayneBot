@@ -86,7 +86,9 @@ def test_bijia_ranks_and_skips_cross_chain(tmp_path):
     snap = attach_fine_industry(industry_snapshot(db, "3081"), db, allow_fetch=False)
     bj = snap["bijia"]
     assert bj["ok"] is True
-    assert bj["chain"] == "光通訊"
+    # 加層不換底：chain＝籌碼K底標；光通訊只在 scope／主題鏈
+    assert bj["chain"] == "電子上游-半導體元件"
+    assert "光通訊" in (bj.get("scope") or "")
     ids = [r["stock_id"] for r in bj["rows"]]
     assert "3081" in ids and "2455" in ids
     assert "6442" in ids
@@ -100,6 +102,7 @@ def test_bijia_ranks_and_skips_cross_chain(tmp_path):
 
     html = format_industry_html("3081", db, allow_fetch=False)
     assert "同鏈比價" in html
+    assert "主題鏈" in html and "光通訊" in html
     assert "怎麼做" not in html
     assert "勝率／報酬" not in html
     assert "已偏貴" in html

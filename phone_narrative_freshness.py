@@ -49,33 +49,44 @@ def latest_biaoke_board_meta(db_path: str) -> Dict[str, str]:
     except sqlite3.Error:
         return out
     try:
-        # 優先：level snaps（位階題旨）
-        row = conn.execute(
-            """
-            SELECT as_of, post_date, post_id, snippet
-            FROM biaoke_level_snaps
-            ORDER BY as_of DESC, created_at DESC LIMIT 1
-            """
-        ).fetchone()
+        # 優先：level snaps（位階題旨）；缺表不准整段放棄改讀 posts
+        try:
+            row = conn.execute(
+                """
+                SELECT as_of, post_date, post_id, snippet
+                FROM biaoke_level_snaps
+                ORDER BY as_of DESC, created_at DESC LIMIT 1
+                """
+            ).fetchone()
+        except sqlite3.Error:
+            row = None
         if row:
             out["ymd"] = _ymd(row["as_of"]) or _ymd(str(row["post_date"] or "").replace("-", ""))
             pd = str(row["post_date"] or "")
             out["when"] = pd[:16] if pd else _ymd_dash(out["ymd"])
             out["post_id"] = str(row["post_id"] or "")
             out["snip"] = str(row["snippet"] or "")[:80]
-        # 再用「大盤／位階」相關最新文（個股文不准把板面日拉新）
-        post = conn.execute(
-            """
-            SELECT id, date, time, text FROM biaoke_posts
-            WHERE IFNULL(kind,'') != 'bystander'
-              AND (
-                text LIKE '%大盤%' OR text LIKE '%加權%' OR text LIKE '%台指%'
-                OR text LIKE '%波浪%' OR text LIKE '%費半%' OR text LIKE '%位階%'
-                OR text LIKE '%下降壓%' OR text LIKE '%C3%' OR text LIKE '%假跌破%'
-              )
-            ORDER BY date DESC, time DESC LIMIT 1
-            """
-        ).fetchone()
+        # 再用「大盤／位階」相關最新文／自回（個股文不准把板面日拉新）
+        # 含防線／35000／35700 等當令點位句，自回改口也要刷新「他文」日
+        try:
+            post = conn.execute(
+                """
+                SELECT id, date, time, text FROM biaoke_posts
+                WHERE IFNULL(kind,'') != 'bystander'
+                  AND (
+                    text LIKE '%大盤%' OR text LIKE '%加權%' OR text LIKE '%台指%'
+                    OR text LIKE '%波浪%' OR text LIKE '%費半%' OR text LIKE '%位階%'
+                    OR text LIKE '%下降壓%' OR text LIKE '%C3%' OR text LIKE '%假跌破%'
+                    OR text LIKE '%防線%' OR text LIKE '%系統性風險%'
+                    OR text LIKE '%35000%' OR text LIKE '%35500%' OR text LIKE '%35700%'
+                    OR text LIKE '%33000%' OR text LIKE '%31700%' OR text LIKE '%31500%'
+                    OR text LIKE '%9波%' OR text LIKE '%1 4重疊%' OR text LIKE '%14重疊%'
+                  )
+                ORDER BY date DESC, time DESC LIMIT 1
+                """
+            ).fetchone()
+        except sqlite3.Error:
+            post = None
         if post:
             py = _ymd(str(post["date"] or "").replace("-", ""))
             if py and (not out["ymd"] or py >= out["ymd"]):
