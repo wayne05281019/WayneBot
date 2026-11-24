@@ -120,14 +120,15 @@
         "playbook.md §觀察1",
         "wave8_cycle_concept_lock.json ops_rules night_leads_day"
       ],
-      "ops_check_zh": "先對 TX 夜盤／連續盤是否碰到他點的壓／撐／軌；再對隔日現貨加權驗證。盤中未收不當官方收。",
+      "ops_check_zh": "層序對齊 MISSION／CHAIN：外圍 e-mini／美期方向假設 → TX 夜盤／連續盤是否碰到他點的壓／撐／軌 → 早盤 TX 確認 → 現貨加權驗證。不准倒灌（日盤收改寫夜盤假設）。盤中未收不當官方收。",
       "segment_labels": [
         "night_pressure_hold",
         "night_pressure_pierce",
         "day_confirm"
       ],
       "phone_ok_with_warning": true,
-      "not_buy_signal": true
+      "not_buy_signal": true,
+      "debate_note_zh": "SYNC-DEBATE C3：原卡只寫 TX 夜盤→現貨，缺 e-mini 第一層；已與 chain_playbook／MISSION 對齊。"
     },
     {
       "id": "WR-OPS-MULTI-LABEL",

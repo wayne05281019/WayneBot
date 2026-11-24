@@ -235,6 +235,25 @@ def _levels_in(text: str) -> List[str]:
     return out
 
 
+def _is_tw_index_level(raw: str) -> bool:
+    """加權／台指觀測位（現代語料 ≥10000）。股價／代號／振幅點數一律 False。"""
+    try:
+        v = float(raw)
+    except ValueError:
+        return False
+    return 10000.0 <= v <= 100000.0
+
+def _levels_for_theme(theme: str, rule: str, text: str) -> List[str]:
+    """依主題濾位：三層／大盤只留指數級；個股鍋留非指數。"""
+    raw = _levels_in(text)
+    if theme == "three_layer" or (
+        theme == "level" and rule.startswith("大盤")
+    ):
+        return [x for x in raw if _is_tw_index_level(x)]
+    if theme == "level" and rule.startswith("個股"):
+        return [x for x in raw if not _is_tw_index_level(x)]
+    return raw
+
 def _prov(
     row: Dict[str, Any], excerpt: str, *, club: bool
 ) -> Dict[str, Any]:
