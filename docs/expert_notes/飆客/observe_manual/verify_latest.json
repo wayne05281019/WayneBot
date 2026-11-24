@@ -1,0 +1,248 @@
+{
+  "written_at": "2026-11-23T23:12:40",
+  "tz": "Asia/Taipei",
+  "track": "bk_verify",
+  "purpose_zh": "BK-VERIFY：三層鏈／他點過的位／試標段 → 對／偏／未完；可重跑自測",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "not_buy_signal": true,
+  "mix_forbidden_zh": "勝率不准混進海選／黃金買點；本軌不上話筒買訊",
+  "current_variant": "bk_verify_v1_trio_level_seg",
+  "next_variant": {
+    "variant": "bk_verify_v2_chain_sox_strict",
+    "rule_zh": "chain：SOX≤-1.5 才准弱鏈對；level：剔除 touch 灌水；segment：preferred 失效改看同日成立路徑",
+    "status": "collecting",
+    "gate_n20": false,
+    "replace": false,
+    "note_zh": "現況樣本仍少；繼續靜默收集。勝率不准混海選／黃金買點。"
+  },
+  "db": {
+    "path": "/agent/repos/WayneBot/data/wayne_market.db",
+    "ok": true,
+    "twii_n": 688,
+    "twii_from": "20240102",
+    "twii_to": "20261106",
+    "tx_regular_n": 650,
+    "us_overnight_n": 19
+  },
+  "cases_n": 4,
+  "rows": [
+    {
+      "case_id": "chain_trio_20261105_sox_risk_off",
+      "track": "chain_trio",
+      "as_of": "20261105",
+      "verdict": "對",
+      "ok": true,
+      "expect_chain": "down",
+      "layers": {
+        "night_bias": "down",
+        "tx_bias": "down",
+        "twii_bias": "down",
+        "overnight": {
+          "regime": "risk_off",
+          "sox_pct": -9.992787285482267,
+          "nq_f_pct": null
+        },
+        "tx": {
+          "o": 43013.0,
+          "h": 43114.0,
+          "l": 41666.0,
+          "c": 41915.0
+        },
+        "twii": {
+          "o": 42666.13,
+          "h": 42873.81,
+          "l": 41513.57,
+          "c": 41574.72
+        }
+      },
+      "deps": [
+        "us_overnight",
+        "tx_regular",
+        "twii",
+        "BK-CHAIN_handbook_optional"
+      ],
+      "deps_missing": [],
+      "variant": "bk_verify_v1_trio_level_seg",
+      "note_zh": "三層鏈只對方向一致性；不是買訊；SOX 缺則未完"
+    },
+    {
+      "case_id": "empty_levels_must_skip",
+      "track": "level_touch",
+      "as_of": "20261103",
+      "verdict": "空名單",
+      "ok": null,
+      "note_zh": "空名單不算",
+      "variant": "bk_verify_v1_trio_level_seg"
+    },
+    {
+      "case_id": "level_touch_20261103_oral_43135_41760",
+      "track": "level_touch",
+      "as_of": "20261103",
+      "verdict": "對",
+      "ok": true,
+      "levels": [
+        {
+          "level": 43135.0,
+          "role": "break",
+          "verdict": "對",
+          "ok": true,
+          "source": "oral_hold_fail_43135"
+        },
+        {
+          "level": 41760.0,
+          "role": "break",
+          "verdict": "對",
+          "ok": true,
+          "source": "oral_41760"
+        }
+      ],
+      "fwd": 2,
+      "tol_pct": 0.005,
+      "variant": "bk_verify_v1_trio_level_seg",
+      "deps": [
+        "official_twii",
+        "biaoke_oral_levels"
+      ]
+    },
+    {
+      "case_id": "segment_bias_20261120_vs_fwd1119",
+      "track": "segment_bias",
+      "as_of": "20261120",
+      "preferred": "M3_seek_37837_continue",
+      "verdict": "對",
+      "ok": true,
+      "paths": [
+        {
+          "id": "M3_seek_37837_continue",
+          "verdict": "對",
+          "ok": true,
+          "note": "L35738.68 測到／破 37837.05",
+          "segments_provisional": [
+            {
+              "label": "B-a_hold_fail",
+              "role": "41760仍失",
+              "level": 41760.0
+            },
+            {
+              "label": "B-b",
+              "role": "回測C3底／週五低37837",
+              "level": 37837.05
+            }
+          ]
+        },
+        {
+          "id": "W4_reclaim_418_427_band",
+          "verdict": "偏",
+          "ok": false,
+          "note": "H37646.13 未進帶 41800.0-42700.0",
+          "segments_provisional": [
+            {
+              "label": "wave4_band_reclaim",
+              "role": "收回波浪4帶",
+              "lo": 41800.0,
+              "hi": 42700.0
+            }
+          ]
+        },
+        {
+          "id": "N1_follow_through_below_band",
+          "verdict": "對",
+          "ok": true,
+          "note": "L35738.68 測到／破 37837.05",
+          "segments_provisional": [
+            {
+              "label": "stay_below_37837",
+              "role": "37837下停留",
+              "level": 37837.05
+            }
+          ]
+        }
+      ],
+      "official_bar": {
+        "o": 37646.13,
+        "h": 37646.13,
+        "l": 35738.68,
+        "c": 36033.29,
+        "v": 17070331.0
+      },
+      "variant": "bk_verify_v1_trio_level_seg",
+      "deps": [
+        "wave_forward_infer_20261119",
+        "wave_eod_verify_20261120",
+        "official_twii_frozen_in_case"
+      ],
+      "pot": "試標・推論／非他原文・非買訊"
+    }
+  ],
+  "tracks": {
+    "chain_trio": {
+      "n_rows": 1,
+      "n_decided": 1,
+      "hit": 1,
+      "miss": 0,
+      "hit_rate": 1.0,
+      "gate_n20": false,
+      "n_days": 1,
+      "outcome_counts": {
+        "對": 1
+      },
+      "empty_skipped": 0
+    },
+    "level_touch": {
+      "n_rows": 2,
+      "n_decided": 1,
+      "hit": 1,
+      "miss": 0,
+      "hit_rate": 1.0,
+      "gate_n20": false,
+      "n_days": 1,
+      "outcome_counts": {
+        "空名單": 1,
+        "對": 1
+      },
+      "empty_skipped": 1
+    },
+    "segment_bias": {
+      "n_rows": 1,
+      "n_decided": 1,
+      "hit": 1,
+      "miss": 0,
+      "hit_rate": 1.0,
+      "gate_n20": false,
+      "n_days": 1,
+      "outcome_counts": {
+        "對": 1
+      },
+      "empty_skipped": 0
+    }
+  },
+  "overall_catalog_only": {
+    "n_rows": 4,
+    "n_decided": 3,
+    "hit": 3,
+    "miss": 0,
+    "hit_rate": 1.0,
+    "gate_n20": false,
+    "n_days": 3,
+    "outcome_counts": {
+      "對": 3,
+      "空名單": 1
+    },
+    "empty_skipped": 1
+  },
+  "miss_analysis": [],
+  "deps_zh": [
+    "BK-CHAIN《三層觀測操作手》齊了可加更多 chain 考題",
+    "BK-WAVE 段號證據桶齊了可擴 segment 母體",
+    "本機／Render 官方柱需完整 OHLC；缺柱＝未完",
+    "wave_forward_infer／wave_eod_verify 可當 segment 樣例來源"
+  ],
+  "daily_review_zh": "開市日盤後：python scripts/observe_verify_suite.py --write；核對 verify_latest.json；有 miss 填 rule_patch 並續收下一版鍵",
+  "gate": {
+    "min_n": 20,
+    "replace": false,
+    "phone_sync": "blocked",
+    "note_zh": "n≥20 獨立交易日且贏現況才換；現況框架階段 replace=false"
+  }
+}
