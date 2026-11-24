@@ -1,8 +1,8 @@
 # 段號證據桶（BK-WAVE）
 
-- as_of：`2026-11-23T23:10:50+0800`（Asia/Taipei）
-- 樣本：**66**（有官方 TWII 柱 **62**）
-- 他標／原文鏈：**29**；試標推論：**37**
+- as_of：`2026-11-24T01:00:30+0800`（Asia/Taipei）
+- 樣本：**73**（有官方 TWII 柱 **69**）
+- 他標／原文鏈：**29**；試標推論：**44**
 - 話筒警語（固定）：`試標・推論／非他原文・非買訊・對質未過閘`
 - 非買訊；不准發明無憑據 5／9 當他原文。
 
@@ -13,6 +13,7 @@
 - wave8_* 概念鎖已有，尚未編成可餵話筒／自測的浪則卡索引
 - 碎形交叉／五件同窗尚未有可執行對質函式
 - 靜默對質 n≥20 且贏現況才准換；現況 phone_sync=blocked
+- SYNC-FWD：miss_analysis 可回寫下一版鍵／敘述修正＋證據桶（phone_sync=blocked）
 
 ## 樣本索引（id → rules）
 
@@ -82,3 +83,10 @@
 - `SE-EOD-20261120-W4_reclaim_418_427_band` @ 20261120 bar=Y pot=trial_infer ← WR-SEGMENT-TRIAL-WARN,WR-FWD-LOOP
 - `SE-EOD-20261120-N1_follow_through_below_band` @ 20261120 bar=Y pot=trial_infer ← WR-SEGMENT-TRIAL-WARN,WR-FWD-LOOP
 - `SE-EOD-20261120-M2_dead_reclaim_watch` @ 20261120 bar=Y pot=trial_infer ← WR-SEGMENT-TRIAL-WARN,WR-FWD-LOOP
+- `SE-FWD-MISS-20261120-level_broke_follow_oral_band` @ 20261120 bar=Y pot=trial_infer ← WR-OPS-FAKE-BREAK,WR-LEVEL-ORAL-ONLY,WR-FWD-LOOP,WR-SEGMENT-TRIAL-WARN
+- `SE-FWD-MISS-20261123-target_touch_bounce_elevate_reclaim` @ 20261123 bar=Y pot=trial_infer ← WR-FWD-TOUCH-BOUNCE-RECLAIM,WR-OPS-FAKE-BREAK,WR-FWD-LOOP,WR-LEVEL-ORAL-ONLY,WR-SEGMENT-TRIAL-WARN
+- `SE-EOD-20261123-M3_extend_toward_35579` @ 20261123 bar=Y pot=trial_infer ← WR-FWD-TOUCH-BOUNCE-RECLAIM,WR-OPS-FAKE-BREAK,WR-FWD-LOOP,WR-LEVEL-ORAL-ONLY,WR-SEGMENT-TRIAL-WARN
+- `SE-EOD-20261123-FB_reclaim_37837_watch` @ 20261123 bar=Y pot=trial_infer ← WR-FWD-TOUCH-BOUNCE-RECLAIM,WR-OPS-FAKE-BREAK,WR-FWD-LOOP,WR-LEVEL-ORAL-ONLY,WR-SEGMENT-TRIAL-WARN
+- `SE-EOD-20261123-W4_reclaim_418_427_band` @ 20261123 bar=Y pot=trial_infer ← WR-FWD-TOUCH-BOUNCE-RECLAIM,WR-OPS-FAKE-BREAK,WR-FWD-LOOP,WR-LEVEL-ORAL-ONLY,WR-SEGMENT-TRIAL-WARN
+- `SE-EOD-20261123-N1_follow_through_below_band` @ 20261123 bar=Y pot=trial_infer ← WR-FWD-TOUCH-BOUNCE-RECLAIM,WR-OPS-FAKE-BREAK,WR-FWD-LOOP,WR-LEVEL-ORAL-ONLY,WR-SEGMENT-TRIAL-WARN
+- `SE-EOD-20261123-M2_dead_reclaim_watch` @ 20261123 bar=Y pot=trial_infer ← WR-FWD-TOUCH-BOUNCE-RECLAIM,WR-OPS-FAKE-BREAK,WR-FWD-LOOP,WR-LEVEL-ORAL-ONLY,WR-SEGMENT-TRIAL-WARN

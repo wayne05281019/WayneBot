@@ -3560,6 +3560,33 @@ def render_lookup_structure_result(
                 cap = append_sanchi_to_caption(cap, card)
         except Exception:
             pass
+        # SYNC-STRUCT-VOL 圖說旁註（可開關；非買訊）
+        try:
+            from sync_struct_vol_notes import (
+                append_notes_to_caption,
+                detect_struct_vol_notes,
+            )
+
+            _press = _hold = 0.0
+            try:
+                from biaoke_brain import volume_first_price
+
+                st = volume_first_price(bars, lookback=min(40, len(bars))) or {}
+                _press = float(st.get("spike_high") or 0)
+                _hold = float(st.get("spike_low") or 0)
+            except Exception:
+                pass
+            _notes = detect_struct_vol_notes(
+                bars,
+                press=_press,
+                hold=_hold,
+                card=card if isinstance(card, dict) else None,
+            )
+            cap = append_notes_to_caption(
+                cap, _notes, card=card if isinstance(card, dict) else None
+            )
+        except Exception:
+            pass
         return path, cap
     except Exception as exc:
         import logging

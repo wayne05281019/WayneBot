@@ -1,7 +1,7 @@
 # 浪則卡（BK-WAVE）
 
-- as_of：`2026-11-23T23:10:00+0800`（Asia/Taipei）
-- 卡數：**22**
+- as_of：`2026-11-24T01:00:30+0800`（Asia/Taipei）
+- 卡數：**24**
 - 話筒警語（固定）：`試標・推論／非他原文・非買訊・對質未過閘`
 - 非買訊；`phone_sync=blocked`；離開敘事不准進產品；DC句不准寫成他說。
 
@@ -29,11 +29,14 @@
 | `WR-LEVEL-ORAL-ONLY` | level | his_words | 只認他點過的位 |
 | `WR-SEGMENT-TRIAL-WARN` | segment | trial_infer | 試標段號警語層 |
 | `WR-FWD-LOOP` | verify | trial_infer | Forward 對質迴圈 |
+| `WR-FWD-TOUCH-BOUNCE-RECLAIM` | verify | trial_infer | 目標觸及後收彈→升權假跌破收回 |
+| `WR-FWD-PENDING-NOT-VETO` | verify | trial_infer | 未觸及≠路徑否決（pending 升權） |
 
 ## 與現況 wave 碼落差
 
 - **iron_laws**：現況＝wave8_* JSON 鎖＋teach phrase 標籤；無純函式強制①④／③非最短 → 卡＝WR-IRON-* → 下一步＝對質閘過後才考慮可執行 check；仍≠買訊
 - **mine_vs_biaoke**：現況＝mine_wave_rules＝擴延1618／前端傾斜（DC→我估） → 卡＝WR-FIB-REBOUND / WR-EXT-* 分鍋註記 → 下一步＝永遠分標；不准DC句寫成他說
-- **forward_verify**：現況＝segments_provisional 必標；未掛浪則卡 id／證據桶 → 卡＝WR-FWD-LOOP + observe_wave_rules.attach_* → 下一步＝本 PR 接索引；BK-VERIFY／BK-FWD 吃證據桶
+- **forward_verify**：現況＝segments_provisional 必標；未掛浪則卡 id／證據桶 → 卡＝WR-FWD-LOOP + observe_wave_rules.attach_* → 下一步＝BK-FWD miss→手冊鍵已掛；BK-VERIFY 吃證據桶；phone_sync 仍 blocked
 - **five_piece_cross**：現況＝課綱有、教具語有；無同窗交叉對質函式 → 卡＝WR-MORPH-CROSS → 下一步＝BK-CHART 圖註解齊了再可執行化
 - **phone**：現況＝phone_sync=blocked；段號上話筒需警語（MISSION B1） → 卡＝WR-SEGMENT-TRIAL-WARN → 下一步＝BK-PHONE 掛手冊摘要＋警語試標
+- **sync_fwd_writeback**：現況＝eod miss_analysis 有 rule_patch，未自動回寫手冊鍵 → 卡＝WR-FWD-TOUCH-BOUNCE-RECLAIM / WR-FWD-PENDING-NOT-VETO → 下一步＝observe_sync_fwd 落 fwd_miss_writeback_*＋證據桶；§13 下一版鍵收集中

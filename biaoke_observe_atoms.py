@@ -235,6 +235,25 @@ def _levels_in(text: str) -> List[str]:
     return out
 
 
+def _is_tw_index_level(raw: str) -> bool:
+    """加權／台指觀測位（現代語料 ≥10000）。股價／代號／振幅點數一律 False。"""
+    try:
+        v = float(raw)
+    except ValueError:
+        return False
+    return 10000.0 <= v <= 100000.0
+
+def _levels_for_theme(theme: str, rule: str, text: str) -> List[str]:
+    """依主題濾位：三層／大盤只留指數級；個股鍋留非指數。"""
+    raw = _levels_in(text)
+    if theme == "three_layer" or (
+        theme == "level" and rule.startswith("大盤")
+    ):
+        return [x for x in raw if _is_tw_index_level(x)]
+    if theme == "level" and rule.startswith("個股"):
+        return [x for x in raw if not _is_tw_index_level(x)]
+    return raw
+
 def _prov(
     row: Dict[str, Any], excerpt: str, *, club: bool
 ) -> Dict[str, Any]:
@@ -282,17 +301,50 @@ def load_db_posts(db_path: str) -> List[Dict[str, Any]]:
     return out
 
 
+def load_overlay_delta_posts() -> List[Dict[str, Any]]:
+    """git 凍的 overlay 增量（無碟／CI 也能合併至今日）。"""
+    try:
+        from biaoke_overlay_sync import load_overlay_delta
+
+        blob = load_overlay_delta() or {}
+    except Exception:
+        return []
+    out: List[Dict[str, Any]] = []
+    for row in blob.get("posts") or []:
+        if not isinstance(row, dict):
+            continue
+        out.append(
+            {
+                "id": row.get("id"),
+                "date": row.get("date") or "",
+                "time": row.get("time") or "",
+                "parent": row.get("parent") or "",
+                "layer": int(row.get("layer") or 0),
+                "kind": row.get("kind") or "post",
+                "text": row.get("text") or "",
+                "source": "overlay_delta",
+                "club": False,
+            }
+        )
+    return out
+
+
 def load_corpus_rows(
     *,
     db_path: str = "",
     include_club: bool = True,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
-    """合併 1709＋DB overlay＋社團（後台）。同 id 以較長正文／較新為準。"""
+    """合併 1709＋catchup＋overlay_delta＋DB overlay＋社團（後台）。
+
+    同 id 以較長正文／較新為準。社團只後台。
+    """
     from biaoke_archive import load_bundled_archive, load_bundled_club
 
     meta: Dict[str, Any] = {
         "archive_n": 0,
         "archive_replies": 0,
+        "catchup_n": 0,
+        "delta_n": 0,
         "db_n": 0,
         "club_n": 0,
         "club_replies": 0,
@@ -330,9 +382,29 @@ def load_corpus_rows(
     meta["archive_n"] = int(pub.get("n") or 0)
     meta["archive_replies"] = int(pub.get("replies") or 0)
 
-    for row in load_db_posts(db_path):
+    try:
+        from biaoke_desk import catchup_seed_rows
+
+        catchup_rows = catchup_seed_rows() or []
+    except Exception:
+        catchup_rows = []
+    for row in catchup_rows:
+        _put(row, club=False, source="catchup")
+    meta["catchup_n"] = len(
+        [1 for r in by_id.values() if r.get("source") == "catchup"]
+    )
+
+    for row in load_overlay_delta_posts():
+        _put(row, club=False, source="overlay_delta")
+    meta["delta_n"] = len(
+        [1 for r in by_id.values() if r.get("source") == "overlay_delta"]
+    )
+
+    db_rows = load_db_posts(db_path)
+    for row in db_rows:
         _put(row, club=False, source="db_overlay")
-    meta["db_n"] = len([1 for r in by_id.values() if r.get("source") == "db_overlay"])
+    # 以實際庫列數為準（同文被 delta 先佔 source 時仍算有 overlay）
+    meta["db_n"] = len(db_rows)
 
     if include_club:
         club = load_bundled_club() or {}
@@ -696,8 +768,22 @@ def coverage_report(atoms: Sequence[Dict[str, Any]], meta: Dict[str, Any]) -> Di
     gaps: List[str] = []
     if by_theme.get("sox", 0) < 3:
         gaps.append("SOX／費半連動原文偏少，需 BK-CHART／後續 overlay 補圖註")
-    if meta.get("db_n", 0) == 0:
-        gaps.append("本機 biaoke_posts overlay 為空；盤中自回至今日需 Render 碟或 ingest 後再併")
+    if int(meta.get("db_n") or 0) <= 0 and int(meta.get("delta_n") or 0) <= 0:
+        gaps.append(
+            "DB overlay 與 overlay_delta 皆空；需跑 scripts/biaoke_sync_overlay_heal.py "
+            "（Render 碟或本機）補至今日"
+        )
+    to_s = str(meta.get("to") or "")
+    today = datetime.now(TAIPEI).strftime("%Y-%m-%d")
+    # 深夜／他尚未發當日文：差 1 曆日不算缺；≥2 天才標落後
+    if to_s and to_s < today:
+        try:
+            d0 = datetime.strptime(to_s, "%Y-%m-%d").date()
+            d1 = datetime.strptime(today, "%Y-%m-%d").date()
+            if (d1 - d0).days >= 2:
+                gaps.append(f"語料末日 {to_s} 早於今日 {today}；overlay 仍落後")
+        except ValueError:
+            gaps.append(f"語料末日 {to_s} 早於今日 {today}；overlay 仍落後")
     if by_theme.get("three_layer", 0) and not any(
         "e-mini" in str(a.get("rule") or "").lower() or "美期" in str(a.get("rule") or "")
         for a in atoms
@@ -759,6 +845,7 @@ def write_atoms_index_md(payload: Dict[str, Any], path: str = "") -> str:
         f"產生：`{payload.get('generated_at_taipei')}`（Asia/Taipei）",
         "",
         f"語料：公開主文 {meta.get('archive_n')}＋回文 {meta.get('archive_replies')}；"
+        f"catchup {meta.get('catchup_n')}；overlay_delta {meta.get('delta_n')}；"
         f"DB overlay {meta.get('db_n')}；社團後台主文 {meta.get('club_n')}＋回文 {meta.get('club_replies')}；"
         f"合併列 {meta.get('merged_n')}（{meta.get('from')}→{meta.get('to')}）。",
         "",

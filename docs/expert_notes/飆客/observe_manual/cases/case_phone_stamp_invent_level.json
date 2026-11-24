@@ -1,0 +1,30 @@
+{
+  "case_id": "phone_stamp_invent_level_dc",
+  "track": "phone_stamp",
+  "as_of": "20261105",
+  "expect_ok": false,
+  "expect_violations": ["invented_level"],
+  "deps": ["BK-PHONE", "MISSION_LOCK_A5"],
+  "note_zh": "只認他位：發明價＋DC 位冒充他說。",
+  "his_levels": [41760.0, 43135.0],
+  "brief": "看 39999／DC 擴延",
+  "observe_slot": "試標・推論／非他原文・非買訊・對質未過閘",
+  "stamp": {
+    "disclaimer_present": true,
+    "phone_sync": "blocked",
+    "buy_signal": false,
+    "layers_order": ["L1", "L2", "L3"],
+    "layer1_hypothesis": "bias_down",
+    "layer2_verdict": "confirm",
+    "layer3_verdict": "pending",
+    "named_levels": [
+      {"level": 41760.0, "source": "oral", "pot": "he"},
+      {"level": 39999.0, "source": "invented", "claims_he": true},
+      {"level": 35579.0, "source": "dc", "pot": "dc", "claims_he": true}
+    ],
+    "instrument_labels": {
+      "twii": "加權現貨",
+      "tx": "台指日盤"
+    }
+  }
+}

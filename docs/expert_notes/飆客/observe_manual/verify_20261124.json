@@ -1,0 +1,558 @@
+{
+  "written_at": "2026-11-24T00:59:15",
+  "tz": "Asia/Taipei",
+  "track": "bk_verify",
+  "purpose_zh": "BK-VERIFY／SYNC-VERIFY：三層鏈／他點過的位／試標段／話筒 brief·slot·stamp → 對／偏／未完；可重跑自測",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "not_buy_signal": true,
+  "mix_forbidden_zh": "勝率不准混進海選／黃金買點；本軌不上話筒買訊",
+  "current_variant": "bk_verify_v1_trio_level_seg",
+  "next_variant": {
+    "variant": "bk_verify_v2_chain_sox_strict",
+    "rule_zh": "chain：SOX≤-1.5 才准弱鏈對；level：剔除 touch 灌水；segment：preferred 失效改看同日成立路徑",
+    "status": "collecting",
+    "gate_n20": false,
+    "replace": false,
+    "note_zh": "現況樣本仍少；繼續靜默收集。勝率不准混海選／黃金買點。",
+    "parallel_next": {
+      "variant": "bk_verify_v3_phone_brief_stamp",
+      "rule_zh": "phone_stamp：layers_order＝L1→L2→L3；禁倒灌 twii_eod；期現標籤分鍋；named_levels 只准 oral／his；缺警語／buy_signal／phone_sync≠blocked → 偏",
+      "status": "collecting",
+      "track": "phone_stamp",
+      "note_zh": "SYNC-VERIFY §13 再生鍵；未過閘不准當買訊"
+    }
+  },
+  "next_variant_phone": "bk_verify_v3_phone_brief_stamp",
+  "db": {
+    "path": "/agent/repos/WayneBot/data/wayne_market.db",
+    "ok": true,
+    "twii_n": 688,
+    "twii_from": "20240102",
+    "twii_to": "20261106",
+    "tx_regular_n": 650,
+    "us_overnight_n": 19
+  },
+  "cases_n": 10,
+  "rows": [
+    {
+      "case_id": "chain_trio_20261105_sox_risk_off",
+      "track": "chain_trio",
+      "as_of": "20261105",
+      "verdict": "對",
+      "ok": true,
+      "expect_chain": "down",
+      "layers": {
+        "night_bias": "down",
+        "tx_bias": "down",
+        "twii_bias": "down",
+        "overnight": {
+          "regime": "risk_off",
+          "sox_pct": -9.992787285482267,
+          "nq_f_pct": null
+        },
+        "tx": {
+          "o": 43013.0,
+          "h": 43114.0,
+          "l": 41666.0,
+          "c": 41915.0
+        },
+        "twii": {
+          "o": 42666.13,
+          "h": 42873.81,
+          "l": 41513.57,
+          "c": 41574.72
+        }
+      },
+      "deps": [
+        "us_overnight",
+        "tx_regular",
+        "twii",
+        "BK-CHAIN_handbook_optional"
+      ],
+      "deps_missing": [],
+      "variant": "bk_verify_v1_trio_level_seg",
+      "note_zh": "三層鏈只對方向一致性；不是買訊；SOX 缺則未完"
+    },
+    {
+      "case_id": "empty_levels_must_skip",
+      "track": "level_touch",
+      "as_of": "20261103",
+      "verdict": "空名單",
+      "ok": null,
+      "note_zh": "空名單不算",
+      "variant": "bk_verify_v1_trio_level_seg"
+    },
+    {
+      "case_id": "level_touch_20261103_oral_43135_41760",
+      "track": "level_touch",
+      "as_of": "20261103",
+      "verdict": "對",
+      "ok": true,
+      "levels": [
+        {
+          "level": 43135.0,
+          "role": "break",
+          "verdict": "對",
+          "ok": true,
+          "source": "oral_hold_fail_43135"
+        },
+        {
+          "level": 41760.0,
+          "role": "break",
+          "verdict": "對",
+          "ok": true,
+          "source": "oral_41760"
+        }
+      ],
+      "fwd": 2,
+      "tol_pct": 0.005,
+      "variant": "bk_verify_v1_trio_level_seg",
+      "deps": [
+        "official_twii",
+        "biaoke_oral_levels"
+      ]
+    },
+    {
+      "case_id": "phone_stamp_backflow_twii_eod",
+      "track": "phone_stamp",
+      "as_of": "20261105",
+      "verdict": "對",
+      "ok": true,
+      "expect_ok": false,
+      "expect_violations": [
+        "backflow"
+      ],
+      "violations": [
+        {
+          "code": "backflow",
+          "zh": "倒灌：用現貨／日盤收改寫夜盤方向假設"
+        }
+      ],
+      "found_codes": [
+        "backflow"
+      ],
+      "missing_expected_codes": [],
+      "variant": "bk_verify_v1_trio_level_seg",
+      "next_variant_candidate": "bk_verify_v3_phone_brief_stamp",
+      "phone_sync": "blocked",
+      "buy_signal": false,
+      "not_buy_signal": true,
+      "deps": [
+        "BK-PHONE",
+        "BK-CHAIN"
+      ],
+      "note_zh": "SYNC-VERIFY：話筒 brief／slot／stamp 考三層／倒灌／期現／只認他位；phone_sync=blocked 未過閘不准當買訊",
+      "brief_len": 14,
+      "slot_len": 20,
+      "stamp_keys": [
+        "buy_signal",
+        "disclaimer_present",
+        "instrument_labels",
+        "layer1_hypothesis",
+        "layer1_source_rewrite",
+        "layer2_verdict",
+        "layer3_verdict",
+        "layers_order",
+        "named_levels",
+        "phone_sync"
+      ]
+    },
+    {
+      "case_id": "phone_stamp_buy_sync_leak",
+      "track": "phone_stamp",
+      "as_of": "20261105",
+      "verdict": "對",
+      "ok": true,
+      "expect_ok": false,
+      "expect_violations": [
+        "buy_signal_leak",
+        "phone_sync_leak",
+        "missing_disclaimer"
+      ],
+      "violations": [
+        {
+          "code": "missing_disclaimer",
+          "zh": "缺固定警語「試標・推論／非他原文・非買訊・對質未過閘」"
+        },
+        {
+          "code": "phone_sync_leak",
+          "zh": "phone_sync 未過閘卻標成可上／已 sync"
+        },
+        {
+          "code": "buy_signal_leak",
+          "zh": "觀測層標 buy_signal=true（未過閘不准當買訊）"
+        },
+        {
+          "code": "buy_signal_leak",
+          "zh": "文案含買訊語氣：準買"
+        }
+      ],
+      "found_codes": [
+        "buy_signal_leak",
+        "missing_disclaimer",
+        "phone_sync_leak"
+      ],
+      "missing_expected_codes": [],
+      "variant": "bk_verify_v1_trio_level_seg",
+      "next_variant_candidate": "bk_verify_v3_phone_brief_stamp",
+      "phone_sync": "blocked",
+      "buy_signal": false,
+      "not_buy_signal": true,
+      "deps": [
+        "BK-PHONE",
+        "MISSION_LOCK_B3"
+      ],
+      "note_zh": "SYNC-VERIFY：話筒 brief／slot／stamp 考三層／倒灌／期現／只認他位；phone_sync=blocked 未過閘不准當買訊",
+      "brief_len": 10,
+      "slot_len": 11,
+      "stamp_keys": [
+        "buy_signal",
+        "disclaimer_present",
+        "instrument_labels",
+        "layer1_hypothesis",
+        "layer2_verdict",
+        "layer3_verdict",
+        "layers_order",
+        "named_levels",
+        "phone_sync"
+      ]
+    },
+    {
+      "case_id": "phone_stamp_futures_spot_mix",
+      "track": "phone_stamp",
+      "as_of": "20261105",
+      "verdict": "對",
+      "ok": true,
+      "expect_ok": false,
+      "expect_violations": [
+        "futures_spot_mix"
+      ],
+      "violations": [
+        {
+          "code": "futures_spot_mix",
+          "zh": "期現混：加權現貨被標成「台指夜盤收」"
+        }
+      ],
+      "found_codes": [
+        "futures_spot_mix"
+      ],
+      "missing_expected_codes": [],
+      "variant": "bk_verify_v1_trio_level_seg",
+      "next_variant_candidate": "bk_verify_v3_phone_brief_stamp",
+      "phone_sync": "blocked",
+      "buy_signal": false,
+      "not_buy_signal": true,
+      "deps": [
+        "BK-PHONE",
+        "BK-CHAIN"
+      ],
+      "note_zh": "SYNC-VERIFY：話筒 brief／slot／stamp 考三層／倒灌／期現／只認他位；phone_sync=blocked 未過閘不准當買訊",
+      "brief_len": 11,
+      "slot_len": 20,
+      "stamp_keys": [
+        "buy_signal",
+        "disclaimer_present",
+        "instrument_labels",
+        "layer1_hypothesis",
+        "layer2_verdict",
+        "layer3_verdict",
+        "layers_order",
+        "named_levels",
+        "phone_sync"
+      ]
+    },
+    {
+      "case_id": "phone_stamp_invent_level_dc",
+      "track": "phone_stamp",
+      "as_of": "20261105",
+      "verdict": "對",
+      "ok": true,
+      "expect_ok": false,
+      "expect_violations": [
+        "invented_level"
+      ],
+      "violations": [
+        {
+          "code": "invented_level",
+          "zh": "只認他位：39999.0 來源=invented（冒充他說）"
+        },
+        {
+          "code": "invented_level",
+          "zh": "只認他位：35579.0 來源=dc（冒充他說）"
+        }
+      ],
+      "found_codes": [
+        "invented_level"
+      ],
+      "missing_expected_codes": [],
+      "variant": "bk_verify_v1_trio_level_seg",
+      "next_variant_candidate": "bk_verify_v3_phone_brief_stamp",
+      "phone_sync": "blocked",
+      "buy_signal": false,
+      "not_buy_signal": true,
+      "deps": [
+        "BK-PHONE",
+        "MISSION_LOCK_A5"
+      ],
+      "note_zh": "SYNC-VERIFY：話筒 brief／slot／stamp 考三層／倒灌／期現／只認他位；phone_sync=blocked 未過閘不准當買訊",
+      "brief_len": 13,
+      "slot_len": 20,
+      "stamp_keys": [
+        "buy_signal",
+        "disclaimer_present",
+        "instrument_labels",
+        "layer1_hypothesis",
+        "layer2_verdict",
+        "layer3_verdict",
+        "layers_order",
+        "named_levels",
+        "phone_sync"
+      ]
+    },
+    {
+      "case_id": "phone_stamp_layer_skip_l3",
+      "track": "phone_stamp",
+      "as_of": "20261105",
+      "verdict": "對",
+      "ok": true,
+      "expect_ok": false,
+      "expect_violations": [
+        "layer_skip",
+        "layer_order"
+      ],
+      "violations": [
+        {
+          "code": "layer_order",
+          "zh": "三層順序錯：['L3', 'L1', 'L2']（應夜盤→早盤TX→現貨）"
+        },
+        {
+          "code": "layer_skip",
+          "zh": "三層跳層：缺第一層夜盤假設卻宣判第三層現貨"
+        },
+        {
+          "code": "layer_skip",
+          "zh": "三層跳層：略過早盤 TX 確認直接現貨宣判"
+        }
+      ],
+      "found_codes": [
+        "layer_order",
+        "layer_skip"
+      ],
+      "missing_expected_codes": [],
+      "variant": "bk_verify_v1_trio_level_seg",
+      "next_variant_candidate": "bk_verify_v3_phone_brief_stamp",
+      "phone_sync": "blocked",
+      "buy_signal": false,
+      "not_buy_signal": true,
+      "deps": [
+        "BK-PHONE",
+        "BK-CHAIN"
+      ],
+      "note_zh": "SYNC-VERIFY：話筒 brief／slot／stamp 考三層／倒灌／期現／只認他位；phone_sync=blocked 未過閘不准當買訊",
+      "brief_len": 7,
+      "slot_len": 20,
+      "stamp_keys": [
+        "buy_signal",
+        "disclaimer_present",
+        "instrument_labels",
+        "layer2_verdict",
+        "layer3_verdict",
+        "layers_order",
+        "named_levels",
+        "phone_sync",
+        "skip_tx_confirm"
+      ]
+    },
+    {
+      "case_id": "phone_stamp_ok_layered",
+      "track": "phone_stamp",
+      "as_of": "20261105",
+      "verdict": "對",
+      "ok": true,
+      "expect_ok": true,
+      "expect_violations": [],
+      "violations": [],
+      "found_codes": [],
+      "missing_expected_codes": [],
+      "variant": "bk_verify_v1_trio_level_seg",
+      "next_variant_candidate": "bk_verify_v3_phone_brief_stamp",
+      "phone_sync": "blocked",
+      "buy_signal": false,
+      "not_buy_signal": true,
+      "deps": [
+        "BK-PHONE",
+        "BK-CHAIN",
+        "MISSION_LOCK"
+      ],
+      "note_zh": "SYNC-VERIFY：話筒 brief／slot／stamp 考三層／倒灌／期現／只認他位；phone_sync=blocked 未過閘不准當買訊",
+      "brief_len": 41,
+      "slot_len": 72,
+      "stamp_keys": [
+        "buy_signal",
+        "disclaimer",
+        "disclaimer_present",
+        "instrument_labels",
+        "layer1_hypothesis",
+        "layer2_verdict",
+        "layer3_verdict",
+        "layers_order",
+        "named_levels",
+        "phone_sync"
+      ]
+    },
+    {
+      "case_id": "segment_bias_20261120_vs_fwd1119",
+      "track": "segment_bias",
+      "as_of": "20261120",
+      "preferred": "M3_seek_37837_continue",
+      "verdict": "對",
+      "ok": true,
+      "paths": [
+        {
+          "id": "M3_seek_37837_continue",
+          "verdict": "對",
+          "ok": true,
+          "note": "L35738.68 測到／破 37837.05",
+          "segments_provisional": [
+            {
+              "label": "B-a_hold_fail",
+              "role": "41760仍失",
+              "level": 41760.0
+            },
+            {
+              "label": "B-b",
+              "role": "回測C3底／週五低37837",
+              "level": 37837.05
+            }
+          ]
+        },
+        {
+          "id": "W4_reclaim_418_427_band",
+          "verdict": "偏",
+          "ok": false,
+          "note": "H37646.13 未進帶 41800.0-42700.0",
+          "segments_provisional": [
+            {
+              "label": "wave4_band_reclaim",
+              "role": "收回波浪4帶",
+              "lo": 41800.0,
+              "hi": 42700.0
+            }
+          ]
+        },
+        {
+          "id": "N1_follow_through_below_band",
+          "verdict": "對",
+          "ok": true,
+          "note": "L35738.68 測到／破 37837.05",
+          "segments_provisional": [
+            {
+              "label": "stay_below_37837",
+              "role": "37837下停留",
+              "level": 37837.05
+            }
+          ]
+        }
+      ],
+      "official_bar": {
+        "o": 37646.13,
+        "h": 37646.13,
+        "l": 35738.68,
+        "c": 36033.29,
+        "v": 17070331.0
+      },
+      "variant": "bk_verify_v1_trio_level_seg",
+      "deps": [
+        "wave_forward_infer_20261119",
+        "wave_eod_verify_20261120",
+        "official_twii_frozen_in_case"
+      ],
+      "pot": "試標・推論／非他原文・非買訊"
+    }
+  ],
+  "tracks": {
+    "chain_trio": {
+      "n_rows": 1,
+      "n_decided": 1,
+      "hit": 1,
+      "miss": 0,
+      "hit_rate": 1.0,
+      "gate_n20": false,
+      "n_days": 1,
+      "outcome_counts": {
+        "對": 1
+      },
+      "empty_skipped": 0
+    },
+    "level_touch": {
+      "n_rows": 2,
+      "n_decided": 1,
+      "hit": 1,
+      "miss": 0,
+      "hit_rate": 1.0,
+      "gate_n20": false,
+      "n_days": 1,
+      "outcome_counts": {
+        "空名單": 1,
+        "對": 1
+      },
+      "empty_skipped": 1
+    },
+    "phone_stamp": {
+      "n_rows": 6,
+      "n_decided": 6,
+      "hit": 6,
+      "miss": 0,
+      "hit_rate": 1.0,
+      "gate_n20": false,
+      "n_days": 1,
+      "outcome_counts": {
+        "對": 6
+      },
+      "empty_skipped": 0
+    },
+    "segment_bias": {
+      "n_rows": 1,
+      "n_decided": 1,
+      "hit": 1,
+      "miss": 0,
+      "hit_rate": 1.0,
+      "gate_n20": false,
+      "n_days": 1,
+      "outcome_counts": {
+        "對": 1
+      },
+      "empty_skipped": 0
+    }
+  },
+  "overall_catalog_only": {
+    "n_rows": 10,
+    "n_decided": 9,
+    "hit": 9,
+    "miss": 0,
+    "hit_rate": 1.0,
+    "gate_n20": false,
+    "n_days": 3,
+    "outcome_counts": {
+      "對": 9,
+      "空名單": 1
+    },
+    "empty_skipped": 1
+  },
+  "miss_analysis": [],
+  "deps_zh": [
+    "BK-CHAIN《三層觀測操作手》齊了可加更多 chain 考題",
+    "BK-WAVE 段號證據桶齊了可擴 segment 母體",
+    "BK-PHONE 話筒 brief／observe slot／stamp 進 phone_stamp 考題",
+    "本機／Render 官方柱需完整 OHLC；缺柱＝未完",
+    "wave_forward_infer／wave_eod_verify 可當 segment 樣例來源"
+  ],
+  "daily_review_zh": "開市日盤後：python scripts/observe_verify_suite.py --write；核對 verify_latest.json；有 miss 填 rule_patch 並續收下一版鍵（chain→bk_verify_v2_chain_sox_strict；phone→bk_verify_v3_phone_brief_stamp）",
+  "gate": {
+    "min_n": 20,
+    "replace": false,
+    "phone_sync": "blocked",
+    "note_zh": "n≥20 獨立交易日且贏現況才換；現況框架階段 replace=false；phone_sync 未過閘不准當買訊"
+  }
+}

@@ -5725,6 +5725,25 @@ def render_volume_zone_result(
         bars=pack["bars"],
         ex_events=pack["ex_events"],
     )
+    # SYNC-STRUCT-VOL 圖說旁註（可開關；非買訊）
+    try:
+        from sync_struct_vol_notes import (
+            append_notes_to_caption,
+            detect_struct_vol_notes,
+        )
+
+        _z = pack.get("zone") or {}
+        _notes = detect_struct_vol_notes(
+            pack.get("bars") or [],
+            press=float(_z.get("high") or 0),
+            hold=float(_z.get("low") or 0),
+            card=card if isinstance(card, dict) else None,
+        )
+        cap = append_notes_to_caption(
+            cap, _notes, card=card if isinstance(card, dict) else None
+        )
+    except Exception:
+        logger.debug("大量區 SYNC 圖說略過", exc_info=True)
     if with_parallel_channel:
         try:
             ch0 = infer_vol_zone_parallel_channel(
@@ -6634,6 +6653,36 @@ def _paint_volume_zone(
                 pass
         except Exception:
             logger.exception("大量區疊導航指標失敗 sid=%s", sid)
+
+    # SYNC-STRUCT-VOL：有效穿刺／假跌破／壓轉撐／量價句（可開關；有他點名位才疊他位）
+    # 掛在 with_nav_signals 外：無導航疊層時仍可註記
+    try:
+        from sync_struct_vol_notes import maybe_paint_struct_vol_notes
+
+        _bars_sv = [
+            {
+                "date": str(view["date"].iloc[i]),
+                "open": float(view["open"].iloc[i]),
+                "high": float(view["high"].iloc[i]),
+                "low": float(view["low"].iloc[i]),
+                "close": float(view["close"].iloc[i]),
+                "volume": float(view["volume"].iloc[i])
+                if "volume" in view.columns
+                else 0.0,
+            }
+            for i in range(len(view))
+        ]
+        maybe_paint_struct_vol_notes(
+            ax1,
+            _bars_sv,
+            xs,
+            press=float(hi) if hi else 0.0,
+            hold=float(lo) if lo else 0.0,
+            card=card if isinstance(card, dict) else None,
+            chart_kind="vol",
+        )
+    except Exception:
+        logger.debug("大量區 SYNC 圖註略過 sid=%s", sid, exc_info=True)
 
     # 軌道價標改在必要壓撐之後掛（見下方），小標避讓、不准省價
 

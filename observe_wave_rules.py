@@ -109,8 +109,11 @@ def attach_wave_rules_ref(
         wanted = [
             "WR-IRON-14-OVERLAP",
             "WR-IRON-W3-NOT-SHORTEST",
+            "WR-OPS-FAKE-BREAK",
             "WR-SEGMENT-TRIAL-WARN",
             "WR-FWD-LOOP",
+            "WR-FWD-TOUCH-BOUNCE-RECLAIM",
+            "WR-FWD-PENDING-NOT-VETO",
             "WR-LEVEL-ORAL-ONLY",
         ]
         wanted = [w for w in wanted if w in by_id]

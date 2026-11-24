@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""BK-VERIFY CLI：可重跑自測／常態覆核落檔。
+"""BK-VERIFY／SYNC-VERIFY CLI：可重跑自測／常態覆核落檔。
 
 用法：
   python scripts/observe_verify_suite.py --write
   python scripts/observe_verify_suite.py --cases-dir docs/expert_notes/飆客/observe_manual/cases
 
 落檔：docs/expert_notes/飆客/observe_manual/verify_*.json
-勝率不准混海選／黃金買點；phone_sync=blocked。
+軌：chain_trio／level_touch／segment_bias／phone_stamp（話筒 brief・slot・stamp）。
+勝率不准混海選／黃金買點；phone_sync=blocked；未過閘不准當買訊。
 """
 from __future__ import annotations
 

@@ -5136,6 +5136,15 @@ def format_taiwan_market_page_html(
             _resolve_outer_snap(us_for_outer if us_outer_fresh else {}, outer_snap)
         )
     )
+    # 觀盤鏈尾：與波浪位階／三窗同口徑（試標；缺 JSON 仍用 playbook／lock）
+    try:
+        from observe_manual import format_market_observe_footer
+
+        foot = format_market_observe_footer()
+        if foot:
+            lines.append(foot)
+    except Exception:
+        logger.debug("大盤頁觀盤鏈尾略過", exc_info=True)
     return "\n".join(lines)
 
 

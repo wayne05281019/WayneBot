@@ -1,0 +1,27 @@
+{
+  "case_id": "phone_stamp_futures_spot_mix",
+  "track": "phone_stamp",
+  "as_of": "20261105",
+  "expect_ok": false,
+  "expect_violations": ["futures_spot_mix"],
+  "deps": ["BK-PHONE", "BK-CHAIN"],
+  "note_zh": "期現混：加權現貨被標成台指夜盤收。",
+  "his_levels": [41760.0],
+  "brief": "台指夜盤收（誤標現貨）",
+  "observe_slot": "試標・推論／非他原文・非買訊・對質未過閘",
+  "stamp": {
+    "disclaimer_present": true,
+    "phone_sync": "blocked",
+    "buy_signal": false,
+    "layers_order": ["L1", "L2", "L3"],
+    "layer1_hypothesis": "bias_down",
+    "layer2_verdict": "confirm",
+    "layer3_verdict": "verify_ok",
+    "named_levels": [{"level": 41760.0, "source": "oral"}],
+    "instrument_labels": {
+      "twii": "台指夜盤收",
+      "tx": "台指日盤",
+      "tx_night": "台指夜盤"
+    }
+  }
+}

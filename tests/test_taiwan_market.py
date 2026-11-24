@@ -1601,7 +1601,9 @@ def test_market_page_includes_futures_section(tmp_path):
     assert "<b>結構</b>" not in html
     head, _, tail = html.partition("加權指數")
     assert "大方向" in head and "短線" in head and "下跌風險" in head
-    assert "大方向" not in tail
+    # 頁尾觀盤鏈定式含「定大方向」；加權指數本體段落仍不准重複燈號語
+    body_tail = tail.split("觀盤鏈", 1)[0]
+    assert "大方向" not in body_tail
     assert "盤勢" not in head and "細分" not in head
     lights = head[head.find("大方向"):]
     anchor = lights.rfind("<a ")

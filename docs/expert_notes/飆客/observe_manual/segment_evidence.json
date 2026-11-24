@@ -1,22 +1,23 @@
 {
-  "as_of_taipei": "2026-11-23T23:10:50+0800",
+  "as_of_taipei": "2026-11-24T01:00:30+0800",
   "track": "BK-WAVE",
   "tz": "Asia/Taipei",
   "phone_sync": "blocked",
   "buy_signal": false,
   "phone_warning_fixed": "試標・推論／非他原文・非買訊・對質未過閘",
   "purpose_zh": "段號證據桶：每列掛規則卡＋出處＋官方柱（有則凍）；試標必標試標；不准發明無憑據5/9當他原文；非買訊。",
-  "n_samples": 66,
-  "n_with_official_twii": 62,
-  "n_trial_infer": 37,
+  "n_samples": 73,
+  "n_with_official_twii": 69,
+  "n_trial_infer": 44,
   "n_biaoke_oral": 29,
-  "forward_verify_hook": "observe_wave_rules.attach_evidence_index / load_segment_evidence",
+  "forward_verify_hook": "observe_sync_fwd.writeback + observe_wave_rules.attach_wave_rules_ref",
   "gap_vs_live_wave_zh": [
     "現況 forward／eod 已強制 segments_provisional，但未掛浪則卡 id",
     "mine_wave_rules＝DC／我估閘，不准冒充他鐵律",
     "wave8_* 概念鎖已有，尚未編成可餵話筒／自測的浪則卡索引",
     "碎形交叉／五件同窗尚未有可執行對質函式",
-    "靜默對質 n≥20 且贏現況才准換；現況 phone_sync=blocked"
+    "靜默對質 n≥20 且贏現況才准換；現況 phone_sync=blocked",
+    "SYNC-FWD：miss_analysis 可回寫下一版鍵／敘述修正＋證據桶（phone_sync=blocked）"
   ],
   "samples": [
     {
@@ -3739,6 +3740,387 @@
       },
       "has_official_twii": true,
       "note_zh": "否決：未收復43135",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": "M2_dead_reclaim_watch",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-FWD-MISS-20261120-level_broke_follow_oral_band",
+      "rule_ids": [
+        "WR-OPS-FAKE-BREAK",
+        "WR-LEVEL-ORAL-ONLY",
+        "WR-FWD-LOOP",
+        "WR-SEGMENT-TRIAL-WARN"
+      ],
+      "as_of": "20261120",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261120.json#miss_analysis",
+      "his_claim_zh": "preferred＝測37837 時：若L已＜37837且收仍＜37837，標 M3_triggered_broke_37837＋N1_follow_through，下一窗改口頭已有之35579為續弱對照、37837收回為假跌破觀察；不准把深破當新五波①，也不准發明未口述之新低目標。",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "M3_triggered_broke",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        },
+        {
+          "label": "N1_follow_through",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        },
+        {
+          "label": "false_break_reclaim",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261120",
+          "o": 37646.13,
+          "h": 37646.13,
+          "l": 35738.68,
+          "c": 36033.29,
+          "v": 17070331.0,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "preferred＝測位且 L／收皆破 → 標觸發＋續弱 follow；下一窗改口頭已有之更低帶為對照、原位收回為假跌破觀察；不准發明未口述新低。",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": {
+        "kind": "level_broke_follow_oral_band",
+        "prefer_path_id": "N1_follow_through_below_band",
+        "next_variant": "bk_fwd_v2_bounce_reclaim_priority"
+      },
+      "path_id": "N1_follow_through_below_band",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-FWD-MISS-20261123-target_touch_bounce_elevate_reclaim",
+      "rule_ids": [
+        "WR-FWD-TOUCH-BOUNCE-RECLAIM",
+        "WR-OPS-FAKE-BREAK",
+        "WR-FWD-LOOP",
+        "WR-LEVEL-ORAL-ONLY",
+        "WR-SEGMENT-TRIAL-WARN"
+      ],
+      "as_of": "20261123",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261123.json#miss_analysis",
+      "his_claim_zh": "preferred＝M3延伸35579 時：若L已＜35579（或切入35000～35500）但收明顯反彈且仍＜37837，標 M3_touched_then_bounce＋N1_partial；下一窗升權 FB_reclaim_37837，續弱失敗再回 M3／35000帶；不准把反彈當新五波①，也不准發明未口述新低。",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "M3_touched_then_bounce",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        },
+        {
+          "label": "N1_partial",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        },
+        {
+          "label": "false_break_reclaim",
+          "status": "試標・推論",
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261123",
+          "o": 35899.48,
+          "h": 37108.2,
+          "l": 35442.41,
+          "c": 36811.89,
+          "v": 15927149.387,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "preferred 續弱測口頭目標時：L 觸／切入帶＋收彈且仍＜收回位 → 標 M3_touched_then_bounce＋N1_partial，下一窗升權 FB_reclaim；不准把反彈當新五波①。",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": {
+        "kind": "target_touch_bounce_elevate_reclaim",
+        "prefer_path_id": "FB_reclaim_37837_watch",
+        "next_variant": "bk_fwd_v2_bounce_reclaim_priority"
+      },
+      "path_id": "FB_reclaim_37837_watch",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-EOD-20261123-M3_extend_toward_35579",
+      "rule_ids": [
+        "WR-FWD-TOUCH-BOUNCE-RECLAIM",
+        "WR-OPS-FAKE-BREAK",
+        "WR-FWD-LOOP",
+        "WR-LEVEL-ORAL-ONLY",
+        "WR-SEGMENT-TRIAL-WARN"
+      ],
+      "as_of": "20261123",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261123.json",
+      "his_claim_zh": "",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "B-b_broke",
+          "role": "37837仍失（H/C皆＜）",
+          "level": 37837.05,
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+          "status": "試標・推論"
+        },
+        {
+          "label": "oral_target_hi",
+          "role": "L35442＜35500 切入目標帶",
+          "level": 35500.0,
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+          "status": "試標・推論"
+        },
+        {
+          "label": "oral_target_lo",
+          "role": "未觸 35000（L仍高約 +442）",
+          "level": 35000.0,
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+          "status": "試標・推論"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261123",
+          "o": 35899.48,
+          "h": 37108.2,
+          "l": 35442.41,
+          "c": 36811.89,
+          "v": 15927149.387,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": "M3_extend_toward_35579",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-EOD-20261123-FB_reclaim_37837_watch",
+      "rule_ids": [
+        "WR-FWD-TOUCH-BOUNCE-RECLAIM",
+        "WR-OPS-FAKE-BREAK",
+        "WR-FWD-LOOP",
+        "WR-LEVEL-ORAL-ONLY",
+        "WR-SEGMENT-TRIAL-WARN"
+      ],
+      "as_of": "20261123",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261123.json",
+      "his_claim_zh": "",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "false_break_reclaim",
+          "role": "未收回週五低／C3底",
+          "level": 37837.05,
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+          "status": "試標・推論"
+        },
+        {
+          "label": "oral_37164_ref",
+          "role": "H37108 近貼 37164 對照（未站穩其上收）",
+          "level": 37164.0,
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+          "status": "試標・推論"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261123",
+          "o": 35899.48,
+          "h": 37108.2,
+          "l": 35442.41,
+          "c": 36811.89,
+          "v": 15927149.387,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": "FB_reclaim_37837_watch",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-EOD-20261123-W4_reclaim_418_427_band",
+      "rule_ids": [
+        "WR-FWD-TOUCH-BOUNCE-RECLAIM",
+        "WR-OPS-FAKE-BREAK",
+        "WR-FWD-LOOP",
+        "WR-LEVEL-ORAL-ONLY",
+        "WR-SEGMENT-TRIAL-WARN"
+      ],
+      "as_of": "20261123",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261123.json",
+      "his_claim_zh": "",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "wave4_band_reclaim",
+          "role": "未收回（H37108≪41800）",
+          "lo": 41800.0,
+          "hi": 42700.0,
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+          "status": "試標・推論"
+        },
+        {
+          "label": "wave4_mid_42250",
+          "role": "未觸",
+          "level": 42250.0,
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+          "status": "試標・推論"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261123",
+          "o": 35899.48,
+          "h": 37108.2,
+          "l": 35442.41,
+          "c": 36811.89,
+          "v": 15927149.387,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": "W4_reclaim_418_427_band",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-EOD-20261123-N1_follow_through_below_band",
+      "rule_ids": [
+        "WR-FWD-TOUCH-BOUNCE-RECLAIM",
+        "WR-OPS-FAKE-BREAK",
+        "WR-FWD-LOOP",
+        "WR-LEVEL-ORAL-ONLY",
+        "WR-SEGMENT-TRIAL-WARN"
+      ],
+      "as_of": "20261123",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261123.json",
+      "his_claim_zh": "",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "stay_below_37837",
+          "role": "全日H/C皆＜37837",
+          "level": 37837.05,
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+          "status": "試標・推論"
+        },
+        {
+          "label": "path_to_35579",
+          "role": "L35442已過35579",
+          "level": 35579.0,
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+          "status": "試標・推論"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261123",
+          "o": 35899.48,
+          "h": 37108.2,
+          "l": 35442.41,
+          "c": 36811.89,
+          "v": 15927149.387,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "metrics": null,
+      "path_id": "N1_follow_through_below_band",
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "label_pot": "trial_infer"
+    },
+    {
+      "id": "SE-EOD-20261123-M2_dead_reclaim_watch",
+      "rule_ids": [
+        "WR-FWD-TOUCH-BOUNCE-RECLAIM",
+        "WR-OPS-FAKE-BREAK",
+        "WR-FWD-LOOP",
+        "WR-LEVEL-ORAL-ONLY",
+        "WR-SEGMENT-TRIAL-WARN"
+      ],
+      "as_of": "20261123",
+      "tz": "Asia/Taipei",
+      "source_kind": "trial_infer+official",
+      "provenance": "wave_eod_verify_20261123.json",
+      "his_claim_zh": "",
+      "his_levels": [],
+      "segments_provisional": [
+        {
+          "label": "post_hold_reclaim",
+          "role": "H37108≪43135",
+          "level": 43135.92,
+          "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+          "status": "試標・推論"
+        }
+      ],
+      "official_bars": {
+        "twii": {
+          "symbol": "TWII",
+          "date": "20261123",
+          "o": 35899.48,
+          "h": 37108.2,
+          "l": 35442.41,
+          "c": 36811.89,
+          "v": 15927149.387,
+          "source": "wave_eod_verify.official"
+        },
+        "tx": []
+      },
+      "has_official_twii": true,
+      "note_zh": "",
       "buy_signal": false,
       "phone_sync": "blocked",
       "metrics": null,

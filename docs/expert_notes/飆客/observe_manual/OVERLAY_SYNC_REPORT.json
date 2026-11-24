@@ -1,0 +1,35 @@
+{
+  "generated_at": "2026-11-24 01:14:59",
+  "delta": {
+    "n": 68,
+    "replies": 2010,
+    "chart_urls_n": 11,
+    "from": "2026-09-10",
+    "to": "2026-11-23"
+  },
+  "charts": {
+    "added": 9,
+    "n": 361,
+    "sources": {
+      "public1709": 327,
+      "club20": 2,
+      "club72": 12,
+      "overlay_sync": 20
+    }
+  },
+  "atoms": {
+    "atom_n": 189,
+    "core_n": 149,
+    "merged_n": 5277,
+    "from": "2023-12-04",
+    "to": "2026-11-23",
+    "db_n": 5118,
+    "delta_n": 1871,
+    "catchup_n": 207,
+    "gaps": [
+      "SOX／費半連動原文偏少，需 BK-CHART／後續 overlay 補圖註",
+      "關鍵K 獨立表述少，多夾在形態／細微波句",
+      "碎形專名少，多數是上升／下降軌道用語"
+    ]
+  }
+}

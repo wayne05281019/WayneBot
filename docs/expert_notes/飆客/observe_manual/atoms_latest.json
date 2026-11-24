@@ -1,24 +1,26 @@
 {
   "track": "BK-CORPUS",
-  "generated_at_taipei": "2026-11-23 23:14:44",
+  "generated_at_taipei": "2026-11-24 01:14:59",
   "warning": "試標・推論／非他原文・非買訊・對質未過閘",
   "corpus": {
     "archive_n": 1709,
     "archive_replies": 1334,
-    "db_n": 0,
+    "catchup_n": 207,
+    "delta_n": 1871,
+    "db_n": 5118,
     "club_n": 92,
     "club_replies": 67,
-    "merged_n": 3202,
+    "merged_n": 5277,
     "from": "2023-12-04",
-    "to": "2026-09-10"
+    "to": "2026-11-23"
   },
-  "atom_n": 170,
+  "atom_n": 189,
   "coverage": {
     "by_theme": {
-      "three_layer": 37,
+      "three_layer": 52,
       "sox": 2,
       "level": 84,
-      "retract": 25,
+      "retract": 29,
       "iron_rule": 4,
       "pv_structure": 3,
       "pattern": 9,
@@ -28,10 +30,10 @@
       "misc_observe": 1
     },
     "core_by_theme": {
-      "three_layer": 35,
+      "three_layer": 50,
       "sox": 2,
       "level": 48,
-      "retract": 24,
+      "retract": 28,
       "iron_rule": 4,
       "pv_structure": 3,
       "pattern": 9,
@@ -41,11 +43,10 @@
     },
     "gaps": [
       "SOX／費半連動原文偏少，需 BK-CHART／後續 overlay 補圖註",
-      "本機 biaoke_posts overlay 為空；盤中自回至今日需 Render 碟或 ingest 後再併",
       "關鍵K 獨立表述少，多夾在形態／細微波句",
       "碎形專名少，多數是上升／下降軌道用語"
     ],
-    "core_n": 130,
+    "core_n": 149,
     "attach_n": 40
   },
   "atoms": [
@@ -103,7 +104,7 @@
           "excerpt": "首先這兩天盤勢有很大的變化,台指期夜盤已經創歷史新高將近21000點,且台積電ADR大漲,星期一不出意外又是拉積盤"
         }
       ],
-      "hit_n": 74,
+      "hit_n": 111,
       "leave_noise": false
     },
     {
@@ -206,6 +207,36 @@
       "leave_noise": false
     },
     {
+      "atom_id": "three_layer.night_level_48881_49028_1ea27f",
+      "theme": "three_layer",
+      "theme_label": "三層觀測（夜盤→早盤TX→現貨）",
+      "rule": "夜盤觀測位：48881／49028（有效穿刺／站上或跌破才改結構判斷）",
+      "core": true,
+      "source": "self",
+      "levels": [
+        "48881",
+        "49028"
+      ],
+      "provenance": [
+        {
+          "post_id": "185630652",
+          "taipei": "2026-10-13 23:13",
+          "kind": "post",
+          "club": false,
+          "excerpt": "1. 夜盤(從60分鐘線來分析)反彈要有效穿刺48881,最好是49028,才能化解C-3轉C-5,並可將50265到48240,且可視為一組5波修正完整結構"
+        },
+        {
+          "post_id": "185642450",
+          "taipei": "2026-10-14 09:35",
+          "kind": "post",
+          "club": false,
+          "excerpt": "“1. 夜盤(從60分鐘線來分析)反彈要有效穿刺48881,最好是49028,才能化解C-3轉C-5,並可將50265到48240,且可視為一組5波修正完整結構"
+        }
+      ],
+      "hit_n": 2,
+      "leave_noise": false
+    },
+    {
       "atom_id": "three_layer.night_level_1900_1800_1835_b55be0",
       "theme": "three_layer",
       "theme_label": "三層觀測（夜盤→早盤TX→現貨）",
@@ -269,6 +300,54 @@
           "kind": "post",
           "club": false,
           "excerpt": "從目前台指期夜盤來看是在走大A-c浪,最多打到19650價位區間就會止跌"
+        }
+      ],
+      "hit_n": 1,
+      "leave_noise": false
+    },
+    {
+      "atom_id": "three_layer.night_level_2000_3000_2700_a262e3",
+      "theme": "three_layer",
+      "theme_label": "三層觀測（夜盤→早盤TX→現貨）",
+      "rule": "夜盤觀測位：2000／3000／2700（有效穿刺／站上或跌破才改結構判斷）",
+      "core": true,
+      "source": "self",
+      "levels": [
+        "2000",
+        "3000",
+        "2700"
+      ],
+      "provenance": [
+        {
+          "post_id": "186743614",
+          "taipei": "2026-10-25 11:54",
+          "kind": "post",
+          "club": false,
+          "excerpt": "這一次因為非常容易用波浪理論辨識大盤出大問題,因此我才會在10/14夜盤 10/15日盤確認這一次就是來真正的C波下殺啟動(正常會殺三段,目前只是準備啟動第二段下殺)"
+        }
+      ],
+      "hit_n": 1,
+      "leave_noise": false
+    },
+    {
+      "atom_id": "three_layer.night_level_2000_3000_4500_523fb3",
+      "theme": "three_layer",
+      "theme_label": "三層觀測（夜盤→早盤TX→現貨）",
+      "rule": "夜盤觀測位：2000／3000／4500（有效穿刺／站上或跌破才改結構判斷）",
+      "core": true,
+      "source": "self",
+      "levels": [
+        "2000",
+        "3000",
+        "4500"
+      ],
+      "provenance": [
+        {
+          "post_id": "188138405",
+          "taipei": "2026-11-09 18:20",
+          "kind": "post",
+          "club": false,
+          "excerpt": "4. 夜盤已經過第二組整組 C3的下降壓力線,上周五低點也不可能假跌破了,但今天下半場到明後天一定會有拉回回測下降壓力線,順便清洗籌碼的時候,這個時候直接投入股市資金可達5~6成,剩下4~5…"
         }
       ],
       "hit_n": 1,
@@ -782,6 +861,101 @@
       "leave_noise": false
     },
     {
+      "atom_id": "three_layer.night_level_35000_10a169",
+      "theme": "three_layer",
+      "theme_label": "三層觀測（夜盤→早盤TX→現貨）",
+      "rule": "夜盤觀測位：35000（有效穿刺／站上或跌破才改結構判斷）",
+      "core": true,
+      "source": "self",
+      "levels": [
+        "35000"
+      ],
+      "provenance": [
+        {
+          "post_id": "189626201",
+          "taipei": "2026-11-23 23:18",
+          "kind": "post",
+          "club": false,
+          "excerpt": "1. 台指期夜盤盤中見漲停,今天早上台指期一開盤我就嗅到市場黑手就是要將大盤守在35000~355000長線是否可再有推升脈動,果不其然再度驗證波浪理論的威力,特別第一次將今早發文截圖,來驗…"
+        }
+      ],
+      "hit_n": 1,
+      "leave_noise": false
+    },
+    {
+      "atom_id": "three_layer.night_level_35000_30000_33000_28a959",
+      "theme": "three_layer",
+      "theme_label": "三層觀測（夜盤→早盤TX→現貨）",
+      "rule": "夜盤觀測位：35000／30000／33000（有效穿刺／站上或跌破才改結構判斷）",
+      "core": true,
+      "source": "self",
+      "levels": [
+        "35000",
+        "30000",
+        "33000"
+      ],
+      "provenance": [
+        {
+          "post_id": "189488822",
+          "taipei": "2026-11-23 08:53",
+          "kind": "post",
+          "club": false,
+          "excerpt": "2. 簡單來說台指期開盤黑手企圖就是很明顯,希望星期五夜盤低點就是絕對低點的企圖心很明顯,用期貨來帶現貨希望能現貨今天也能止跌,因為有效跌破350000,對台股的影響不是一年能不能恢復,而是…"
+        }
+      ],
+      "hit_n": 1,
+      "leave_noise": false
+    },
+    {
+      "atom_id": "three_layer.night_level_37837_37164_37100_7480d7",
+      "theme": "three_layer",
+      "theme_label": "三層觀測（夜盤→早盤TX→現貨）",
+      "rule": "夜盤觀測位：37837／37164／37100（有效穿刺／站上或跌破才改結構判斷）",
+      "core": true,
+      "source": "self",
+      "levels": [
+        "37837",
+        "37164",
+        "37100",
+        "39000",
+        "35579",
+        "31705"
+      ],
+      "provenance": [
+        {
+          "post_id": "188039214",
+          "taipei": "2026-11-08 12:01",
+          "kind": "post",
+          "club": false,
+          "excerpt": "1. 由台指期來看大盤,星期五夜盤已經破壞最後一組3-5下跌脈動"
+        }
+      ],
+      "hit_n": 1,
+      "leave_noise": false
+    },
+    {
+      "atom_id": "three_layer.night_level_39000_80ca44",
+      "theme": "three_layer",
+      "theme_label": "三層觀測（夜盤→早盤TX→現貨）",
+      "rule": "夜盤觀測位：39000（有效穿刺／站上或跌破才改結構判斷）",
+      "core": true,
+      "source": "self",
+      "levels": [
+        "39000"
+      ],
+      "provenance": [
+        {
+          "post_id": "187881236",
+          "taipei": "2026-11-06 08:05",
+          "kind": "post",
+          "club": false,
+          "excerpt": "1. 昨天夜盤大跌,而且直接殺破39000,有點稍微超乎預期,但我覺得很好,因為這次又接複製2025/04 那一段急跌跌勢,對未來交易就變得很單純好做很多"
+        }
+      ],
+      "hit_n": 1,
+      "leave_noise": false
+    },
+    {
       "atom_id": "three_layer.night_level_39500_40000_36000_30d0d6",
       "theme": "three_layer",
       "theme_label": "三層觀測（夜盤→早盤TX→現貨）",
@@ -801,6 +975,29 @@
           "kind": "reply",
           "club": false,
           "excerpt": "大盤未來走勢都在這張台指期夜盤(連續圖),最重要今晚或明天日盤要過黃色那條下降壓力線,才能走B波反彈,如果不能過黃色那條下降壓力線"
+        }
+      ],
+      "hit_n": 1,
+      "leave_noise": false
+    },
+    {
+      "atom_id": "three_layer.night_level_39786_37837_e7aa25",
+      "theme": "three_layer",
+      "theme_label": "三層觀測（夜盤→早盤TX→現貨）",
+      "rule": "夜盤觀測位：39786／37837（有效穿刺／站上或跌破才改結構判斷）",
+      "core": true,
+      "source": "self",
+      "levels": [
+        "39786",
+        "37837"
+      ],
+      "provenance": [
+        {
+          "post_id": "188906517",
+          "taipei": "2026-11-17 10:34",
+          "kind": "post",
+          "club": false,
+          "excerpt": "1. 台指期日盤幾乎已經確認今天就是落底,但是夜盤還沒有,問題是修正0.74,推升結構被破壞,大盤明天開始要有連續漲勢大不易"
         }
       ],
       "hit_n": 1,
@@ -874,6 +1071,73 @@
       "leave_noise": false
     },
     {
+      "atom_id": "three_layer.night_level_45398_46767_8d201e",
+      "theme": "three_layer",
+      "theme_label": "三層觀測（夜盤→早盤TX→現貨）",
+      "rule": "夜盤觀測位：45398／46767（有效穿刺／站上或跌破才改結構判斷）",
+      "core": true,
+      "source": "self",
+      "levels": [
+        "45398",
+        "46767"
+      ],
+      "provenance": [
+        {
+          "post_id": "184659316",
+          "taipei": "2026-09-16 09:21",
+          "kind": "post",
+          "club": false,
+          "excerpt": "1. 大盤今天觀察只要收盤不破3日低點45398代表C-5低點確認,明天開始如果走短線回升就是1,相反如果明天開始反彈以夜盤來看如果不能反彈到46767,則反彈為C-2可能性很高,就要非常小…"
+        }
+      ],
+      "hit_n": 1,
+      "leave_noise": false
+    },
+    {
+      "atom_id": "three_layer.night_level_45546_7ff412",
+      "theme": "three_layer",
+      "theme_label": "三層觀測（夜盤→早盤TX→現貨）",
+      "rule": "夜盤觀測位：45546（有效穿刺／站上或跌破才改結構判斷）",
+      "core": true,
+      "source": "self",
+      "levels": [
+        "45546"
+      ],
+      "provenance": [
+        {
+          "post_id": "187156626",
+          "taipei": "2026-10-30 09:18",
+          "kind": "post",
+          "club": false,
+          "excerpt": "大盤果如我所料,昨天再度出現關鍵轉折K棒,雖然夜盤4:00之後才開始下殺,今天日盤一開盤直接跳空下殺,確認C3-3主跌段發動中,驗證我用波浪理論鐵律推導出9/16低點45546低點必破第一階…"
+        }
+      ],
+      "hit_n": 1,
+      "leave_noise": false
+    },
+    {
+      "atom_id": "three_layer.night_level_46506_223bfc",
+      "theme": "three_layer",
+      "theme_label": "三層觀測（夜盤→早盤TX→現貨）",
+      "rule": "夜盤觀測位：46506（有效穿刺／站上或跌破才改結構判斷）",
+      "core": true,
+      "source": "self",
+      "levels": [
+        "46506"
+      ],
+      "provenance": [
+        {
+          "post_id": "184545002",
+          "taipei": "2026-09-11 17:49",
+          "kind": "post",
+          "club": false,
+          "excerpt": "1. 台指期夜盤15分鐘線細微波修正走了5段,目前下降軌道已經被破壞,又出現初步止訊號"
+        }
+      ],
+      "hit_n": 1,
+      "leave_noise": false
+    },
+    {
       "atom_id": "three_layer.night_level_46948_3229af",
       "theme": "three_layer",
       "theme_label": "三層觀測（夜盤→早盤TX→現貨）",
@@ -890,6 +1154,98 @@
           "kind": "post",
           "club": false,
           "excerpt": "從台指期連續盤來看,昨天12:00~13:15是走第9段(第5段下跌),昨天晚上我睡前台指期夜盤已經突破此波修正的下降軌道,因此大盤又要往46948去測試,因此大盤還是在做右肩(區間震盪整理…"
+        }
+      ],
+      "hit_n": 1,
+      "leave_noise": false
+    },
+    {
+      "atom_id": "three_layer.night_level_47205_c2e09e",
+      "theme": "three_layer",
+      "theme_label": "三層觀測（夜盤→早盤TX→現貨）",
+      "rule": "夜盤觀測位：47205（有效穿刺／站上或跌破才改結構判斷）",
+      "core": true,
+      "source": "self",
+      "levels": [
+        "47205"
+      ],
+      "provenance": [
+        {
+          "post_id": "184802289",
+          "taipei": "2026-09-18 08:58",
+          "kind": "post",
+          "club": false,
+          "excerpt": "1. 從夜盤反彈到47205,這次C波下殺已經沒了"
+        }
+      ],
+      "hit_n": 1,
+      "leave_noise": false
+    },
+    {
+      "atom_id": "three_layer.night_level_47500_40000_47300_b9702b",
+      "theme": "three_layer",
+      "theme_label": "三層觀測（夜盤→早盤TX→現貨）",
+      "rule": "夜盤觀測位：47500／40000／47300（有效穿刺／站上或跌破才改結構判斷）",
+      "core": true,
+      "source": "self",
+      "levels": [
+        "47500",
+        "40000",
+        "47300"
+      ],
+      "provenance": [
+        {
+          "post_id": "185798409",
+          "taipei": "2026-10-15 08:52",
+          "kind": "post",
+          "club": false,
+          "excerpt": "夜盤從10/7~至今天 4:00已經出現完整的修正波型態,很不幸是最差的ABC-X-ABC"
+        }
+      ],
+      "hit_n": 1,
+      "leave_noise": false
+    },
+    {
+      "atom_id": "three_layer.night_level_47637_48613_49160_a184cc",
+      "theme": "three_layer",
+      "theme_label": "三層觀測（夜盤→早盤TX→現貨）",
+      "rule": "夜盤觀測位：47637／48613／49160（有效穿刺／站上或跌破才改結構判斷）",
+      "core": true,
+      "source": "self",
+      "levels": [
+        "47637",
+        "48613",
+        "49160"
+      ],
+      "provenance": [
+        {
+          "post_id": "186881630",
+          "taipei": "2026-10-27 23:29",
+          "kind": "post",
+          "club": false,
+          "excerpt": "這是根據夜盤重新規劃大盤多空關鍵壓力區"
+        }
+      ],
+      "hit_n": 1,
+      "leave_noise": false
+    },
+    {
+      "atom_id": "three_layer.night_level_48066_8f8168",
+      "theme": "three_layer",
+      "theme_label": "三層觀測（夜盤→早盤TX→現貨）",
+      "rule": "夜盤觀測位：48066（有效穿刺／站上或跌破才改結構判斷）",
+      "core": true,
+      "source": "self",
+      "levels": [
+        "48066"
+      ],
+      "provenance": [
+        {
+          "post_id": "186346610",
+          "taipei": "2026-10-21 08:50",
+          "kind": "post",
+          "club": false,
+          "excerpt": "1. 從台指期夜盤反彈點數可看大盤,今天開盤會穿越第一組大盤5波跌勢下降軌道,開始進行第一組大B波反彈"
         }
       ],
       "hit_n": 1,
@@ -972,7 +1328,7 @@
           "excerpt": "我本周一晚對照費納及那斯達克綜合指數就已經認為大盤會挑戰224000,但是從蔡森型態學來算大盤波段漲幅滿足就是21500,且昨天大盤一開盤預估量超過4000億,且已達21500,因此一開盤就…"
         }
       ],
-      "hit_n": 32,
+      "hit_n": 78,
       "leave_noise": false
     },
     {
@@ -1002,6 +1358,56 @@
         }
       ],
       "hit_n": 2,
+      "leave_noise": false
+    },
+    {
+      "atom_id": "level.lv_48218_cb476b",
+      "theme": "level",
+      "theme_label": "他點過的位／條件",
+      "rule": "大盤／期點觀測位：48218（支撐／壓力／穿刺條件以原文為準）",
+      "core": true,
+      "source": "self",
+      "levels": [
+        "48218"
+      ],
+      "provenance": [
+        {
+          "post_id": "184347440",
+          "taipei": "2026-09-08 13:19",
+          "kind": "post",
+          "club": false,
+          "excerpt": "有對各族群龍頭觀察的人,應該有發現只要今年五月前見高點的這兩年漲非常多龍頭股突破歷史高點之後必定拉回整理,目前就是各族群輪漲格局"
+        },
+        {
+          "post_id": "184499206",
+          "taipei": "2026-09-10 09:51",
+          "kind": "post",
+          "club": false,
+          "excerpt": "下波起漲的目標至少就是去測48218,我對市場黑手對大盤的控盤方向就是這樣解讀的"
+        },
+        {
+          "post_id": "184499206:a2",
+          "taipei": "2026-09-10 13:07",
+          "kind": "reply",
+          "club": false,
+          "excerpt": "\"如果大盤測48218失敗\" 很難, 其實現在奇鋐、健策、創意、聯亞、南亞科現在創高拉回的整理型態的其中一種,應該就是未來大盤冊歷史高點之後拉回修正的其中一種走勢"
+        },
+        {
+          "post_id": "184499206:c184499206-200-1",
+          "taipei": "2026-09-10 13:07",
+          "kind": "reply",
+          "club": false,
+          "excerpt": "\"如果大盤測48218失敗\" 很難, 其實現在奇鋐、健策、創意、聯亞、南亞科現在創高拉回的整理型態的其中一種,應該就是未來大盤冊歷史高點之後拉回修正的其中一種走勢"
+        },
+        {
+          "post_id": "184499206:c184499206-202",
+          "taipei": "2026-09-10 13:07",
+          "kind": "reply",
+          "club": false,
+          "excerpt": "\"如果大盤測48218失敗\" 很難, 其實現在奇鋐、健策、創意、聯亞、南亞科現在創高拉回的整理型態的其中一種,應該就是未來大盤冊歷史高點之後拉回修正的其中一種走勢"
+        }
+      ],
+      "hit_n": 6,
       "leave_noise": false
     },
     {
@@ -1440,36 +1846,72 @@
       "leave_noise": false
     },
     {
-      "atom_id": "level.lv_48218_cb476b",
+      "atom_id": "level.lv_43500_bb484a",
       "theme": "level",
       "theme_label": "他點過的位／條件",
-      "rule": "大盤／期點觀測位：48218（支撐／壓力／穿刺條件以原文為準）",
+      "rule": "大盤／期點觀測位：43500（支撐／壓力／穿刺條件以原文為準）",
       "core": true,
       "source": "self",
       "levels": [
-        "48218"
+        "43500"
       ],
       "provenance": [
         {
-          "post_id": "184347440",
-          "taipei": "2026-09-08 13:19",
+          "post_id": "184578674",
+          "taipei": "2026-09-14 09:51",
           "kind": "post",
           "club": false,
-          "excerpt": "有對各族群龍頭觀察的人,應該有發現只要今年五月前見高點的這兩年漲非常多龍頭股突破歷史高點之後必定拉回整理,目前就是各族群輪漲格局"
+          "excerpt": "2. Apple股王(光學族群)不出我所料,漲勢結束,要做周線abc,目標區還沒到,建議至少要降低2/3持股,因為整理2個月跑不掉"
         },
         {
-          "post_id": "184499206",
-          "taipei": "2026-09-10 09:51",
-          "kind": "post",
-          "club": false,
-          "excerpt": "下波起漲的目標至少就是去測48218,我對市場黑手對大盤的控盤方向就是這樣解讀的"
-        },
-        {
-          "post_id": "184499206:a2",
-          "taipei": "2026-09-10 13:07",
+          "post_id": "184601742:c184601742-229-3",
+          "taipei": "2026-09-15 22:50",
           "kind": "reply",
           "club": false,
-          "excerpt": "\"如果大盤測48218失敗\" 很難, 其實現在奇鋐、健策、創意、聯亞、南亞科現在創高拉回的整理型態的其中一種,應該就是未來大盤冊歷史高點之後拉回修正的其中一種走勢"
+          "excerpt": "另外今天晚上我又研究某商品(特強調我從去年某一時間點,我就很少談大盤成交金額,因為失真)的量價結構,告訴我大盤要跌破43500非常難,想要買選擇權Put的翻身應該會失望"
+        },
+        {
+          "post_id": "184601742:c184601742-234",
+          "taipei": "2026-09-15 22:51",
+          "kind": "reply",
+          "club": false,
+          "excerpt": "另外今天晚上我又研究某商品(特強調我從去年某一時間點,我就很少談大盤成交金額,因為失真)的量價結構,告訴我大盤要跌破43500非常難"
+        }
+      ],
+      "hit_n": 3,
+      "leave_noise": false
+    },
+    {
+      "atom_id": "level.lv_47578_0375f5",
+      "theme": "level",
+      "theme_label": "他點過的位／條件",
+      "rule": "大盤／期點觀測位：47578（支撐／壓力／穿刺條件以原文為準）",
+      "core": true,
+      "source": "self",
+      "levels": [
+        "47578"
+      ],
+      "provenance": [
+        {
+          "post_id": "184545002:c184545002-227",
+          "taipei": "2026-09-12 10:27",
+          "kind": "reply",
+          "club": false,
+          "excerpt": "下周大盤觀點一定要過前波高點47578,才能持續維持高有過前高的高檔震盪的走勢持續做右肩(還是在波浪位階二)"
+        },
+        {
+          "post_id": "184545002:s8",
+          "taipei": "2026-09-12 10:34",
+          "kind": "reply",
+          "club": false,
+          "excerpt": "下周大盤觀戰一定要過前波高點47578,才能持續維持高有過前高的高檔震盪的走勢持續做右肩(還是在波浪位階二)"
+        },
+        {
+          "post_id": "184802289:c184802289-188",
+          "taipei": "2026-09-18 10:12",
+          "kind": "reply",
+          "club": false,
+          "excerpt": "這次大盤要漲到目標點位一定要過前波高點47578,否則大盤頭部型態已經初步出現,未來不是再一次出現這一次大修正,或者走2024/10~2025/02 做一個大的頭部型態出來"
         }
       ],
       "hit_n": 3,
@@ -1623,6 +2065,94 @@
           "kind": "post",
           "club": false,
           "excerpt": "一、由於費城半導體周五確認突破盤整區,我檢查族群龍頭股盤面結構已經有效突破列示如下"
+        }
+      ],
+      "hit_n": 2,
+      "leave_noise": false
+    },
+    {
+      "atom_id": "level.lv_2021_2024_11d1f8",
+      "theme": "level",
+      "theme_label": "他點過的位／條件",
+      "rule": "大盤／期點觀測位：2021／2024（支撐／壓力／穿刺條件以原文為準）",
+      "core": true,
+      "source": "self",
+      "levels": [
+        "2021",
+        "2024"
+      ],
+      "provenance": [
+        {
+          "post_id": "186969848",
+          "taipei": "2026-10-28 17:32",
+          "kind": "post",
+          "club": false,
+          "excerpt": "總之大盤如果沒有往下殺 就算打第二隻腳過前高波高點,也漲幅不多又要下來,如果下來不深就會像2021年或2024年10月以後非常像,非常難操作,那個時候就是內資投機小飆股的天下"
+        },
+        {
+          "post_id": "186969848:c186969848-23",
+          "taipei": "2026-10-28 17:36",
+          "kind": "reply",
+          "club": false,
+          "excerpt": "總之大盤如果沒有往下殺 打第二隻腳過前高波高點,也漲幅不多又要下來,如果下來不深就會像2021年或2024年10月以後非常像,非常難操作,那個時候就是內資投機小飆股的天下"
+        }
+      ],
+      "hit_n": 2,
+      "leave_noise": false
+    },
+    {
+      "atom_id": "level.lv_2023_3105b6",
+      "theme": "level",
+      "theme_label": "他點過的位／條件",
+      "rule": "大盤／期點觀測位：2023（支撐／壓力／穿刺條件以原文為準）",
+      "core": true,
+      "source": "self",
+      "levels": [
+        "2023"
+      ],
+      "provenance": [
+        {
+          "post_id": "173025738",
+          "taipei": "2025-08-11 22:38",
+          "kind": "post",
+          "club": true,
+          "excerpt": "再次強調今年是財富重新分配的轉折時間,我應該有說過目前大盤的位階非常像2023年6月那個時候,這也代表台股的多頭行情我目前是看到明年第二季"
+        },
+        {
+          "post_id": "188039214:c188039214-105-7",
+          "taipei": "2026-11-08 14:07",
+          "kind": "reply",
+          "club": false,
+          "excerpt": "還有麥可前輩的多週期交叉判斷分析模式都是他寫程式進行回測建立的交易系統,都是將一套技術分析專研到最深及極致,才可以在指數型商品賺錢"
+        }
+      ],
+      "hit_n": 2,
+      "leave_noise": false
+    },
+    {
+      "atom_id": "level.lv_2027_c9199a",
+      "theme": "level",
+      "theme_label": "他點過的位／條件",
+      "rule": "大盤／期點觀測位：2027（支撐／壓力／穿刺條件以原文為準）",
+      "core": true,
+      "source": "self",
+      "levels": [
+        "2027"
+      ],
+      "provenance": [
+        {
+          "post_id": "184545002:c184545002-163-1",
+          "taipei": "2026-09-11 23:15",
+          "kind": "reply",
+          "club": false,
+          "excerpt": "股市股票公司選擇,產業趨勢最重要,目前我看到的已經確定純AI公司,台光電的護城河最高,至少可抱到2027年大盤第五波漲勢結束"
+        },
+        {
+          "post_id": "184545002:s5",
+          "taipei": "2026-09-11 23:15",
+          "kind": "reply",
+          "club": false,
+          "excerpt": "股市股票公司選擇,產業趨勢最重要,目前我看到的已經確定純AI公司,台光電的護城河最高,至少可抱到2027年大盤第五波漲勢結束"
         }
       ],
       "hit_n": 2,
@@ -2094,6 +2624,35 @@
       "leave_noise": false
     },
     {
+      "atom_id": "level.lv_41000_6df4ba",
+      "theme": "level",
+      "theme_label": "他點過的位／條件",
+      "rule": "大盤／期點觀測位：41000（支撐／壓力／穿刺條件以原文為準）",
+      "core": true,
+      "source": "self",
+      "levels": [
+        "41000"
+      ],
+      "provenance": [
+        {
+          "post_id": "186534405:c186534405-303",
+          "taipei": "2026-10-24 18:26",
+          "kind": "reply",
+          "club": false,
+          "excerpt": "大盤最快也要星期三才有可能主跌段跌完,至於會不會有C-5末跌段,還要看費半下殺的點位至少破A波低點,再加上大盤出現連續兩天1.2-1.5兆散戶 投顧 停損的成交量 才有機會出現"
+        },
+        {
+          "post_id": "189174857:c189174857-364-2",
+          "taipei": "2026-11-19 18:04",
+          "kind": "reply",
+          "club": false,
+          "excerpt": "7 月底到10月初 大盤漲勢 1 4重疊, 沒有完整 1 4不重疊 走失敗第5波,因此我才認為是B波特性,其實10/8我就懷疑B波假突破,只是我當時說除來,一定更沒人相信,所以我又給他一次機…"
+        }
+      ],
+      "hit_n": 2,
+      "leave_noise": false
+    },
+    {
       "atom_id": "level.lv_45273_60ef95",
       "theme": "level",
       "theme_label": "他點過的位／條件",
@@ -2117,6 +2676,64 @@
           "kind": "reply",
           "club": false,
           "excerpt": "大盤明天須穿刺45273才不會有末跌段5擴延"
+        }
+      ],
+      "hit_n": 2,
+      "leave_noise": false
+    },
+    {
+      "atom_id": "level.lv_47500_be609d",
+      "theme": "level",
+      "theme_label": "他點過的位／條件",
+      "rule": "大盤／期點觀測位：47500（支撐／壓力／穿刺條件以原文為準）",
+      "core": true,
+      "source": "self",
+      "levels": [
+        "47500"
+      ],
+      "provenance": [
+        {
+          "post_id": "185642450:c185642450-180-2",
+          "taipei": "2026-10-15 00:45",
+          "kind": "reply",
+          "club": false,
+          "excerpt": "明天抄底 要 設好停損 大盤萬一收盤後天跌破47500,立馬將持股降到5成以下,布局股票全部砍掉,只留最強的,或每檔資金減碼"
+        },
+        {
+          "post_id": "185642450:c185642450-196",
+          "taipei": "2026-10-15 00:46",
+          "kind": "reply",
+          "club": false,
+          "excerpt": "明天抄底 要 設好停損 大盤萬一收盤後天跌破47500,立馬將持股降到5成以下,布局股票全部砍掉,只留最強的,或每檔資金減碼"
+        }
+      ],
+      "hit_n": 2,
+      "leave_noise": false
+    },
+    {
+      "atom_id": "level.lv_48601_a585fb",
+      "theme": "level",
+      "theme_label": "他點過的位／條件",
+      "rule": "大盤／期點觀測位：48601（支撐／壓力／穿刺條件以原文為準）",
+      "core": true,
+      "source": "self",
+      "levels": [
+        "48601"
+      ],
+      "provenance": [
+        {
+          "post_id": "185378282:c185378282-101",
+          "taipei": "2026-10-12 09:26",
+          "kind": "reply",
+          "club": false,
+          "excerpt": "整體長線方向只能看大盤48601沒有被穿刺,就是多頭結構不變,也就是整理沒幾天還是會上去"
+        },
+        {
+          "post_id": "185378282:c185378282-94-1",
+          "taipei": "2026-10-12 09:26",
+          "kind": "reply",
+          "club": false,
+          "excerpt": "整體長線方向只能看大盤48601沒有被穿刺,就是多頭結構不變,也就是整理沒幾天還是會上去"
         }
       ],
       "hit_n": 2,
@@ -2176,6 +2793,29 @@
       "leave_noise": false
     },
     {
+      "atom_id": "level.lv_1000_1100_214225",
+      "theme": "level",
+      "theme_label": "他點過的位／條件",
+      "rule": "大盤／期點觀測位：1000／1100（支撐／壓力／穿刺條件以原文為準）",
+      "core": true,
+      "source": "self",
+      "levels": [
+        "1000",
+        "1100"
+      ],
+      "provenance": [
+        {
+          "post_id": "187638311:c187638311-191",
+          "taipei": "2026-11-04 14:54",
+          "kind": "reply",
+          "club": false,
+          "excerpt": "光聖如果配合大盤三日低點不破,可於1000~1100之間介入"
+        }
+      ],
+      "hit_n": 1,
+      "leave_noise": false
+    },
+    {
       "atom_id": "level.lv_1000_23079_22542_1f8c77",
       "theme": "level",
       "theme_label": "他點過的位／條件",
@@ -2216,209 +2856,6 @@
           "kind": "post",
           "club": false,
           "excerpt": "另外台光電的支撐型態已經出來了,今天再做最後回測今天應該是最後上車點"
-        }
-      ],
-      "hit_n": 1,
-      "leave_noise": false
-    },
-    {
-      "atom_id": "level.lv_1055_5722b4",
-      "theme": "level",
-      "theme_label": "他點過的位／條件",
-      "rule": "大盤／期點觀測位：1055（支撐／壓力／穿刺條件以原文為準）",
-      "core": true,
-      "source": "self",
-      "levels": [
-        "1055"
-      ],
-      "provenance": [
-        {
-          "post_id": "172123127",
-          "taipei": "2025-06-27 11:43",
-          "kind": "post",
-          "club": false,
-          "excerpt": "今天台積電目前是窒息量回測6/20大量高點1055的支撐線有守,再度驗證台積電量能控制非常好,如果要買台積電今天就是好買點"
-        }
-      ],
-      "hit_n": 1,
-      "leave_noise": false
-    },
-    {
-      "atom_id": "level.lv_1075_5000_4e3cc6",
-      "theme": "level",
-      "theme_label": "他點過的位／條件",
-      "rule": "大盤／期點觀測位：1075／5000（支撐／壓力／穿刺條件以原文為準）",
-      "core": true,
-      "source": "self",
-      "levels": [
-        "1075",
-        "5000"
-      ],
-      "provenance": [
-        {
-          "post_id": "172414761",
-          "taipei": "2025-07-13 10:48",
-          "kind": "post",
-          "club": false,
-          "excerpt": "每天看到一堆人在發文擔心匯率、又擔心關稅的問題,再加上外資期貨空單留倉58000口"
-        }
-      ],
-      "hit_n": 1,
-      "leave_noise": false
-    },
-    {
-      "atom_id": "level.lv_1145_1195_3e757c",
-      "theme": "level",
-      "theme_label": "他點過的位／條件",
-      "rule": "大盤／期點觀測位：1145／1195（支撐／壓力／穿刺條件以原文為準）",
-      "core": true,
-      "source": "self",
-      "levels": [
-        "1145",
-        "1195"
-      ],
-      "provenance": [
-        {
-          "post_id": "174405607",
-          "taipei": "2025-10-20 23:14",
-          "kind": "post",
-          "club": false,
-          "excerpt": "而且就算到放假前走3-3-5,也有可能星期四或星期五美股又有利空消息面除來,立刻兩天來一個超過1000點的修正(仍在3-4修正合理範圍),因此這周操作要保守為宜,還是堅守拉回到支撐區才能介入…"
-        }
-      ],
-      "hit_n": 1,
-      "leave_noise": false
-    },
-    {
-      "atom_id": "level.lv_1150_1de74d",
-      "theme": "level",
-      "theme_label": "他點過的位／條件",
-      "rule": "大盤／期點觀測位：1150（支撐／壓力／穿刺條件以原文為準）",
-      "core": true,
-      "source": "self",
-      "levels": [
-        "1150"
-      ],
-      "provenance": [
-        {
-          "post_id": "174449227",
-          "taipei": "2025-10-22 17:49",
-          "kind": "post",
-          "club": false,
-          "excerpt": "三天連假前要介入股票要買在支撐區附近才可以介入,而且要買在經過洗盤整理再回新站上支撐區才可以介入,如今天尖點買在110附近,奇鋐在1150附近方可介入"
-        }
-      ],
-      "hit_n": 1,
-      "leave_noise": false
-    },
-    {
-      "atom_id": "level.lv_1165_1205_1200_f86c1b",
-      "theme": "level",
-      "theme_label": "他點過的位／條件",
-      "rule": "大盤／期點觀測位：1165／1205／1200（支撐／壓力／穿刺條件以原文為準）",
-      "core": true,
-      "source": "self",
-      "levels": [
-        "1165",
-        "1205",
-        "1200"
-      ],
-      "provenance": [
-        {
-          "post_id": "173233839",
-          "taipei": "2025-08-21 10:37",
-          "kind": "post",
-          "club": false,
-          "excerpt": "目前觀察大盤指標股台積電、台達電、台光電,因為昨天都跌破原有支撐,今天反彈要改看壓力"
-        }
-      ],
-      "hit_n": 1,
-      "leave_noise": false
-    },
-    {
-      "atom_id": "level.lv_1165_25000_667a22",
-      "theme": "level",
-      "theme_label": "他點過的位／條件",
-      "rule": "大盤／期點觀測位：1165／25000（支撐／壓力／穿刺條件以原文為準）",
-      "core": true,
-      "source": "self",
-      "levels": [
-        "1165",
-        "25000"
-      ],
-      "provenance": [
-        {
-          "post_id": "173296047",
-          "taipei": "2025-08-25 09:51",
-          "kind": "post",
-          "club": false,
-          "excerpt": "補充大盤觀盤重點,可搭配台積電的支撐壓力"
-        }
-      ],
-      "hit_n": 1,
-      "leave_noise": false
-    },
-    {
-      "atom_id": "level.lv_1165_4b24e8",
-      "theme": "level",
-      "theme_label": "他點過的位／條件",
-      "rule": "大盤／期點觀測位：1165（支撐／壓力／穿刺條件以原文為準）",
-      "core": true,
-      "source": "self",
-      "levels": [
-        "1165"
-      ],
-      "provenance": [
-        {
-          "post_id": "173206437",
-          "taipei": "2025-08-20 09:59",
-          "kind": "post",
-          "club": false,
-          "excerpt": "大盤最重要觀察指標就是台積電、台達電及台光電這三檔股票,除了昨天講台積電外,台達電的支撐在636附近,台光電在1165"
-        }
-      ],
-      "hit_n": 1,
-      "leave_noise": false
-    },
-    {
-      "atom_id": "level.lv_1180_1200_1260_b487d2",
-      "theme": "level",
-      "theme_label": "他點過的位／條件",
-      "rule": "大盤／期點觀測位：1180／1200／1260／24416（支撐／壓力／穿刺條件以原文為準）",
-      "core": true,
-      "source": "self",
-      "levels": [
-        "1180"
-      ],
-      "provenance": [
-        {
-          "post_id": "173359362",
-          "taipei": "2025-08-27 17:29",
-          "kind": "post",
-          "club": false,
-          "excerpt": "台積電今天用量縮的方式,站上最近2個多月以來8/7日產生次大量高點1180"
-        }
-      ],
-      "hit_n": 1,
-      "leave_noise": false
-    },
-    {
-      "atom_id": "level.lv_1180_3a2e9b",
-      "theme": "level",
-      "theme_label": "他點過的位／條件",
-      "rule": "大盤／期點觀測位：1180（支撐／壓力／穿刺條件以原文為準）",
-      "core": true,
-      "source": "self",
-      "levels": [
-        "1180"
-      ],
-      "provenance": [
-        {
-          "post_id": "173195348",
-          "taipei": "2025-08-19 19:44",
-          "kind": "post",
-          "club": false,
-          "excerpt": "從台積電近期的量價結構來看,8月7日再爆四月股災以來的次大量(6月20日是最大量),然後以量縮整理的方式一直在8月7日最高點附近(1180)以量縮方式橫盤強勢整理,這是非常強的量價結構(以量…"
         }
       ],
       "hit_n": 1,
@@ -2469,7 +2906,7 @@
           "excerpt": "更正 前高不是450 而是550"
         }
       ],
-      "hit_n": 43,
+      "hit_n": 68,
       "leave_noise": false
     },
     {
@@ -2821,6 +3258,29 @@
       "leave_noise": false
     },
     {
+      "atom_id": "retract.retract_2590_2535_f5ef01",
+      "theme": "retract",
+      "theme_label": "改口條件",
+      "rule": "改口／重訂條件觸發後，舊位 2590／2535 只當參考，以後文為準",
+      "core": true,
+      "source": "self",
+      "levels": [
+        "2590",
+        "2535"
+      ],
+      "provenance": [
+        {
+          "post_id": "186084963",
+          "taipei": "2026-10-19 00:49",
+          "kind": "post",
+          "club": false,
+          "excerpt": "1. 從台積電來重新修訂大盤波浪位階就非常清楚,台積電本波高點2590,只比7月高點2535多55元"
+        }
+      ],
+      "hit_n": 1,
+      "leave_noise": false
+    },
+    {
       "atom_id": "retract.retract_26394_26470_1390_f1758c",
       "theme": "retract",
       "theme_label": "改口條件",
@@ -2934,6 +3394,33 @@
       "leave_noise": false
     },
     {
+      "atom_id": "retract.retract_35000_35500_1000_be9fd5",
+      "theme": "retract",
+      "theme_label": "改口條件",
+      "rule": "改口／重訂條件觸發後，舊位 35000／35500／1000 只當參考，以後文為準",
+      "core": true,
+      "source": "self",
+      "levels": [
+        "35000",
+        "35500",
+        "1000",
+        "1500",
+        "34977",
+        "2020"
+      ],
+      "provenance": [
+        {
+          "post_id": "189327570",
+          "taipei": "2026-11-20 09:50",
+          "kind": "post",
+          "club": false,
+          "excerpt": "2.波浪理論是動態修正,就是要符合2個鐵律推演出來"
+        }
+      ],
+      "hit_n": 1,
+      "leave_noise": false
+    },
+    {
       "atom_id": "retract.retract_40194_5085fa",
       "theme": "retract",
       "theme_label": "改口條件",
@@ -2950,6 +3437,53 @@
           "kind": "post",
           "club": false,
           "excerpt": "4. 剛才看了一下今天夜盤還是沒破今天凌晨夜盤低點,所以我今天早上發文沒看錯,夜盤已經止跌,只是大盤比夜盤弱,但是現在夜盤完全確認下降軌道被破壞,因此明天開始日盤應該到後天都是反彈格局"
+        }
+      ],
+      "hit_n": 1,
+      "leave_noise": false
+    },
+    {
+      "atom_id": "retract.retract_47637_48613_49160_7c4258",
+      "theme": "retract",
+      "theme_label": "改口條件",
+      "rule": "改口／重訂條件觸發後，舊位 47637／48613／49160 只當參考，以後文為準",
+      "core": true,
+      "source": "self",
+      "levels": [
+        "47637",
+        "48613",
+        "49160"
+      ],
+      "provenance": [
+        {
+          "post_id": "186881630",
+          "taipei": "2026-10-27 23:29",
+          "kind": "post",
+          "club": false,
+          "excerpt": "大盤位階用台指期來規劃波浪位階需重新修訂(突破某關鍵點位)"
+        }
+      ],
+      "hit_n": 1,
+      "leave_noise": false
+    },
+    {
+      "atom_id": "retract.retract_47729_48697_e80faf",
+      "theme": "retract",
+      "theme_label": "改口條件",
+      "rule": "改口／重訂條件觸發後，舊位 47729／48697 只當參考，以後文為準",
+      "core": true,
+      "source": "self",
+      "levels": [
+        "47729",
+        "48697"
+      ],
+      "provenance": [
+        {
+          "post_id": "186423955",
+          "taipei": "2026-10-21 16:39",
+          "kind": "post",
+          "club": false,
+          "excerpt": "總之技術分析 就是根據當下盤勢 進行修正 再重新規劃,依切根據市場給的答案進行動態修正"
         }
       ],
       "hit_n": 1,
@@ -3053,7 +3587,7 @@
           "excerpt": "這周五大盤已經反彈到我初步設定的目標區到20787,至於大盤未來還可以反彈到哪裡,可觀察美股那斯達克及費半指數,從星期五的這兩大市場的技術線圖可很明顯已經14重疊,這也代表這兩大市場未來3~…"
         }
       ],
-      "hit_n": 16,
+      "hit_n": 26,
       "leave_noise": false
     },
     {
@@ -3106,7 +3640,7 @@
           "excerpt": "5-5 的末升波的細微波也已經走了5段,而且搭配形態學(他自己也會算)大盤極限點位就是24600,和當時大盤24400點僅差200點,應該將資金全部測出,大盤會做全波段總修正,去測第四波的位…"
         }
       ],
-      "hit_n": 10,
+      "hit_n": 17,
       "leave_noise": false
     },
     {
@@ -3214,7 +3748,7 @@
           "excerpt": "廣達已經打底完成, 星期五是突破頸線攻擊量,下周有明顯拉回都是最後上車點,感覺到型態會形成M頭,也就是形成未來第四季、更大型態 W底"
         }
       ],
-      "hit_n": 383,
+      "hit_n": 471,
       "leave_noise": false
     },
     {
@@ -3271,7 +3805,7 @@
           "excerpt": "8112至上,用一年時間剛好漲到三階段型態漲幅滿足點,而且漲到最後一段量價背離,在最高點爆大量,主力已經開始撤退,未來反彈就是主力在出貨,這檔股票1~2年不用看了"
         }
       ],
-      "hit_n": 72,
+      "hit_n": 89,
       "leave_noise": false
     },
     {
@@ -3328,7 +3862,7 @@
           "excerpt": "最後我再提醒股票交易量價結構是最重的,不懂量價結構花時間學再多指標、均線來判斷買賣點也是徒勞無功"
         }
       ],
-      "hit_n": 59,
+      "hit_n": 61,
       "leave_noise": false
     },
     {
@@ -3385,7 +3919,7 @@
           "excerpt": "宏碁今天細微波跌破頸線,要整理一段時間了"
         }
       ],
-      "hit_n": 147,
+      "hit_n": 158,
       "leave_noise": false
     },
     {
@@ -3489,7 +4023,7 @@
           "excerpt": "9904寶成,周線為底部型態,今天日線收斂三角整理型態整理完成,出現帶量紅K,有資金者明天就可以進場買入所有部位持股,目標價約45~46元"
         }
       ],
-      "hit_n": 19,
+      "hit_n": 23,
       "leave_noise": false
     },
     {
@@ -3503,7 +4037,8 @@
         "20100",
         "23400",
         "22450",
-        "6683"
+        "6683",
+        "49240"
       ],
       "provenance": [
         {
@@ -3542,7 +4077,114 @@
           "excerpt": "2383我4/23日就有說abc修正完成,4/24 60分鐘線頭肩底型態成立,並說型態最少漲幅是430"
         }
       ],
+      "hit_n": 23,
+      "leave_noise": false
+    },
+    {
+      "atom_id": "pattern.pat___ac1acc",
+      "theme": "pattern",
+      "theme_label": "形態",
+      "rule": "形態觀測：右肩（完成／假突破／右肩等以他原文條件為準）",
+      "core": true,
+      "source": "self",
+      "levels": [
+        "2383",
+        "46402",
+        "46948",
+        "45839",
+        "47578"
+      ],
+      "provenance": [
+        {
+          "post_id": "161675267:a2",
+          "taipei": "2024-05-07 09:28",
+          "kind": "reply",
+          "club": false,
+          "excerpt": "看不懂技術分析,不要亂說話,沒看清楚我說現在是在做型態右肩,基本型態都不懂,還要來股市當韭菜"
+        },
+        {
+          "post_id": "161682076",
+          "taipei": "2024-05-07 09:40",
+          "kind": "post",
+          "club": false,
+          "excerpt": "如我所說今天在做型態右肩,右肩完成如果用型態大師蔡森技術分析來看,應該還要8-10根K線,目前就是洗盤區間操作,如果沒有耐心就先不要進來"
+        },
+        {
+          "post_id": "161790806",
+          "taipei": "2024-05-10 11:38",
+          "kind": "post",
+          "club": false,
+          "excerpt": "這兩檔股票目前的型態都是在築右肩,2383要站上450才會漲得快"
+        },
+        {
+          "post_id": "165443761",
+          "taipei": "2024-10-05 11:28",
+          "kind": "post",
+          "club": false,
+          "excerpt": "如果要走擴延,則從9/18 日K的低點到10/4日K的低點,可畫出一條上升軌道,倘若未來幾天還是在平台整理,大盤無法沿著上升軌道行進,就不會有B-c擴延,因為上升軌道被破壞,一定會進行C波下…"
+        },
+        {
+          "post_id": "168004365",
+          "taipei": "2025-01-14 12:36",
+          "kind": "post",
+          "club": false,
+          "excerpt": "原相昨天非常有可能假跌破,現在又重新站上型態的右肩,所以現在來看型態沒有被破壞"
+        }
+      ],
       "hit_n": 17,
+      "leave_noise": false
+    },
+    {
+      "atom_id": "pattern.pat___b7eeb3",
+      "theme": "pattern",
+      "theme_label": "形態",
+      "rule": "形態觀測：旗型（完成／假突破／右肩等以他原文條件為準）",
+      "core": true,
+      "source": "self",
+      "levels": [
+        "22400",
+        "20700",
+        "21500",
+        "26470"
+      ],
+      "provenance": [
+        {
+          "post_id": "171458472",
+          "taipei": "2025-05-17 19:22",
+          "kind": "post",
+          "club": true,
+          "excerpt": "目前剛過位階A高點進行整理,整理方式的修正方式有兩種,一種是橫台式整理,另外一種就是去年和我一起操作原相及大盤4/14~4/22下飄旗型的洗盤整理,會哪一種目前無法知道,其實最重要的觀察訣竅…"
+        },
+        {
+          "post_id": "171645570",
+          "taipei": "2025-05-29 10:28",
+          "kind": "post",
+          "club": false,
+          "excerpt": "大盤從今天的K線還真的有可能走下飄旗型(4/14~4/22的修正就是下飄旗型)的修正,因為只有走下飄旗型的修正,才會出現第五波推升的脈動去測22400型態頸線上緣,且時間上比較快整理完成"
+        },
+        {
+          "post_id": "171703217",
+          "taipei": "2025-06-03 10:28",
+          "kind": "post",
+          "club": false,
+          "excerpt": "大盤修正型態目前還沒看出來,不過真的有可能用進2退3方式,最後形成一個下飄旗型的修正方式,再看20730附近是否完成修正,再重倉加碼方式來建立目前的操作策略"
+        },
+        {
+          "post_id": "171723313",
+          "taipei": "2025-06-04 10:08",
+          "kind": "post",
+          "club": false,
+          "excerpt": "因為今天大盤非常強,昨天認為走下飄旗型修正之後再走第五波的機率又降低了"
+        },
+        {
+          "post_id": "172769280",
+          "taipei": "2025-07-30 23:33",
+          "kind": "post",
+          "club": false,
+          "excerpt": "並且說大盤至少反彈到20700,然後到20700我又根據當時的大盤技術線圖用等幅測距上修21500,等到了215000我隔天就改口會持續反彈到21800左右,然後到21800開始修正的時候,…"
+        }
+      ],
+      "hit_n": 14,
       "leave_noise": false
     },
     {
@@ -3599,111 +4241,6 @@
       "leave_noise": false
     },
     {
-      "atom_id": "pattern.pat___b7eeb3",
-      "theme": "pattern",
-      "theme_label": "形態",
-      "rule": "形態觀測：旗型（完成／假突破／右肩等以他原文條件為準）",
-      "core": true,
-      "source": "self",
-      "levels": [
-        "22400",
-        "20700",
-        "21500",
-        "26470"
-      ],
-      "provenance": [
-        {
-          "post_id": "171458472",
-          "taipei": "2025-05-17 19:22",
-          "kind": "post",
-          "club": true,
-          "excerpt": "目前剛過位階A高點進行整理,整理方式的修正方式有兩種,一種是橫台式整理,另外一種就是去年和我一起操作原相及大盤4/14~4/22下飄旗型的洗盤整理,會哪一種目前無法知道,其實最重要的觀察訣竅…"
-        },
-        {
-          "post_id": "171645570",
-          "taipei": "2025-05-29 10:28",
-          "kind": "post",
-          "club": false,
-          "excerpt": "大盤從今天的K線還真的有可能走下飄旗型(4/14~4/22的修正就是下飄旗型)的修正,因為只有走下飄旗型的修正,才會出現第五波推升的脈動去測22400型態頸線上緣,且時間上比較快整理完成"
-        },
-        {
-          "post_id": "171703217",
-          "taipei": "2025-06-03 10:28",
-          "kind": "post",
-          "club": false,
-          "excerpt": "大盤修正型態目前還沒看出來,不過真的有可能用進2退3方式,最後形成一個下飄旗型的修正方式,再看20730附近是否完成修正,再重倉加碼方式來建立目前的操作策略"
-        },
-        {
-          "post_id": "171723313",
-          "taipei": "2025-06-04 10:08",
-          "kind": "post",
-          "club": false,
-          "excerpt": "因為今天大盤非常強,昨天認為走下飄旗型修正之後再走第五波的機率又降低了"
-        },
-        {
-          "post_id": "172769280",
-          "taipei": "2025-07-30 23:33",
-          "kind": "post",
-          "club": false,
-          "excerpt": "並且說大盤至少反彈到20700,然後到20700我又根據當時的大盤技術線圖用等幅測距上修21500,等到了215000我隔天就改口會持續反彈到21800左右,然後到21800開始修正的時候,…"
-        }
-      ],
-      "hit_n": 12,
-      "leave_noise": false
-    },
-    {
-      "atom_id": "pattern.pat___ac1acc",
-      "theme": "pattern",
-      "theme_label": "形態",
-      "rule": "形態觀測：右肩（完成／假突破／右肩等以他原文條件為準）",
-      "core": true,
-      "source": "self",
-      "levels": [
-        "2383",
-        "46402",
-        "46948"
-      ],
-      "provenance": [
-        {
-          "post_id": "161675267:a2",
-          "taipei": "2024-05-07 09:28",
-          "kind": "reply",
-          "club": false,
-          "excerpt": "看不懂技術分析,不要亂說話,沒看清楚我說現在是在做型態右肩,基本型態都不懂,還要來股市當韭菜"
-        },
-        {
-          "post_id": "161682076",
-          "taipei": "2024-05-07 09:40",
-          "kind": "post",
-          "club": false,
-          "excerpt": "如我所說今天在做型態右肩,右肩完成如果用型態大師蔡森技術分析來看,應該還要8-10根K線,目前就是洗盤區間操作,如果沒有耐心就先不要進來"
-        },
-        {
-          "post_id": "161790806",
-          "taipei": "2024-05-10 11:38",
-          "kind": "post",
-          "club": false,
-          "excerpt": "這兩檔股票目前的型態都是在築右肩,2383要站上450才會漲得快"
-        },
-        {
-          "post_id": "165443761",
-          "taipei": "2024-10-05 11:28",
-          "kind": "post",
-          "club": false,
-          "excerpt": "如果要走擴延,則從9/18 日K的低點到10/4日K的低點,可畫出一條上升軌道,倘若未來幾天還是在平台整理,大盤無法沿著上升軌道行進,就不會有B-c擴延,因為上升軌道被破壞,一定會進行C波下…"
-        },
-        {
-          "post_id": "168004365",
-          "taipei": "2025-01-14 12:36",
-          "kind": "post",
-          "club": false,
-          "excerpt": "原相昨天非常有可能假跌破,現在又重新站上型態的右肩,所以現在來看型態沒有被破壞"
-        }
-      ],
-      "hit_n": 10,
-      "leave_noise": false
-    },
-    {
       "atom_id": "pattern.pat_m__6cbf44",
       "theme": "pattern",
       "theme_label": "形態",
@@ -3742,9 +4279,16 @@
           "kind": "reply",
           "club": false,
           "excerpt": "今天碩哥節目有對型態學,三尊頭、M頭、W底 有獨到的見解,我覺得很棒,其實他講的這件事情,我很早就觀察出來,總之形態學要配合波浪的位階來解讀,所以我認為碩哥的節目可以學到真正的高階形態學"
+        },
+        {
+          "post_id": "188039214:c188039214-103-1",
+          "taipei": "2026-11-08 12:49",
+          "kind": "reply",
+          "club": false,
+          "excerpt": "現在才講M頭是不是太晚,我都準備抄底了"
         }
       ],
-      "hit_n": 4,
+      "hit_n": 5,
       "leave_noise": false
     },
     {
@@ -3844,7 +4388,7 @@
           "excerpt": "台指期和大盤今天跌的幅度比我預期的多,而且大盤直接將多方3/7日19500向上跳空缺口封閉,現在都已經反彈,如果收盤收在19650左右,算多頭還是算有效防守住防線"
         }
       ],
-      "hit_n": 56,
+      "hit_n": 69,
       "leave_noise": false
     },
     {
@@ -3901,7 +4445,7 @@
           "excerpt": "我抄底是搭配型態算跌幅滿足目標價、波浪理論下降軌道是否被破壞,及60分鐘線有沒有產生破底翻型態,三項技術分析搭配都要成立,才會去抄底,因此才能達到100%的勝率"
         }
       ],
-      "hit_n": 87,
+      "hit_n": 105,
       "leave_noise": false
     },
     {
@@ -3958,7 +4502,7 @@
           "excerpt": "另外要一提我周末檢查各族群龍頭股,發現台積電供應鏈CoWos股票,3131 弘塑是長多股票,明年還有周線末升段要走,所以台積電供應鏈CoWos如G2C+策略聯盟(志聖、均華、均豪)明年應該至…"
         }
       ],
-      "hit_n": 143,
+      "hit_n": 178,
       "leave_noise": false
     },
     {
@@ -4015,7 +4559,7 @@
           "excerpt": "所以這次大盤漲勢結束應該用台積電外資的目標價達到的時間來估計應該會比較正確"
         }
       ],
-      "hit_n": 47,
+      "hit_n": 48,
       "leave_noise": false
     },
     {
@@ -4029,7 +4573,8 @@
         "2000",
         "2500",
         "23400",
-        "23600"
+        "23600",
+        "0050"
       ],
       "provenance": [
         {
@@ -4068,7 +4613,7 @@
           "excerpt": "有關大盤部分先談到這邊,追蹤個股晚一點再發文分析"
         }
       ],
-      "hit_n": 15,
+      "hit_n": 27,
       "leave_noise": false
     },
     {
@@ -4152,6 +4697,266 @@
       ],
       "hit_n": 2,
       "leave_noise": false
+    },
+    {
+      "atom_id": "level.lv_10445_8c7934",
+      "theme": "level",
+      "theme_label": "他點過的位／條件",
+      "rule": "大盤／期點觀測位：10445（支撐／壓力／穿刺條件以原文為準）",
+      "core": false,
+      "source": "self",
+      "levels": [
+        "10445"
+      ],
+      "provenance": [
+        {
+          "post_id": "186070098:c186070098-113",
+          "taipei": "2026-10-17 10:24",
+          "kind": "reply",
+          "club": false,
+          "excerpt": "順便提一下費城半導體7/29低點10445從修正型態來看必破,而且應該會破很多,可以當作大盤抄底參考交叉驗證比對"
+        }
+      ],
+      "hit_n": 1,
+      "leave_noise": false,
+      "note": "位階核心額滿，降附檔"
+    },
+    {
+      "atom_id": "level.lv_1055_5722b4",
+      "theme": "level",
+      "theme_label": "他點過的位／條件",
+      "rule": "大盤／期點觀測位：1055（支撐／壓力／穿刺條件以原文為準）",
+      "core": false,
+      "source": "self",
+      "levels": [
+        "1055"
+      ],
+      "provenance": [
+        {
+          "post_id": "172123127",
+          "taipei": "2025-06-27 11:43",
+          "kind": "post",
+          "club": false,
+          "excerpt": "今天台積電目前是窒息量回測6/20大量高點1055的支撐線有守,再度驗證台積電量能控制非常好,如果要買台積電今天就是好買點"
+        }
+      ],
+      "hit_n": 1,
+      "leave_noise": false,
+      "note": "位階核心額滿，降附檔"
+    },
+    {
+      "atom_id": "level.lv_1075_5000_4e3cc6",
+      "theme": "level",
+      "theme_label": "他點過的位／條件",
+      "rule": "大盤／期點觀測位：1075／5000（支撐／壓力／穿刺條件以原文為準）",
+      "core": false,
+      "source": "self",
+      "levels": [
+        "1075",
+        "5000"
+      ],
+      "provenance": [
+        {
+          "post_id": "172414761",
+          "taipei": "2025-07-13 10:48",
+          "kind": "post",
+          "club": false,
+          "excerpt": "每天看到一堆人在發文擔心匯率、又擔心關稅的問題,再加上外資期貨空單留倉58000口"
+        }
+      ],
+      "hit_n": 1,
+      "leave_noise": false,
+      "note": "位階核心額滿，降附檔"
+    },
+    {
+      "atom_id": "level.lv_1145_1195_3e757c",
+      "theme": "level",
+      "theme_label": "他點過的位／條件",
+      "rule": "大盤／期點觀測位：1145／1195（支撐／壓力／穿刺條件以原文為準）",
+      "core": false,
+      "source": "self",
+      "levels": [
+        "1145",
+        "1195"
+      ],
+      "provenance": [
+        {
+          "post_id": "174405607",
+          "taipei": "2025-10-20 23:14",
+          "kind": "post",
+          "club": false,
+          "excerpt": "而且就算到放假前走3-3-5,也有可能星期四或星期五美股又有利空消息面除來,立刻兩天來一個超過1000點的修正(仍在3-4修正合理範圍),因此這周操作要保守為宜,還是堅守拉回到支撐區才能介入…"
+        }
+      ],
+      "hit_n": 1,
+      "leave_noise": false,
+      "note": "位階核心額滿，降附檔"
+    },
+    {
+      "atom_id": "level.lv_1150_1de74d",
+      "theme": "level",
+      "theme_label": "他點過的位／條件",
+      "rule": "大盤／期點觀測位：1150（支撐／壓力／穿刺條件以原文為準）",
+      "core": false,
+      "source": "self",
+      "levels": [
+        "1150"
+      ],
+      "provenance": [
+        {
+          "post_id": "174449227",
+          "taipei": "2025-10-22 17:49",
+          "kind": "post",
+          "club": false,
+          "excerpt": "三天連假前要介入股票要買在支撐區附近才可以介入,而且要買在經過洗盤整理再回新站上支撐區才可以介入,如今天尖點買在110附近,奇鋐在1150附近方可介入"
+        }
+      ],
+      "hit_n": 1,
+      "leave_noise": false,
+      "note": "位階核心額滿，降附檔"
+    },
+    {
+      "atom_id": "level.lv_1165_1205_1200_f86c1b",
+      "theme": "level",
+      "theme_label": "他點過的位／條件",
+      "rule": "大盤／期點觀測位：1165／1205／1200（支撐／壓力／穿刺條件以原文為準）",
+      "core": false,
+      "source": "self",
+      "levels": [
+        "1165",
+        "1205",
+        "1200"
+      ],
+      "provenance": [
+        {
+          "post_id": "173233839",
+          "taipei": "2025-08-21 10:37",
+          "kind": "post",
+          "club": false,
+          "excerpt": "目前觀察大盤指標股台積電、台達電、台光電,因為昨天都跌破原有支撐,今天反彈要改看壓力"
+        }
+      ],
+      "hit_n": 1,
+      "leave_noise": false,
+      "note": "位階核心額滿，降附檔"
+    },
+    {
+      "atom_id": "level.lv_1165_25000_667a22",
+      "theme": "level",
+      "theme_label": "他點過的位／條件",
+      "rule": "大盤／期點觀測位：1165／25000（支撐／壓力／穿刺條件以原文為準）",
+      "core": false,
+      "source": "self",
+      "levels": [
+        "1165",
+        "25000"
+      ],
+      "provenance": [
+        {
+          "post_id": "173296047",
+          "taipei": "2025-08-25 09:51",
+          "kind": "post",
+          "club": false,
+          "excerpt": "補充大盤觀盤重點,可搭配台積電的支撐壓力"
+        }
+      ],
+      "hit_n": 1,
+      "leave_noise": false,
+      "note": "位階核心額滿，降附檔"
+    },
+    {
+      "atom_id": "level.lv_1165_4b24e8",
+      "theme": "level",
+      "theme_label": "他點過的位／條件",
+      "rule": "大盤／期點觀測位：1165（支撐／壓力／穿刺條件以原文為準）",
+      "core": false,
+      "source": "self",
+      "levels": [
+        "1165"
+      ],
+      "provenance": [
+        {
+          "post_id": "173206437",
+          "taipei": "2025-08-20 09:59",
+          "kind": "post",
+          "club": false,
+          "excerpt": "大盤最重要觀察指標就是台積電、台達電及台光電這三檔股票,除了昨天講台積電外,台達電的支撐在636附近,台光電在1165"
+        }
+      ],
+      "hit_n": 1,
+      "leave_noise": false,
+      "note": "位階核心額滿，降附檔"
+    },
+    {
+      "atom_id": "level.lv_1180_1200_1260_b487d2",
+      "theme": "level",
+      "theme_label": "他點過的位／條件",
+      "rule": "大盤／期點觀測位：1180／1200／1260／24416（支撐／壓力／穿刺條件以原文為準）",
+      "core": false,
+      "source": "self",
+      "levels": [
+        "1180"
+      ],
+      "provenance": [
+        {
+          "post_id": "173359362",
+          "taipei": "2025-08-27 17:29",
+          "kind": "post",
+          "club": false,
+          "excerpt": "台積電今天用量縮的方式,站上最近2個多月以來8/7日產生次大量高點1180"
+        }
+      ],
+      "hit_n": 1,
+      "leave_noise": false,
+      "note": "位階核心額滿，降附檔"
+    },
+    {
+      "atom_id": "level.lv_1180_3a2e9b",
+      "theme": "level",
+      "theme_label": "他點過的位／條件",
+      "rule": "大盤／期點觀測位：1180（支撐／壓力／穿刺條件以原文為準）",
+      "core": false,
+      "source": "self",
+      "levels": [
+        "1180"
+      ],
+      "provenance": [
+        {
+          "post_id": "173195348",
+          "taipei": "2025-08-19 19:44",
+          "kind": "post",
+          "club": false,
+          "excerpt": "從台積電近期的量價結構來看,8月7日再爆四月股災以來的次大量(6月20日是最大量),然後以量縮整理的方式一直在8月7日最高點附近(1180)以量縮方式橫盤強勢整理,這是非常強的量價結構(以量…"
+        }
+      ],
+      "hit_n": 1,
+      "leave_noise": false,
+      "note": "位階核心額滿，降附檔"
+    },
+    {
+      "atom_id": "level.lv_12000_2000_7100_8ace54",
+      "theme": "level",
+      "theme_label": "他點過的位／條件",
+      "rule": "大盤／期點觀測位：12000／2000／7100（支撐／壓力／穿刺條件以原文為準）",
+      "core": false,
+      "source": "self",
+      "levels": [
+        "12000",
+        "2000",
+        "7100"
+      ],
+      "provenance": [
+        {
+          "post_id": "189027207",
+          "taipei": "2026-11-18 08:56",
+          "kind": "post",
+          "club": false,
+          "excerpt": "9點突破下降軌道10點再破下降軌道走9波跌勢擴延機率不排除"
+        }
+      ],
+      "hit_n": 1,
+      "leave_noise": false,
+      "note": "位階核心額滿，降附檔"
     },
     {
       "atom_id": "level.lv_1200_0865a8",
@@ -4733,267 +5538,6 @@
       "note": "位階核心額滿，降附檔"
     },
     {
-      "atom_id": "level.lv_1800_1900_d682aa",
-      "theme": "level",
-      "theme_label": "他點過的位／條件",
-      "rule": "大盤／期點觀測位：1800／1900（支撐／壓力／穿刺條件以原文為準）",
-      "core": false,
-      "source": "self",
-      "levels": [
-        "1800",
-        "1900"
-      ],
-      "provenance": [
-        {
-          "post_id": "177189705",
-          "taipei": "2026-03-04 11:19",
-          "kind": "post",
-          "club": false,
-          "excerpt": "高階測試都有一點快撐不住,有矽光子、ABF、低軌道衛星反彈一定要出清,不出清將來至少還要2根"
-        }
-      ],
-      "hit_n": 1,
-      "leave_noise": false,
-      "note": "位階核心額滿，降附檔"
-    },
-    {
-      "atom_id": "level.lv_18793_20900_21700_5d8771",
-      "theme": "level",
-      "theme_label": "他點過的位／條件",
-      "rule": "大盤／期點觀測位：18793／20900／21700（支撐／壓力／穿刺條件以原文為準）",
-      "core": false,
-      "source": "self",
-      "levels": [
-        "18793",
-        "20900",
-        "21700"
-      ],
-      "provenance": [
-        {
-          "post_id": "171606556",
-          "taipei": "2025-05-27 11:57",
-          "kind": "post",
-          "club": false,
-          "excerpt": "目前看起來這種大盤走勢機率最大,至於各股還是要選股作多,只是要選拉回到量縮還在支撐區型態沒跌破有基本面的股票來做多,如老AI伺服器零組件供應鏈、台積電設備股(包含建廠、CoWos、2奈米製程…"
-        }
-      ],
-      "hit_n": 1,
-      "leave_noise": false,
-      "note": "位階核心額滿，降附檔"
-    },
-    {
-      "atom_id": "level.lv_18964_19064_17300_a802e6",
-      "theme": "level",
-      "theme_label": "他點過的位／條件",
-      "rule": "大盤／期點觀測位：18964／19064／17300（支撐／壓力／穿刺條件以原文為準）",
-      "core": false,
-      "source": "self",
-      "levels": [
-        "18964"
-      ],
-      "provenance": [
-        {
-          "post_id": "170859230",
-          "taipei": "2025-04-23 09:46",
-          "kind": "post",
-          "club": false,
-          "excerpt": "昨天有提到台指期重要觀察點位是18964觀察點位是否能站穩,站穩則完成底部型態"
-        }
-      ],
-      "hit_n": 1,
-      "leave_noise": false,
-      "note": "位階核心額滿，降附檔"
-    },
-    {
-      "atom_id": "level.lv_18964_19064_20700_55ecab",
-      "theme": "level",
-      "theme_label": "他點過的位／條件",
-      "rule": "大盤／期點觀測位：18964／19064／20700／17300（支撐／壓力／穿刺條件以原文為準）",
-      "core": false,
-      "source": "self",
-      "levels": [
-        "18964"
-      ],
-      "provenance": [
-        {
-          "post_id": "170844954",
-          "taipei": "2025-04-22 10:15",
-          "kind": "post",
-          "club": false,
-          "excerpt": "今天台指期重要觀察點位是18964觀察點位是否能站穩,站穩則完成底部型態"
-        }
-      ],
-      "hit_n": 1,
-      "leave_noise": false,
-      "note": "位階核心額滿，降附檔"
-    },
-    {
-      "atom_id": "level.lv_19000_1000_20500_e4698b",
-      "theme": "level",
-      "theme_label": "他點過的位／條件",
-      "rule": "大盤／期點觀測位：19000／1000／20500（支撐／壓力／穿刺條件以原文為準）",
-      "core": false,
-      "source": "self",
-      "levels": [
-        "19000",
-        "1000",
-        "20500"
-      ],
-      "provenance": [
-        {
-          "post_id": "164841530",
-          "taipei": "2024-09-07 13:22",
-          "kind": "post",
-          "club": false,
-          "excerpt": "至於追蹤個股該如何操作,我分享個股的短支撐,和關鍵支撐供操作操考"
-        }
-      ],
-      "hit_n": 1,
-      "leave_noise": false,
-      "note": "位階核心額滿，降附檔"
-    },
-    {
-      "atom_id": "level.lv_19000_3ef19b",
-      "theme": "level",
-      "theme_label": "他點過的位／條件",
-      "rule": "大盤／期點觀測位：19000（支撐／壓力／穿刺條件以原文為準）",
-      "core": false,
-      "source": "self",
-      "levels": [
-        "19000"
-      ],
-      "provenance": [
-        {
-          "post_id": "164266023",
-          "taipei": "2024-08-14 14:47",
-          "kind": "post",
-          "club": false,
-          "excerpt": "現在來說明為何如此看法,同學可以去看他的月線是標準的底部型態且為15年的大底,這種底部型態只要搭配基本面加持,從最低點來算漲5倍是非常合理的,而且目前完成底部型態的頸線約在220~225之間…"
-        }
-      ],
-      "hit_n": 1,
-      "leave_noise": false,
-      "note": "位階核心額滿，降附檔"
-    },
-    {
-      "atom_id": "level.lv_1900_1800_1835_c865e8",
-      "theme": "level",
-      "theme_label": "他點過的位／條件",
-      "rule": "大盤／期點觀測位：1900／1800／1835（支撐／壓力／穿刺條件以原文為準）",
-      "core": false,
-      "source": "self",
-      "levels": [
-        "1900",
-        "1800",
-        "1835"
-      ],
-      "provenance": [
-        {
-          "post_id": "177185078",
-          "taipei": "2026-03-04 09:36",
-          "kind": "post",
-          "club": false,
-          "excerpt": "其實昨天夜盤的技術線圖已經5波暫時跌完了,現在進行再一次回測確認"
-        }
-      ],
-      "hit_n": 1,
-      "leave_noise": false,
-      "note": "位階核心額滿，降附檔"
-    },
-    {
-      "atom_id": "level.lv_1900_1935_33663_80fbe8",
-      "theme": "level",
-      "theme_label": "他點過的位／條件",
-      "rule": "大盤／期點觀測位：1900／1935／33663（支撐／壓力／穿刺條件以原文為準）",
-      "core": false,
-      "source": "self",
-      "levels": [
-        "1900",
-        "1935"
-      ],
-      "provenance": [
-        {
-          "post_id": "177171247",
-          "taipei": "2026-03-03 18:14",
-          "kind": "post",
-          "club": false,
-          "excerpt": "台積電2/23爆的巨量可以畫兩條支撐線1900及1935,今天收盤剛好打到1935"
-        }
-      ],
-      "hit_n": 1,
-      "leave_noise": false,
-      "note": "位階核心額滿，降附檔"
-    },
-    {
-      "atom_id": "level.lv_19020_c6f02f",
-      "theme": "level",
-      "theme_label": "他點過的位／條件",
-      "rule": "大盤／期點觀測位：19020（支撐／壓力／穿刺條件以原文為準）",
-      "core": false,
-      "source": "self",
-      "levels": [
-        "19020"
-      ],
-      "provenance": [
-        {
-          "post_id": "160022382",
-          "taipei": "2024-02-29 13:11",
-          "kind": "post",
-          "club": false,
-          "excerpt": "昨天我有發一篇台指期破底翻波浪位階,並預測一定還會測19020一次,目前都按照我的規劃方向發展,如有看到訊息去買台指期多單,恭喜賺點零用錢,記得19020左右先下車一趟"
-        }
-      ],
-      "hit_n": 1,
-      "leave_noise": false,
-      "note": "位階核心額滿，降附檔"
-    },
-    {
-      "atom_id": "level.lv_1910_dbfeba",
-      "theme": "level",
-      "theme_label": "他點過的位／條件",
-      "rule": "大盤／期點觀測位：1910（支撐／壓力／穿刺條件以原文為準）",
-      "core": false,
-      "source": "self",
-      "levels": [
-        "1910"
-      ],
-      "provenance": [
-        {
-          "post_id": "177513087",
-          "taipei": "2026-03-18 09:49",
-          "kind": "post",
-          "club": false,
-          "excerpt": "今天大盤持續反彈,已經到第一道反彈壓力區,以台積電來看在1910,至於能不能突破,或再一次打下反覆築底要看明天"
-        }
-      ],
-      "hit_n": 1,
-      "leave_noise": false,
-      "note": "位階核心額滿，降附檔"
-    },
-    {
-      "atom_id": "level.lv_19250_01f53a",
-      "theme": "level",
-      "theme_label": "他點過的位／條件",
-      "rule": "大盤／期點觀測位：19250（支撐／壓力／穿刺條件以原文為準）",
-      "core": false,
-      "source": "self",
-      "levels": [
-        "19250"
-      ],
-      "provenance": [
-        {
-          "post_id": "160540893",
-          "taipei": "2024-03-19 22:59",
-          "kind": "post",
-          "club": false,
-          "excerpt": "台指期日線上升軌道已經有點跌破,大盤明天早上如果不表態上攻,預計會回測至19250支撐區"
-        }
-      ],
-      "hit_n": 1,
-      "leave_noise": false,
-      "note": "位階核心額滿，降附檔"
-    },
-    {
       "atom_id": "retract.retract_2024_2022_18619_98aac6",
       "theme": "retract",
       "theme_label": "改口條件",
@@ -5053,9 +5597,16 @@
           "kind": "post",
           "club": false,
           "excerpt": "明天大盤就算反彈之後還會再側一次低點,要抄底不急,至少三日低點不破再看,不要一出來就急著又介入。 目前盤面族群結構最強還是高階測試,其他族群我不想太多評論,免得顧人怨。 目前就是觀察各族群盤…"
+        },
+        {
+          "post_id": "186917649:c186917649-97-4",
+          "taipei": "2026-10-28 12:48",
+          "kind": "reply",
+          "club": false,
+          "excerpt": "他應該受到會員壓力很大,因為收會員會費。 正常都是只看不做"
         }
       ],
-      "hit_n": 4,
+      "hit_n": 6,
       "leave_noise": true
     }
   ]

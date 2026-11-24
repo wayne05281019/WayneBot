@@ -241,7 +241,10 @@ def _cjk_fp(size: float = 9.0, weight: str = "bold"):
 
 
 def written_targets_for(sid: str) -> List[Dict[str, Any]]:
-    """該檔他寫死的絕對目標；沒寫＝空。檔別隔離。"""
+    """該檔他寫死的絕對目標；沒寫＝空。檔別隔離。
+
+    SYNC-LEVELS：僅該檔他有點名時，再併可畫個股位（非買訊・不准發明）。
+    """
     key = _sid(sid)
     if not key:
         return []
@@ -262,7 +265,12 @@ def written_targets_for(sid: str) -> List[Dict[str, Any]]:
                 "label": written_target_label(px),
             }
         )
-    return out
+    try:
+        from observe_sync_levels import written_targets_merged
+
+        return written_targets_merged(key, base=out)
+    except Exception:
+        return out
 
 
 def written_target_label(price: Any) -> str:

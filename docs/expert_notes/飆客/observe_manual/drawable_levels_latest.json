@@ -1,0 +1,4761 @@
+{
+  "track": "SYNC-LEVELS",
+  "generated_at_taipei": "2026-11-24 01:00:01",
+  "tz": "Asia/Taipei",
+  "warning": "試標・推論／非他原文・非買訊・對質未過閘",
+  "buy_signal": false,
+  "phone_sync": "observe_overlay",
+  "n_levels": 129,
+  "n_index": 121,
+  "n_stock": 8,
+  "named_stock_ids": [
+    "3017",
+    "3081",
+    "3131"
+  ],
+  "hooks": {
+    "teach_trio": "attach_sync_levels_to_pack → pred_levels.tw／key_levels",
+    "pressure_support": "written_targets_for 合併 → 壓撐／大量圖原文線",
+    "lookup_structure": "僅 stock_was_named(sid) 時疊結構圖"
+  },
+  "gaps": [
+    "biaoke_level_snaps 空或無表（本機 overlay 常空；Render 碟另併）",
+    "biaoke_claims／day_facts 無個股價（點名結構靠 seed＋atoms）"
+  ],
+  "levels": [
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 48218.0,
+      "role": "支撐",
+      "label": "他點・level",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "184347440",
+          "taipei": "2026-09-08 13:19",
+          "as_of": "20260908",
+          "atom_id": "level.lv_48218_cb476b",
+          "evidence_id": "",
+          "excerpt": "有對各族群龍頭觀察的人,應該有發現只要今年五月前見高點的這兩年漲非常多龍頭股突破歷史高點之後必定拉回整理,目前就是各族群輪漲格局"
+        },
+        {
+          "source": "segment_evidence",
+          "post_id": "knowhow.md §C／§5；TWII高48219",
+          "taipei": "",
+          "as_of": "20250623",
+          "atom_id": "",
+          "evidence_id": "SE-20250623-48219-high",
+          "excerpt": "60分高48218／下波至少測48218"
+        }
+      ],
+      "hit_n": 2,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 48218.0,
+        "as_of_used": "20250623",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 46948.0,
+      "role": "點位",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "184027446",
+          "taipei": "2026-09-04 08:55",
+          "as_of": "20260904",
+          "atom_id": "three_layer.night_level_46948_3229af",
+          "evidence_id": "",
+          "excerpt": "從台指期連續盤來看,昨天12:00~13:15是走第9段(第5段下跌),昨天晚上我睡前台指期夜盤已經突破此波修正的下降軌道,因此大盤又要往46948去測試,因此大盤還是在做右肩(區間震盪整理…"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "161675267:a2",
+          "taipei": "2024-05-07 09:28",
+          "as_of": "20240507",
+          "atom_id": "pattern.pat___ac1acc",
+          "evidence_id": "",
+          "excerpt": "看不懂技術分析,不要亂說話,沒看清楚我說現在是在做型態右肩,基本型態都不懂,還要來股市當韭菜"
+        }
+      ],
+      "hit_n": 2,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 46948.0,
+        "as_of_used": "20240507",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 46746.0,
+      "role": "點位",
+      "label": "段證・他點",
+      "provenance": [
+        {
+          "source": "segment_evidence",
+          "post_id": "knowhow.md §C 2026-09-02",
+          "taipei": "",
+          "as_of": "20250902",
+          "atom_id": "",
+          "evidence_id": "SE-20250902-45415-44210",
+          "excerpt": "7段跌完應在前波低45415；9段更深前低44210；穿刺46746才不走9段"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 46746.0,
+        "as_of_used": "20250902",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 46402.0,
+      "role": "點位",
+      "label": "他點・pattern",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "161675267:a2",
+          "taipei": "2024-05-07 09:28",
+          "as_of": "20240507",
+          "atom_id": "pattern.pat___ac1acc",
+          "evidence_id": "",
+          "excerpt": "看不懂技術分析,不要亂說話,沒看清楚我說現在是在做型態右肩,基本型態都不懂,還要來股市當韭菜"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 46402.0,
+        "as_of_used": "20240507",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 45415.0,
+      "role": "點位",
+      "label": "段證・他點",
+      "provenance": [
+        {
+          "source": "segment_evidence",
+          "post_id": "knowhow.md §C 2026-09-02",
+          "taipei": "",
+          "as_of": "20250902",
+          "atom_id": "",
+          "evidence_id": "SE-20250902-45415-44210",
+          "excerpt": "7段跌完應在前波低45415；9段更深前低44210；穿刺46746才不走9段"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 45415.0,
+        "as_of_used": "20250902",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 45273.0,
+      "role": "支撐",
+      "label": "他點・level",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "180729004",
+          "taipei": "2026-07-14 09:01",
+          "as_of": "20260714",
+          "atom_id": "level.lv_45273_60ef95",
+          "evidence_id": "",
+          "excerpt": "5. 旺矽、台光電上升軌道今天已經跌破,除非明天立刻站回去,否則我認為F10股票除台積電今年都沒有再創新高"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "touched",
+        "symbol": "TWII",
+        "price": 45273.0,
+        "as_of_used": "20260714",
+        "touched": true,
+        "note_zh": "近窗K碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 44800.0,
+      "role": "點位",
+      "label": "他點・iron_rule",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "163473571",
+          "taipei": "2024-07-12 17:27",
+          "as_of": "20240712",
+          "atom_id": "iron_rule.complete_5_or_9_347035",
+          "evidence_id": "",
+          "excerpt": "現在要等下星期一來確認是否修正完成,不過要走擴延走9段的機率並不高,一切等下周確認"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 44800.0,
+        "as_of_used": "20240712",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 44655.0,
+      "role": "點位",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "179674759",
+          "taipei": "2026-06-08 08:51",
+          "as_of": "20260608",
+          "atom_id": "three_layer.night_level_42935_44209_42000_69a92c",
+          "evidence_id": "",
+          "excerpt": "12. 總之最好今晚夜盤 美股 大漲, 明天先調節一些股票,因為不可能V轉"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "touched",
+        "symbol": "TWII",
+        "price": 44655.0,
+        "as_of_used": "20260608",
+        "touched": true,
+        "note_zh": "近窗K碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 44454.0,
+      "role": "點位",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "180546630",
+          "taipei": "2026-07-07 22:54",
+          "as_of": "20260707",
+          "atom_id": "three_layer.night_level_44454_42206_b0c044",
+          "evidence_id": "",
+          "excerpt": "1. 從夜盤來看 大盤最樂觀情境走第五波兩次擴延,雙重回檔最樂觀的波浪波行已經沒了"
+        },
+        {
+          "source": "segment_evidence",
+          "post_id": "knowhow.md §B 2026-06-26",
+          "taipei": "",
+          "as_of": "20250626",
+          "atom_id": "",
+          "evidence_id": "SE-20250626-low-44454",
+          "excerpt": "6/26低（夜盤改口偏早，日盤還有一段）"
+        }
+      ],
+      "hit_n": 2,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 44454.0,
+        "as_of_used": "20250626",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 44210.0,
+      "role": "點位",
+      "label": "段證・他點",
+      "provenance": [
+        {
+          "source": "segment_evidence",
+          "post_id": "knowhow.md §C 2026-09-02",
+          "taipei": "",
+          "as_of": "20250902",
+          "atom_id": "",
+          "evidence_id": "SE-20250902-45415-44210",
+          "excerpt": "7段跌完應在前波低45415；9段更深前低44210；穿刺46746才不走9段"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 44210.0,
+        "as_of_used": "20250902",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 44209.0,
+      "role": "點位",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "179674759",
+          "taipei": "2026-06-08 08:51",
+          "as_of": "20260608",
+          "atom_id": "three_layer.night_level_42935_44209_42000_69a92c",
+          "evidence_id": "",
+          "excerpt": "12. 總之最好今晚夜盤 美股 大漲, 明天先調節一些股票,因為不可能V轉"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "179710301",
+          "taipei": "2026-06-09 09:20",
+          "as_of": "20260609",
+          "atom_id": "three_layer.night_level_44209_2000_39500_72f6f2",
+          "evidence_id": "",
+          "excerpt": "1. 不知道有人知道,夜盤收高,大盤早盤漲幅縮小原因"
+        }
+      ],
+      "hit_n": 2,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "touched",
+        "symbol": "TWII",
+        "price": 44209.0,
+        "as_of_used": "20260609",
+        "touched": true,
+        "note_zh": "近窗K碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 42935.0,
+      "role": "點位",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "179674759",
+          "taipei": "2026-06-08 08:51",
+          "as_of": "20260608",
+          "atom_id": "three_layer.night_level_42935_44209_42000_69a92c",
+          "evidence_id": "",
+          "excerpt": "12. 總之最好今晚夜盤 美股 大漲, 明天先調節一些股票,因為不可能V轉"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "touched",
+        "symbol": "TWII",
+        "price": 42935.0,
+        "as_of_used": "20260608",
+        "touched": true,
+        "note_zh": "近窗K碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 42376.9,
+      "role": "支撐",
+      "label": "他點・level",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "179670194:a2",
+          "taipei": "2026-06-08 17:47",
+          "as_of": "20260608",
+          "atom_id": "level.lv_4237686_42000_d51583",
+          "evidence_id": "",
+          "excerpt": "\"今日大盤最低42376.86 很接近飆大預測的42000點\" 因為這邊是強力支撐區,而且從台指期一開盤就知道,所以我才敢搶短線反彈"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "touched",
+        "symbol": "TWII",
+        "price": 42376.9,
+        "as_of_used": "20260608",
+        "touched": true,
+        "note_zh": "近窗K碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 42206.0,
+      "role": "點位",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "180808411",
+          "taipei": "2026-07-16 17:45",
+          "as_of": "20260716",
+          "atom_id": "three_layer.night_level_42206_1da251",
+          "evidence_id": "",
+          "excerpt": "夜盤目前大跌,目前規劃有三種波浪位階"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "180546630",
+          "taipei": "2026-07-07 22:54",
+          "as_of": "20260707",
+          "atom_id": "three_layer.night_level_44454_42206_b0c044",
+          "evidence_id": "",
+          "excerpt": "1. 從夜盤來看 大盤最樂觀情境走第五波兩次擴延,雙重回檔最樂觀的波浪波行已經沒了"
+        }
+      ],
+      "hit_n": 2,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 42206.0,
+        "as_of_used": "20260707",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 42000.0,
+      "role": "支撐",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "179674759",
+          "taipei": "2026-06-08 08:51",
+          "as_of": "20260608",
+          "atom_id": "three_layer.night_level_42935_44209_42000_69a92c",
+          "evidence_id": "",
+          "excerpt": "12. 總之最好今晚夜盤 美股 大漲, 明天先調節一些股票,因為不可能V轉"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "179670194:a2",
+          "taipei": "2026-06-08 17:47",
+          "as_of": "20260608",
+          "atom_id": "level.lv_4237686_42000_d51583",
+          "evidence_id": "",
+          "excerpt": "\"今日大盤最低42376.86 很接近飆大預測的42000點\" 因為這邊是強力支撐區,而且從台指期一開盤就知道,所以我才敢搶短線反彈"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "179869615",
+          "taipei": "2026-06-15 08:40",
+          "as_of": "20260615",
+          "atom_id": "level.lv_15000_42000_c69211",
+          "evidence_id": "",
+          "excerpt": "2. 聯發科只等 大盤C波回測不破支撐 即可晉升F系列"
+        }
+      ],
+      "hit_n": 3,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 42000.0,
+        "as_of_used": "20260615",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 40779.0,
+      "role": "點位",
+      "label": "段證・他點",
+      "provenance": [
+        {
+          "source": "segment_evidence",
+          "post_id": "knowhow.md §B 2026-06-11",
+          "taipei": "",
+          "as_of": "20250611",
+          "atom_id": "",
+          "evidence_id": "SE-20250611-yellow-pressure",
+          "excerpt": "要過夜盤60分下降壓才能B波；目前只有點到沒突破；低標40779"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 40779.0,
+        "as_of_used": "20250611",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 40194.0,
+      "role": "點位",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "179103326",
+          "taipei": "2026-05-20 09:04",
+          "as_of": "20260520",
+          "atom_id": "three_layer.night_level_40194_aef292",
+          "evidence_id": "",
+          "excerpt": "4. 剛才看了一下今天夜盤還是沒破今天凌晨夜盤低點,所以我今天早上發文沒看錯,夜盤已經止跌,只是大盤比夜盤弱,但是現在夜盤完全確認下降軌道被破壞,因此明天開始日盤應該到後天都是反彈格局"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "touched",
+        "symbol": "TWII",
+        "price": 40194.0,
+        "as_of_used": "20260520",
+        "touched": true,
+        "note_zh": "近窗K碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 40000.0,
+      "role": "點位",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "179746562:a1",
+          "taipei": "2026-06-10 20:23",
+          "as_of": "20260610",
+          "atom_id": "three_layer.night_level_39500_40000_36000_30d0d6",
+          "evidence_id": "",
+          "excerpt": "大盤未來走勢都在這張台指期夜盤(連續圖),最重要今晚或明天日盤要過黃色那條下降壓力線,才能走B波反彈,如果不能過黃色那條下降壓力線"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "179674759",
+          "taipei": "2026-06-08 08:51",
+          "as_of": "20260608",
+          "atom_id": "three_layer.night_level_42935_44209_42000_69a92c",
+          "evidence_id": "",
+          "excerpt": "12. 總之最好今晚夜盤 美股 大漲, 明天先調節一些股票,因為不可能V轉"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "179710301",
+          "taipei": "2026-06-09 09:20",
+          "as_of": "20260609",
+          "atom_id": "three_layer.night_level_44209_2000_39500_72f6f2",
+          "evidence_id": "",
+          "excerpt": "1. 不知道有人知道,夜盤收高,大盤早盤漲幅縮小原因"
+        }
+      ],
+      "hit_n": 3,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 40000.0,
+        "as_of_used": "20260609",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 39500.0,
+      "role": "點位",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "179746562:a1",
+          "taipei": "2026-06-10 20:23",
+          "as_of": "20260610",
+          "atom_id": "three_layer.night_level_39500_40000_36000_30d0d6",
+          "evidence_id": "",
+          "excerpt": "大盤未來走勢都在這張台指期夜盤(連續圖),最重要今晚或明天日盤要過黃色那條下降壓力線,才能走B波反彈,如果不能過黃色那條下降壓力線"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "179710301",
+          "taipei": "2026-06-09 09:20",
+          "as_of": "20260609",
+          "atom_id": "three_layer.night_level_44209_2000_39500_72f6f2",
+          "evidence_id": "",
+          "excerpt": "1. 不知道有人知道,夜盤收高,大盤早盤漲幅縮小原因"
+        }
+      ],
+      "hit_n": 2,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 39500.0,
+        "as_of_used": "20260609",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 39385.0,
+      "role": "點位",
+      "label": "段證・他點",
+      "provenance": [
+        {
+          "source": "segment_evidence",
+          "post_id": "knowhow.md §A 2026-07-29",
+          "taipei": "",
+          "as_of": "20250729",
+          "atom_id": "",
+          "evidence_id": "SE-20250729-A-wave-low",
+          "excerpt": "A波低／日線低39385；15分圖低39442；過第一關40816"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 39385.0,
+        "as_of_used": "20250729",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 37837.1,
+      "role": "點位",
+      "label": "段證・他點",
+      "provenance": [
+        {
+          "source": "segment_evidence",
+          "post_id": "wave8_cycle_concept_lock.json friday_low",
+          "taipei": "",
+          "as_of": "20261107",
+          "atom_id": "",
+          "evidence_id": "SE-20261107-friday-low-37837",
+          "excerpt": "上週五低加權盤中低≈37837（非收盤、非夜盤低）"
+        },
+        {
+          "source": "segment_evidence",
+          "post_id": "wave8_14_overlap_resolved.json today_20261109",
+          "taipei": "",
+          "as_of": "20261109",
+          "atom_id": "",
+          "evidence_id": "SE-20261109-C35-14-confirm",
+          "excerpt": "C3-5＋1 4重疊＝底確認；必再測；破＝假跌破上車（他定義，非我買訊）"
+        },
+        {
+          "source": "segment_evidence",
+          "post_id": "wave_eod_verify_20261120.json",
+          "taipei": "",
+          "as_of": "20261120",
+          "atom_id": "",
+          "evidence_id": "SE-20261120-broke-37837",
+          "excerpt": "forward M3測37837；官方L35739已破且收仍下方→改看口頭35579"
+        }
+      ],
+      "hit_n": 3,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 37837.1,
+        "as_of_used": "20261106",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 37000.0,
+      "role": "點位",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "179746562:a1",
+          "taipei": "2026-06-10 20:23",
+          "as_of": "20260610",
+          "atom_id": "three_layer.night_level_39500_40000_36000_30d0d6",
+          "evidence_id": "",
+          "excerpt": "大盤未來走勢都在這張台指期夜盤(連續圖),最重要今晚或明天日盤要過黃色那條下降壓力線,才能走B波反彈,如果不能過黃色那條下降壓力線"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 37000.0,
+        "as_of_used": "20260610",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 36000.0,
+      "role": "點位",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "179746562:a1",
+          "taipei": "2026-06-10 20:23",
+          "as_of": "20260610",
+          "atom_id": "three_layer.night_level_39500_40000_36000_30d0d6",
+          "evidence_id": "",
+          "excerpt": "大盤未來走勢都在這張台指期夜盤(連續圖),最重要今晚或明天日盤要過黃色那條下降壓力線,才能走B波反彈,如果不能過黃色那條下降壓力線"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "179710301",
+          "taipei": "2026-06-09 09:20",
+          "as_of": "20260609",
+          "atom_id": "three_layer.night_level_44209_2000_39500_72f6f2",
+          "evidence_id": "",
+          "excerpt": "1. 不知道有人知道,夜盤收高,大盤早盤漲幅縮小原因"
+        }
+      ],
+      "hit_n": 2,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 36000.0,
+        "as_of_used": "20260609",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 35579.0,
+      "role": "點位",
+      "label": "他點・retract",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "177869093",
+          "taipei": "2026-04-02 08:51",
+          "as_of": "20260402",
+          "atom_id": "retract.retract_34423_35579_1c1454",
+          "evidence_id": "",
+          "excerpt": "更正 大盤下降壓力線還沒有被突破,有可能還要真的要等清明之後,今天收盤再看"
+        },
+        {
+          "source": "segment_evidence",
+          "post_id": "wave_eod_verify_20261120.json",
+          "taipei": "",
+          "as_of": "20261120",
+          "atom_id": "",
+          "evidence_id": "SE-20261120-broke-37837",
+          "excerpt": "forward M3測37837；官方L35739已破且收仍下方→改看口頭35579"
+        }
+      ],
+      "hit_n": 2,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 35579.0,
+        "as_of_used": "20261106",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 34423.0,
+      "role": "點位",
+      "label": "他點・retract",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "177869093",
+          "taipei": "2026-04-02 08:51",
+          "as_of": "20260402",
+          "atom_id": "retract.retract_34423_35579_1c1454",
+          "evidence_id": "",
+          "excerpt": "更正 大盤下降壓力線還沒有被突破,有可能還要真的要等清明之後,今天收盤再看"
+        },
+        {
+          "source": "segment_evidence",
+          "post_id": "knowhow.md §D 2026-04-07",
+          "taipei": "",
+          "as_of": "20260407",
+          "atom_id": "",
+          "evidence_id": "SE-20260407-Bc3-34423",
+          "excerpt": "清明向上變盤、B-c-3測34423"
+        }
+      ],
+      "hit_n": 2,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 34423.0,
+        "as_of_used": "20260407",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 33613.0,
+      "role": "點位",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "177540943",
+          "taipei": "2026-03-19 09:11",
+          "as_of": "20260319",
+          "atom_id": "three_layer.night_level_33613_86ee74",
+          "evidence_id": "",
+          "excerpt": "從台指期夜盤來反推大盤,5波暫時跌完,夜盤點位33613是這幾天的底部又要開始築底之後,大盤會伺機反彈"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "touched",
+        "symbol": "TWII",
+        "price": 33613.0,
+        "as_of_used": "20260319",
+        "touched": true,
+        "note_zh": "近窗K碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 32434.0,
+      "role": "點位",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "177737695",
+          "taipei": "2026-03-27 08:53",
+          "as_of": "20260327",
+          "atom_id": "three_layer.night_level_32434_224ece",
+          "evidence_id": "",
+          "excerpt": "我記得昨天發文下方留言,大盤觀盤重點在32434,因為要發生轉折走空是星期二台指期夜盤,星期三日盤的時候,但是下跌趨勢推動浪在星期二台指期夜盤,星期三日盤的時候,已經被破壞"
+        },
+        {
+          "source": "segment_evidence",
+          "post_id": "knowhow.md §D 2026-03-24",
+          "taipei": "",
+          "as_of": "20260324",
+          "atom_id": "",
+          "evidence_id": "SE-20260324-32435",
+          "excerpt": "觀盤32434"
+        }
+      ],
+      "hit_n": 2,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 32434.0,
+        "as_of_used": "20260324",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 31800.0,
+      "role": "點位",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "176574094",
+          "taipei": "2026-01-29 23:53",
+          "as_of": "20260129",
+          "atom_id": "three_layer.night_level_31800_27350_b76490",
+          "evidence_id": "",
+          "excerpt": "台指期夜盤現在大幅修正,明天台股大盤觀察31800點位附近是否沒被跌破,如果盤中明顯穿越跌破31800點位附近,則代表從12/18 27350開始推升的5波推升脈動結束,不會有擴延"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "touched",
+        "symbol": "TWII",
+        "price": 31800.0,
+        "as_of_used": "20260129",
+        "touched": true,
+        "note_zh": "近窗K碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 31529.0,
+      "role": "支撐",
+      "label": "他點・level",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "177813777",
+          "taipei": "2026-03-31 09:38",
+          "as_of": "20260331",
+          "atom_id": "level.lv_1770_31529_4f6858",
+          "evidence_id": "",
+          "excerpt": "台積電目前還是撐在1770之上,但大盤最終要和台積電調整同一位階要往3/9低點31529去測試"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 31529.0,
+        "as_of_used": "20260331",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 31500.0,
+      "role": "壓力",
+      "label": "他點・retract",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "176162083",
+          "taipei": "2026-01-14 11:51",
+          "as_of": "20260114",
+          "atom_id": "retract.retract_1755_31500_31100_7485c7",
+          "evidence_id": "",
+          "excerpt": "而且最重要大盤及台積電的波浪位階就不是5,而是第三波走擴延波浪位階非常有可能重新修訂為3-3,則台股後面還有一大段要走,漲勢沒有這麼簡單結束"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "176415974",
+          "taipei": "2026-01-23 17:46",
+          "as_of": "20260123",
+          "atom_id": "retract.retract_31500_e959f1",
+          "evidence_id": "",
+          "excerpt": "本來股市就是每天都變化非常大,股市交易本來就是動態修正,既然有人嫌我我就一切點到為止"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "159736253",
+          "taipei": "2024-02-16 14:12",
+          "as_of": "20240216",
+          "atom_id": "stock_observe.sector_leader_e9dad0",
+          "evidence_id": "",
+          "excerpt": "台股第一季主流有兩個族群,第一個已經飆出去就是CoWas概念股,志聖就是首選"
+        }
+      ],
+      "hit_n": 3,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 31500.0,
+        "as_of_used": "20240216",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 31100.0,
+      "role": "支撐",
+      "label": "他點・retract",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "176162083",
+          "taipei": "2026-01-14 11:51",
+          "as_of": "20260114",
+          "atom_id": "retract.retract_1755_31500_31100_7485c7",
+          "evidence_id": "",
+          "excerpt": "而且最重要大盤及台積電的波浪位階就不是5,而是第三波走擴延波浪位階非常有可能重新修訂為3-3,則台股後面還有一大段要走,漲勢沒有這麼簡單結束"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 31100.0,
+        "as_of_used": "20260114",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 31000.0,
+      "role": "點位",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "174950873",
+          "taipei": "2025-11-16 23:49",
+          "as_of": "20251116",
+          "atom_id": "three_layer.night_level_30000_31000_24000_c464ef",
+          "evidence_id": "",
+          "excerpt": "明天大盤開盤千萬不要以為台指期夜盤收紅而掉以輕心,明天大盤反彈高點如果不能比上星期五夜盤高點更高則要非常小心,則大盤非常有可能不是三段式abc修正,而是走5波下跌"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 31000.0,
+        "as_of_used": "20251114",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 30000.0,
+      "role": "點位",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "174950873",
+          "taipei": "2025-11-16 23:49",
+          "as_of": "20251116",
+          "atom_id": "three_layer.night_level_30000_31000_24000_c464ef",
+          "evidence_id": "",
+          "excerpt": "明天大盤開盤千萬不要以為台指期夜盤收紅而掉以輕心,明天大盤反彈高點如果不能比上星期五夜盤高點更高則要非常小心,則大盤非常有可能不是三段式abc修正,而是走5波下跌"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 30000.0,
+        "as_of_used": "20251114",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 28554.0,
+      "role": "點位",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "174866305",
+          "taipei": "2025-11-12 14:01",
+          "as_of": "20251112",
+          "atom_id": "three_layer.night_level_28554_24000_a014a1",
+          "evidence_id": "",
+          "excerpt": "今天凌晨美股費城半導體跌2.48%(台指期夜盤小漲),今天大盤收盤K棒收紅,而且很明顯仍然維持在9/26 到11/5低點所形成的上升軌道之上"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "touched",
+        "symbol": "TWII",
+        "price": 28554.0,
+        "as_of_used": "20251112",
+        "touched": true,
+        "note_zh": "近窗K碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 28265.0,
+      "role": "支撐",
+      "label": "他點・level",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "175672795",
+          "taipei": "2025-12-22 10:37",
+          "as_of": "20251222",
+          "atom_id": "level.lv_28265_1ffe2c",
+          "evidence_id": "",
+          "excerpt": "如果以上條件成立,則今天非常多檔記憶體股票都是突破壓力區之後,目前在進行回測整理"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "touched",
+        "symbol": "TWII",
+        "price": 28265.0,
+        "as_of_used": "20251222",
+        "touched": true,
+        "note_zh": "近窗K碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 28000.0,
+      "role": "支撐",
+      "label": "他點・level",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "174306116",
+          "taipei": "2025-10-15 11:09",
+          "as_of": "20251015",
+          "atom_id": "level.lv_28000_13ecb0",
+          "evidence_id": "",
+          "excerpt": "當台積電發生最差走勢,則大盤及費城半導體開始做頭,則大盤高點就是在28000左右,而且給大盤做頭的時間就是5~8周"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "178049378",
+          "taipei": "2026-04-10 17:54",
+          "as_of": "20260410",
+          "atom_id": "retract.retract_28000_7cd996",
+          "evidence_id": "",
+          "excerpt": "未來大盤走勢只有三種波型,1.走回升 1(目前波浪位階則重新修訂為1,要看未來拉回點位在次級四浪才可以將B-c重新修訂為1)轉2之後再走 3-4-5,2持續區間大震盪整理 ABC-X-ABC…"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "175255407",
+          "taipei": "2025-12-02 10:52",
+          "as_of": "20251202",
+          "atom_id": "level.lv_1405_1455_27300_cbb3f3",
+          "evidence_id": "",
+          "excerpt": "我從台積電或加權指數畫上升軌道研判,這星期台積電應該都會在1405~1455,大盤在27300~28000區間整理的可能性最大"
+        }
+      ],
+      "hit_n": 3,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 28000.0,
+        "as_of_used": "20251202",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 27400.0,
+      "role": "支撐",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "160518715",
+          "taipei": "2024-03-19 09:49",
+          "as_of": "20240319",
+          "atom_id": "three_layer.night_to_spot_fb259f",
+          "evidence_id": "",
+          "excerpt": "應該到了修正末端,3-3-4浪即將結束,台指期夜盤,明天大盤應該要表態上攻了"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "174725446",
+          "taipei": "2025-11-06 08:03",
+          "as_of": "20251106",
+          "atom_id": "three_layer.night_level_27000_27400_f1c2a5",
+          "evidence_id": "",
+          "excerpt": "從昨天台指期夜盤來看,加權指數走abc修正的機率越來越大,也就是說c的低點落在27000~27400之間"
+        }
+      ],
+      "hit_n": 2,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "touched",
+        "symbol": "TWII",
+        "price": 27400.0,
+        "as_of_used": "20251106",
+        "touched": true,
+        "note_zh": "近窗K碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 27373.0,
+      "role": "支撐",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "174753541",
+          "taipei": "2025-11-07 08:55",
+          "as_of": "20251107",
+          "atom_id": "three_layer.night_level_27373_27200_2002_d0e111",
+          "evidence_id": "",
+          "excerpt": "今天觀盤重點有二,1. 大盤會不會破星期三低點27373,我從昨天台指期夜盤來看可能性極大,但基本上並沒有脫離我之前說的到27200±2002. OTC會受大盤影響有多大,應該從今天收盤就可…"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "175229522",
+          "taipei": "2025-12-01 10:07",
+          "as_of": "20251201",
+          "atom_id": "level.lv_1405_27373_1340_63a188",
+          "evidence_id": "",
+          "excerpt": "其實從目前台股盤勢來看很明顯12月就是震盪整理格局,所以很多股票都要第一次遇到壓力先調節1/2,回測再買回這樣的操作方式會比較好"
+        }
+      ],
+      "hit_n": 2,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "touched",
+        "symbol": "TWII",
+        "price": 27373.0,
+        "as_of_used": "20251201",
+        "touched": true,
+        "note_zh": "近窗K碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 27350.0,
+      "role": "點位",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "176574094",
+          "taipei": "2026-01-29 23:53",
+          "as_of": "20260129",
+          "atom_id": "three_layer.night_level_31800_27350_b76490",
+          "evidence_id": "",
+          "excerpt": "台指期夜盤現在大幅修正,明天台股大盤觀察31800點位附近是否沒被跌破,如果盤中明顯穿越跌破31800點位附近,則代表從12/18 27350開始推升的5波推升脈動結束,不會有擴延"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 27350.0,
+        "as_of_used": "20260129",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 27300.0,
+      "role": "支撐",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "175549760",
+          "taipei": "2025-12-16 09:20",
+          "as_of": "20251216",
+          "atom_id": "three_layer.night_level_27300_44fb79",
+          "evidence_id": "",
+          "excerpt": "從台指期夜盤細微波來看已經產生一組往下的推升的脈動,轉換成大盤將往27300附近去測試"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "175255407",
+          "taipei": "2025-12-02 10:52",
+          "as_of": "20251202",
+          "atom_id": "level.lv_1405_1455_27300_cbb3f3",
+          "evidence_id": "",
+          "excerpt": "我從台積電或加權指數畫上升軌道研判,這星期台積電應該都會在1405~1455,大盤在27300~28000區間整理的可能性最大"
+        }
+      ],
+      "hit_n": 2,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "touched",
+        "symbol": "TWII",
+        "price": 27300.0,
+        "as_of_used": "20251202",
+        "touched": true,
+        "note_zh": "近窗K碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 27200.0,
+      "role": "支撐",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "174796479",
+          "taipei": "2025-11-10 09:14",
+          "as_of": "20251110",
+          "atom_id": "three_layer.night_level_27200_af11d5",
+          "evidence_id": "",
+          "excerpt": "台指期開盤比我想像的還強,星期五夜盤雖然下殺破27200,但後來拉上來,從細微波觀察已經出現破底翻且15分鐘線 1、4重疊"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "174753541",
+          "taipei": "2025-11-07 08:55",
+          "as_of": "20251107",
+          "atom_id": "three_layer.night_level_27373_27200_2002_d0e111",
+          "evidence_id": "",
+          "excerpt": "今天觀盤重點有二,1. 大盤會不會破星期三低點27373,我從昨天台指期夜盤來看可能性極大,但基本上並沒有脫離我之前說的到27200±2002. OTC會受大盤影響有多大,應該從今天收盤就可…"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "174689712",
+          "taipei": "2025-11-04 18:17",
+          "as_of": "20251104",
+          "atom_id": "level.lv_27200_53c120",
+          "evidence_id": "",
+          "excerpt": "因此建議明天開盤有高點可調節部分持股以確保獲利,另外如果不習慣短線進出,不進行調節也可以,因為3~5天平台整理的機率最高,就自行決定"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "174709624",
+          "taipei": "2025-11-05 12:42",
+          "as_of": "20251105",
+          "atom_id": "retract.retract_27200_b1300c",
+          "evidence_id": "",
+          "excerpt": "另外要一提的是從今天開始非常有可能櫃買指數會比加權指數要強,因為在平台整理時間非常久了,而加權指數如果我沒看錯,現在只是走abc修正的a,接下來反彈是要調整持股的,因為還會有C至少還會再測今…"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "158177685",
+          "taipei": "2023-12-06 09:21",
+          "as_of": "20231206",
+          "atom_id": "pattern.pat___d2dcdf",
+          "evidence_id": "",
+          "excerpt": "有空單敢快回補,破底翻至少先看335"
+        }
+      ],
+      "hit_n": 5,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 27200.0,
+        "as_of_used": "20231206",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 27040.0,
+      "role": "點位",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "175024115",
+          "taipei": "2025-11-19 21:00",
+          "as_of": "20251119",
+          "atom_id": "three_layer.night_level_26860_27040_27000_d37df7",
+          "evidence_id": "",
+          "excerpt": "目前台指期夜盤漲到26860附近,今天夜盤如果能穿越27040之上(我不知道,不要看到發文下台指期多單),並且明天日盤至少也要穿越27040,也就是大盤能穿越27000則大盤C波下殺結束,則…"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "touched",
+        "symbol": "TWII",
+        "price": 27040.0,
+        "as_of_used": "20251119",
+        "touched": true,
+        "note_zh": "近窗K碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 27000.0,
+      "role": "支撐",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "160518715",
+          "taipei": "2024-03-19 09:49",
+          "as_of": "20240319",
+          "atom_id": "three_layer.night_to_spot_fb259f",
+          "evidence_id": "",
+          "excerpt": "應該到了修正末端,3-3-4浪即將結束,台指期夜盤,明天大盤應該要表態上攻了"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "175024115",
+          "taipei": "2025-11-19 21:00",
+          "as_of": "20251119",
+          "atom_id": "three_layer.night_level_26860_27040_27000_d37df7",
+          "evidence_id": "",
+          "excerpt": "目前台指期夜盤漲到26860附近,今天夜盤如果能穿越27040之上(我不知道,不要看到發文下台指期多單),並且明天日盤至少也要穿越27040,也就是大盤能穿越27000則大盤C波下殺結束,則…"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "174725446",
+          "taipei": "2025-11-06 08:03",
+          "as_of": "20251106",
+          "atom_id": "three_layer.night_level_27000_27400_f1c2a5",
+          "evidence_id": "",
+          "excerpt": "從昨天台指期夜盤來看,加權指數走abc修正的機率越來越大,也就是說c的低點落在27000~27400之間"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "173882935",
+          "taipei": "2025-09-22 09:44",
+          "as_of": "20250922",
+          "atom_id": "level.lv_1380_27000_dcf740",
+          "evidence_id": "",
+          "excerpt": "目前AI關鍵零組件目前都是拉回整理,但目前其實都已經整理完成,接下來就看市場對這幾檔最先起漲且之前漲最多的股票,是否開始願意用明年的EPS來重新評估目標價之後重啟漲勢"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "174959637",
+          "taipei": "2025-11-17 10:51",
+          "as_of": "20251117",
+          "atom_id": "level.lv_1420_27000_1455_8349a4",
+          "evidence_id": "",
+          "excerpt": "有一個簡單判別大盤是否有崩跌疑慮的方法,只要台積點能守在1420不跌破,大盤就不會走5波下跌破27000點,目前看起來到星期三之前應該都會在1420~1455之間區間整理,所以想做台指期的人…"
+        }
+      ],
+      "hit_n": 5,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 27000.0,
+        "as_of_used": "20251117",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 26860.0,
+      "role": "點位",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "175024115",
+          "taipei": "2025-11-19 21:00",
+          "as_of": "20251119",
+          "atom_id": "three_layer.night_level_26860_27040_27000_d37df7",
+          "evidence_id": "",
+          "excerpt": "目前台指期夜盤漲到26860附近,今天夜盤如果能穿越27040之上(我不知道,不要看到發文下台指期多單),並且明天日盤至少也要穿越27040,也就是大盤能穿越27000則大盤C波下殺結束,則…"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "touched",
+        "symbol": "TWII",
+        "price": 26860.0,
+        "as_of_used": "20251119",
+        "touched": true,
+        "note_zh": "近窗K碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 26470.0,
+      "role": "點位",
+      "label": "他點・retract",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "174265901",
+          "taipei": "2025-10-13 19:30",
+          "as_of": "20251013",
+          "atom_id": "retract.retract_26394_26470_1390_f1758c",
+          "evidence_id": "",
+          "excerpt": "另外有一件事情我不得不一吐為快,千萬不要相信版上某位達人標示股票的多空看法,他前一陣子奇鋐已經看錯,今天又標示鴻海走空,以我來看鴻海今天只是打到支撐線且爆大量只是整理並沒有走空,有鴻海的人千…"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "171458472",
+          "taipei": "2025-05-17 19:22",
+          "as_of": "20250517",
+          "atom_id": "pattern.pat___b7eeb3",
+          "evidence_id": "",
+          "excerpt": "目前剛過位階A高點進行整理,整理方式的修正方式有兩種,一種是橫台式整理,另外一種就是去年和我一起操作原相及大盤4/14~4/22下飄旗型的洗盤整理,會哪一種目前無法知道,其實最重要的觀察訣竅…"
+        }
+      ],
+      "hit_n": 2,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 26470.0,
+        "as_of_used": "20250516",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 26395.0,
+      "role": "支撐",
+      "label": "他點・level",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "175118057",
+          "taipei": "2025-11-25 09:32",
+          "as_of": "20251125",
+          "atom_id": "level.lv_1405_26395_1455_77a7cd",
+          "evidence_id": "",
+          "excerpt": "今天台積電只要收盤站上1405,則代表台股確認這波修正結束,低點就是26395"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "175145947",
+          "taipei": "2025-11-26 10:43",
+          "as_of": "20251126",
+          "atom_id": "level.lv_1405_26395_26000_58dcb5",
+          "evidence_id": "",
+          "excerpt": "昨天就有提到只要台積電站穩1405就代表本波大盤修正完成,低點在26395"
+        }
+      ],
+      "hit_n": 2,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 26395.0,
+        "as_of_used": "20251126",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 26394.0,
+      "role": "壓力",
+      "label": "他點・sox",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "159990328",
+          "taipei": "2024-02-28 00:05",
+          "as_of": "20240228",
+          "atom_id": "sox.sox_link_7b833c",
+          "evidence_id": "",
+          "excerpt": "有關大盤(台指期)波浪位階,我又參考台積電的位階,及費半、那斯達科的波浪位階,重新定位位階應該是3-3-3-1結構已經破壞,現在進行3-3-3-2的調整浪型態,才符合波浪理論鐵律"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "174233062",
+          "taipei": "2025-10-11 12:12",
+          "as_of": "20251011",
+          "atom_id": "level.lv_26394_aa21bb",
+          "evidence_id": "",
+          "excerpt": "最後大盤的支撐就是9/24高點26394,只要不破就是會走第三波擴延"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "174265901",
+          "taipei": "2025-10-13 19:30",
+          "as_of": "20251013",
+          "atom_id": "retract.retract_26394_26470_1390_f1758c",
+          "evidence_id": "",
+          "excerpt": "另外有一件事情我不得不一吐為快,千萬不要相信版上某位達人標示股票的多空看法,他前一陣子奇鋐已經看錯,今天又標示鴻海走空,以我來看鴻海今天只是打到支撐線且爆大量只是整理並沒有走空,有鴻海的人千…"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "168065539",
+          "taipei": "2025-01-16 11:09",
+          "as_of": "20250116",
+          "atom_id": "iron_rule.overlap_14_b495bf",
+          "evidence_id": "",
+          "excerpt": "台指期細微波 1 4重疊已經重疊,這代表大盤應該到新春開紅盤最差的狀況也不容易跌破1/13低點22400點左右"
+        }
+      ],
+      "hit_n": 4,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 26394.0,
+        "as_of_used": "20250116",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 26000.0,
+      "role": "支撐",
+      "label": "他點・pattern",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "158177685",
+          "taipei": "2023-12-06 09:21",
+          "as_of": "20231206",
+          "atom_id": "pattern.pat___d2dcdf",
+          "evidence_id": "",
+          "excerpt": "有空單敢快回補,破底翻至少先看335"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "175098990",
+          "taipei": "2025-11-24 10:47",
+          "as_of": "20251124",
+          "atom_id": "level.lv_1365_26000_f4d298",
+          "evidence_id": "",
+          "excerpt": "大盤目前是在築底中,或者還會持續往下修正到上星期發文所說台積電去測試頸線1365,換算大盤約26000目前看不出來"
+        }
+      ],
+      "hit_n": 2,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 26000.0,
+        "as_of_used": "20251124",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 25880.0,
+      "role": "支撐",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "174070232",
+          "taipei": "2025-10-01 22:51",
+          "as_of": "20251001",
+          "atom_id": "three_layer.night_level_25880_8ceba9",
+          "evidence_id": "",
+          "excerpt": "台指期夜盤大漲明天觀盤重點有二"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "touched",
+        "symbol": "TWII",
+        "price": 25880.0,
+        "as_of_used": "20251001",
+        "touched": true,
+        "note_zh": "近窗K碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 25174.0,
+      "role": "支撐",
+      "label": "他點・level",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "174002924",
+          "taipei": "2025-09-26 20:45",
+          "as_of": "20250926",
+          "atom_id": "level.lv_25174_23600_24500_27d66b",
+          "evidence_id": "",
+          "excerpt": "而且這組5波下跌的推升脈動,我所學告訴我會去測9/11低點25174附近"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "173863416",
+          "taipei": "2025-09-20 09:56",
+          "as_of": "20250920",
+          "atom_id": "level.lv_25174_ac1ce8",
+          "evidence_id": "",
+          "excerpt": "最近兩星期有點看錯大盤方向,因為9/11那一根高檔(5小波上漲末端)爆6000E巨量K棒,本以為會拉回到24500~24600之間整理一個月,但星期四、星期五那兩天大盤的量價結構,及本周K來…"
+        }
+      ],
+      "hit_n": 2,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "touched",
+        "symbol": "TWII",
+        "price": 25174.0,
+        "as_of_used": "20250919",
+        "touched": true,
+        "note_zh": "近窗K碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 25000.0,
+      "role": "支撐",
+      "label": "他點・level",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "173441049",
+          "taipei": "2025-09-01 08:36",
+          "as_of": "20250901",
+          "atom_id": "level.lv_10000_25000_4909e5",
+          "evidence_id": "",
+          "excerpt": "加上台積電8/20那根K線已經是確認為洗盤K線,再加上先行指標股台達電維持多頭格局,就算9月份大盤還是在區間整理,最後持續上攻挑戰25000看法不變,且蓄積能量越久,之後越容易站穩25000…"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "173296047",
+          "taipei": "2025-08-25 09:51",
+          "as_of": "20250825",
+          "atom_id": "level.lv_1165_25000_667a22",
+          "evidence_id": "",
+          "excerpt": "補充大盤觀盤重點,可搭配台積電的支撐壓力"
+        }
+      ],
+      "hit_n": 2,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 25000.0,
+        "as_of_used": "20250825",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 24730.0,
+      "role": "點位",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "163220935",
+          "taipei": "2024-07-04 00:09",
+          "as_of": "20240704",
+          "atom_id": "three_layer.night_level_24730_5000_3128c8",
+          "evidence_id": "",
+          "excerpt": "台指期夜盤已經創新高,開始走5~5邪惡第五波的最後第五小浪延升浪"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 24730.0,
+        "as_of_used": "20240704",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 24600.0,
+      "role": "支撐",
+      "label": "他點・level",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "172071778:a1",
+          "taipei": "2025-06-25 12:11",
+          "as_of": "20250625",
+          "atom_id": "level.lv_24600_24400_dccd9c",
+          "evidence_id": "",
+          "excerpt": "說實話以股票而言 目前在台灣還沒看到比他強的在,大陸發展應該有兩位和他差不多名字我就不提了"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "174002924:a1",
+          "taipei": "2025-09-27 00:30",
+          "as_of": "20250927",
+          "atom_id": "level.lv_6000_24500_24600_205086",
+          "evidence_id": "",
+          "excerpt": "補充說明:當初我根據當時大盤在第5小波高點竟然爆6000E巨量,認為會回到24500~24600區間整理後再攻,這樣大盤才會比較健康"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "163473571",
+          "taipei": "2024-07-12 17:27",
+          "as_of": "20240712",
+          "atom_id": "iron_rule.complete_5_or_9_347035",
+          "evidence_id": "",
+          "excerpt": "現在要等下星期一來確認是否修正完成,不過要走擴延走9段的機率並不高,一切等下周確認"
+        }
+      ],
+      "hit_n": 3,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 24600.0,
+        "as_of_used": "20240712",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 24500.0,
+      "role": "支撐",
+      "label": "他點・level",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "173734359",
+          "taipei": "2025-09-15 08:20",
+          "as_of": "20250915",
+          "atom_id": "level.lv_24500_f2ad21",
+          "evidence_id": "",
+          "excerpt": "大盤本週會走到短線波浪5之後開始進行週級數修正,會修正到24500區間附近(先觀察24500支撐是否守住),時間初估3~4周,才會開始重新上漲,所以我最近都沒有建議新增短線操作買入標的"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "174002924:a1",
+          "taipei": "2025-09-27 00:30",
+          "as_of": "20250927",
+          "atom_id": "level.lv_6000_24500_24600_205086",
+          "evidence_id": "",
+          "excerpt": "補充說明:當初我根據當時大盤在第5小波高點竟然爆6000E巨量,認為會回到24500~24600區間整理後再攻,這樣大盤才會比較健康"
+        }
+      ],
+      "hit_n": 2,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 24500.0,
+        "as_of_used": "20250926",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 24416.0,
+      "role": "支撐",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "165437296",
+          "taipei": "2024-10-04 21:48",
+          "as_of": "20241004",
+          "atom_id": "three_layer.night_level_22800_1000_24416_972a60",
+          "evidence_id": "",
+          "excerpt": "現在台指期夜盤大漲,是否能暫時化解C波下殺的危機,我觀察的點位落在22700~22760區間,如果能穿越突破,代表一組5波下跌的脈動已經被破壞,這個時候台指期暫時沒有持續下跌的危機,至少變成…"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "172504809",
+          "taipei": "2025-07-17 18:33",
+          "as_of": "20250717",
+          "atom_id": "three_layer.night_level_24416_20000_a01e50",
+          "evidence_id": "",
+          "excerpt": "我當時就說從台積電來看大盤要做大幅拉回不容易,現在台指期的夜盤完全驗證我這波對大盤未來方向是完全正確的"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "164320077",
+          "taipei": "2024-08-16 12:38",
+          "as_of": "20240816",
+          "atom_id": "level.lv_24000_24416_44e693",
+          "evidence_id": "",
+          "excerpt": "按照現在大盤強力反彈,且我預估反彈高點至少24000,且假突破過24416的可能性增高的前提下"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "164375850",
+          "taipei": "2024-08-19 18:05",
+          "as_of": "20240819",
+          "atom_id": "level.lv_24416_7385d7",
+          "evidence_id": "",
+          "excerpt": "有關大盤的問題,今天黃老師請假回來上節目,特別有對大盤的問題說明,看法和我上周末的看法一致,大盤進行B波反彈會彈很高,且有相當機率會測前波高點,甚至會過24416"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "159879819",
+          "taipei": "2024-02-23 00:27",
+          "as_of": "20240223",
+          "atom_id": "pv_structure.tsmc_pv_tiebreak_11e009",
+          "evidence_id": "",
+          "excerpt": "志聖雖然已經到達第二階段型態漲幅目標價區間,但CoWas指標股量價結構還是非常好"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "159990328",
+          "taipei": "2024-02-28 00:05",
+          "as_of": "20240228",
+          "atom_id": "stock_observe.tsmc_as_index_proxy_4ea13a",
+          "evidence_id": "",
+          "excerpt": "有關大盤(台指期)波浪位階,我又參考台積電的位階,及費半、那斯達科的波浪位階,重新定位位階應該是3-3-3-1結構已經破壞,現在進行3-3-3-2的調整浪型態,才符合波浪理論鐵律"
+        }
+      ],
+      "hit_n": 6,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 24416.0,
+        "as_of_used": "20240227",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 24400.0,
+      "role": "支撐",
+      "label": "他點・level",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "172071778:a1",
+          "taipei": "2025-06-25 12:11",
+          "as_of": "20250625",
+          "atom_id": "level.lv_24600_24400_dccd9c",
+          "evidence_id": "",
+          "excerpt": "說實話以股票而言 目前在台灣還沒看到比他強的在,大陸發展應該有兩位和他差不多名字我就不提了"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "163473571",
+          "taipei": "2024-07-12 17:27",
+          "as_of": "20240712",
+          "atom_id": "iron_rule.complete_5_or_9_347035",
+          "evidence_id": "",
+          "excerpt": "現在要等下星期一來確認是否修正完成,不過要走擴延走9段的機率並不高,一切等下周確認"
+        }
+      ],
+      "hit_n": 2,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "touched",
+        "symbol": "TWII",
+        "price": 24400.0,
+        "as_of_used": "20240712",
+        "touched": true,
+        "note_zh": "近窗K碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 24000.0,
+      "role": "支撐",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "174866305",
+          "taipei": "2025-11-12 14:01",
+          "as_of": "20251112",
+          "atom_id": "three_layer.night_level_28554_24000_a014a1",
+          "evidence_id": "",
+          "excerpt": "今天凌晨美股費城半導體跌2.48%(台指期夜盤小漲),今天大盤收盤K棒收紅,而且很明顯仍然維持在9/26 到11/5低點所形成的上升軌道之上"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "174950873",
+          "taipei": "2025-11-16 23:49",
+          "as_of": "20251116",
+          "atom_id": "three_layer.night_level_30000_31000_24000_c464ef",
+          "evidence_id": "",
+          "excerpt": "明天大盤開盤千萬不要以為台指期夜盤收紅而掉以輕心,明天大盤反彈高點如果不能比上星期五夜盤高點更高則要非常小心,則大盤非常有可能不是三段式abc修正,而是走5波下跌"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "164320077",
+          "taipei": "2024-08-16 12:38",
+          "as_of": "20240816",
+          "atom_id": "level.lv_24000_24416_44e693",
+          "evidence_id": "",
+          "excerpt": "按照現在大盤強力反彈,且我預估反彈高點至少24000,且假突破過24416的可能性增高的前提下"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "159879819",
+          "taipei": "2024-02-23 00:27",
+          "as_of": "20240223",
+          "atom_id": "pv_structure.tsmc_pv_tiebreak_11e009",
+          "evidence_id": "",
+          "excerpt": "志聖雖然已經到達第二階段型態漲幅目標價區間,但CoWas指標股量價結構還是非常好"
+        }
+      ],
+      "hit_n": 4,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 24000.0,
+        "as_of_used": "20240223",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 23713.0,
+      "role": "支撐",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "166314195",
+          "taipei": "2024-11-11 23:38",
+          "as_of": "20241111",
+          "atom_id": "three_layer.night_level_23713_af00e1",
+          "evidence_id": "",
+          "excerpt": "因為我從大盤或台指期細微波的波浪定位來看始終沒有確認有推升的脈動出現,而今晚台指期夜盤已經確認就是震盪整理型態,雖然目前大盤比台指期強,但也不會差太多,也就是大盤要走出5波推升的脈動並不容易"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 23713.0,
+        "as_of_used": "20241111",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 23631.0,
+      "role": "支撐",
+      "label": "他點・level",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "172888584",
+          "taipei": "2025-08-05 12:58",
+          "as_of": "20250805",
+          "atom_id": "level.lv_23631_85be7b",
+          "evidence_id": "",
+          "excerpt": "本以為台積電這個月要休息,大盤也要整理跟著整理一個月才會重新展開攻擊,沒想到現在輪到鴻海帶領AI伺服器及零組件整個大族群,大盤今日盤中已經過7/31高點23631"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "touched",
+        "symbol": "TWII",
+        "price": 23631.0,
+        "as_of_used": "20250805",
+        "touched": true,
+        "note_zh": "近窗K碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 23600.0,
+      "role": "點位",
+      "label": "他點・stock_observe",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "161874671:a1",
+          "taipei": "2024-05-14 09:33",
+          "as_of": "20240514",
+          "atom_id": "stock_observe.stock_follow_index_d61966",
+          "evidence_id": "",
+          "excerpt": "感謝,我自認為大盤比個股強很多,我台指期是用60分鐘K線波段單"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 23600.0,
+        "as_of_used": "20240514",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 23417.0,
+      "role": "點位",
+      "label": "他點・retract",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "166159209",
+          "taipei": "2024-11-06 11:38",
+          "as_of": "20241106",
+          "atom_id": "retract.retract_23417_6f690d",
+          "evidence_id": "",
+          "excerpt": "大盤今天盤中已經摸到23417,所以原先波浪位階為C-2已經不存在,波浪位階重新規劃現在仍在B波中"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "touched",
+        "symbol": "TWII",
+        "price": 23417.0,
+        "as_of_used": "20241106",
+        "touched": true,
+        "note_zh": "近窗K碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 23400.0,
+      "role": "支撐",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "162994314",
+          "taipei": "2024-06-25 14:10",
+          "as_of": "20240625",
+          "atom_id": "three_layer.night_level_23400_22450_23300_148ba2",
+          "evidence_id": "",
+          "excerpt": "之前已經和同學說明過台指期是大盤先行指標,且因為有夜盤交易,K線越多越容易進行技術分析,就是這個原因,我喜歡用台指期分析大盤"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "164271907",
+          "taipei": "2024-08-14 19:22",
+          "as_of": "20240814",
+          "atom_id": "level.lv_23400_cbb4cd",
+          "evidence_id": "",
+          "excerpt": "另外B波反彈高點我認為會比原先規劃23400還要高,所以最近有同學問我鴻海、廣達該哪個時候賣出,我個人建議就按照大盤的方向來操作,等B波反彈結束再賣出即可"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "164276701",
+          "taipei": "2024-08-14 23:39",
+          "as_of": "20240814",
+          "atom_id": "retract.retract_23400_328bf8",
+          "evidence_id": "",
+          "excerpt": "只要你沒有被我點名那11 檔五波漲完類似的業內主力股,因為B波高點我今天已經更正,超過9成會超過23400點且不是追高去買股票,未來都還會有將股票賣出的好價格"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "160266701",
+          "taipei": "2024-03-09 01:26",
+          "as_of": "20240309",
+          "atom_id": "pattern.pat___2f2eb7",
+          "evidence_id": "",
+          "excerpt": "廣達從細微波(小時線)很明顯是頭肩底型態,現在只要一根帶量紅K,突破250元的頸線回測確認,就是另一波漲勢的推動"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "161874671:a1",
+          "taipei": "2024-05-14 09:33",
+          "as_of": "20240514",
+          "atom_id": "stock_observe.stock_follow_index_d61966",
+          "evidence_id": "",
+          "excerpt": "感謝,我自認為大盤比個股強很多,我台指期是用60分鐘K線波段單"
+        }
+      ],
+      "hit_n": 5,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 23400.0,
+        "as_of_used": "20240514",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 23300.0,
+      "role": "點位",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "162994314",
+          "taipei": "2024-06-25 14:10",
+          "as_of": "20240625",
+          "atom_id": "three_layer.night_level_23400_22450_23300_148ba2",
+          "evidence_id": "",
+          "excerpt": "之前已經和同學說明過台指期是大盤先行指標,且因為有夜盤交易,K線越多越容易進行技術分析,就是這個原因,我喜歡用台指期分析大盤"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "touched",
+        "symbol": "TWII",
+        "price": 23300.0,
+        "as_of_used": "20240625",
+        "touched": true,
+        "note_zh": "近窗K碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 23079.0,
+      "role": "支撐",
+      "label": "他點・level",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "165419380",
+          "taipei": "2024-10-04 09:24",
+          "as_of": "20241004",
+          "atom_id": "level.lv_1000_23079_22542_1f8c77",
+          "evidence_id": "",
+          "excerpt": "今天盤中觀察重點,1.台積電可否在盤中回補缺口1000,2.大盤重新站上從9/27於23079開始進行5小波下跌完成回測次級4浪上緣22542,這才代表大盤有比較強的反彈"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "touched",
+        "symbol": "TWII",
+        "price": 23079.0,
+        "as_of_used": "20241004",
+        "touched": true,
+        "note_zh": "近窗K碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 22800.0,
+      "role": "點位",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "165437296",
+          "taipei": "2024-10-04 21:48",
+          "as_of": "20241004",
+          "atom_id": "three_layer.night_level_22800_1000_24416_972a60",
+          "evidence_id": "",
+          "excerpt": "現在台指期夜盤大漲,是否能暫時化解C波下殺的危機,我觀察的點位落在22700~22760區間,如果能穿越突破,代表一組5波下跌的脈動已經被破壞,這個時候台指期暫時沒有持續下跌的危機,至少變成…"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "touched",
+        "symbol": "TWII",
+        "price": 22800.0,
+        "as_of_used": "20241004",
+        "touched": true,
+        "note_zh": "近窗K碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 22760.0,
+      "role": "點位",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "165437296",
+          "taipei": "2024-10-04 21:48",
+          "as_of": "20241004",
+          "atom_id": "three_layer.night_level_22800_1000_24416_972a60",
+          "evidence_id": "",
+          "excerpt": "現在台指期夜盤大漲,是否能暫時化解C波下殺的危機,我觀察的點位落在22700~22760區間,如果能穿越突破,代表一組5波下跌的脈動已經被破壞,這個時候台指期暫時沒有持續下跌的危機,至少變成…"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "touched",
+        "symbol": "TWII",
+        "price": 22760.0,
+        "as_of_used": "20241004",
+        "touched": true,
+        "note_zh": "近窗K碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 22700.0,
+      "role": "點位",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "165437296",
+          "taipei": "2024-10-04 21:48",
+          "as_of": "20241004",
+          "atom_id": "three_layer.night_level_22800_1000_24416_972a60",
+          "evidence_id": "",
+          "excerpt": "現在台指期夜盤大漲,是否能暫時化解C波下殺的危機,我觀察的點位落在22700~22760區間,如果能穿越突破,代表一組5波下跌的脈動已經被破壞,這個時候台指期暫時沒有持續下跌的危機,至少變成…"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "touched",
+        "symbol": "TWII",
+        "price": 22700.0,
+        "as_of_used": "20241004",
+        "touched": true,
+        "note_zh": "近窗K碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 22650.0,
+      "role": "點位",
+      "label": "他點・pattern",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "158737057",
+          "taipei": "2023-12-29 12:48",
+          "as_of": "20231229",
+          "atom_id": "pattern.pat___134425",
+          "evidence_id": "",
+          "excerpt": "我昨天還說,只要帶量站穩220,廣達目標價至少會形成頭肩頂的右肩,不要不信邪"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 22650.0,
+        "as_of_used": "20231229",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 22569.0,
+      "role": "點位",
+      "label": "他點・key_k",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "159972833",
+          "taipei": "2024-02-27 11:00",
+          "as_of": "20240227",
+          "atom_id": "key_k.key_bar_d9d5c9",
+          "evidence_id": "",
+          "excerpt": "還是重覆前兩天留言,光聖中線波段是否還能持續漲勢,觀盤重點在看2/22日跳空缺口是否有效回補,若沒有回補應該在10日線會撐住"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 22569.0,
+        "as_of_used": "20240227",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 22542.0,
+      "role": "支撐",
+      "label": "他點・level",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "165419380",
+          "taipei": "2024-10-04 09:24",
+          "as_of": "20241004",
+          "atom_id": "level.lv_1000_23079_22542_1f8c77",
+          "evidence_id": "",
+          "excerpt": "今天盤中觀察重點,1.台積電可否在盤中回補缺口1000,2.大盤重新站上從9/27於23079開始進行5小波下跌完成回測次級4浪上緣22542,這才代表大盤有比較強的反彈"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "touched",
+        "symbol": "TWII",
+        "price": 22542.0,
+        "as_of_used": "20241004",
+        "touched": true,
+        "note_zh": "近窗K碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 22510.0,
+      "role": "點位",
+      "label": "他點・key_k",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "159972833",
+          "taipei": "2024-02-27 11:00",
+          "as_of": "20240227",
+          "atom_id": "key_k.key_bar_d9d5c9",
+          "evidence_id": "",
+          "excerpt": "還是重覆前兩天留言,光聖中線波段是否還能持續漲勢,觀盤重點在看2/22日跳空缺口是否有效回補,若沒有回補應該在10日線會撐住"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 22510.0,
+        "as_of_used": "20240227",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 22500.0,
+      "role": "點位",
+      "label": "他點・key_k",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "159972833",
+          "taipei": "2024-02-27 11:00",
+          "as_of": "20240227",
+          "atom_id": "key_k.key_bar_d9d5c9",
+          "evidence_id": "",
+          "excerpt": "還是重覆前兩天留言,光聖中線波段是否還能持續漲勢,觀盤重點在看2/22日跳空缺口是否有效回補,若沒有回補應該在10日線會撐住"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 22500.0,
+        "as_of_used": "20240227",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 22470.0,
+      "role": "支撐",
+      "label": "他點・level",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "171893308",
+          "taipei": "2025-06-13 11:23",
+          "as_of": "20250613",
+          "atom_id": "level.lv_17306_22470_20900_dcacb1",
+          "evidence_id": "",
+          "excerpt": "今天大盤拉回比較深,但從目前拉回的點位只能確認目前波浪位階是在5-4,至於會不會出現失敗的5-5,也就是預期的這一波上漲的脈動不會出現最後第5小波的推升脈動,從目前拉回的點位還看不出來,最簡…"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "touched",
+        "symbol": "TWII",
+        "price": 22470.0,
+        "as_of_used": "20250613",
+        "touched": true,
+        "note_zh": "近窗K碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 22450.0,
+      "role": "點位",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "162994314",
+          "taipei": "2024-06-25 14:10",
+          "as_of": "20240625",
+          "atom_id": "three_layer.night_level_23400_22450_23300_148ba2",
+          "evidence_id": "",
+          "excerpt": "之前已經和同學說明過台指期是大盤先行指標,且因為有夜盤交易,K線越多越容易進行技術分析,就是這個原因,我喜歡用台指期分析大盤"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "160266701",
+          "taipei": "2024-03-09 01:26",
+          "as_of": "20240309",
+          "atom_id": "pattern.pat___2f2eb7",
+          "evidence_id": "",
+          "excerpt": "廣達從細微波(小時線)很明顯是頭肩底型態,現在只要一根帶量紅K,突破250元的頸線回測確認,就是另一波漲勢的推動"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "158737057",
+          "taipei": "2023-12-29 12:48",
+          "as_of": "20231229",
+          "atom_id": "pattern.pat___134425",
+          "evidence_id": "",
+          "excerpt": "我昨天還說,只要帶量站穩220,廣達目標價至少會形成頭肩頂的右肩,不要不信邪"
+        }
+      ],
+      "hit_n": 3,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 22450.0,
+        "as_of_used": "20231229",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 22431.0,
+      "role": "點位",
+      "label": "他點・key_k",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "159972833",
+          "taipei": "2024-02-27 11:00",
+          "as_of": "20240227",
+          "atom_id": "key_k.key_bar_d9d5c9",
+          "evidence_id": "",
+          "excerpt": "還是重覆前兩天留言,光聖中線波段是否還能持續漲勢,觀盤重點在看2/22日跳空缺口是否有效回補,若沒有回補應該在10日線會撐住"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 22431.0,
+        "as_of_used": "20240227",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 22400.0,
+      "role": "點位",
+      "label": "他點・iron_rule",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "168065539",
+          "taipei": "2025-01-16 11:09",
+          "as_of": "20250116",
+          "atom_id": "iron_rule.overlap_14_b495bf",
+          "evidence_id": "",
+          "excerpt": "台指期細微波 1 4重疊已經重疊,這代表大盤應該到新春開紅盤最差的狀況也不容易跌破1/13低點22400點左右"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "171458472",
+          "taipei": "2025-05-17 19:22",
+          "as_of": "20250517",
+          "atom_id": "pattern.pat___b7eeb3",
+          "evidence_id": "",
+          "excerpt": "目前剛過位階A高點進行整理,整理方式的修正方式有兩種,一種是橫台式整理,另外一種就是去年和我一起操作原相及大盤4/14~4/22下飄旗型的洗盤整理,會哪一種目前無法知道,其實最重要的觀察訣竅…"
+        }
+      ],
+      "hit_n": 2,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 22400.0,
+        "as_of_used": "20250516",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 22354.0,
+      "role": "支撐",
+      "label": "他點・level",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "165343490",
+          "taipei": "2024-09-30 10:09",
+          "as_of": "20240930",
+          "atom_id": "level.lv_22354_32734b",
+          "evidence_id": "",
+          "excerpt": "大盤除非跌破22354,否則就是在B-c-3-4波浪位階拉回修正"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "160426431",
+          "taipei": "2024-03-15 00:28",
+          "as_of": "20240315",
+          "atom_id": "fractal.channel_fractal_42bcbb",
+          "evidence_id": "",
+          "excerpt": "台指期這一次推動脈動(3-3-3-3)上升軌道已經破壞,將進入3-3-3-4調整型態,將回測19660支撐區,沒跌破應該下周就會修正結束,就會進行3-3-3-5末升段推動"
+        }
+      ],
+      "hit_n": 2,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 22354.0,
+        "as_of_used": "20240315",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 22200.0,
+      "role": "點位",
+      "label": "他點・iron_rule",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "168065539",
+          "taipei": "2025-01-16 11:09",
+          "as_of": "20250116",
+          "atom_id": "iron_rule.overlap_14_b495bf",
+          "evidence_id": "",
+          "excerpt": "台指期細微波 1 4重疊已經重疊,這代表大盤應該到新春開紅盤最差的狀況也不容易跌破1/13低點22400點左右"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 22200.0,
+        "as_of_used": "20250116",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 21937.0,
+      "role": "點位",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "162379883",
+          "taipei": "2024-06-01 21:53",
+          "as_of": "20240601",
+          "atom_id": "three_layer.night_level_2382_15975_21937_bd3e3c",
+          "evidence_id": "",
+          "excerpt": "從台指期夜盤來看,目前在進行大A波調整,大 A波再進行拆解,目前A-a已經走完,所以下周至少前半周會走A-b反彈"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "touched",
+        "symbol": "TWII",
+        "price": 21937.0,
+        "as_of_used": "20240531",
+        "touched": true,
+        "note_zh": "近窗K碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 21879.0,
+      "role": "壓力",
+      "label": "他點・sox",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "159990328",
+          "taipei": "2024-02-28 00:05",
+          "as_of": "20240228",
+          "atom_id": "sox.sox_link_7b833c",
+          "evidence_id": "",
+          "excerpt": "有關大盤(台指期)波浪位階,我又參考台積電的位階,及費半、那斯達科的波浪位階,重新定位位階應該是3-3-3-1結構已經破壞,現在進行3-3-3-2的調整浪型態,才符合波浪理論鐵律"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "171747724",
+          "taipei": "2025-06-05 11:45",
+          "as_of": "20250605",
+          "atom_id": "level.lv_21879_04ca08",
+          "evidence_id": "",
+          "excerpt": "有關大盤的部分觀察的重點是在這波漲勢是否有效過21879(5/21高點),我認為如果美股費半指數能在今天或明天確認突破整理平台高點,則大盤也會過,當然實際要根據大盤細微波來進行判斷"
+        }
+      ],
+      "hit_n": 2,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 21879.0,
+        "as_of_used": "20250605",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 21800.0,
+      "role": "支撐",
+      "label": "他點・level",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "164554127",
+          "taipei": "2024-08-27 08:27",
+          "as_of": "20240827",
+          "atom_id": "level.lv_21800_b7a285",
+          "evidence_id": "",
+          "excerpt": "有關大盤部分,如果大盤在B-b整理期間不跌破21800"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "168065539",
+          "taipei": "2025-01-16 11:09",
+          "as_of": "20250116",
+          "atom_id": "iron_rule.overlap_14_b495bf",
+          "evidence_id": "",
+          "excerpt": "台指期細微波 1 4重疊已經重疊,這代表大盤應該到新春開紅盤最差的狀況也不容易跌破1/13低點22400點左右"
+        }
+      ],
+      "hit_n": 2,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 21800.0,
+        "as_of_used": "20250116",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 21780.0,
+      "role": "點位",
+      "label": "他點・fractal",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "160426431",
+          "taipei": "2024-03-15 00:28",
+          "as_of": "20240315",
+          "atom_id": "fractal.channel_fractal_42bcbb",
+          "evidence_id": "",
+          "excerpt": "台指期這一次推動脈動(3-3-3-3)上升軌道已經破壞,將進入3-3-3-4調整型態,將回測19660支撐區,沒跌破應該下周就會修正結束,就會進行3-3-3-5末升段推動"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 21780.0,
+        "as_of_used": "20240315",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 21738.0,
+      "role": "點位",
+      "label": "他點・iron_rule",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "168065539",
+          "taipei": "2025-01-16 11:09",
+          "as_of": "20250116",
+          "atom_id": "iron_rule.overlap_14_b495bf",
+          "evidence_id": "",
+          "excerpt": "台指期細微波 1 4重疊已經重疊,這代表大盤應該到新春開紅盤最差的狀況也不容易跌破1/13低點22400點左右"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 21738.0,
+        "as_of_used": "20250116",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 21700.0,
+      "role": "支撐",
+      "label": "他點・level",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "171606556",
+          "taipei": "2025-05-27 11:57",
+          "as_of": "20250527",
+          "atom_id": "level.lv_18793_20900_21700_5d8771",
+          "evidence_id": "",
+          "excerpt": "目前看起來這種大盤走勢機率最大,至於各股還是要選股作多,只是要選拉回到量縮還在支撐區型態沒跌破有基本面的股票來做多,如老AI伺服器零組件供應鏈、台積電設備股(包含建廠、CoWos、2奈米製程…"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "touched",
+        "symbol": "TWII",
+        "price": 21700.0,
+        "as_of_used": "20250527",
+        "touched": true,
+        "note_zh": "近窗K碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 21661.0,
+      "role": "點位",
+      "label": "他點・retract",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "170226806",
+          "taipei": "2025-04-02 09:45",
+          "as_of": "20250402",
+          "atom_id": "retract.retract_21661_8a807e",
+          "evidence_id": "",
+          "excerpt": "還有如果台指期真的穿越21661,大盤止穩則這一陣子主力股一定會不再是資金追逐的重點,也就是資金回到正規軍,這一點特別提醒目前還在操作主力股的同學要特別留意,這些主力股如果我沒看錯行情就到下…"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "touched",
+        "symbol": "TWII",
+        "price": 21661.0,
+        "as_of_used": "20250402",
+        "touched": true,
+        "note_zh": "近窗K碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 21646.0,
+      "role": "支撐",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "160518715",
+          "taipei": "2024-03-19 09:49",
+          "as_of": "20240319",
+          "atom_id": "three_layer.night_to_spot_fb259f",
+          "evidence_id": "",
+          "excerpt": "應該到了修正末端,3-3-4浪即將結束,台指期夜盤,明天大盤應該要表態上攻了"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "162889934",
+          "taipei": "2024-06-20 23:48",
+          "as_of": "20240620",
+          "atom_id": "three_layer.night_level_21646_dc8173",
+          "evidence_id": "",
+          "excerpt": "台指期貨夜盤已經開始回檔修正,從21646推上來的上升軌道已經被破壞"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "160426431",
+          "taipei": "2024-03-15 00:28",
+          "as_of": "20240315",
+          "atom_id": "fractal.channel_fractal_42bcbb",
+          "evidence_id": "",
+          "excerpt": "台指期這一次推動脈動(3-3-3-3)上升軌道已經破壞,將進入3-3-3-4調整型態,將回測19660支撐區,沒跌破應該下周就會修正結束,就會進行3-3-3-5末升段推動"
+        }
+      ],
+      "hit_n": 3,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 21646.0,
+        "as_of_used": "20240315",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 21500.0,
+      "role": "壓力",
+      "label": "他點・sox",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "159990328",
+          "taipei": "2024-02-28 00:05",
+          "as_of": "20240228",
+          "atom_id": "sox.sox_link_7b833c",
+          "evidence_id": "",
+          "excerpt": "有關大盤(台指期)波浪位階,我又參考台積電的位階,及費半、那斯達科的波浪位階,重新定位位階應該是3-3-3-1結構已經破壞,現在進行3-3-3-2的調整浪型態,才符合波浪理論鐵律"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "164870185",
+          "taipei": "2024-09-09 11:50",
+          "as_of": "20240909",
+          "atom_id": "level.lv_21500_35846f",
+          "evidence_id": "",
+          "excerpt": "目前從台指期來看一定會再測21500壓力線,也就是至少到明天大盤會往上反彈"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "172769280",
+          "taipei": "2025-07-30 23:33",
+          "as_of": "20250730",
+          "atom_id": "retract.retract_20700_21500_81c275",
+          "evidence_id": "",
+          "excerpt": "並且說大盤至少反彈到20700,然後到20700我又根據當時的大盤技術線圖用等幅測距上修21500,等到了215000我隔天就改口會持續反彈到21800左右,然後到21800開始修正的時候,…"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "171458472",
+          "taipei": "2025-05-17 19:22",
+          "as_of": "20250517",
+          "atom_id": "pattern.pat___b7eeb3",
+          "evidence_id": "",
+          "excerpt": "目前剛過位階A高點進行整理,整理方式的修正方式有兩種,一種是橫台式整理,另外一種就是去年和我一起操作原相及大盤4/14~4/22下飄旗型的洗盤整理,會哪一種目前無法知道,其實最重要的觀察訣竅…"
+        }
+      ],
+      "hit_n": 4,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "touched",
+        "symbol": "TWII",
+        "price": 21500.0,
+        "as_of_used": "20250516",
+        "touched": true,
+        "note_zh": "近窗K碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 21410.0,
+      "role": "支撐",
+      "label": "他點・level",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "172036327:a1",
+          "taipei": "2025-06-23 11:02",
+          "as_of": "20250623",
+          "atom_id": "level.lv_21410_4c7555",
+          "evidence_id": "",
+          "excerpt": "補充一點 從台指期現在細微波的波浪位階目前是下跌第三波轉到四,從形態學搭配應該還會有末跌段五,除非能有效穿越21410"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 21410.0,
+        "as_of_used": "20250623",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 21400.0,
+      "role": "點位",
+      "label": "他點・pattern",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "158737057",
+          "taipei": "2023-12-29 12:48",
+          "as_of": "20231229",
+          "atom_id": "pattern.pat___134425",
+          "evidence_id": "",
+          "excerpt": "我昨天還說,只要帶量站穩220,廣達目標價至少會形成頭肩頂的右肩,不要不信邪"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 21400.0,
+        "as_of_used": "20231229",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 21300.0,
+      "role": "點位",
+      "label": "他點・pattern",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "158737057",
+          "taipei": "2023-12-29 12:48",
+          "as_of": "20231229",
+          "atom_id": "pattern.pat___134425",
+          "evidence_id": "",
+          "excerpt": "我昨天還說,只要帶量站穩220,廣達目標價至少會形成頭肩頂的右肩,不要不信邪"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 21300.0,
+        "as_of_used": "20231229",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 21174.0,
+      "role": "支撐",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "162486391",
+          "taipei": "2024-06-05 19:14",
+          "as_of": "20240605",
+          "atom_id": "three_layer.night_level_21174_af0631",
+          "evidence_id": "",
+          "excerpt": "首先今天大盤為何不會持續往下修正,是因為台指期夜盤昨天傍晚回測6/1低點,沒有被跌破之後,晚上就展開A-b反彈,也因此今日大盤是走反彈走勢"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "162451308",
+          "taipei": "2024-06-04 18:21",
+          "as_of": "20240604",
+          "atom_id": "retract.retract_21174_21100_19291_119d6b",
+          "evidence_id": "",
+          "excerpt": "要追求比較高的利潤當然也要承受較高的震盪風險,可選陽明或萬海,尤其是萬海如果我沒看錯,應該漲勢最強勁,但盤中上下震盪也最大"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "158558324",
+          "taipei": "2023-12-21 13:23",
+          "as_of": "20231221",
+          "atom_id": "pattern.pat___fe4cd5",
+          "evidence_id": "",
+          "excerpt": "智原已經接近收盤,今天帶量跌破頸線,做多的人,敢快賣出離開,市場的主流是貨櫃航運及AI PC 拉回找買點,不要再操作智原了"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "162437222",
+          "taipei": "2024-06-04 11:03",
+          "as_of": "20240604",
+          "atom_id": "level.lv_15975_21174_20800_e22985",
+          "evidence_id": "",
+          "excerpt": "大盤如我規劃,確認從15975到21937日線位階5-5末升段已經完全走完了,目前已經在走A-c浪,從60分鐘線來看明日先會測試5/31 21174 (A-a)點位,如果支撐有守就會再一次進…"
+        }
+      ],
+      "hit_n": 4,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 21174.0,
+        "as_of_used": "20240604",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 21100.0,
+      "role": "支撐",
+      "label": "他點・level",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "162059806",
+          "taipei": "2024-05-21 10:02",
+          "as_of": "20240521",
+          "atom_id": "level.lv_21100_db36a5",
+          "evidence_id": "",
+          "excerpt": "大盤今天再測一次昨天低點(21100),確認21100為支撐線"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "162451308",
+          "taipei": "2024-06-04 18:21",
+          "as_of": "20240604",
+          "atom_id": "retract.retract_21174_21100_19291_119d6b",
+          "evidence_id": "",
+          "excerpt": "要追求比較高的利潤當然也要承受較高的震盪風險,可選陽明或萬海,尤其是萬海如果我沒看錯,應該漲勢最強勁,但盤中上下震盪也最大"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "158558324",
+          "taipei": "2023-12-21 13:23",
+          "as_of": "20231221",
+          "atom_id": "pattern.pat___fe4cd5",
+          "evidence_id": "",
+          "excerpt": "智原已經接近收盤,今天帶量跌破頸線,做多的人,敢快賣出離開,市場的主流是貨櫃航運及AI PC 拉回找買點,不要再操作智原了"
+        }
+      ],
+      "hit_n": 3,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 21100.0,
+        "as_of_used": "20231221",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 21000.0,
+      "role": "支撐",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "160518715",
+          "taipei": "2024-03-19 09:49",
+          "as_of": "20240319",
+          "atom_id": "three_layer.night_to_spot_fb259f",
+          "evidence_id": "",
+          "excerpt": "應該到了修正末端,3-3-4浪即將結束,台指期夜盤,明天大盤應該要表態上攻了"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "164815096",
+          "taipei": "2024-09-06 10:56",
+          "as_of": "20240906",
+          "atom_id": "three_layer.night_level_21000_3227_8039_02038d",
+          "evidence_id": "",
+          "excerpt": "如果從今天開始產生1組 5波的細微波推升脈動(15分鐘K線),就是B-c的初升段就會突破我所說的關鍵點位,應該在下周一夜盤大概就知道了"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "161820094",
+          "taipei": "2024-05-11 13:51",
+          "as_of": "20240511",
+          "atom_id": "three_layer.night_level_21000_372f72",
+          "evidence_id": "",
+          "excerpt": "首先這兩天盤勢有很大的變化,台指期夜盤已經創歷史新高將近21000點,且台積電ADR大漲,星期一不出意外又是拉積盤"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "167763238",
+          "taipei": "2025-01-07 00:23",
+          "as_of": "20250107",
+          "atom_id": "retract.retract_21000_7e3c66",
+          "evidence_id": "",
+          "excerpt": "大盤非常有可能產生另一組5波脈動的推升,我昨天以前雖然認為大盤會在2或3月之間會慢慢地往21000左右修正,非常有可能看錯大盤方向,但我都沒有做空"
+        }
+      ],
+      "hit_n": 4,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 21000.0,
+        "as_of_used": "20250107",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 20900.0,
+      "role": "支撐",
+      "label": "他點・level",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "171625287",
+          "taipei": "2025-05-28 11:00",
+          "as_of": "20250528",
+          "atom_id": "level.lv_20900_0b3ca4",
+          "evidence_id": "",
+          "excerpt": "其實這樣的走勢想要等大盤有大幅拉回才做多的人會非常不利,因為大盤拉回的幅度有非常大的機率不會拉回太深頂多稍微跌破20900如此而已"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "171893308",
+          "taipei": "2025-06-13 11:23",
+          "as_of": "20250613",
+          "atom_id": "level.lv_17306_22470_20900_dcacb1",
+          "evidence_id": "",
+          "excerpt": "今天大盤拉回比較深,但從目前拉回的點位只能確認目前波浪位階是在5-4,至於會不會出現失敗的5-5,也就是預期的這一波上漲的脈動不會出現最後第5小波的推升脈動,從目前拉回的點位還看不出來,最簡…"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "171606556",
+          "taipei": "2025-05-27 11:57",
+          "as_of": "20250527",
+          "atom_id": "level.lv_18793_20900_21700_5d8771",
+          "evidence_id": "",
+          "excerpt": "目前看起來這種大盤走勢機率最大,至於各股還是要選股作多,只是要選拉回到量縮還在支撐區型態沒跌破有基本面的股票來做多,如老AI伺服器零組件供應鏈、台積電設備股(包含建廠、CoWos、2奈米製程…"
+        }
+      ],
+      "hit_n": 3,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 20900.0,
+        "as_of_used": "20250527",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 20885.0,
+      "role": "壓力",
+      "label": "他點・stock_observe",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "159736253",
+          "taipei": "2024-02-16 14:12",
+          "as_of": "20240216",
+          "atom_id": "stock_observe.sector_leader_e9dad0",
+          "evidence_id": "",
+          "excerpt": "台股第一季主流有兩個族群,第一個已經飆出去就是CoWas概念股,志聖就是首選"
+        },
+        {
+          "source": "segment_evidence",
+          "post_id": "knowhow.md §D 2025-05-09",
+          "taipei": "",
+          "as_of": "20250509",
+          "atom_id": "",
+          "evidence_id": "SE-20250509-pierce-20885",
+          "excerpt": "再測5/5高20885"
+        }
+      ],
+      "hit_n": 2,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "touched",
+        "symbol": "TWII",
+        "price": 20885.0,
+        "as_of_used": "20250509",
+        "touched": true,
+        "note_zh": "近窗K碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 20800.0,
+      "role": "壓力",
+      "label": "他點・sox",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "159990328",
+          "taipei": "2024-02-28 00:05",
+          "as_of": "20240228",
+          "atom_id": "sox.sox_link_7b833c",
+          "evidence_id": "",
+          "excerpt": "有關大盤(台指期)波浪位階,我又參考台積電的位階,及費半、那斯達科的波浪位階,重新定位位階應該是3-3-3-1結構已經破壞,現在進行3-3-3-2的調整浪型態,才符合波浪理論鐵律"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 20800.0,
+        "as_of_used": "20240227",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 20787.0,
+      "role": "壓力",
+      "label": "他點・sox",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "159990328",
+          "taipei": "2024-02-28 00:05",
+          "as_of": "20240228",
+          "atom_id": "sox.sox_link_7b833c",
+          "evidence_id": "",
+          "excerpt": "有關大盤(台指期)波浪位階,我又參考台積電的位階,及費半、那斯達科的波浪位階,重新定位位階應該是3-3-3-1結構已經破壞,現在進行3-3-3-2的調整浪型態,才符合波浪理論鐵律"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "168065539",
+          "taipei": "2025-01-16 11:09",
+          "as_of": "20250116",
+          "atom_id": "iron_rule.overlap_14_b495bf",
+          "evidence_id": "",
+          "excerpt": "台指期細微波 1 4重疊已經重疊,這代表大盤應該到新春開紅盤最差的狀況也不容易跌破1/13低點22400點左右"
+        }
+      ],
+      "hit_n": 2,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 20787.0,
+        "as_of_used": "20250116",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 20730.0,
+      "role": "壓力",
+      "label": "他點・stock_observe",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "159736253",
+          "taipei": "2024-02-16 14:12",
+          "as_of": "20240216",
+          "atom_id": "stock_observe.sector_leader_e9dad0",
+          "evidence_id": "",
+          "excerpt": "台股第一季主流有兩個族群,第一個已經飆出去就是CoWas概念股,志聖就是首選"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 20730.0,
+        "as_of_used": "20240216",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 20700.0,
+      "role": "支撐",
+      "label": "他點・level",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "170743800",
+          "taipei": "2025-04-17 10:32",
+          "as_of": "20250417",
+          "atom_id": "level.lv_20700_6bffdb",
+          "evidence_id": "",
+          "excerpt": "大盤最差就是3段式abc反彈,目前走b,維持不變反彈目標區還是至少20700"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "172769280",
+          "taipei": "2025-07-30 23:33",
+          "as_of": "20250730",
+          "atom_id": "retract.retract_20700_21500_81c275",
+          "evidence_id": "",
+          "excerpt": "並且說大盤至少反彈到20700,然後到20700我又根據當時的大盤技術線圖用等幅測距上修21500,等到了215000我隔天就改口會持續反彈到21800左右,然後到21800開始修正的時候,…"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "171458472",
+          "taipei": "2025-05-17 19:22",
+          "as_of": "20250517",
+          "atom_id": "pattern.pat___b7eeb3",
+          "evidence_id": "",
+          "excerpt": "目前剛過位階A高點進行整理,整理方式的修正方式有兩種,一種是橫台式整理,另外一種就是去年和我一起操作原相及大盤4/14~4/22下飄旗型的洗盤整理,會哪一種目前無法知道,其實最重要的觀察訣竅…"
+        }
+      ],
+      "hit_n": 3,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "touched",
+        "symbol": "TWII",
+        "price": 20700.0,
+        "as_of_used": "20250516",
+        "touched": true,
+        "note_zh": "近窗K碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 20500.0,
+      "role": "支撐",
+      "label": "他點・level",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "164841530",
+          "taipei": "2024-09-07 13:22",
+          "as_of": "20240907",
+          "atom_id": "level.lv_19000_1000_20500_e4698b",
+          "evidence_id": "",
+          "excerpt": "至於追蹤個股該如何操作,我分享個股的短支撐,和關鍵支撐供操作操考"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 20500.0,
+        "as_of_used": "20240906",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 20100.0,
+      "role": "支撐",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "160518715",
+          "taipei": "2024-03-19 09:49",
+          "as_of": "20240319",
+          "atom_id": "three_layer.night_to_spot_fb259f",
+          "evidence_id": "",
+          "excerpt": "應該到了修正末端,3-3-4浪即將結束,台指期夜盤,明天大盤應該要表態上攻了"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "161469572",
+          "taipei": "2024-04-27 14:12",
+          "as_of": "20240427",
+          "atom_id": "three_layer.night_level_20100_f6c553",
+          "evidence_id": "",
+          "excerpt": "台指期夜盤已經站上20100以上,用60分鐘線來看頭肩底型態確認"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "160266701",
+          "taipei": "2024-03-09 01:26",
+          "as_of": "20240309",
+          "atom_id": "pattern.pat___2f2eb7",
+          "evidence_id": "",
+          "excerpt": "廣達從細微波(小時線)很明顯是頭肩底型態,現在只要一根帶量紅K,突破250元的頸線回測確認,就是另一波漲勢的推動"
+        }
+      ],
+      "hit_n": 3,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 20100.0,
+        "as_of_used": "20240308",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 20000.0,
+      "role": "點位",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "172504809",
+          "taipei": "2025-07-17 18:33",
+          "as_of": "20250717",
+          "atom_id": "three_layer.night_level_24416_20000_a01e50",
+          "evidence_id": "",
+          "excerpt": "我當時就說從台積電來看大盤要做大幅拉回不容易,現在台指期的夜盤完全驗證我這波對大盤未來方向是完全正確的"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "170612650",
+          "taipei": "2025-04-13 10:58",
+          "as_of": "20250413",
+          "atom_id": "retract.retract_20000_19500_19000_d65578",
+          "evidence_id": "",
+          "excerpt": "目前一切恢復正常,因此我對昨天發文重新規劃,下星期開始的反彈應該會先到原先規劃的21000左右上下加減300點左右"
+        }
+      ],
+      "hit_n": 2,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "touched",
+        "symbol": "TWII",
+        "price": 20000.0,
+        "as_of_used": "20250411",
+        "touched": true,
+        "note_zh": "近窗K碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 19844.0,
+      "role": "點位",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "161267847",
+          "taipei": "2024-04-19 00:18",
+          "as_of": "20240419",
+          "atom_id": "three_layer.night_level_19650_19844_e3ebcf",
+          "evidence_id": "",
+          "excerpt": "從目前台指期夜盤來看是在走大A-c浪,最多打到19650價位區間就會止跌"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "touched",
+        "symbol": "TWII",
+        "price": 19844.0,
+        "as_of_used": "20240419",
+        "touched": true,
+        "note_zh": "近窗K碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 19660.0,
+      "role": "點位",
+      "label": "他點・fractal",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "160426431",
+          "taipei": "2024-03-15 00:28",
+          "as_of": "20240315",
+          "atom_id": "fractal.channel_fractal_42bcbb",
+          "evidence_id": "",
+          "excerpt": "台指期這一次推動脈動(3-3-3-3)上升軌道已經破壞,將進入3-3-3-4調整型態,將回測19660支撐區,沒跌破應該下周就會修正結束,就會進行3-3-3-5末升段推動"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "touched",
+        "symbol": "TWII",
+        "price": 19660.0,
+        "as_of_used": "20240315",
+        "touched": true,
+        "note_zh": "近窗K碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 19650.0,
+      "role": "支撐",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "160518715",
+          "taipei": "2024-03-19 09:49",
+          "as_of": "20240319",
+          "atom_id": "three_layer.night_to_spot_fb259f",
+          "evidence_id": "",
+          "excerpt": "應該到了修正末端,3-3-4浪即將結束,台指期夜盤,明天大盤應該要表態上攻了"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "161267847",
+          "taipei": "2024-04-19 00:18",
+          "as_of": "20240419",
+          "atom_id": "three_layer.night_level_19650_19844_e3ebcf",
+          "evidence_id": "",
+          "excerpt": "從目前台指期夜盤來看是在走大A-c浪,最多打到19650價位區間就會止跌"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "158558324",
+          "taipei": "2023-12-21 13:23",
+          "as_of": "20231221",
+          "atom_id": "pattern.pat___fe4cd5",
+          "evidence_id": "",
+          "excerpt": "智原已經接近收盤,今天帶量跌破頸線,做多的人,敢快賣出離開,市場的主流是貨櫃航運及AI PC 拉回找買點,不要再操作智原了"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "159972833",
+          "taipei": "2024-02-27 11:00",
+          "as_of": "20240227",
+          "atom_id": "key_k.key_bar_d9d5c9",
+          "evidence_id": "",
+          "excerpt": "還是重覆前兩天留言,光聖中線波段是否還能持續漲勢,觀盤重點在看2/22日跳空缺口是否有效回補,若沒有回補應該在10日線會撐住"
+        }
+      ],
+      "hit_n": 4,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 19650.0,
+        "as_of_used": "20240227",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 19500.0,
+      "role": "點位",
+      "label": "他點・retract",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "170612650",
+          "taipei": "2025-04-13 10:58",
+          "as_of": "20250413",
+          "atom_id": "retract.retract_20000_19500_19000_d65578",
+          "evidence_id": "",
+          "excerpt": "目前一切恢復正常,因此我對昨天發文重新規劃,下星期開始的反彈應該會先到原先規劃的21000左右上下加減300點左右"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "158558324",
+          "taipei": "2023-12-21 13:23",
+          "as_of": "20231221",
+          "atom_id": "pattern.pat___fe4cd5",
+          "evidence_id": "",
+          "excerpt": "智原已經接近收盤,今天帶量跌破頸線,做多的人,敢快賣出離開,市場的主流是貨櫃航運及AI PC 拉回找買點,不要再操作智原了"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "159972833",
+          "taipei": "2024-02-27 11:00",
+          "as_of": "20240227",
+          "atom_id": "key_k.key_bar_d9d5c9",
+          "evidence_id": "",
+          "excerpt": "還是重覆前兩天留言,光聖中線波段是否還能持續漲勢,觀盤重點在看2/22日跳空缺口是否有效回補,若沒有回補應該在10日線會撐住"
+        }
+      ],
+      "hit_n": 3,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 19500.0,
+        "as_of_used": "20240227",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 19340.0,
+      "role": "點位",
+      "label": "段證・他點",
+      "provenance": [
+        {
+          "source": "segment_evidence",
+          "post_id": "knowhow.md §D 2025-04-24",
+          "taipei": "",
+          "as_of": "20250424",
+          "atom_id": "",
+          "evidence_id": "SE-20250424-14-overlap-near",
+          "excerpt": "19340支撐前止跌、1-4重疊、9:30後夜盤"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "touched",
+        "symbol": "TWII",
+        "price": 19340.0,
+        "as_of_used": "20250424",
+        "touched": true,
+        "note_zh": "近窗K碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 19291.0,
+      "role": "支撐",
+      "label": "他點・level",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "162228224",
+          "taipei": "2024-05-27 18:50",
+          "as_of": "20240527",
+          "atom_id": "level.lv_19291_6b1c0f",
+          "evidence_id": "",
+          "excerpt": "因為波浪運行規則,五浪推完會進行ABC修正,A波修正會回測第四浪區間,也就是再回到19291點位區間,再進行一次B波反彈,最後再進行一次C波修正"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "162451308",
+          "taipei": "2024-06-04 18:21",
+          "as_of": "20240604",
+          "atom_id": "retract.retract_21174_21100_19291_119d6b",
+          "evidence_id": "",
+          "excerpt": "要追求比較高的利潤當然也要承受較高的震盪風險,可選陽明或萬海,尤其是萬海如果我沒看錯,應該漲勢最強勁,但盤中上下震盪也最大"
+        }
+      ],
+      "hit_n": 2,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 19291.0,
+        "as_of_used": "20240604",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 19265.0,
+      "role": "支撐",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "160518715",
+          "taipei": "2024-03-19 09:49",
+          "as_of": "20240319",
+          "atom_id": "three_layer.night_to_spot_fb259f",
+          "evidence_id": "",
+          "excerpt": "應該到了修正末端,3-3-4浪即將結束,台指期夜盤,明天大盤應該要表態上攻了"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "162016494",
+          "taipei": "2024-05-19 12:55",
+          "as_of": "20240519",
+          "atom_id": "three_layer.night_level_19265_37c19a",
+          "evidence_id": "",
+          "excerpt": "首先先講大盤,我以台指期(因為有夜盤,有連續性比較容易進行波浪定位)來說明大盤位階,從19265推上來開始算,目前的細微波在3-3-3-2,下星期最晚星期三就要開始進行3-3-3-3本波漲勢…"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "162016494:a2",
+          "taipei": "2024-05-19 14:15",
+          "as_of": "20240519",
+          "atom_id": "level.lv_19265_8fd6ff",
+          "evidence_id": "",
+          "excerpt": "1浪的起點在19265,用 1-2低點及1-4低點畫上升軌道判斷1浪是否結束"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "160426431",
+          "taipei": "2024-03-15 00:28",
+          "as_of": "20240315",
+          "atom_id": "fractal.channel_fractal_42bcbb",
+          "evidence_id": "",
+          "excerpt": "台指期這一次推動脈動(3-3-3-3)上升軌道已經破壞,將進入3-3-3-4調整型態,將回測19660支撐區,沒跌破應該下周就會修正結束,就會進行3-3-3-5末升段推動"
+        }
+      ],
+      "hit_n": 4,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "touched",
+        "symbol": "TWII",
+        "price": 19265.0,
+        "as_of_used": "20240315",
+        "touched": true,
+        "note_zh": "近窗K碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 19250.0,
+      "role": "支撐",
+      "label": "他點・fractal",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "160426431",
+          "taipei": "2024-03-15 00:28",
+          "as_of": "20240315",
+          "atom_id": "fractal.channel_fractal_42bcbb",
+          "evidence_id": "",
+          "excerpt": "台指期這一次推動脈動(3-3-3-3)上升軌道已經破壞,將進入3-3-3-4調整型態,將回測19660支撐區,沒跌破應該下周就會修正結束,就會進行3-3-3-5末升段推動"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "160540893",
+          "taipei": "2024-03-19 22:59",
+          "as_of": "20240319",
+          "atom_id": "level.lv_19250_01f53a",
+          "evidence_id": "",
+          "excerpt": "台指期日線上升軌道已經有點跌破,大盤明天早上如果不表態上攻,預計會回測至19250支撐區"
+        }
+      ],
+      "hit_n": 2,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 19250.0,
+        "as_of_used": "20240319",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 19020.0,
+      "role": "支撐",
+      "label": "他點・pattern",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "158177685",
+          "taipei": "2023-12-06 09:21",
+          "as_of": "20231206",
+          "atom_id": "pattern.pat___d2dcdf",
+          "evidence_id": "",
+          "excerpt": "有空單敢快回補,破底翻至少先看335"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "160022382",
+          "taipei": "2024-02-29 13:11",
+          "as_of": "20240229",
+          "atom_id": "level.lv_19020_c6f02f",
+          "evidence_id": "",
+          "excerpt": "昨天我有發一篇台指期破底翻波浪位階,並預測一定還會測19020一次,目前都按照我的規劃方向發展,如有看到訊息去買台指期多單,恭喜賺點零用錢,記得19020左右先下車一趟"
+        }
+      ],
+      "hit_n": 2,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "touched",
+        "symbol": "TWII",
+        "price": 19020.0,
+        "as_of_used": "20240229",
+        "touched": true,
+        "note_zh": "近窗K碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 19012.0,
+      "role": "支撐",
+      "label": "他點・level",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "161290131",
+          "taipei": "2024-04-19 14:59",
+          "as_of": "20240419",
+          "atom_id": "level.lv_18752_19012_87813b",
+          "evidence_id": "",
+          "excerpt": "所以3-4浪回測極限點位在18752-19012之間"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 19012.0,
+        "as_of_used": "20240419",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 19000.0,
+      "role": "支撐",
+      "label": "他點・retract",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "170612650",
+          "taipei": "2025-04-13 10:58",
+          "as_of": "20250413",
+          "atom_id": "retract.retract_20000_19500_19000_d65578",
+          "evidence_id": "",
+          "excerpt": "目前一切恢復正常,因此我對昨天發文重新規劃,下星期開始的反彈應該會先到原先規劃的21000左右上下加減300點左右"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "164841530",
+          "taipei": "2024-09-07 13:22",
+          "as_of": "20240907",
+          "atom_id": "level.lv_19000_1000_20500_e4698b",
+          "evidence_id": "",
+          "excerpt": "至於追蹤個股該如何操作,我分享個股的短支撐,和關鍵支撐供操作操考"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "164266023",
+          "taipei": "2024-08-14 14:47",
+          "as_of": "20240814",
+          "atom_id": "level.lv_19000_3ef19b",
+          "evidence_id": "",
+          "excerpt": "現在來說明為何如此看法,同學可以去看他的月線是標準的底部型態且為15年的大底,這種底部型態只要搭配基本面加持,從最低點來算漲5倍是非常合理的,而且目前完成底部型態的頸線約在220~225之間…"
+        }
+      ],
+      "hit_n": 3,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 19000.0,
+        "as_of_used": "20240814",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 18964.0,
+      "role": "支撐",
+      "label": "他點・level",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "170859230",
+          "taipei": "2025-04-23 09:46",
+          "as_of": "20250423",
+          "atom_id": "level.lv_18964_19064_17300_a802e6",
+          "evidence_id": "",
+          "excerpt": "昨天有提到台指期重要觀察點位是18964觀察點位是否能站穩,站穩則完成底部型態"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "170844954",
+          "taipei": "2025-04-22 10:15",
+          "as_of": "20250422",
+          "atom_id": "level.lv_18964_19064_20700_55ecab",
+          "evidence_id": "",
+          "excerpt": "今天台指期重要觀察點位是18964觀察點位是否能站穩,站穩則完成底部型態"
+        }
+      ],
+      "hit_n": 2,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "touched",
+        "symbol": "TWII",
+        "price": 18964.0,
+        "as_of_used": "20250422",
+        "touched": true,
+        "note_zh": "近窗K碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 18793.0,
+      "role": "支撐",
+      "label": "他點・level",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "171606556",
+          "taipei": "2025-05-27 11:57",
+          "as_of": "20250527",
+          "atom_id": "level.lv_18793_20900_21700_5d8771",
+          "evidence_id": "",
+          "excerpt": "目前看起來這種大盤走勢機率最大,至於各股還是要選股作多,只是要選拉回到量縮還在支撐區型態沒跌破有基本面的股票來做多,如老AI伺服器零組件供應鏈、台積電設備股(包含建廠、CoWos、2奈米製程…"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 18793.0,
+        "as_of_used": "20250527",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 18752.0,
+      "role": "支撐",
+      "label": "他點・level",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "161290131",
+          "taipei": "2024-04-19 14:59",
+          "as_of": "20240419",
+          "atom_id": "level.lv_18752_19012_87813b",
+          "evidence_id": "",
+          "excerpt": "所以3-4浪回測極限點位在18752-19012之間"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 18752.0,
+        "as_of_used": "20240419",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 18619.0,
+      "role": "點位",
+      "label": "他點・retract",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "173348534",
+          "taipei": "2025-08-27 10:50",
+          "as_of": "20250827",
+          "atom_id": "retract.retract_2024_2022_18619_98aac6",
+          "evidence_id": "",
+          "excerpt": "黃培碩2023年7~8月就已經看錯一次,因為他將初升段看成B波大反彈在2023年已經有一次紀錄,我只是提醒現在還在盲從聽他話的同學之前他已經有一次案例,他也不是100%對的,其他我對他的評論…"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 18619.0,
+        "as_of_used": "20250827",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 17306.0,
+      "role": "壓力",
+      "label": "他點・sox",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "159990328",
+          "taipei": "2024-02-28 00:05",
+          "as_of": "20240228",
+          "atom_id": "sox.sox_link_7b833c",
+          "evidence_id": "",
+          "excerpt": "有關大盤(台指期)波浪位階,我又參考台積電的位階,及費半、那斯達科的波浪位階,重新定位位階應該是3-3-3-1結構已經破壞,現在進行3-3-3-2的調整浪型態,才符合波浪理論鐵律"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "171276483",
+          "taipei": "2025-05-09 10:30",
+          "as_of": "20250509",
+          "atom_id": "level.lv_17306_de2536",
+          "evidence_id": "",
+          "excerpt": "大盤今天正式躍過下跌脈動的下降壓力線,再加上費半、那斯達科指數早就 14重疊,所以已經完全確認不會有第5波的末跌段,也就是說4/9,17306就是今年的低點,就算未來大盤下跌修正跌破1730…"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "168065539",
+          "taipei": "2025-01-16 11:09",
+          "as_of": "20250116",
+          "atom_id": "iron_rule.overlap_14_b495bf",
+          "evidence_id": "",
+          "excerpt": "台指期細微波 1 4重疊已經重疊,這代表大盤應該到新春開紅盤最差的狀況也不容易跌破1/13低點22400點左右"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "171893308",
+          "taipei": "2025-06-13 11:23",
+          "as_of": "20250613",
+          "atom_id": "level.lv_17306_22470_20900_dcacb1",
+          "evidence_id": "",
+          "excerpt": "今天大盤拉回比較深,但從目前拉回的點位只能確認目前波浪位階是在5-4,至於會不會出現失敗的5-5,也就是預期的這一波上漲的脈動不會出現最後第5小波的推升脈動,從目前拉回的點位還看不出來,最簡…"
+        }
+      ],
+      "hit_n": 4,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 17306.0,
+        "as_of_used": "20250613",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 17300.0,
+      "role": "點位",
+      "label": "他點・retract",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "170612650",
+          "taipei": "2025-04-13 10:58",
+          "as_of": "20250413",
+          "atom_id": "retract.retract_20000_19500_19000_d65578",
+          "evidence_id": "",
+          "excerpt": "目前一切恢復正常,因此我對昨天發文重新規劃,下星期開始的反彈應該會先到原先規劃的21000左右上下加減300點左右"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 17300.0,
+        "as_of_used": "20250411",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 15975.0,
+      "role": "支撐",
+      "label": "他點・three_layer",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "162379883",
+          "taipei": "2024-06-01 21:53",
+          "as_of": "20240601",
+          "atom_id": "three_layer.night_level_2382_15975_21937_bd3e3c",
+          "evidence_id": "",
+          "excerpt": "從台指期夜盤來看,目前在進行大A波調整,大 A波再進行拆解,目前A-a已經走完,所以下周至少前半周會走A-b反彈"
+        },
+        {
+          "source": "atoms_latest",
+          "post_id": "162437222",
+          "taipei": "2024-06-04 11:03",
+          "as_of": "20240604",
+          "atom_id": "level.lv_15975_21174_20800_e22985",
+          "evidence_id": "",
+          "excerpt": "大盤如我規劃,確認從15975到21937日線位階5-5末升段已經完全走完了,目前已經在走A-c浪,從60分鐘線來看明日先會測試5/31 21174 (A-a)點位,如果支撐有守就會再一次進…"
+        }
+      ],
+      "hit_n": 2,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 15975.0,
+        "as_of_used": "20240604",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "index",
+      "instrument": "TWII",
+      "price": 15000.0,
+      "role": "支撐",
+      "label": "他點・level",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "179869615",
+          "taipei": "2026-06-15 08:40",
+          "as_of": "20260615",
+          "atom_id": "level.lv_15000_42000_c69211",
+          "evidence_id": "",
+          "excerpt": "2. 聯發科只等 大盤C波回測不破支撐 即可晉升F系列"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "not_touched",
+        "symbol": "TWII",
+        "price": 15000.0,
+        "as_of_used": "20260615",
+        "touched": false,
+        "note_zh": "近窗未碰到",
+        "window_n": 8
+      }
+    },
+    {
+      "kind": "stock",
+      "instrument": "3017",
+      "price": 3000.0,
+      "role": "down",
+      "label": "原文目標・3017",
+      "provenance": [
+        {
+          "source": "written_absolute",
+          "post_id": "written-3017-3000",
+          "taipei": "",
+          "as_of": "20261025",
+          "atom_id": "",
+          "evidence_id": "",
+          "excerpt": "先測"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "seed_written",
+        "note_zh": "原文絕對目標（非發明）"
+      }
+    },
+    {
+      "kind": "stock",
+      "instrument": "3017",
+      "price": 2700.0,
+      "role": "down",
+      "label": "原文目標・3017",
+      "provenance": [
+        {
+          "source": "written_absolute",
+          "post_id": "written-3017-2700",
+          "taipei": "",
+          "as_of": "20261025",
+          "atom_id": "",
+          "evidence_id": "",
+          "excerpt": "守不住頭部確認再測"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "seed_written",
+        "note_zh": "原文絕對目標（非發明）"
+      }
+    },
+    {
+      "kind": "stock",
+      "instrument": "3081",
+      "price": 2000.0,
+      "role": "down",
+      "label": "原文目標・3081",
+      "provenance": [
+        {
+          "source": "written_absolute",
+          "post_id": "written-3081-2000",
+          "taipei": "",
+          "as_of": "20261025",
+          "atom_id": "",
+          "evidence_id": "",
+          "excerpt": "第二段下殺頸線"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "seed_written",
+        "note_zh": "原文絕對目標（非發明）"
+      }
+    },
+    {
+      "kind": "stock",
+      "instrument": "3131",
+      "price": 3131.0,
+      "role": "目標",
+      "label": "他點名・3131",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "159736253",
+          "taipei": "2024-02-16 14:12",
+          "as_of": "20240216",
+          "atom_id": "stock_observe.sector_leader_e9dad0",
+          "evidence_id": "",
+          "excerpt": "台股第一季主流有兩個族群,第一個已經飆出去就是CoWas概念股,志聖就是首選"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "unchecked"
+      }
+    },
+    {
+      "kind": "stock",
+      "instrument": "3131",
+      "price": 1755.0,
+      "role": "目標",
+      "label": "他點名・3131",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "159736253",
+          "taipei": "2024-02-16 14:12",
+          "as_of": "20240216",
+          "atom_id": "stock_observe.sector_leader_e9dad0",
+          "evidence_id": "",
+          "excerpt": "台股第一季主流有兩個族群,第一個已經飆出去就是CoWas概念股,志聖就是首選"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "unchecked"
+      }
+    },
+    {
+      "kind": "stock",
+      "instrument": "3131",
+      "price": 1420.0,
+      "role": "目標",
+      "label": "他點名・3131",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "159736253",
+          "taipei": "2024-02-16 14:12",
+          "as_of": "20240216",
+          "atom_id": "stock_observe.sector_leader_e9dad0",
+          "evidence_id": "",
+          "excerpt": "台股第一季主流有兩個族群,第一個已經飆出去就是CoWas概念股,志聖就是首選"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "unchecked"
+      }
+    },
+    {
+      "kind": "stock",
+      "instrument": "3131",
+      "price": 1300.0,
+      "role": "目標",
+      "label": "他點名・3131",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "159736253",
+          "taipei": "2024-02-16 14:12",
+          "as_of": "20240216",
+          "atom_id": "stock_observe.sector_leader_e9dad0",
+          "evidence_id": "",
+          "excerpt": "台股第一季主流有兩個族群,第一個已經飆出去就是CoWas概念股,志聖就是首選"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "unchecked"
+      }
+    },
+    {
+      "kind": "stock",
+      "instrument": "3131",
+      "price": 1000.0,
+      "role": "目標",
+      "label": "他點名・3131",
+      "provenance": [
+        {
+          "source": "atoms_latest",
+          "post_id": "159736253",
+          "taipei": "2024-02-16 14:12",
+          "as_of": "20240216",
+          "atom_id": "stock_observe.sector_leader_e9dad0",
+          "evidence_id": "",
+          "excerpt": "台股第一季主流有兩個族群,第一個已經飆出去就是CoWas概念股,志聖就是首選"
+        }
+      ],
+      "hit_n": 1,
+      "buy_signal": false,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "official_verify": {
+        "status": "unchecked"
+      }
+    }
+  ]
+}

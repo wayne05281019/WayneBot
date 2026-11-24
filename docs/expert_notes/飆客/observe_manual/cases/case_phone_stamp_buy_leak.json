@@ -1,0 +1,26 @@
+{
+  "case_id": "phone_stamp_buy_sync_leak",
+  "track": "phone_stamp",
+  "as_of": "20261105",
+  "expect_ok": false,
+  "expect_violations": ["buy_signal_leak", "phone_sync_leak", "missing_disclaimer"],
+  "deps": ["BK-PHONE", "MISSION_LOCK_B3"],
+  "note_zh": "未過閘當買訊＋phone_sync 亂開＋缺警語。",
+  "his_levels": [41760.0],
+  "brief": "準買・進場買訊（錯）",
+  "observe_slot": "觀測手冊摘要（無警語）",
+  "stamp": {
+    "disclaimer_present": false,
+    "phone_sync": "synced",
+    "buy_signal": true,
+    "layers_order": ["L1", "L2", "L3"],
+    "layer1_hypothesis": "bias_up",
+    "layer2_verdict": "confirm",
+    "layer3_verdict": "verify_ok",
+    "named_levels": [{"level": 41760.0, "source": "oral"}],
+    "instrument_labels": {
+      "twii": "加權現貨",
+      "tx": "台指日盤"
+    }
+  }
+}
