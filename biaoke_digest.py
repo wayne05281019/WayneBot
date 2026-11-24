@@ -1310,6 +1310,9 @@ def format_focus_oral(
     if not cleaned_mains:
         return ""
     mains = sorted(cleaned_mains, key=_row_key, reverse=True)
+    # 兩串窗＝傳入主文的日期下沿；更早自回（例 9/16 C-5）不准混進「現在在講」
+    _main_days = [str(p.get("date") or "") for p in mains if str(p.get("date") or "")]
+    _oldest_main_day = min(_main_days) if _main_days else ""
     cleaned_replies: List[Dict[str, Any]] = []
     for p in replies:
         if str(p.get("kind") or "") == "bystander":
@@ -1400,8 +1403,12 @@ def format_focus_oral(
             ) or _speak(t, 140)
             continue
         # 兩串都要：前一則主文日的自回不准因 day < 最新主文日被整段丢掉。
+        # 但早於兩串窗下沿的舊自回（過期 C-5 等）仍丢掉，不准灌進現在在講。
         # 最新主文之後的自回：大盤／關卡／空手句併大盤欄；其餘自回（含回別人）進「他還說」。
         # 有 reply_to 要標他在回什麼，不准上文不接下文。
+        day = str(p.get("date") or "")
+        if _oldest_main_day and day and day < _oldest_main_day:
+            continue
         if _row_key(p) >= _row_key(latest):
             bit = _reply_answer_line(
                 t, str(p.get("reply_to_text") or ""), limit=220
