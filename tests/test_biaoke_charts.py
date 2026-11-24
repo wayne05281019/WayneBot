@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""附圖索引：341 張、三來源、頭像不算、F10 排名在、問 2383 有圖。"""
+"""附圖索引：361 張（含 overlay_sync）、多來源、頭像不算、F10 排名在、問 2383 有圖。"""
 from __future__ import annotations
 
 import pytest
@@ -62,18 +62,21 @@ def test_extract_skips_years_keeps_known_f10():
     assert "6223" in ids
 
 
-def test_bundled_chart_index_has_341_three_sources_and_f10():
+def test_bundled_chart_index_has_361_sources_overlay_and_f10():
     blob = load_chart_index()
     charts = list(blob.get("charts") or [])
-    assert int(blob.get("n") or 0) == 341
-    assert len(charts) == 341
+    # overlay heal 增量後：341 舊底＋overlay_sync 20＝361
+    assert int(blob.get("n") or 0) == 361
+    assert len(charts) == 361
     srcs = {str(c.get("src") or "") for c in charts}
     assert "public1709" in srcs
     assert "club72" in srcs
     assert "club20" in srcs
+    assert "overlay_sync" in srcs
     assert sum(1 for c in charts if c.get("src") == "public1709") == 327
     assert sum(1 for c in charts if c.get("src") == "club72") == 12
     assert sum(1 for c in charts if c.get("src") == "club20") == 2
+    assert sum(1 for c in charts if c.get("src") == "overlay_sync") == 20
     urls = [str(c.get("url") or "") for c in charts]
     assert all(AVATAR_NEEDLE not in u for u in urls)
     assert any("516b26b0-786e-494d-bf8f-1897b6f7dd7f" in u for u in urls)
