@@ -3,17 +3,17 @@
 暫關只為清檢查機席，**不是作廢**。所有下列結果必須依序重開並合進 `main` → Render → 話筒。  
 CI 三刀已併入 [#1027](https://github.com/wayne05281019/WayneBot/pull/1027)，合完後**不要**再重開 #1024／#1025／#1026。
 
-## Phase 0 — CI 解卡（進行中）
+## Phase 0 — CI 解卡（已合）
 
 | PR | 分支 | 狀態 |
 |----|------|------|
-| #1027 | `cursor/ci-unblock-bundle-d6f7` | 開著・優先合 |
+| #1027 | `cursor/ci-unblock-bundle-d6f7` | **已合** `b8de3d6d`（2026-11-24 台北 11:18） |
 
-## Phase 1 — 產品話筒（#1027 綠合後依序重開・一次一席）
+## Phase 1 — 產品話筒（#1027 綠合後依序・一次一席）
 
 | 序 | PR | 分支 | 內容 |
 |----|-----|------|------|
-| 1 | #1001 | `cursor/drop-jiuha-desk-d6f7` | 撤啾哈觀盤（版面 v43） |
+| 1 | #1028（接 #1001；token 無法 reopen） | `cursor/drop-jiuha-desk-d6f7` | 撤啾哈觀盤（版面 v43）・進行中 |
 | 2 | #1002 | `cursor/biaoke-narrative-trio-fresh-d6f7` | 文敘／三窗最新主文 |
 | 3 | #1003 | `cursor/combo-screen-audit-d6f7` | 海選同源紅箭／剛離零臉 |
 | 4 | #999 | `cursor/wave-forward-verify-1123-d6f7` | 20261123 forward 對質 |

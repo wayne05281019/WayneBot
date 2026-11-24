@@ -239,8 +239,6 @@ def _text_escapes_pending(text: str) -> bool:
         return True
     if t in MENU_BTN_PIPELINE_ALIASES or t in MENU_BTN_COMBO_SCREEN_ALIASES:
         return True
-    if t in MENU_BTN_JIUHA_ALIASES:
-        return True
     if t in MENU_BTN_BIAOKE_ALIASES or t in MENU_BTN_LEAVE_BIAOKE_ALIASES:
         return True
     if t in MENU_BTN_LEAVE_DONGZHU_ALIASES:
@@ -704,15 +702,6 @@ MENU_BTN_COMBO_SCREEN_ALIASES = (
     "機構篩選",
     "流水篩選",
 )
-# 第三排第 2 格：啾哈觀盤桌（非買訊；盤後圖＋明日盤中可觀測檢查點）。
-MENU_BTN_JIUHA = "啾哈觀盤"
-MENU_BTN_JIUHA_ALIASES = (
-    MENU_BTN_JIUHA,
-    "啾哈",
-    "觀盤桌",
-    "啾哈觀察",
-    "jiuha",
-)
 MENU_BTN_LEAVE_DONGZHU = "離開洞燭先機"
 MENU_BTN_LEAVE_DONGZHU_ALIASES = (
     MENU_BTN_LEAVE_DONGZHU,
@@ -801,10 +790,10 @@ MENU_ROW2 = (
     MENU_BTN_LEAVE_ZERO,
     MENU_BTN_DONGZHU,
 )
-# 第三排七格：第 1＝綜合篩選；第 2＝啾哈觀盤；3–7 全形空白保留。
+# 第三排七格：第 1＝綜合篩選；2–7 全形空白保留（啾哈觀盤已撤）。
 MENU_ROW3 = (
     MENU_BTN_COMBO_SCREEN,
-    MENU_BTN_JIUHA,
+    MENU_BTN_SLOT,
     MENU_BTN_SLOT,
     MENU_BTN_SLOT,
     MENU_BTN_SLOT,
@@ -850,8 +839,8 @@ MENU_FULL_ALIASES = ("完整選單", "完整鍵盤")
 # v39：下排最左加「流水線」觀測（分層對質，非買訊）。上七下八。
 # v40：第三排七格；第 1＝綜合篩選（機構式串節點：流水線／連買等）；2–7 空白保留。上七下八＋三排七。
 # v41：第二排隱藏「流水線」（綜合篩選已串節點＋名單）；上七下七＋三排七，第二排名稱可完整顯示。
-# v42：第三排第 2 格「啾哈觀盤」（非買訊；每次重畫盤後圖＋明日盤中檢查點）。
-MENU_LAYOUT_VERSION = "42"
+# v43：撤「啾哈觀盤」；第三排只留綜合篩選＋空白；上七下七＋三排七。
+MENU_LAYOUT_VERSION = "43"
 MAX_PICK_INLINE_ROWS = 8
 
 # 輸入列左邊三條槓（Telegram BotCommand）。跟下方兩排重複的不放，避免兩套入口。
@@ -1560,7 +1549,7 @@ class WayneTelegramBot:
         return
 
     def _reply_menu(self, uid: str = "", *, fast: bool = False):
-        """上七下七＋第三排七格（第1綜合篩選、第2啾哈觀盤、餘空白；流水線鍵盤隱藏）。偉權與哥哥同一套，沒有精簡。
+        """上七下七＋第三排七格（第1綜合篩選、餘空白；流水線鍵盤隱藏）。偉權與哥哥同一套，沒有精簡。
 
         fast=True：不打未讀庫（釘鍵盤／LOADING 後立刻用），避免空白好幾秒。
         """
@@ -8915,85 +8904,6 @@ class WayneTelegramBot:
                 except Exception:
                     pass
 
-    async def jiuha_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """啾哈觀盤：今日盤後圖＋明日盤中可觀測檢查點（非買訊）。
-
-        每次按都重算重畫，不准吃過期一成不變圖。第一則必須 LOADING。
-        """
-        uid = str(update.effective_user.id)
-        message = update.message
-        wait_h = await self._start_plain_wait(
-            message,
-            text_fn=lambda s: self._wait_bubble(
-                "啾哈觀盤進行中", s, now="重算盤勢", rest="出圖", fill_sec=22.0
-            ),
-        )
-        try:
-            await self._pin_reply_menu(message)
-        except Exception:
-            pass
-        delivered = False
-        try:
-            try:
-                self._touch_user(
-                    uid, getattr(update.effective_user, "first_name", "") or ""
-                )
-            except Exception:
-                pass
-            try:
-                await self._enter_main_menu(message, uid)
-            except Exception:
-                logger.exception("啾哈觀盤進主選單失敗，仍出圖")
-
-            charts = getattr(self, "charts_dir", None) or get_charts_dir()
-
-            def _build() -> dict:
-                from jiuha_watch_desk import write_watch_desk_artifacts
-
-                out = os.path.join(charts, "jiuha")
-                return write_watch_desk_artifacts(
-                    market_db=self.db_path,
-                    out_dir=out,
-                    fuse_log=True,
-                )
-
-            try:
-                res = await asyncio.wait_for(
-                    asyncio.to_thread(_build), timeout=55.0
-                )
-            except asyncio.TimeoutError:
-                res = {"ok": False, "caption": "啾哈觀盤逾時。稍後再按「啾哈觀盤」。"}
-            except Exception:
-                logger.exception("啾哈觀盤組頁失敗")
-                res = {"ok": False, "caption": "啾哈觀盤失敗。稍後再試。"}
-
-            await self._stop_plain_wait(*wait_h)
-            caption = (res or {}).get("caption") or "啾哈觀盤桌（非買訊）"
-            png = (res or {}).get("png") or ""
-            if (res or {}).get("ok") and png and os.path.isfile(png):
-                try:
-                    with open(png, "rb") as f:
-                        await message.reply_photo(
-                            photo=f,
-                            caption=caption[:1024],
-                            reply_markup=self._reply_menu(uid),
-                        )
-                    delivered = True
-                except Exception:
-                    logger.exception("啾哈觀盤送圖失敗，改文字")
-            if not delivered:
-                await message.reply_text(
-                    caption[:3500],
-                    reply_markup=self._reply_menu(uid),
-                )
-                delivered = True
-        finally:
-            if not delivered:
-                try:
-                    await self._stop_plain_wait(*wait_h)
-                except Exception:
-                    pass
-
     async def flow_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """資金輪動：第一個 await 必須是 LOADING；結束一定有內容或清楚中文原因。
 
@@ -9854,15 +9764,6 @@ class WayneTelegramBot:
             logger.info("主選單：綜合篩選 uid=%s", uid)
             self._pending.pop(actor, None)
             await self.combo_screen_cmd(update, context)
-            return
-        if text in MENU_BTN_JIUHA_ALIASES or text.lower().lstrip("/") in (
-            "jiuha",
-            "jiuha_desk",
-            "watch_desk",
-        ):
-            logger.info("主選單：啾哈觀盤 uid=%s", uid)
-            self._pending.pop(actor, None)
-            await self.jiuha_cmd(update, context)
             return
         # 第三排空白保留格＝忽略，不准當指令。
         if (update.message.text or "") == MENU_BTN_SLOT:
