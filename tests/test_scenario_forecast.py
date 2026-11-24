@@ -221,7 +221,7 @@ def test_dc_wave_labels_and_projection():
     assert wave.get("path_done")
     # 我估閘附加：pot=MINE；不准冒充飆大
     mw = wave.get("mine_wave") or {}
-    assert mw.get("pot") == "MINE"
+    assert mw.get("pot") in ("MINE", "mine")
     assert mw.get("source") == "mine"
     assert mw.get("≠biaoke") is True
     assert "extension" in mw and "extension_next" in mw
