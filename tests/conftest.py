@@ -19,6 +19,9 @@ import pytest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
+_TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
+if _TESTS_DIR not in sys.path:
+    sys.path.insert(0, _TESTS_DIR)
 
 # 在任何 fixture 動手腳之前先記下真正的庫在哪。
 _PROD_DB = (
@@ -68,6 +71,49 @@ def pytest_configure(config):
         "markers",
         "real_fresh_gate: 測 daily_quotes 完整日新鮮閘（不把 fresh 對齊列數）",
     )
+    config.addinivalue_line(
+        "markers",
+        "smoke: CI 快篩（無出圖／無長 e2e；見 tests/smoke_classify.py）",
+    )
+    config.addinivalue_line(
+        "markers",
+        "render: 出圖／PNG／大盤渲圖／版面卡面（只跑 full-suite）",
+    )
+    config.addinivalue_line(
+        "markers",
+        "slow: 長 e2e／stress／重 suite（只跑 full-suite）",
+    )
+
+
+def pytest_collection_modifyitems(config, items):
+    """依模組檔名自動掛 smoke／render／slow；production_db 不改。
+
+    不恢復全域 per-test timeout（#501）。network 白名單仍只給真打外網的測。
+    """
+    from smoke_classify import smoke_bucket
+
+    for item in items:
+        if item.get_closest_marker("production_db"):
+            continue
+        if (
+            item.get_closest_marker("render")
+            or item.get_closest_marker("slow")
+            or item.get_closest_marker("smoke")
+        ):
+            continue
+        try:
+            stem = item.path.stem
+        except AttributeError:
+            stem = str(item.fspath).rsplit("/", 1)[-1]
+            if stem.endswith(".py"):
+                stem = stem[:-3]
+        bucket = smoke_bucket(stem)
+        if bucket == "render":
+            item.add_marker(pytest.mark.render)
+        elif bucket == "slow":
+            item.add_marker(pytest.mark.slow)
+        else:
+            item.add_marker(pytest.mark.smoke)
 
 
 @pytest.fixture(autouse=True)
