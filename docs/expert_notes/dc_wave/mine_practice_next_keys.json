@@ -1,0 +1,47 @@
+{
+  "generated_at_taipei": "2026-11-23T23:38:23+0800",
+  "pot": "MINE",
+  "§13": "換完必須留下下一版候選；本檔即再生鍵",
+  "phone": {
+    "ext": "mine_ext1618_v1",
+    "ld": "mine_lead_diag_v1"
+  },
+  "next_candidates": {
+    "ext": "mine_ext1618_v2",
+    "ld": "mine_lead_diag_v2",
+    "notes": {
+      "mine_ext1618_v1": "L_max≥1.618×L_2nd（現況）",
+      "mine_ext1618_v2": "v1＋③非最短＋禁標準 impulse 1–4 重疊當擴延 pass",
+      "mine_lead_diag_v1": "①④重疊→candidate；confirmed 要位置＋5-3-5-3-5",
+      "mine_lead_diag_v2": "重疊深度≥8%＋位置或結構至少一項才 candidate"
+    }
+  },
+  "summary_next_vs_phone": {
+    "phone": {
+      "pot": "MINE",
+      "n_scoreable": 23,
+      "n_hit": 9,
+      "n_miss": 14,
+      "n_pending": 5,
+      "n_rows": 28,
+      "winrate": 0.391304347826087,
+      "gate_ready_n20": true,
+      "≠mixed_pots": true,
+      "basis": "勝率只記我估鍋；n≥20且贏現況才換（§13）"
+    },
+    "next": {
+      "pot": "MINE",
+      "n_scoreable": 23,
+      "n_hit": 7,
+      "n_miss": 16,
+      "n_pending": 5,
+      "n_rows": 28,
+      "winrate": 0.30434782608695654,
+      "gate_ready_n20": true,
+      "≠mixed_pots": true,
+      "basis": "勝率只記我估鍋；n≥20且贏現況才換（§13）"
+    }
+  },
+  "≠biaoke": true,
+  "≠golden_buy": true
+}

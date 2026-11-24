@@ -1,0 +1,79 @@
+{
+  "as_of": "2026-11-23",
+  "tz": "Asia/Taipei",
+  "track": "DC-BOUND",
+  "mission_lock": ["B6", "B9"],
+  "boundary_ref": "docs/expert_notes/dc_wave/vs-biaoke-boundary.md",
+  "observe_manual_policy_zh": "飆大 observe_manual 產出只讀；不准改寫成 DC 同學原文或寫進 dc_sf_*",
+  "not_buy_signal": true,
+  "pots": {
+    "biaoke": {"zh": "他說／飆預測", "role": "老師"},
+    "dc_peer": {"zh": "DC同學", "role": "同學頂標教材"},
+    "mine": {"zh": "我估", "role": "self／消化後工具"}
+  },
+  "hard_forbid": [
+    "把 DC 教學句寫進飆大 thesis／他說氣泡",
+    "把飆大 Fib 反彈壓價表標成 DC 或寫進 dc_sf_* 當同學文",
+    "標準 impulse 1–4 失敗自動改標前端傾斜",
+    "用 MINE 擴延閘改 wave_fib_morph_curriculum 或老師 Fib 表",
+    "observe_manual 產出互寫進 DC digest／sources"
+  ],
+  "rows": [
+    {
+      "id": "w1_w4_overlap",
+      "topic": "1–4 重疊",
+      "biaoke_zh": "標準推進禁止；重疊→趨勢化解／再一組跌（課綱鐵律）",
+      "dc_zh": "前端傾斜教材特徵之一（位置①或A＋內部5-3-5-3-5）；原文不准當他說",
+      "mine_zh": "leading_diagonal_flags；candidate＝重疊；confirmed 還要位置＋結構；phone＝我估｜前端傾斜"
+    },
+    {
+      "id": "fib_0382_0618_075",
+      "topic": "Fib 0.382／0.618／0.75",
+      "biaoke_zh": "公開反彈壓價位表（台指日盤可修訂版；課綱）",
+      "dc_zh": "同學若講同比率＝教材；消化進我估工具，不准把飆大價表標成 DC",
+      "mine_zh": "fib_retracement_levels 結構／回撤工具；≠biaoke_fib_rebound_table；pot＝mine"
+    },
+    {
+      "id": "ratio_1618",
+      "topic": "1.618",
+      "biaoke_zh": "戰術用語「可能擴延／第五波擴延」；9波擴延敘事（他原文）",
+      "dc_zh": "教學圖：擴延＝五浪群 L_max≥1.618×L_2nd（消化來源臉）",
+      "mine_zh": "detect_extension_1618 結構閘；phone＝我估｜擴延1618；≠ C段1.618目標價"
+    },
+    {
+      "id": "extension_vs_target",
+      "topic": "擴延閘 vs C目標價",
+      "biaoke_zh": "他點的擴延／C-7～C-9 帶＝原文敘事；不是結構閘公式",
+      "dc_zh": "同學圖教結構擴延檢測；不准抄進他說氣泡",
+      "mine_zh": "結構閘與 fib_extension_targets／等長C 分欄；兩者都屬我估但不互代"
+    },
+    {
+      "id": "wave_numbers_phone",
+      "topic": "浪號上話筒",
+      "biaoke_zh": "大盤他點過才標；不准發明個股5／9",
+      "dc_zh": "同學圖浪號只供對質參考；不准冒充他原文上話筒",
+      "mine_zh": "同樣證據閘；我估也不准未過閘發明5／9；標必須我估｜…"
+    },
+    {
+      "id": "buy_signal",
+      "topic": "買訊",
+      "biaoke_zh": "不是買訊；選股仍看高低卡黃金買點",
+      "dc_zh": "不是買訊；情境對質分軌 dc_sf_*",
+      "mine_zh": "不是買訊；不准寫回黃金買點／海選／洞燭"
+    },
+    {
+      "id": "corpus_write",
+      "topic": "語料寫入方向",
+      "biaoke_zh": "biaoke_posts／pred_levels＝他原文抽出；observe_manual 只讀產出手冊",
+      "dc_zh": "dc_sf_*／dc_wave sources＝同學；不准吃進飆大1709／observe_manual 當同學文",
+      "mine_zh": "self_pred／mine_wave；可讀老師／同學；不准回寫 pred_levels 或 biaoke_posts"
+    },
+    {
+      "id": "diagonal_ending_vs_leading",
+      "topic": "前端傾斜 vs 末端傾斜",
+      "biaoke_zh": "課綱主講標準 impulse 1–4 不重疊；不自動等同傾斜術語",
+      "dc_zh": "Leading＝持續；Ending＝終結；意涵相反不准混標",
+      "mine_zh": "implication=continuation；vs_ending 分欄；未齊末端教材不准標 ending_diagonal"
+    }
+  ]
+}

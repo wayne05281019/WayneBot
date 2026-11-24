@@ -1,6 +1,6 @@
 # MINE vs 飆大課綱邊界（勿混鍋）
 
-時區：`Asia/Taipei`。2026-11-01。  
+時區：`Asia/Taipei`。2026-11-01；核對 2026-11-23（練習再開仍守本邊界）。  
 對照：`docs/expert_notes/飆客/wave_fib_morph_curriculum.md`（老師＝飆大）× 本目錄 DC→**我的**規則。
 
 ## 角色
@@ -33,4 +33,10 @@
 2. 把飆大原文標成 DC 或寫進 `dc_sf_*` 當同學文。  
 3. 標準 impulse 1–4 失敗 **自動**改標前端傾斜（缺位置＋內部結構＝假陽性）。  
 4. 用 MINE 擴延閘結果去改 `wave_fib_morph_curriculum.md` 或老師 Fib 表。  
-5. Drive 上的飆大 1709／社團包 **不准**拷進 `dc_wave/sources/`（那是老師語料）。
+5. Drive 上的飆大 1709／社團包 **不准**拷進 `dc_wave/sources/`（那是老師語料）。  
+6. 飆大 `observe_manual` 產出只讀；不准改寫成 DC（B9 對照不互寫）。
+
+## 同題三欄對照
+
+機器＋人讀：`cross_pot_compare.json`／`cross_pot_compare.md`（他說／DC／我估永不合併）。  
+程式牆：`wave_pot_boundary.py`＋`tests/test_wave_pot_boundary.py`。

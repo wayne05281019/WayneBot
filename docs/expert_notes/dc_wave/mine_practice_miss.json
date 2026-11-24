@@ -1,0 +1,196 @@
+{
+  "generated_at_taipei": "2026-11-23T23:38:23+0800",
+  "pot": "MINE",
+  "verdict": "偏",
+  "n": 14,
+  "items": [
+    {
+      "symbol": "TWII",
+      "as_of": "20240628",
+      "judge": {
+        "verdict": "偏",
+        "scoreable": true,
+        "gate_pass": false,
+        "post_move_pct": 0.041897773773730315,
+        "continuation": true,
+        "reversal": false,
+        "pot": "MINE"
+      }
+    },
+    {
+      "symbol": "TWII",
+      "as_of": "20250630",
+      "judge": {
+        "verdict": "偏",
+        "scoreable": true,
+        "gate_pass": false,
+        "post_move_pct": 0.03535586668002916,
+        "continuation": true,
+        "reversal": false,
+        "pot": "MINE"
+      }
+    },
+    {
+      "symbol": "TWII",
+      "as_of": "20250926",
+      "judge": {
+        "verdict": "偏",
+        "scoreable": true,
+        "gate_pass": false,
+        "post_move_pct": 0.06731928322584409,
+        "continuation": true,
+        "reversal": false,
+        "pot": "MINE"
+      }
+    },
+    {
+      "symbol": "TWII",
+      "as_of": "20260227",
+      "judge": {
+        "verdict": "偏",
+        "scoreable": true,
+        "gate_pass": true,
+        "post_move_pct": -0.04455571844547644,
+        "continuation": false,
+        "reversal": true,
+        "pot": "MINE"
+      }
+    },
+    {
+      "symbol": "TWII",
+      "as_of": "20260729",
+      "judge": {
+        "verdict": "偏",
+        "scoreable": true,
+        "gate_pass": false,
+        "post_move_pct": 0.14415460247433423,
+        "continuation": true,
+        "reversal": false,
+        "pot": "MINE"
+      }
+    },
+    {
+      "symbol": "TWII",
+      "as_of": "20260930",
+      "judge": {
+        "verdict": "偏",
+        "scoreable": true,
+        "gate_pass": true,
+        "post_move_pct": -0.02332181424535633,
+        "continuation": false,
+        "reversal": true,
+        "pot": "MINE"
+      }
+    },
+    {
+      "symbol": "2330",
+      "as_of": "20240315",
+      "judge": {
+        "verdict": "偏",
+        "scoreable": true,
+        "gate_pass": false,
+        "post_move_pct": 0.049136786188579015,
+        "continuation": true,
+        "reversal": false,
+        "pot": "MINE"
+      }
+    },
+    {
+      "symbol": "2330",
+      "as_of": "20240628",
+      "judge": {
+        "verdict": "偏",
+        "scoreable": true,
+        "gate_pass": false,
+        "post_move_pct": 0.26329113924050634,
+        "continuation": true,
+        "reversal": false,
+        "pot": "MINE"
+      }
+    },
+    {
+      "symbol": "2330",
+      "as_of": "20240930",
+      "judge": {
+        "verdict": "偏",
+        "scoreable": true,
+        "gate_pass": false,
+        "post_move_pct": 0.26329113924050634,
+        "continuation": true,
+        "reversal": false,
+        "pot": "MINE"
+      }
+    },
+    {
+      "symbol": "2330",
+      "as_of": "20241220",
+      "judge": {
+        "verdict": "偏",
+        "scoreable": true,
+        "gate_pass": false,
+        "post_move_pct": 0.26329113924050634,
+        "continuation": true,
+        "reversal": false,
+        "pot": "MINE"
+      }
+    },
+    {
+      "symbol": "2330",
+      "as_of": "20250630",
+      "judge": {
+        "verdict": "偏",
+        "scoreable": true,
+        "gate_pass": false,
+        "post_move_pct": 0.0660377358490566,
+        "continuation": true,
+        "reversal": false,
+        "pot": "MINE"
+      }
+    },
+    {
+      "symbol": "2330",
+      "as_of": "20260227",
+      "judge": {
+        "verdict": "偏",
+        "scoreable": true,
+        "gate_pass": true,
+        "post_move_pct": -0.06265664160401002,
+        "continuation": false,
+        "reversal": true,
+        "pot": "MINE"
+      }
+    },
+    {
+      "symbol": "2330",
+      "as_of": "20260729",
+      "judge": {
+        "verdict": "偏",
+        "scoreable": true,
+        "gate_pass": false,
+        "post_move_pct": 0.08863636363636364,
+        "continuation": true,
+        "reversal": false,
+        "pot": "MINE"
+      }
+    },
+    {
+      "symbol": "0050",
+      "as_of": "20250630",
+      "judge": {
+        "verdict": "偏",
+        "scoreable": true,
+        "gate_pass": false,
+        "post_move_pct": 0.0421836228287841,
+        "continuation": true,
+        "reversal": false,
+        "pot": "MINE"
+      }
+    }
+  ],
+  "track_keys": {
+    "phone_ext": "mine_ext1618_v1",
+    "next_ext": "mine_ext1618_v2",
+    "phone_ld": "mine_lead_diag_v1",
+    "next_ld": "mine_lead_diag_v2"
+  }
+}

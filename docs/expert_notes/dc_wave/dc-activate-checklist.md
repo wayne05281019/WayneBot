@@ -2,7 +2,7 @@
 
 > 本檔＝配線清單。規則本體見 `dc-wave-digest.md`。純函式見 repo 根目錄 `mine_wave_rules.py`（本批新增；主 agent 合 git）。
 
-時區：`Asia/Taipei`。2026-11-01。
+時區：`Asia/Taipei`。2026-11-01；核對 2026-11-23。
 
 ---
 
@@ -14,8 +14,8 @@
 | 我估暗色圖 | `_render_twii_self_pred_dark` | 讀 `pack["self_pred"]["mine_wave"]`；過關才畫註「我估｜擴延1618」／「我估｜前端傾斜」。 |
 | 標籤工廠 | `_self_pred_label(price, basis)` | basis 用短句：`擴延1618·③`、`前端傾斜1-4重疊`。 |
 | DC 情境分軌 | `dc_scenario_silent_verify`（`dc_sf_*` 表） | 只當 **同學圖對質** 參考；可遷移句進 `dc_sf_rules.learn_transfer` 時標 `origin=dc_teach`，**不准**寫 `biaoke_posts`。 |
-| 個股情境臉 | `scenario_forecast_chart.py` | 已有 DC 視覺／1.618 路徑比例；擴延閘用 `mine_wave_rules` 當可選結構檢查，失敗不改買訊、只降置信。 |
-| 靜默對質鍵 | 新建建議 | `mine_ext1618_v1`、`mine_lead_diag_v1`（分軌；§13 再生下一版）。 |
+| 個股情境臉 | `scenario_forecast_chart.py` → `infer_dc_wave_scenario` | 附加 `mine_wave`（`_attach_mine_wave_gate`／擴延1618＋前端傾斜）；失敗不改買訊、只降置信。標籤 pot=MINE。 |
+| 靜默對質鍵 | 現況＋再生 | 現況 `mine_ext1618_v1`／`mine_lead_diag_v1`；下一版 `mine_ext1618_v2`／`mine_lead_diag_v2`（分軌；只記我估）。末端圖到齊再開 `mine_end_diag_v1`。 |
 
 ---
 
@@ -66,11 +66,15 @@
 ## D. 啟用步驟（主 agent）
 
 1. [x] 落 digest＋sources（本目錄）。  
-2. [x] 純函式 `mine_wave_rules.py`＋`tests/test_mine_wave_rules.py`（未 commit）。  
-3. [ ] `_build_self_pred_levels` 可選呼叫（最小 diff；失敗吞掉、不擋出圖）。  
-4. [ ] 靜默對質排程鍵掛上（n 累積；過程不進對話）。  
-5. [ ] 話筒／飆大路徑 grep 確認無 `leading_diagonal`／`擴延1618` 洩漏進「他說」。  
-6. [ ] Drive：本批教學圖若還有完整 DC 包，補進 `docs/expert_notes/dc_wave/sources/`（目前 Drive MCP 搜尋空）。
+2. [x] 純函式 `mine_wave_rules.py`＋`tests/test_mine_wave_rules.py`（擴延／前端傾斜閘＋v2 再生鍵）。  
+3. [x] `infer_dc_wave_scenario` 附加 `mine_wave`（失敗吞掉、不擋出圖；pot=MINE）。  
+4. [x] 官方柱練習樣例＋`tests/test_dc_wave_practice_samples.py`（見 `practice_log_20261123.md`）。  
+5. [x] 官方柱樣例對質腳本 `scripts/mine_wave_practice_confront.py` → `mine_practice_*.json`。  
+6. [x] `_build_self_pred_levels` 可選呼叫（最小 diff；失敗吞掉、不擋出圖；`mine_wave` 不進 `pred_levels`）。  
+7. [x] 話筒／飆大路徑分鍋牆：`wave_pot_boundary.py`＋`tests/test_wave_pot_boundary.py`（B6／B9；對照表 `cross_pot_compare.*`）。  
+8. [ ] 靜默對質排程鍵掛上 Render（n 累積；過程不進對話）。  
+9. [ ] 話筒／飆大路徑 grep 確認無 `leading_diagonal`／`擴延1618` 洩漏進「他說」。  
+10. [ ] Drive／附檔：末端傾斜＋motive 全表進 `sources/`（目前仍空）。
 
 ---
 
