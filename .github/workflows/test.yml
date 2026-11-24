@@ -46,6 +46,7 @@ jobs:
         # 舊式 -m "not production_db" ≈4350 測含大量出圖，單職可 >60 分。
         # 現改 -m smoke（conftest 依檔名自動掛；見 tests/smoke_classify.py）。
         # 不加 per-test timeout：會誤殺會打官方 ISIN 外網的測（見 #501 3m52s 紅）
+        # 外網掛死主因：conftest stub MOPS／_post_form／月表（查股 ensure→SSL→executor 300s）
         # 整 job 仍有 timeout-minutes:25；真掛靠 concurrency 取消重跑
         run: python -m pytest -q --strict-markers -m smoke --durations=25
 

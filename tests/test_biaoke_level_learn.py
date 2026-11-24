@@ -1092,7 +1092,8 @@ def test_teach_biaoke_posts_fresh_hard_timeout(monkeypatch):
     import biaoke_level_learn as bll
 
     def _hang(**_kwargs):
-        _time.sleep(30)
+        # 逾時測只需超過 INGEST_TIMEOUT；勿 sleep(30) 留孤兒 thread 拖 executor
+        _time.sleep(1.0)
         return {"ok": True}
 
     bll._TEACH_BIAOKE_FRESH_AT.clear()
