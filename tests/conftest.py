@@ -19,6 +19,9 @@ import pytest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
+_TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
+if _TESTS_DIR not in sys.path:
+    sys.path.insert(0, _TESTS_DIR)
 
 # 在任何 fixture 動手腳之前先記下真正的庫在哪。
 _PROD_DB = (
@@ -62,12 +65,55 @@ def pytest_configure(config):
     )
     config.addinivalue_line(
         "markers",
-        "network: 允許打外網（預設單元測 stub ISIN／不准掛死 smoke）",
+        "network: 允許打外網（預設單元測 stub ISIN／MOPS／月表；不准掛死 smoke）",
     )
     config.addinivalue_line(
         "markers",
         "real_fresh_gate: 測 daily_quotes 完整日新鮮閘（不把 fresh 對齊列數）",
     )
+    config.addinivalue_line(
+        "markers",
+        "smoke: CI 快篩（無出圖／無長 e2e；見 tests/smoke_classify.py）",
+    )
+    config.addinivalue_line(
+        "markers",
+        "render: 出圖／PNG／大盤渲圖／版面卡面（只跑 full-suite）",
+    )
+    config.addinivalue_line(
+        "markers",
+        "slow: 長 e2e／stress／重 suite（只跑 full-suite）",
+    )
+
+
+def pytest_collection_modifyitems(config, items):
+    """依模組檔名自動掛 smoke／render／slow；production_db 不改。
+
+    不恢復全域 per-test timeout（#501）。network 白名單仍只給真打外網的測。
+    """
+    from smoke_classify import smoke_bucket
+
+    for item in items:
+        if item.get_closest_marker("production_db"):
+            continue
+        if (
+            item.get_closest_marker("render")
+            or item.get_closest_marker("slow")
+            or item.get_closest_marker("smoke")
+        ):
+            continue
+        try:
+            stem = item.path.stem
+        except AttributeError:
+            stem = str(item.fspath).rsplit("/", 1)[-1]
+            if stem.endswith(".py"):
+                stem = stem[:-3]
+        bucket = smoke_bucket(stem)
+        if bucket == "render":
+            item.add_marker(pytest.mark.render)
+        elif bucket == "slow":
+            item.add_marker(pytest.mark.slow)
+        else:
+            item.add_marker(pytest.mark.smoke)
 
 
 @pytest.fixture(autouse=True)
@@ -103,6 +149,44 @@ def _stub_isin_universe_offline(request, monkeypatch):
             _no_isin,
             raising=False,
         )
+    except Exception:
+        pass
+    yield
+
+
+@pytest.fixture(autouse=True)
+def _stub_official_http_offline(request, monkeypatch):
+    """單元測不准真打 MOPS／證交所月表。
+
+    查股／介紹圖會 asyncio.to_thread(ensure_stock_fundamentals) 或同步 ensure；
+    SSL 握手卡住時 requests timeout 不生效，asyncio 關 loop 再等 default
+    executor join 300s（CI smoke --durations 多支卡在 ~300／500／900s，
+    總長 142→180 分被 cancel；本機 faulthandler 對質過）。
+    需要真抓掛 @pytest.mark.network（含 production_db 路徑）。
+    """
+    if request.node.get_closest_marker("network"):
+        yield
+        return
+
+    def _no_json(*_a, **_k):
+        return []
+
+    def _no_bytes(*_a, **_k):
+        return b""
+
+    # _post_form＝MOPS ajax POST（timeout=60×3）；漏 stub 時空庫 ensure
+    # 會連打數十次，CI smoke 卡在介紹圖／查股測（本機 durations 對質）。
+    # 不准 stub biaoke_walk.fetch_stock_month：月表補庫單元測會傳 mock session，
+    # 整函 stub 會讓 test_missing_months_skip_index_and_backfill_queue months=0（#1027 full 紅）。
+    monkeypatch.setattr("fundamentals._get", _no_json, raising=False)
+    monkeypatch.setattr("fundamentals._get_bytes", _no_bytes, raising=False)
+    monkeypatch.setattr("fundamentals._post_form", _no_bytes, raising=False)
+    try:
+        import fundamentals as _fund
+
+        monkeypatch.setattr(_fund, "_get", _no_json)
+        monkeypatch.setattr(_fund, "_get_bytes", _no_bytes)
+        monkeypatch.setattr(_fund, "_post_form", _no_bytes)
     except Exception:
         pass
     yield

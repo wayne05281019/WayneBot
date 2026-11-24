@@ -13,11 +13,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # 快速訊號：完全不需要資料庫，幾十秒內告訴你有沒有明顯壞掉。
+  # 快篩：只跑 smoke marker（自動掛給非出圖／非長測單元）；理想 ≤10–15 分。
+  # 出圖／PNG／大盤渲圖／stress／e2e 掛 render|slow，只進 full-suite。
   smoke-no-db:
     runs-on: ubuntu-latest
-    # 與 full-suite 同量級（非 production_db 仍含大量出圖）；120 仍誤殺 full-suite；放寬到 180
-    timeout-minutes: 180
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
 
@@ -42,14 +42,21 @@ jobs:
           test "$ok" = 1
           python -c "import kiwisolver, matplotlib; print('deps ok', kiwisolver.__version__)"
 
-      - name: 不需資料庫的全部測試
+      - name: smoke 快篩（非出圖／非長測）
+        # 舊式 -m "not production_db" ≈4350 測含大量出圖，單職可 >60 分。
+        # 現改 -m smoke（conftest 依檔名自動掛；見 tests/smoke_classify.py）。
         # 不加 per-test timeout：會誤殺會打官方 ISIN 外網的測（見 #501 3m52s 紅）
-        # 整 job 仍有 timeout-minutes:180；真掛靠 concurrency 取消重跑
-        run: python -m pytest -q --strict-markers -m "not production_db" --durations=25
+        # 外網掛死主因：conftest stub MOPS／_post_form／月表（查股 ensure→SSL→executor 300s）
+        # 整 job 仍有 timeout-minutes:25；真掛靠 concurrency 取消重跑
+        run: python -m pytest -q --strict-markers -m smoke --durations=25
 
   # 完整訊號：抓 Release 庫，跑包含選單、決策卡、出圖、大盤頁的全套。
   # 只跑煙霧測試的話，回歸會安靜地合併進 main 再部署上去。
+  # needs smoke：同一 PR 不准 smoke／full 並搶兩席（24 PR 排隊時峰值約腰斬）；
+  # smoke 紅就不開 full，省 runner。仍兩職都綠才合（對齊 #969）。
+  # 詳見 docs/ci_queue_concurrency_strategy_20261123.md
   full-suite:
+    needs: smoke-no-db
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:

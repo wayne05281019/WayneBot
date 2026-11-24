@@ -1570,7 +1570,8 @@ def test_refresh_official_sidecars_hard_timeout(monkeypatch):
     monkeypatch.setenv("WAYNE_MORNING_SIDECAR_TIMEOUT_SEC", "1")
 
     def _hang(*_a, **_k):
-        time.sleep(30)
+        # 逾時測只需超過 SIDECAR_TIMEOUT；勿 sleep(30) 留孤兒 thread 拖 executor
+        time.sleep(2.5)
         return {}
 
     # body 內 from X import sync_*：patch 模組屬性即可
