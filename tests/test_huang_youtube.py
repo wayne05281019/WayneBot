@@ -120,6 +120,7 @@ def test_parse_drive_name_and_known_ids():
     assert resolve_drive_file_id("20261118") == "11VxUW3rSDVGDdhgY0_nqtBM7drSA9dj-"
     assert resolve_drive_file_id("20261119") == "1CMs7WKU3dVhquVCaQiz2QZIadP29llKV"
     assert resolve_drive_file_id("20261120") == "1uMrzOIM-w5fNfXR6gqzyamZNP52eBMPY"
+    assert resolve_drive_file_id("20261123") == "1c60oUNq3A5q4WTTqXe1EP0Uu4h0jwaaf"
     assert HUANG_DRIVE_FOLDER_ID_DEFAULT.startswith("1")
     assert "37837" in extract_levels_from_text("低點 37837 與 42471")
 
@@ -179,6 +180,78 @@ def test_20261120_title_and_oral_teach_tags():
     day = pick_day_video(parse_rss_xml(sample), "20261120")
     assert day["video_id"] == "G9uSEfcljWQ"
     assert "20261120" in day["title"]
+
+
+def test_20261123_drive_and_oral_absorb():
+    """20261123：Drive 1123 片＋費半／台積ADR／美光／南亞科；大盤仍五段／台積仍三段。"""
+    import json
+    from pathlib import Path
+
+    from huang_youtube import (
+        extract_teach_tags,
+        parse_drive_name_ymd,
+        parse_rss_xml,
+        pick_day_video,
+        resolve_drive_file_id,
+    )
+
+    assert parse_drive_name_ymd("1123黃培碩.mp4") == "20261123"
+    assert resolve_drive_file_id("20261123") == "1c60oUNq3A5q4WTTqXe1EP0Uu4h0jwaaf"
+    title = "費半、台積電ADR、美光、南亞科 20261123 黃培碩 分析師 運達證券投顧"
+    oral = (
+        "確實大盤是五段式下來。現在目前第五段。台積電這一波大概還是只有三段式的；"
+        "不是五段式的。南亞科最高五六九，標準三三五的調整形態。"
+    )
+    tags = extract_teach_tags(title, oral)
+    assert "fifth_leg" in tags
+    assert "three_leg" in tags
+    absorb = json.loads(
+        Path("docs/expert_notes/飆客/decade_lab/huang_oral_absorb_20261123.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert absorb.get("as_of_day") == "20261123"
+    assert absorb.get("buy_signal") is False
+    mv = absorb.get("market_verdict_zh") or {}
+    assert "五段" in str(mv.get("now") or "")
+    assert "第五" in str(mv.get("now") or "")
+    tsmc = absorb.get("tsmc_contrast_zh") or {}
+    assert "三段" in str(tsmc.get("verdict_zh") or "")
+    levels = absorb.get("levels_he_marked_zh") or {}
+    twii = levels.get("TWII") or {}
+    assert "35442" in str(twii.get("levels") or [])
+    # 路人留言位階不准當他的
+    banned = " ".join(
+        str(x)
+        for x in (
+            absorb.get("not_his_levels_zh") or [],
+            json.dumps(absorb, ensure_ascii=False),
+        )
+    )
+    assert "路人" in banned or "留言" in banned
+    sample = f"""<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns:yt="http://www.youtube.com/xml/schemas/2015"
+ xmlns:media="http://search.yahoo.com/mrss/"
+ xmlns="http://www.w3.org/2005/Atom">
+ <entry>
+  <id>yt:video:9uokuTDorFs</id>
+  <yt:videoId>9uokuTDorFs</yt:videoId>
+  <title>期股戰</title>
+  <published>2026-11-23T07:11:50+00:00</published>
+  <media:group><media:description></media:description></media:group>
+ </entry>
+ <entry>
+  <id>yt:video:g2aAJd2zXC8</id>
+  <yt:videoId>g2aAJd2zXC8</yt:videoId>
+  <title>{title}</title>
+  <published>2026-11-23T07:09:35+00:00</published>
+  <media:group><media:description>x</media:description></media:group>
+ </entry>
+</feed>
+"""
+    day = pick_day_video(parse_rss_xml(sample), "20261123")
+    assert day["video_id"] == "g2aAJd2zXC8"
+    assert "20261123" in day["title"]
 
 
 def test_vtt_to_text_strips_timestamps(tmp_path):
