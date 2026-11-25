@@ -14,6 +14,8 @@ def test_busy_text_is_short_locked_copy():
     assert "morning" in bwn.KINDS
     assert "fuse" in bwn.KINDS
     assert "dc_sf" in bwn.KINDS
+    assert "winrate" in bwn.KINDS
+    assert bwn.HOLD_WINDOWS_HHMM["winrate"] == (2055, 2145)
 
 
 def test_start_finish_stores_per_chat_and_deletes(tmp_path, monkeypatch):
@@ -144,12 +146,14 @@ def test_wiring_in_heavy_jobs():
     morning_src = inspect.getsource(mr.MainRunner.run_morning_screen)
     closed_src = inspect.getsource(mr.MainRunner._run_closed_day_morning_digest)
     fuse_src = inspect.getsource(mr.MainRunner.run_increment_job)
+    wr_src = inspect.getsource(mr.MainRunner.run_winrate_buypoint)
     dc_src = inspect.getsource(dc.night_tick)
     phone_src = inspect.getsource(WayneTelegramBot._on_text_bound)
 
     assert "busy_window" in morning_src and '"morning"' in morning_src
     assert 'busy_window("morning"' in closed_src
     assert 'busy_window("fuse"' in fuse_src
+    assert 'busy_window("winrate"' in wr_src
     assert 'start_busy_notice("dc_sf"' in dc_src
     assert 'finish_busy_notice("dc_sf"' in dc_src
     assert "_heavy_job_blocks_phone" in phone_src

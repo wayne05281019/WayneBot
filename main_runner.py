@@ -3787,36 +3787,40 @@ class MainRunner:
             logger.error("無完整交易日可寫勝率買點")
             return False
         logger.info("🎯 21:00 勝率買點掃 leave_zero（藍▲），基準日 %s", as_of)
-        try:
-            day, rows = scan_winrate_leave_zero(self.db_path, as_of=as_of)
-        except Exception as e:
-            logger.error("勝率買點掃描失敗: %s", e, exc_info=True)
-            return False
-        as_of = day or as_of
-        key = pipeline_run_key(as_of)
-        n = save_winrate_roster(self.db_path, as_of, rows)
-        logger.info("勝率買點名單 %s 檔 as_of=%s", n, as_of)
-        try:
-            from winrate_buypoint import silent_remember_roster
+        # 全市場掃會拖死查股 LOADING／輪詢心跳：重活窗擋話筒重鈕，結束魔法刪。
+        from busy_window_notice import busy_window
 
-            silent_remember_roster(self.db_path, as_of, rows)
-        except Exception:
-            logger.debug("勝率買點靜默落檔略過", exc_info=True)
-        # AI 倉母體＝勝率買點；必須等名單落檔後才成交（20:00 晚間太早）。
-        # 已 BUY 戶在 _run_ai_desk 內 skip_new_buys（防抄底無限加碼；雙人分開）。
-        try:
-            self._run_ai_desk(as_of, results={}, notify=bool(notify))
-        except Exception as e:
-            logger.warning("勝率名單後 AI 模擬倉略過：%s", e)
-        # 建議哪檔過閘篩：推播臉用 paint；roster 落檔仍是完整 AI leave_zero
-        push_rows = rows
-        try:
-            from winrate_buypoint import apply_suggest_paint
+        with busy_window("winrate", db_path=self.db_path, enabled=True):
+            try:
+                day, rows = scan_winrate_leave_zero(self.db_path, as_of=as_of)
+            except Exception as e:
+                logger.error("勝率買點掃描失敗: %s", e, exc_info=True)
+                return False
+            as_of = day or as_of
+            key = pipeline_run_key(as_of)
+            n = save_winrate_roster(self.db_path, as_of, rows)
+            logger.info("勝率買點名單 %s 檔 as_of=%s", n, as_of)
+            try:
+                from winrate_buypoint import silent_remember_roster
 
-            push_rows = apply_suggest_paint(self.db_path, rows, as_of=as_of)
-        except Exception:
-            logger.debug("勝率建議篩略過，推播用整包", exc_info=True)
+                silent_remember_roster(self.db_path, as_of, rows)
+            except Exception:
+                logger.debug("勝率買點靜默落檔略過", exc_info=True)
+            # AI 倉母體＝勝率買點；必須等名單落檔後才成交（20:00 晚間太早）。
+            # 已 BUY 戶在 _run_ai_desk 內 skip_new_buys（防抄底無限加碼；雙人分開）。
+            try:
+                self._run_ai_desk(as_of, results={}, notify=bool(notify))
+            except Exception as e:
+                logger.warning("勝率名單後 AI 模擬倉略過：%s", e)
+            # 建議哪檔過閘篩：推播臉用 paint；roster 落檔仍是完整 AI leave_zero
             push_rows = rows
+            try:
+                from winrate_buypoint import apply_suggest_paint
+
+                push_rows = apply_suggest_paint(self.db_path, rows, as_of=as_of)
+            except Exception:
+                logger.debug("勝率建議篩略過，推播用整包", exc_info=True)
+                push_rows = rows
         sent_ok = True
         if notify:
             # 舊鍵 winrate-{as_of} 曾錯推（公式有剛離零但圖無藍▲紅框）→ 先更正再寄正確名單。

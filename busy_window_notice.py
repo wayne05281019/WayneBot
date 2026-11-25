@@ -1,6 +1,6 @@
 # 重活窗話筒提示：開始推「資料處理中，請稍後再用」給白名單兩人；
-# 結束魔法刪訊。只服務最重負荷三窗（06:30 早報／16:30 融合／03:00–04:00 DC）。
-# 輕量：不進 matplotlib、不掃全市場、不改買訊。Asia/Taipei。
+# 結束魔法刪訊。服務最重負荷窗：06:30 早報／16:30 融合／03:00–04:00 DC／21:00 勝率落檔。
+# 21:00 若不擋，全市場掃會拖死查股 LOADING／輪詢心跳。輕量：不改買訊。Asia/Taipei。
 from __future__ import annotations
 
 import json
@@ -18,9 +18,9 @@ BUSY_TEXT = "資料處理中，請稍後再用"
 # 刪不掉時先改成幾乎空白再刪，避免永遠留 spam。
 _EDIT_FALLBACK = "·"
 
-KINDS = frozenset({"morning", "fuse", "dc_sf"})
+KINDS = frozenset({"morning", "fuse", "dc_sf", "winrate"})
 
-# 硬逾時：開始後超過這秒數一律視為卡死（融合／早報／DC 再長也不准永久擋查股）。
+# 硬逾時：開始後超過這秒數一律視為卡死（融合／早報／DC／勝率再長也不准永久擋查股）。
 STALE_AFTER_SEC = 45 * 60
 # 各 kind 允許擋話筒的台北鐘點窗（HHMM）；出窗仍 active＝殘閘／補跑誤擋，立刻清。
 # 略寬於尖峰：給排程本體 overrun，但不涵蓋 19:xx 補跑。
@@ -28,6 +28,7 @@ HOLD_WINDOWS_HHMM: Dict[str, Tuple[int, int]] = {
     "morning": (615, 800),  # 06:15–08:00
     "fuse": (1615, 1730),  # 16:15–17:30
     "dc_sf": (245, 415),  # 02:45–04:15
+    "winrate": (2055, 2145),  # 20:55–21:45（21:00 藍▲全掃＋AI）
 }
 
 _lock = threading.Lock()
