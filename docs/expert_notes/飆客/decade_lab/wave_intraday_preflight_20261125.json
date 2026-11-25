@@ -1,0 +1,31 @@
+{
+  "as_of_day": "20261125",
+  "status": "intraday_preflight",
+  "as_of_taipei": "2026-11-25T10:18:16+0800",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "not_buy_signal": true,
+  "certainty": false,
+  "bar_status": {
+    "twii_daily": "盤中未收・不准當收",
+    "tx_night_prev": "health 近窗 2026-11-24 H40900 L37730",
+    "note_zh": "10:17 台北盤中預寫；EOD 官方柱齊了再蓋章。不准用未收柱宣判。"
+  },
+  "from_prev_eod_zh": "11/24 FB 收回 37837 成立；下一窗優先 W4 41800～42700；守 37837。",
+  "oral_levels_only": [
+    37837,
+    35579,
+    37164,
+    [
+      35000,
+      35500
+    ],
+    [
+      41800,
+      42700
+    ],
+    43135
+  ],
+  "watch_zh": "盤中只對他點過的位：37837 守否、418～427 有無碰到、35000 帶有無再探。夜盤近窗 H40900 已過 37837、未到 41800。",
+  "do_not_zh": "不准發明新①；個股不數浪；非買訊。"
+}
