@@ -1,5 +1,5 @@
 {
-  "as_of_taipei": "2026-11-24T01:00:30+0800",
+  "as_of_taipei": "2026-11-25T13:19:06+0800",
   "track": "BK-WAVE",
   "tz": "Asia/Taipei",
   "phone_sync": "blocked",
@@ -19,7 +19,7 @@
     "sox_14.md / sox_14.json",
     "mine_wave_rules.py（僅對照・不准冒充他說）"
   ],
-  "n_cards": 24,
+  "n_cards": 25,
   "cards": [
     {
       "id": "WR-IRON-14-OVERLAP",
@@ -526,6 +526,28 @@
         "M3_pending",
         "N1_follow_through",
         "pending_not_veto"
+      ],
+      "phone_ok_with_warning": true,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "not_buy_signal": true
+    },
+    {
+      "id": "WR-FWD-GAP-RECLAIM-HOLD",
+      "title_zh": "跳空開盤已站回→標 gap_reclaim_hold、下一窗升權 W4",
+      "category": "verify",
+      "source_kind": "trial_infer",
+      "his_words": [],
+      "trial_note_zh": "來自 eod miss_analysis（20261124）：preferred＝FB_reclaim 時，若跳空開盤已＞收回位且全日 L＞收回位、C＞收回位 → 標 FB_gap_reclaim_hold；下一窗升權 W4_reclaim_418_427；若再失收回位才回 M3／N1。不准把大漲當新五波①、不准發明未口述新高、不是買訊。",
+      "provenance": [
+        "wave_eod_verify_20261124.json#miss_analysis",
+        "wave_forward_infer_20261125.json",
+        "observe_sync_fwd.py"
+      ],
+      "ops_check_zh": "條件：preferred＝假跌破收回；官方已收柱 O＞收回位且 L＞收回位且 C＞收回位。動作：標 FB_gap_reclaim_hold；下一窗升權口頭 W4 帶；再失收回位才回續弱帶。硬禁：發明①／未口述新高／當買訊／改黃金買點。",
+      "segment_labels": [
+        "FB_gap_reclaim_hold",
+        "false_break_reclaim",
+        "W4_reclaim_418_427"
       ],
       "phone_ok_with_warning": true,
       "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",

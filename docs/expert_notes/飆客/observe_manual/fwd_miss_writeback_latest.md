@@ -1,9 +1,9 @@
 # SYNC-FWD・miss → 手冊回寫
 
-- written_at：`2026-11-24T01:00:30+0800`（Asia/Taipei）
+- written_at：`2026-11-25T13:19:06+0800`（Asia/Taipei）
 - 現況鍵：`bk_fwd_v1_miss_map`
-- 下一版：`bk_fwd_v2_bounce_reclaim_priority`
-- eod miss：**11**／可操作：**11**
+- 下一版：`bk_fwd_v3_gap_reclaim_hold`
+- eod miss：**12**／可操作：**12**
 - 話筒警語（固定）：`試標・推論／非他原文・非買訊・對質未過閘`
 - 非買訊；`phone_sync=blocked`；勝率不准混海選／黃金買點。
 
@@ -22,13 +22,14 @@
 | `20261119` | pending_not_veto | `M3_seek_37837_continue` | WR-FWD-PENDING-NOT-VETO,WR-FWD-LOOP,WR-LEVEL-ORAL-ONLY,WR-SEGMENT-TRIAL-WARN | 未觸目標≠否決：標 pending＋N1_follow；L 靠近可升權 pending，仍非觸發。 |
 | `20261120` | level_broke_follow_oral_band | `N1_follow_through_below_band` | WR-OPS-FAKE-BREAK,WR-LEVEL-ORAL-ONLY,WR-FWD-LOOP,WR-SEGMENT-TRIAL-WARN | preferred＝測位且 L／收皆破 → 標觸發＋續弱 follow；下一窗改口頭已有之更低帶為對照、原位收回為假跌破觀察；不准發明未口述新低。 |
 | `20261123` | target_touch_bounce_elevate_reclaim | `FB_reclaim_37837_watch` | WR-FWD-TOUCH-BOUNCE-RECLAIM,WR-OPS-FAKE-BREAK,WR-FWD-LOOP,WR-LEVEL-ORAL-ONLY,WR-SEGMENT-TRIAL-WARN | preferred 續弱測口頭目標時：L 觸／切入帶＋收彈且仍＜收回位 → 標 M3_touched_then_bounce＋N1_partial，下一窗升權  |
+| `20261124` | gap_reclaim_hold_elevate_w4 | `W4_reclaim_418_427_band` | WR-FWD-GAP-RECLAIM-HOLD,WR-OPS-FAKE-BREAK,WR-FWD-LOOP,WR-LEVEL-ORAL-ONLY,WR-SEGMENT-TRIAL-WARN | preferred＝FB_reclaim：跳空 O＞收回位且全日 L／C＞收回位 → 標 FB_gap_reclaim_hold；下一窗升權 W4_reclai |
 
 ## 當令敘述修正
 
-- as_of / kind：`20261123` / `target_touch_bounce_elevate_reclaim`
-- prefer_path：`FB_reclaim_37837_watch`
-- labels：M3_touched_then_bounce, N1_partial, false_break_reclaim
-- 修正：文敘改口：目標帶曾觸、收彈觀察假跌破收回；續弱句降權為備援；段號試標＋固定警語；非買訊。
+- as_of / kind：`20261124` / `gap_reclaim_hold_elevate_w4`
+- prefer_path：`W4_reclaim_418_427_band`
+- labels：FB_gap_reclaim_hold, false_break_reclaim, W4_reclaim_418_427
+- 修正：文敘：跳空收回完成；下一窗看波浪4帶；守住收回位；段號試標＋固定警語；非買訊。
 
 ## 硬禁
 
