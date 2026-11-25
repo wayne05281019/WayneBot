@@ -796,6 +796,143 @@ def test_level_hit_same_day_second_level_batch_not_repushed(monkeypatch, tmp_pat
     assert sent == []
 
 
+def test_level_hit_day_lock_before_html_blocks_slow_dual_caller(monkeypatch, tmp_path):
+    """復現 2026-11-25：組文／sync_retract 慢時雙呼叫仍只准一則（日鎖先占）。"""
+    import sqlite3
+    import threading
+    import time
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_alert import maybe_push_marked_level_hits
+    from biaoke_desk import ensure_biaoke_posts_table
+
+    db = str(tmp_path / "slow_race.db")
+    ensure_biaoke_posts_table(db)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS index_daily (
+            date TEXT, symbol TEXT, open REAL, high REAL, low REAL, close REAL,
+            PRIMARY KEY (date, symbol)
+        )
+        """
+    )
+    conn.execute(
+        "INSERT INTO index_daily(date, symbol, open, high, low, close) "
+        "VALUES ('20261125','TWII',39983.91,39983.91,36681.9,38195.43)"
+    )
+    conn.execute(
+        "INSERT INTO biaoke_posts(id, date, time, kind, text) "
+        "VALUES ('p38795','2026-11-25','09:16','post',?)",
+        ("夜盤 38795 很重要，短多還看這關。",),
+    )
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(
+        "trading_calendar.is_official_daily_bar",
+        lambda ymd, now=None: str(ymd).replace("-", "")[:8] == "20261125",
+    )
+    sent = []
+    lock = threading.Lock()
+
+    def _slow_html(*args, **kwargs):
+        time.sleep(0.15)
+        return (
+            "<b>飆大提醒·大盤碰到關卡</b>\n"
+            "今天加權盤中碰到他講過的 38795，收已經離開、還沒過，還要再看大盤怎麼走。\n"
+            "不是買訊"
+        )
+
+    monkeypatch.setattr(
+        "biaoke_alert.format_multi_level_hit_synthesis",
+        _slow_html,
+    )
+    monkeypatch.setattr(
+        "biaoke_alert._send_family",
+        lambda h, **kw: (sent.append(h) or 2),
+    )
+    results = []
+
+    def _run():
+        results.append(
+            maybe_push_marked_level_hits(
+                db,
+                now=datetime(2026, 11, 25, 16, 45, tzinfo=ZoneInfo("Asia/Taipei")),
+            )
+        )
+
+    threads = [threading.Thread(target=_run) for _ in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert sum(int(r.get("pushed") or 0) for r in results) == 1
+    assert len(sent) == 1
+    # 再跑仍略過
+    again = maybe_push_marked_level_hits(db)
+    assert again.get("pushed") == 0
+    assert again.get("day_latched") == 1
+
+
+def test_level_hit_relative_db_path_same_file_latches(monkeypatch, tmp_path):
+    """相對路徑／絕對路徑指向同一顆庫時，日鎖仍要擋重寄。"""
+    import os
+    import sqlite3
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_alert import maybe_push_marked_level_hits
+    from biaoke_desk import ensure_biaoke_posts_table
+
+    db_abs = str((tmp_path / "rel.db").resolve())
+    ensure_biaoke_posts_table(db_abs)
+    conn = sqlite3.connect(db_abs)
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS index_daily (
+            date TEXT, symbol TEXT, open REAL, high REAL, low REAL, close REAL,
+            PRIMARY KEY (date, symbol)
+        )
+        """
+    )
+    conn.execute(
+        "INSERT INTO index_daily(date, symbol, open, high, low, close) "
+        "VALUES ('20261125','TWII',39983.91,39983.91,36681.9,38195.43)"
+    )
+    conn.execute(
+        "INSERT INTO biaoke_posts(id, date, time, kind, text) "
+        "VALUES ('p38795','2026-11-25','09:16','post',?)",
+        ("夜盤 38795。",),
+    )
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(
+        "trading_calendar.is_official_daily_bar",
+        lambda ymd, now=None: str(ymd).replace("-", "")[:8] == "20261125",
+    )
+    sent = []
+    monkeypatch.setattr(
+        "biaoke_alert._send_family",
+        lambda h, **kw: sent.append(h) or 2,
+    )
+    cwd = os.getcwd()
+    try:
+        os.chdir(tmp_path)
+        a = maybe_push_marked_level_hits(
+            "rel.db",
+            now=datetime(2026, 11, 25, 17, 0, tzinfo=ZoneInfo("Asia/Taipei")),
+        )
+        assert a.get("pushed") == 1
+        sent.clear()
+        b = maybe_push_marked_level_hits(db_abs)
+        assert b.get("pushed") == 0
+        assert b.get("day_latched") == 1
+        assert sent == []
+    finally:
+        os.chdir(cwd)
+
+
 def test_level_hit_old_lv_keys_without_day_still_block_evening(monkeypatch, tmp_path):
     """舊版只記 idx:lv、沒寫 idx:day：夜盤重對不准再拆第二則（21:39 雙推）。"""
     import sqlite3
