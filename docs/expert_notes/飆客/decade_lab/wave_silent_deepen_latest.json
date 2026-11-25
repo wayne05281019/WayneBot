@@ -1,0 +1,745 @@
+{
+  "written_at": "2026-11-26T00:58:16+0800",
+  "tz": "Asia/Taipei",
+  "track": "wave_silent_deepen",
+  "variant": "deepen_v1_chain_secondary_nested",
+  "purpose_zh": "靜默加深：連鎖日＋次路徑＋巢狀口述對照（非買訊）",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "not_buy_signal": true,
+  "phone_warning_fixed": "試標・推論／非他原文・非買訊・對質未過閘",
+  "WAVE_NEURONS_MATCH": false,
+  "gate": {
+    "min_n": 20,
+    "pref_n_decided": 8,
+    "pref_hit_rate": 0.625,
+    "gate_n20": false,
+    "replace": false,
+    "n_chains": 7
+  },
+  "pref_suite_ref": {
+    "current_variant": "pref_3state_v1_verdict_map",
+    "next_variant": "pref_3state_v2_intraday_break_hold",
+    "state_counts": {
+      "fail": 3,
+      "hit": 5,
+      "unknown": 3,
+      "partial": 2
+    }
+  },
+  "chains": [
+    {
+      "from_as_of": "20261109",
+      "to_as_of": "20261110",
+      "from_preferred": "P1_must_retest_friday",
+      "from_state": "fail",
+      "from_hit": false,
+      "to_preferred": "N1_still_retest_friday",
+      "to_state": "hit",
+      "to_hit": true,
+      "miss_kind_hint_zh": "條件句『未站穩41760→再測週五低』：若日盤開盤即穩壓上且全日低＞41760，當日取消N1必經、改標B-a_hold；下一窗優先回測41760撐與更高壓43135，失守41760才把37837升回必經",
+      "buy_signal": false,
+      "phone_sync": "blocked"
+    },
+    {
+      "from_as_of": "20261110",
+      "to_as_of": "20261111",
+      "from_preferred": "N1_still_retest_friday",
+      "from_state": "hit",
+      "from_hit": true,
+      "to_preferred": "M1_retest_41760_as_support",
+      "to_state": "fail",
+      "to_hit": false,
+      "miss_kind_hint_zh": "條件句『站穩41760後回測41760』：若下一開市日開盤即貼／過更高壓43135，且全日低≫41760並收穩43135上，當日取消M1必經、標 post_hold→收穩43135；下一窗優先回測43135撐，失守43135才把41760升回必經，失守41760才把37837升回必經",
+      "buy_signal": false,
+      "phone_sync": "blocked"
+    },
+    {
+      "from_as_of": "20261111",
+      "to_as_of": "20261112",
+      "from_preferred": "M1_retest_41760_as_support",
+      "from_state": "fail",
+      "from_hit": false,
+      "to_preferred": "M1_retest_43135_as_support",
+      "to_state": "unknown",
+      "to_hit": null,
+      "miss_kind_hint_zh": "條件句『收穩43135後回測撐』：若回測當日收仍失43135，當日標 post_hold_fail，下一窗把41760升為必經回測；43000下若盤中觸及但收回上，標路徑觸／收未鎖，續追。",
+      "buy_signal": false,
+      "phone_sync": "blocked"
+    },
+    {
+      "from_as_of": "20261113",
+      "to_as_of": "20261116",
+      "from_preferred": "M2_reclaim_43135",
+      "from_state": "hit",
+      "from_hit": true,
+      "to_preferred": "M3_lose_41760_then_friday",
+      "to_state": "hit",
+      "to_hit": true,
+      "miss_kind_hint_zh": "條件句『收復43135後下一窗優先回測當撐』：若下一開市日開盤後迅速失43135且日低遠低於41760，標 post_hold_43135_fail＋B-a_hold_fail，preferred 改『升權測37837／或收回波浪4帶』，不准把急殺標成新五波①。",
+      "buy_signal": false,
+      "phone_sync": "blocked"
+    },
+    {
+      "from_as_of": "20261116",
+      "to_as_of": "20261117",
+      "from_preferred": "M3_lose_41760_then_friday",
+      "from_state": "hit",
+      "from_hit": true,
+      "to_preferred": "M3_seek_37837_after_41760_fail",
+      "to_state": "unknown",
+      "to_hit": null,
+      "miss_kind_hint_zh": "preferred＝升權測37837 時：若下一開市日仍失41760且L落在『帶下～37837之上』（例 39000～41000），標 N1_follow_through＋M3_pending_37837，不准把『未測到37837』當M3否決，也不准標新①。",
+      "buy_signal": false,
+      "phone_sync": "blocked"
+    },
+    {
+      "from_as_of": "20261120",
+      "to_as_of": "20261123",
+      "from_preferred": "M3_seek_37837_continue",
+      "from_state": "hit",
+      "from_hit": true,
+      "to_preferred": "M3_extend_toward_35579",
+      "to_state": "partial",
+      "to_hit": null,
+      "miss_kind_hint_zh": "preferred＝M3延伸35579 時：若L已＜35579（或切入35000～35500）但收明顯反彈且仍＜37837，標 M3_touched_then_bounce＋N1_partial；下一窗升權 FB_reclaim_37837，續弱失敗再回 M3／35000帶；不准把反彈當新五波①，也不准發明未口述新低。",
+      "buy_signal": false,
+      "phone_sync": "blocked"
+    },
+    {
+      "from_as_of": "20261124",
+      "to_as_of": "20261125",
+      "from_preferred": "FB_reclaim_37837_watch",
+      "from_state": "hit",
+      "from_hit": true,
+      "to_preferred": "W4_reclaim_418_427_band",
+      "to_state": "fail",
+      "to_hit": false,
+      "miss_kind_hint_zh": "preferred＝W4_reclaim 時：若 H＜41800 且全日 L＜37837 但 C＞37837 → 標 FB_intraday_break_close_reclaim；下一窗改優先看守住 37837（FB_hold），失守才升 M3／35000；W4 降權至再觸帶。不准發明新五波①，不准發明未口述新低。",
+      "buy_signal": false,
+      "phone_sync": "blocked"
+    }
+  ],
+  "chain_tags": [
+    {
+      "id": "gap_reclaim_then_intraday_break",
+      "zh": "1124 FB 跳空收回成立 → 1125 preferred W4 否決且盤中失 37837 收站回；下一窗改 FB_hold（已回寫 v4）。繼續收樣，未過閘不換現況。"
+    }
+  ],
+  "secondary_paths": [
+    {
+      "as_of": "20261109",
+      "paths": [
+        {
+          "id": "P1_must_retest_friday",
+          "state": "fail",
+          "is_preferred": false,
+          "verdict_zh": "未完／失效於今日未發生"
+        },
+        {
+          "id": "P2_41760_still_cap",
+          "state": "unknown",
+          "is_preferred": false,
+          "verdict_zh": "偏不合／台指盤中刺穿收未站穩"
+        },
+        {
+          "id": "P3_fake_break_board_zone",
+          "state": "fail",
+          "is_preferred": false,
+          "verdict_zh": "未觸發"
+        }
+      ]
+    },
+    {
+      "as_of": "20261110",
+      "paths": [
+        {
+          "id": "N1_still_retest_friday",
+          "state": "hit",
+          "is_preferred": false,
+          "verdict_zh": "失效於今日／前提不成立"
+        },
+        {
+          "id": "N2_hold_above_first_cap",
+          "state": "unknown",
+          "is_preferred": false,
+          "verdict_zh": "合／日盤收穩41760壓轉撐"
+        },
+        {
+          "id": "N3_fake_break_if_retest",
+          "state": "fail",
+          "is_preferred": false,
+          "verdict_zh": "未觸發"
+        }
+      ]
+    },
+    {
+      "as_of": "20261111",
+      "paths": [
+        {
+          "id": "M1_retest_41760_as_support",
+          "state": "fail",
+          "is_preferred": false,
+          "verdict_zh": "未觸發／依失效句回測延後"
+        },
+        {
+          "id": "M2_challenge_43135_cap",
+          "state": "unknown",
+          "is_preferred": false,
+          "verdict_zh": "合／挑戰並有效收穩43135上"
+        },
+        {
+          "id": "M3_lose_41760_then_friday",
+          "state": "fail",
+          "is_preferred": false,
+          "verdict_zh": "未觸發"
+        }
+      ]
+    },
+    {
+      "as_of": "20261112",
+      "paths": [
+        {
+          "id": "M1_retest_43135_as_support",
+          "state": "unknown",
+          "is_preferred": false,
+          "verdict_zh": "觸發回測但撐不住／收失43135"
+        },
+        {
+          "id": "M2_hold_or_extend_above_43135",
+          "state": "unknown",
+          "is_preferred": false,
+          "verdict_zh": "不合／失效"
+        },
+        {
+          "id": "M3_lose_43135_then_41760_friday",
+          "state": "partial",
+          "is_preferred": false,
+          "verdict_zh": "部分觸發：43135失守；41760／37837未測"
+        }
+      ]
+    },
+    {
+      "as_of": "20261113",
+      "paths": [
+        {
+          "id": "M1_retest_41760_after_43135_fail",
+          "state": "fail",
+          "is_preferred": false,
+          "verdict_zh": "未觸發／延後"
+        },
+        {
+          "id": "N1_continue_below_43000_then_band",
+          "state": "unknown",
+          "is_preferred": false,
+          "verdict_zh": "日盤未續弱／未進帶"
+        },
+        {
+          "id": "M3_lose_41760_then_friday",
+          "state": "fail",
+          "is_preferred": false,
+          "verdict_zh": "未觸發"
+        },
+        {
+          "id": "M2_reclaim_43135",
+          "state": "hit",
+          "is_preferred": false,
+          "verdict_zh": "成立：日盤開／高／收皆在43135上"
+        }
+      ]
+    },
+    {
+      "as_of": "20261116",
+      "paths": [
+        {
+          "id": "M2_retest_43135_as_support",
+          "state": "fail",
+          "is_preferred": false,
+          "verdict_zh": "否決：失守且收遠低於43135"
+        },
+        {
+          "id": "M1_retest_41760_after_43135_fail",
+          "state": "hit",
+          "is_preferred": false,
+          "verdict_zh": "前半成立／撐未守：失43135後貫穿41760"
+        },
+        {
+          "id": "N1_continue_below_43000_then_band",
+          "state": "hit",
+          "is_preferred": false,
+          "verdict_zh": "成立：再探43000下並穿越419～427帶"
+        },
+        {
+          "id": "M3_lose_41760_then_friday",
+          "state": "hit",
+          "is_preferred": false,
+          "verdict_zh": "升權成立／37837未測"
+        }
+      ]
+    },
+    {
+      "as_of": "20261117",
+      "paths": [
+        {
+          "id": "M3_seek_37837_after_41760_fail",
+          "state": "unknown",
+          "is_preferred": true,
+          "verdict_zh": "升權維持／37837未測"
+        },
+        {
+          "id": "W4_reclaim_418_427_band",
+          "state": "fail",
+          "is_preferred": false,
+          "verdict_zh": "否決：未收回波浪4帶"
+        },
+        {
+          "id": "N1_follow_through_below_band",
+          "state": "hit",
+          "is_preferred": false,
+          "verdict_zh": "成立：帶下續弱並再探低"
+        },
+        {
+          "id": "M2_dead_reclaim_watch",
+          "state": "fail",
+          "is_preferred": false,
+          "verdict_zh": "否決：未收復43135"
+        }
+      ]
+    },
+    {
+      "as_of": "20261118",
+      "paths": [
+        {
+          "id": "M3_seek_37837_continue",
+          "state": "unknown",
+          "is_preferred": true,
+          "verdict_zh": "升權維持／37837未測"
+        },
+        {
+          "id": "W4_reclaim_418_427_band",
+          "state": "fail",
+          "is_preferred": false,
+          "verdict_zh": "否決：未收回波浪4帶"
+        },
+        {
+          "id": "N1_follow_through_below_band",
+          "state": "hit",
+          "is_preferred": false,
+          "verdict_zh": "成立：帶下續弱並再探低"
+        },
+        {
+          "id": "M2_dead_reclaim_watch",
+          "state": "fail",
+          "is_preferred": false,
+          "verdict_zh": "否決：未收復43135"
+        }
+      ]
+    },
+    {
+      "as_of": "20261119",
+      "paths": [
+        {
+          "id": "M3_seek_37837_continue",
+          "state": "partial",
+          "is_preferred": true,
+          "verdict_zh": "升權維持／37837未測（更靠近）"
+        },
+        {
+          "id": "W4_reclaim_418_427_band",
+          "state": "fail",
+          "is_preferred": false,
+          "verdict_zh": "否決：未收回波浪4帶"
+        },
+        {
+          "id": "N1_follow_through_below_band",
+          "state": "hit",
+          "is_preferred": false,
+          "verdict_zh": "成立：帶下續弱並再探低"
+        },
+        {
+          "id": "M2_dead_reclaim_watch",
+          "state": "fail",
+          "is_preferred": false,
+          "verdict_zh": "否決：未收復43135"
+        }
+      ]
+    },
+    {
+      "as_of": "20261120",
+      "paths": [
+        {
+          "id": "M3_seek_37837_continue",
+          "state": "hit",
+          "is_preferred": true,
+          "verdict_zh": "成立且過測：L35739 已破 37837（約−2098點）"
+        },
+        {
+          "id": "W4_reclaim_418_427_band",
+          "state": "fail",
+          "is_preferred": false,
+          "verdict_zh": "否決：未收回波浪4帶"
+        },
+        {
+          "id": "N1_follow_through_below_band",
+          "state": "hit",
+          "is_preferred": false,
+          "verdict_zh": "成立：帶下續弱並貫穿37837"
+        },
+        {
+          "id": "M2_dead_reclaim_watch",
+          "state": "fail",
+          "is_preferred": false,
+          "verdict_zh": "否決：未收復43135"
+        }
+      ]
+    },
+    {
+      "as_of": "20261123",
+      "paths": [
+        {
+          "id": "M3_extend_toward_35579",
+          "state": "partial",
+          "is_preferred": true,
+          "verdict_zh": "部分成立：L35442 已過 35579／切入口頭 35000～35500 上沿下；收彈至 36812，非續弱收在帶內"
+        },
+        {
+          "id": "FB_reclaim_37837_watch",
+          "state": "fail",
+          "is_preferred": false,
+          "verdict_zh": "否決：未收回37837（H37108＜37837）"
+        },
+        {
+          "id": "W4_reclaim_418_427_band",
+          "state": "fail",
+          "is_preferred": false,
+          "verdict_zh": "否決：未收回波浪4帶"
+        },
+        {
+          "id": "N1_follow_through_below_band",
+          "state": "partial",
+          "is_preferred": false,
+          "verdict_zh": "部分成立：全日仍在37837下且L過35579至35442；收彈至36812非續弱收殺"
+        },
+        {
+          "id": "M2_dead_reclaim_watch",
+          "state": "fail",
+          "is_preferred": false,
+          "verdict_zh": "否決：未收復43135"
+        }
+      ]
+    },
+    {
+      "as_of": "20261124",
+      "paths": [
+        {
+          "id": "FB_reclaim_37837_watch",
+          "state": "hit",
+          "is_preferred": true,
+          "verdict_zh": "成立：H40180.38／C40122.35 皆收回並站上 37837（假跌破收回敘事完成）"
+        },
+        {
+          "id": "M3_resume_toward_35000",
+          "state": "fail",
+          "is_preferred": false,
+          "verdict_zh": "否決：未再探 35000～35500（L39149≫35500）"
+        },
+        {
+          "id": "N1_follow_through_below_band",
+          "state": "fail",
+          "is_preferred": false,
+          "verdict_zh": "否決：未在 37837 下續弱（全日在上）"
+        },
+        {
+          "id": "W4_reclaim_418_427_band",
+          "state": "fail",
+          "is_preferred": false,
+          "verdict_zh": "否決：未收回波浪4帶（H40180.38＜41800）"
+        },
+        {
+          "id": "M2_dead_reclaim_watch",
+          "state": "fail",
+          "is_preferred": false,
+          "verdict_zh": "否決：未收復 43135"
+        }
+      ]
+    },
+    {
+      "as_of": "20261125",
+      "paths": [
+        {
+          "id": "W4_reclaim_418_427_band",
+          "state": "fail",
+          "is_preferred": true,
+          "verdict_zh": "否決：未收回波浪4帶（H39983.91＜41800）"
+        },
+        {
+          "id": "FB_hold_above_37837",
+          "state": "partial",
+          "is_preferred": false,
+          "verdict_zh": "部分：收仍＞37837（C38195.43），但全日 L36681.90 失守週五低（「不回測失守」未過）"
+        },
+        {
+          "id": "M3_resume_toward_35000",
+          "state": "fail",
+          "is_preferred": false,
+          "verdict_zh": "否決：未再探 35000～35500（L36681.90≫35500）；權重因盤中失 37837 升觀察"
+        },
+        {
+          "id": "N1_fail_back_below_37837",
+          "state": "partial",
+          "is_preferred": false,
+          "verdict_zh": "部分：盤中回到 37837 下續弱，但收又站上（非全日續弱）"
+        },
+        {
+          "id": "M2_dead_reclaim_watch",
+          "state": "fail",
+          "is_preferred": false,
+          "verdict_zh": "否決：未收復 43135（H39983.91≪43135）"
+        }
+      ]
+    }
+  ],
+  "nested_oral": {
+    "ok": true,
+    "n_rows": 40,
+    "n_nested_flag": 34,
+    "n_coarse_flag": 7,
+    "note_zh": "巢狀（3-3轉3-4／細微波）與粗浪（大段／第五波）並存於他文；對質時兩層都記，不准只留粗③→④就把巢狀抹掉；現在仍 WAVE_NEURONS_MATCH=false，不准發明①～⑤上話筒。",
+    "rows": [
+      {
+        "post_id": "189472259:c189472259-347-23",
+        "date": "2026-11-22",
+        "time": "17:14",
+        "kind": "reply",
+        "nested_oral": true,
+        "coarse_oral": false,
+        "snip_zh": "麥可大 我補充一下 本人是學資工，統計學只是分析模式的一部分，我的工作領域都是演算法 演算法有數學(線性代數張量) 統計學，這些都是演算法中的數學一部分。 波浪理論細微波推演非常像演算法推演"
+      },
+      {
+        "post_id": "189472259:c189472259-346-3",
+        "date": "2026-11-22",
+        "time": "16:48",
+        "kind": "reply",
+        "nested_oral": true,
+        "coarse_oral": false,
+        "snip_zh": "要練到我這樣的程度一定要長期看波浪大師的節目才有辦法學到這樣的精隨，因為我在網上任何波浪理論的分析都沒有他那種對細微波拆解然後用刪去法，來找最有可能的細微波波形再轉到上或大一級數的走勢推演，我就是用這種方式星期3-4又看出又展開一組5波往下推動結構，會去測35000-35500左右。"
+      },
+      {
+        "post_id": "189472259:c189472259-346-2",
+        "date": "2026-11-22",
+        "time": "16:37",
+        "kind": "reply",
+        "nested_oral": true,
+        "coarse_oral": false,
+        "snip_zh": "那是不會對細微波拆解，波浪理論真正的精隨是對細微波拆解，否則我怎麼能從10/8開始就非常注意大盤有問題，開始15K 30K 60K拆解各種波形得發展。我10/15是完全確認才敢發文全部出清股票，而且是非常絕對台股修正目標區下看41000-42000之間。 這只要用波浪理論有深厚底蘊不同位階有不同波形的的認知，完全可以看"
+      },
+      {
+        "post_id": "189108116:c189108116-231",
+        "date": "2026-11-18",
+        "time": "23:04",
+        "kind": "reply",
+        "nested_oral": true,
+        "coarse_oral": false,
+        "snip_zh": "費半及夜盤目前還是進行低點測試(橫台整理)，目前看起來明天還會再測低一次如果還是沒有有效跌破這兩天低點，就幾乎確定第二隻腳確認(搭配明日日盤及大盤細微波收盤前應該可確認)，當然前提是等下晚點，不要反彈之後產生下跌推動脈動，則真的會往11/6低點去測試。"
+      },
+      {
+        "post_id": "189108116:c189108116-111-1",
+        "date": "2026-11-18",
+        "time": "18:34",
+        "kind": "reply",
+        "nested_oral": true,
+        "coarse_oral": false,
+        "snip_zh": "波浪理論細微波拆解完全不怕被人學去⋯"
+      },
+      {
+        "post_id": "189108116:c189108116-81",
+        "date": "2026-11-18",
+        "time": "17:00",
+        "kind": "reply",
+        "nested_oral": false,
+        "coarse_oral": true,
+        "snip_zh": "晚費城半導體很重要，因為位階和大盤完全ㄧ樣，但未來費城半導體比較有機會走第五波擴延，漲到2028年底左右，大盤就沒這麼容易。"
+      },
+      {
+        "post_id": "189108116",
+        "date": "2026-11-18",
+        "time": "16:48",
+        "kind": "post",
+        "nested_oral": false,
+        "coarse_oral": true,
+        "snip_zh": "1. 大盤如果走5波修正大盤落點點位就在這兩天低點附近，如果走擴延9波修正落底，則在11/6低點附近，只要明天低點能在這2天低點附近，或者3日低點不破即可宣告5波修正落底。 2. 其實不用管5波修正落底或9波修正落底，今天出現爆大量或巨量留下影線的龍頭股都可以在今天低點附近布局，因為大盤低點有限，現在進場非常安全，至少"
+      },
+      {
+        "post_id": "189027207:c189027207-417-1",
+        "date": "2026-11-18",
+        "time": "16:24",
+        "kind": "reply",
+        "nested_oral": true,
+        "coarse_oral": false,
+        "snip_zh": "其實將波浪理論細微波拆解練到極致，就可以看出大盤8-9成轉折，唯一差在擴延影響，就如現在盤勢是走5段還是9段下跌📉"
+      },
+      {
+        "post_id": "189027207:c189027207-408",
+        "date": "2026-11-18",
+        "time": "13:43",
+        "kind": "reply",
+        "nested_oral": false,
+        "coarse_oral": true,
+        "snip_zh": "\"太強大了，光聖漲停了\" 光聖的型態是最標準 5-3-5 abc修正型態， 1 4沒有有效重疊，因此未來還有第五波漲勢。"
+      },
+      {
+        "post_id": "189027207:c189027207-369-1",
+        "date": "2026-11-18",
+        "time": "13:42",
+        "kind": "reply",
+        "nested_oral": false,
+        "coarse_oral": true,
+        "snip_zh": "\"太強大了，光聖漲停了\" 光聖的型態是最標準 5-3-5 abc修正型態， 1 4沒有有效重疊，因此未來還有第五波漲勢。"
+      },
+      {
+        "post_id": "189027207:c189027207-217-2",
+        "date": "2026-11-18",
+        "time": "09:31",
+        "kind": "reply",
+        "nested_oral": true,
+        "coarse_oral": false,
+        "snip_zh": "這叫回測下降軌道，只有董波浪理論細微波拆解頂級技術分析者才知道"
+      },
+      {
+        "post_id": "189027207:c189027207-218",
+        "date": "2026-11-18",
+        "time": "09:28",
+        "kind": "reply",
+        "nested_oral": true,
+        "coarse_oral": false,
+        "snip_zh": "和我預期一樣，就是低點確認，反覆震盪築底趨勢向上，但除了能對細微波能精準拆解的技術分析者，應該看不出來 認為還會破底"
+      },
+      {
+        "post_id": "189027207",
+        "date": "2026-11-18",
+        "time": "08:56",
+        "kind": "post",
+        "nested_oral": false,
+        "coarse_oral": true,
+        "snip_zh": "9點突破下降軌道10點再破下降軌道走9波跌勢擴延機率不排除 1. 台指期日盤直接越過下降軌道，已經完成11/6開始反彈假設為第五波起漲末升段5-1起點，昨天低點就是5-2，今天開始走5-3的起始點。更白話一點12000多點的修正全部完成，也就是說昨天可算接近第二隻腳已經確認。 盤中更新： 1.第一小時有站上，第二小時又"
+      },
+      {
+        "post_id": "188958832",
+        "date": "2026-11-17",
+        "time": "15:35",
+        "kind": "post",
+        "nested_oral": true,
+        "coarse_oral": false,
+        "snip_zh": "我先說明天最差的情境，從細微波觀察，目前是有可能走擴延，也就是會去測11/6低點附近，但不用害怕，不管大盤破不破11/6低點，都是個股買點(也就是大盤破11/6低點就是假跌破，我有我觀察方式但我不想透漏，特別強調用波浪理論推導也完全一一致)。但目前最難就是選對股，很明顯目前估值過高的高價龍頭股這兩天跌幅很重，因此還是要"
+      },
+      {
+        "post_id": "188906517:c188906517-255-2",
+        "date": "2026-11-17",
+        "time": "13:05",
+        "kind": "reply",
+        "nested_oral": false,
+        "coarse_oral": true,
+        "snip_zh": "因為大盤11/5就是C波修正低點 1 4沒重疊，但第五波 看起來 道路崎嶇，原因在台股今年爆巨量，今天本波修正0.74可驗證"
+      },
+      {
+        "post_id": "188748816:c188748816-254-4",
+        "date": "2026-11-16",
+        "time": "10:28",
+        "kind": "reply",
+        "nested_oral": true,
+        "coarse_oral": false,
+        "snip_zh": "台指期細微波C波修正"
+      },
+      {
+        "post_id": "188748816:c188748816-254",
+        "date": "2026-11-16",
+        "time": "10:25",
+        "kind": "reply",
+        "nested_oral": true,
+        "coarse_oral": false,
+        "snip_zh": "盤細微波C波修正，我剛才檢查了一下是有 1 4重疊，重疊80點，是不是有效重疊有模糊空間。如果是有效重疊C波是走3段修正，也就是說以台指期來看大盤今天是最佳買點。"
+      },
+      {
+        "post_id": "188748816",
+        "date": "2026-11-16",
+        "time": "09:50",
+        "kind": "post",
+        "nested_oral": true,
+        "coarse_oral": false,
+        "snip_zh": "大盤已經到41800~42700區間了，也就是回測上漲小5波結束回測波浪4的點位區間了。台指期是還沒跌完，但個股看高價股又幾乎都跌停了，個人認為個股安全買點上車時間是差不多到了，最差就是明天大盤稍微跌破41800。 不要搞錯，沒有打第二支腳，第二支腳是回到38000之下，那是技術分析沒學好或只懂基本型態學的人說的，我用"
+      },
+      {
+        "post_id": "188594037:c188594037-375-4",
+        "date": "2026-11-13",
+        "time": "17:20",
+        "kind": "reply",
+        "nested_oral": true,
+        "coarse_oral": false,
+        "snip_zh": "目前規劃是走小級數C，波浪理論就是將大級數、中級數、小級數，又分小時、15分、5芬都要去拆解不同的 1-2-3-4-5或ABC，ABC走法又非常多種，5-3-5，3-3-5、abc-x-abc.........，非常多種不同的調整型態，最重要是符合波浪理論2個鐵律，天天看台指期，沒有3年以上也很難正確拆解。學至少也要1"
+      },
+      {
+        "post_id": "188348073",
+        "date": "2026-11-11",
+        "time": "11:27",
+        "kind": "post",
+        "nested_oral": true,
+        "coarse_oral": false,
+        "snip_zh": "大盤第一段反彈目前漲了4段，明天可能還有一個小高點可能性不低，因為我用台指期細微波拆解第5小波走擴延，目前以5-3可能性最高。 一定會拉回，應該出現在明天早盤之後或星期五，拉回就是走大級數1-2，那個時候就是最佳上車機會。但拉回到哪裡，因為今天第5小波走擴延，收盤還要去分析計算。 指標股創意就是強中強，也是我上星期五唯"
+      },
+      {
+        "post_id": "188048401:c188048401-250-1",
+        "date": "2026-11-09",
+        "time": "10:28",
+        "kind": "reply",
+        "nested_oral": true,
+        "coarse_oral": false,
+        "snip_zh": "這要頂級技術分析才能看出來，只有能對波浪理論細微波能正確拆解才有辦法做到，這種人非常少。"
+      },
+      {
+        "post_id": "188039214:c188039214-55",
+        "date": "2026-11-08",
+        "time": "12:10",
+        "kind": "reply",
+        "nested_oral": true,
+        "coarse_oral": false,
+        "snip_zh": "補充：若下周前半周沒有爆巨量，還是可以用波浪理論對細微波進行拆解，觀察是持續轉弱或開始轉止穩震盪後慢慢緩步上攻，這方面細節我就不想再提。"
+      },
+      {
+        "post_id": "188039214",
+        "date": "2026-11-08",
+        "time": "12:01",
+        "kind": "post",
+        "nested_oral": true,
+        "coarse_oral": false,
+        "snip_zh": "1. 由台指期來看大盤，星期五夜盤已經破壞最後一組3-5下跌脈動。因為這一次大盤修正拉回極深星期五最低點位37837，已經非常接近4/23低點37164，再加上大盤底部已經第一次爆1.3兆巨量，如果下周前三天再出現當天K棒最低點在37100~39000之間再爆一次1.2~1.5兆巨量，就幾乎99%確認底部確認，即可投入"
+      },
+      {
+        "post_id": "187881236:c187881236-471-1",
+        "date": "2026-11-06",
+        "time": "20:16",
+        "kind": "reply",
+        "nested_oral": true,
+        "coarse_oral": false,
+        "snip_zh": "我的波浪理論最主要是跟他學的，幾乎9成拆解細微波方式和他一致，他是台灣甚至世界上我從網路世界看到的第一人。唯有對細微波拆解觀察支撐點位，就完全看懂大盤趨勢，根本不用看產業面、基本面、籌碼面就知道大盤多空，如果更加熟練，就如完全進行台指期交易，根本不用上班，從金融市場提錢，當個隱士高人。"
+      },
+      {
+        "post_id": "187881236",
+        "date": "2026-11-06",
+        "time": "08:05",
+        "kind": "post",
+        "nested_oral": true,
+        "coarse_oral": false,
+        "snip_zh": "1. 昨天夜盤大跌，而且直接殺破39000，有點稍微超乎預期，但我覺得很好，因為這次又接複製2025/04 那一段急跌跌勢，對未來交易就變得很單純好做很多。當然要先恭喜有參考10/15起我發多篇文章看法，大盤非常不妙，至少打到44000，前兩天修正到42000左右避開這一次中期修正全身而退的同學保全了資金受到最小的傷害"
+      }
+    ],
+    "buy_signal": false,
+    "phone_sync": "blocked"
+  },
+  "forbid_zh": [
+    "不准當買訊",
+    "不准發明未口述價／新①",
+    "不准未收當收",
+    "phone_sync=blocked 時不准定案浪號上話筒",
+    "勝率不准混海選／黃金買點"
+  ]
+}
