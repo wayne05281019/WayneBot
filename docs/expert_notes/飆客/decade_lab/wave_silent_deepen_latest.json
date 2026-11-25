@@ -1,9 +1,9 @@
 {
-  "written_at": "2026-11-26T00:58:16+0800",
+  "written_at": "2026-11-26T01:07:02+0800",
   "tz": "Asia/Taipei",
   "track": "wave_silent_deepen",
-  "variant": "deepen_v1_chain_secondary_nested",
-  "purpose_zh": "靜默加深：連鎖日＋次路徑＋巢狀口述對照（非買訊）",
+  "variant": "deepen_v3_cross_mine_2023",
+  "purpose_zh": "靜默加深：連鎖日＋次路徑＋巢狀口述＋2023聯動位階挖礦（非買訊）",
   "phone_sync": "blocked",
   "buy_signal": false,
   "not_buy_signal": true,
@@ -15,7 +15,8 @@
     "pref_hit_rate": 0.625,
     "gate_n20": false,
     "replace": false,
-    "n_chains": 7
+    "n_chains": 7,
+    "n_dig_worth": 16
   },
   "pref_suite_ref": {
     "current_variant": "pref_3state_v1_verdict_map",
@@ -735,11 +736,471 @@
     "buy_signal": false,
     "phone_sync": "blocked"
   },
+  "cross_mine": {
+    "variant": "mine_v1_sys_quant_2023",
+    "n_dig_worth": 16,
+    "dig_ids": [
+      "agree_2330_twii",
+      "sox_up_2330_up",
+      "sox_down_adr_down_tw_down",
+      "agree_adr_2330",
+      "sox_up_tw_up",
+      "agree_sox_2330",
+      "agree_sox_twii",
+      "sox_up_adr_up_tw_up",
+      "tx_night_up_tw_up",
+      "agree_tx_night_twii",
+      "sox_down_tw_not_down",
+      "level_touch_2330_down_break"
+    ],
+    "dig_worth": [
+      {
+        "id": "agree_2330_twii",
+        "family": "co_move",
+        "zh": "2330方向＝加權方向（上下）",
+        "n": 363,
+        "hit": 363,
+        "rate": 1.0,
+        "base_n": 363,
+        "base_rate": 0.5,
+        "lift": 1.0,
+        "by_year": [
+          {
+            "year": "2023",
+            "n": 68,
+            "hit": 68,
+            "rate": 1.0,
+            "lift": 1.0
+          },
+          {
+            "year": "2024",
+            "n": 88,
+            "hit": 88,
+            "rate": 1.0,
+            "lift": 1.0
+          },
+          {
+            "year": "2025",
+            "n": 106,
+            "hit": 106,
+            "rate": 1.0,
+            "lift": 1.0
+          },
+          {
+            "year": "2026",
+            "n": 101,
+            "hit": 101,
+            "rate": 1.0,
+            "lift": 1.0
+          }
+        ],
+        "year_consistent": true,
+        "dig_worth": true,
+        "score": 435.6,
+        "buy_signal": false,
+        "phone_sync": "blocked"
+      },
+      {
+        "id": "sox_up_2330_up",
+        "family": "lead_lag",
+        "zh": "費半大漲後次日2330大漲",
+        "n": 393,
+        "hit": 213,
+        "rate": 0.542,
+        "base_n": 1147,
+        "base_rate": 0.2964,
+        "lift": 0.8284,
+        "by_year": [
+          {
+            "year": "2023",
+            "n": 88,
+            "hit": 43,
+            "rate": 0.4886,
+            "lift": 0.6484
+          },
+          {
+            "year": "2024",
+            "n": 106,
+            "hit": 60,
+            "rate": 0.566,
+            "lift": 0.9095
+          },
+          {
+            "year": "2025",
+            "n": 99,
+            "hit": 51,
+            "rate": 0.5152,
+            "lift": 0.7379
+          },
+          {
+            "year": "2026",
+            "n": 100,
+            "hit": 59,
+            "rate": 0.59,
+            "lift": 0.9904
+          }
+        ],
+        "year_consistent": true,
+        "dig_worth": true,
+        "score": 390.674,
+        "buy_signal": false,
+        "phone_sync": "blocked"
+      },
+      {
+        "id": "sox_down_adr_down_tw_down",
+        "family": "lead_lag",
+        "zh": "費半＋ADR同跌 → 次日加權大跌",
+        "n": 289,
+        "hit": 114,
+        "rate": 0.3945,
+        "base_n": 1147,
+        "base_rate": 0.1953,
+        "lift": 1.0199,
+        "by_year": [
+          {
+            "year": "2023",
+            "n": 66,
+            "hit": 20,
+            "rate": 0.303,
+            "lift": 0.5517
+          },
+          {
+            "year": "2024",
+            "n": 83,
+            "hit": 33,
+            "rate": 0.3976,
+            "lift": 1.0359
+          },
+          {
+            "year": "2025",
+            "n": 79,
+            "hit": 33,
+            "rate": 0.4177,
+            "lift": 1.139
+          },
+          {
+            "year": "2026",
+            "n": 61,
+            "hit": 28,
+            "rate": 0.459,
+            "lift": 1.3504
+          }
+        ],
+        "year_consistent": true,
+        "dig_worth": true,
+        "score": 353.689,
+        "buy_signal": false,
+        "phone_sync": "blocked"
+      },
+      {
+        "id": "agree_adr_2330",
+        "family": "co_move",
+        "zh": "台積ADR已收方向＝次日2330方向",
+        "n": 501,
+        "hit": 395,
+        "rate": 0.7884,
+        "base_n": 501,
+        "base_rate": 0.5,
+        "lift": 0.5768,
+        "by_year": [
+          {
+            "year": "2023",
+            "n": 94,
+            "hit": 81,
+            "rate": 0.8617,
+            "lift": 0.7234
+          },
+          {
+            "year": "2024",
+            "n": 139,
+            "hit": 113,
+            "rate": 0.8129,
+            "lift": 0.6259
+          },
+          {
+            "year": "2025",
+            "n": 140,
+            "hit": 103,
+            "rate": 0.7357,
+            "lift": 0.4714
+          },
+          {
+            "year": "2026",
+            "n": 128,
+            "hit": 98,
+            "rate": 0.7656,
+            "lift": 0.5312
+          }
+        ],
+        "year_consistent": true,
+        "dig_worth": true,
+        "score": 346.8,
+        "buy_signal": false,
+        "phone_sync": "blocked"
+      },
+      {
+        "id": "sox_up_tw_up",
+        "family": "lead_lag",
+        "zh": "費半大漲後次日加權大漲",
+        "n": 470,
+        "hit": 198,
+        "rate": 0.4213,
+        "base_n": 1147,
+        "base_rate": 0.2642,
+        "lift": 0.5947,
+        "by_year": [
+          {
+            "year": "2023",
+            "n": 102,
+            "hit": 38,
+            "rate": 0.3725,
+            "lift": 0.4103
+          },
+          {
+            "year": "2024",
+            "n": 131,
+            "hit": 49,
+            "rate": 0.374,
+            "lift": 0.4159
+          },
+          {
+            "year": "2025",
+            "n": 118,
+            "hit": 50,
+            "rate": 0.4237,
+            "lift": 0.604
+          },
+          {
+            "year": "2026",
+            "n": 119,
+            "hit": 61,
+            "rate": 0.5126,
+            "lift": 0.9405
+          }
+        ],
+        "year_consistent": true,
+        "dig_worth": true,
+        "score": 335.43,
+        "buy_signal": false,
+        "phone_sync": "blocked"
+      },
+      {
+        "id": "agree_sox_2330",
+        "family": "co_move",
+        "zh": "費半已收方向＝次日2330方向（上下）",
+        "n": 495,
+        "hit": 384,
+        "rate": 0.7758,
+        "base_n": 495,
+        "base_rate": 0.5,
+        "lift": 0.5515,
+        "by_year": [
+          {
+            "year": "2023",
+            "n": 96,
+            "hit": 81,
+            "rate": 0.8438,
+            "lift": 0.6875
+          },
+          {
+            "year": "2024",
+            "n": 132,
+            "hit": 106,
+            "rate": 0.803,
+            "lift": 0.6061
+          },
+          {
+            "year": "2025",
+            "n": 128,
+            "hit": 91,
+            "rate": 0.7109,
+            "lift": 0.4219
+          },
+          {
+            "year": "2026",
+            "n": 139,
+            "hit": 106,
+            "rate": 0.7626,
+            "lift": 0.5252
+          }
+        ],
+        "year_consistent": true,
+        "dig_worth": true,
+        "score": 327.6,
+        "buy_signal": false,
+        "phone_sync": "blocked"
+      },
+      {
+        "id": "agree_sox_twii",
+        "family": "co_move",
+        "zh": "費半已收方向＝次日加權方向（上下）",
+        "n": 411,
+        "hit": 334,
+        "rate": 0.8127,
+        "base_n": 411,
+        "base_rate": 0.5,
+        "lift": 0.6253,
+        "by_year": [
+          {
+            "year": "2023",
+            "n": 74,
+            "hit": 63,
+            "rate": 0.8514,
+            "lift": 0.7027
+          },
+          {
+            "year": "2024",
+            "n": 103,
+            "hit": 85,
+            "rate": 0.8252,
+            "lift": 0.6505
+          },
+          {
+            "year": "2025",
+            "n": 112,
+            "hit": 86,
+            "rate": 0.7679,
+            "lift": 0.5357
+          },
+          {
+            "year": "2026",
+            "n": 122,
+            "hit": 100,
+            "rate": 0.8197,
+            "lift": 0.6393
+          }
+        ],
+        "year_consistent": true,
+        "dig_worth": true,
+        "score": 308.4,
+        "buy_signal": false,
+        "phone_sync": "blocked"
+      },
+      {
+        "id": "sox_up_adr_up_tw_up",
+        "family": "lead_lag",
+        "zh": "費半＋ADR同漲 → 次日加權大漲",
+        "n": 351,
+        "hit": 160,
+        "rate": 0.4558,
+        "base_n": 1147,
+        "base_rate": 0.2642,
+        "lift": 0.7256,
+        "by_year": [
+          {
+            "year": "2023",
+            "n": 71,
+            "hit": 28,
+            "rate": 0.3944,
+            "lift": 0.4929
+          },
+          {
+            "year": "2024",
+            "n": 109,
+            "hit": 45,
+            "rate": 0.4128,
+            "lift": 0.5628
+          },
+          {
+            "year": "2025",
+            "n": 86,
+            "hit": 42,
+            "rate": 0.4884,
+            "lift": 0.8487
+          },
+          {
+            "year": "2026",
+            "n": 85,
+            "hit": 45,
+            "rate": 0.5294,
+            "lift": 1.0041
+          }
+        ],
+        "year_consistent": true,
+        "dig_worth": true,
+        "score": 305.612,
+        "buy_signal": false,
+        "phone_sync": "blocked"
+      }
+    ],
+    "wave_strengthen_hints": [
+      {
+        "next_track": "pref_fail_link_v1",
+        "from_hyp": "level_touch_2330_down_break",
+        "zh": "位階觸碰＋聯動偏空作失效加權：觸位＋2330跌 → 收破 (n=198 rate=0.7828 lift=0.3878)；對質三態失效邊，未過閘不換。"
+      },
+      {
+        "next_track": "desync_hold_filter_v1",
+        "from_hyp": "desync_sox_down_2330_hold_tw_hold",
+        "zh": "背離守勢過濾假跌破：費半跌但2330守住 → 加權亦守 (n=101 rate=0.9505 lift=0.1812)。"
+      },
+      {
+        "next_track": "path_weight_co_move_v1",
+        "from_hyp": "agree_2330_twii",
+        "zh": "共向聯動加權路徑可信度：2330方向＝加權方向（上下） (n=363 rate=1.0 lift=1.0)。"
+      },
+      {
+        "next_track": "us_lead_tw_path_v1",
+        "from_hyp": "sox_up_2330_up",
+        "zh": "美股先行加權路徑：費半大漲後次日2330大漲 (n=393 rate=0.542 lift=0.8284)。"
+      },
+      {
+        "next_track": "night_session_confirm_v1",
+        "from_hyp": "tx_night_up_tw_up",
+        "zh": "夜盤確認鏈：台指夜盤大漲 → 當日加權大漲 (n=251 rate=0.4143 lift=0.5685)。"
+      },
+      {
+        "next_track": "cross_link_generic_v1",
+        "from_hyp": "sox_down_tw_not_down",
+        "zh": "費半大跌後次日加權未續跌（守／軟／漲） (n=373 rate=0.6354 lift=-0.2104)"
+      }
+    ],
+    "coverage": {
+      "since": "20230101",
+      "n_tw_days": 1147,
+      "n_sox": 1147,
+      "n_2330": 935,
+      "n_te_night": 92,
+      "n_tx_night": 662,
+      "n_level_touch": 679,
+      "te_night_span": [
+        "20260708",
+        "20261120"
+      ],
+      "coverage_gap_zh": [
+        "TE night／day 本地庫約自 20260707 起，2023–2026H1 電子夜盤鏈樣本不足，該軌只標候選不硬推。",
+        "TX night 約自 20240301；更早用 SOX↔2330↔TWII 主鏈。",
+        "TSM ADR 近窗可能滯後；缺日不算。"
+      ]
+    }
+  },
+  "sox_tsmc_te_ref": {
+    "variant": "cross_v2_2023_mine",
+    "gate": {
+      "min_n": 20,
+      "n_tw_days": 1147,
+      "n_sox_2330_aligned": 516,
+      "n_te_night_days": 105,
+      "n_dig_worth": 0,
+      "gate_n20": true,
+      "replace": false
+    },
+    "flag_counts": {
+      "tsmc_leads_tw": 269,
+      "sox_up_tsmc_up_tw_up": 86,
+      "adr_down_2330_hold": 64,
+      "sox_down_tsmc_hold": 54,
+      "te_night_leads_tw": 39,
+      "sox_down_te_night_hold": 7,
+      "te_night_down_day_te_hold": 13
+    }
+  },
   "forbid_zh": [
     "不准當買訊",
     "不准發明未口述價／新①",
     "不准未收當收",
     "phone_sync=blocked 時不准定案浪號上話筒",
-    "勝率不准混海選／黃金買點"
+    "勝率不准混海選／黃金買點",
+    "dig_worth 未過閘不准直接改 preferred"
   ]
 }

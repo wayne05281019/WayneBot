@@ -1,7 +1,7 @@
 # 波浪靜默加深
 
-寫入：`2026-11-26T00:58:16+0800`（Asia/Taipei）。
-軌：`wave_silent_deepen`／`deepen_v1_chain_secondary_nested`｜phone_sync=blocked｜非買訊
+寫入：`2026-11-26T01:07:02+0800`（Asia/Taipei）。
+軌：`wave_silent_deepen`／`deepen_v3_cross_mine_2023`｜phone_sync=blocked｜非買訊
 
 - pref n=8 hit_rate=0.625 gate_n20=False replace=False chains=7
 - 警語：`試標・推論／非他原文・非買訊・對質未過閘`
@@ -21,6 +21,16 @@
 
 - nested_flag=34 coarse_flag=7 n_rows=40
 - 巢狀（3-3轉3-4／細微波）與粗浪（大段／第五波）並存於他文；對質時兩層都記，不准只留粗③→④就把巢狀抹掉；現在仍 WAVE_NEURONS_MATCH=false，不准發明①～⑤上話筒。
+
+## 2023聯動×位階挖礦
+
+- dig_worth=16 ids=['agree_2330_twii', 'sox_up_2330_up', 'sox_down_adr_down_tw_down', 'agree_adr_2330', 'sox_up_tw_up', 'agree_sox_2330', 'agree_sox_twii', 'sox_up_adr_up_tw_up', 'tx_night_up_tw_up', 'agree_tx_night_twii', 'sox_down_tw_not_down', 'level_touch_2330_down_break']
+- hint `pref_fail_link_v1` ← `level_touch_2330_down_break`
+- hint `desync_hold_filter_v1` ← `desync_sox_down_2330_hold_tw_hold`
+- hint `path_weight_co_move_v1` ← `agree_2330_twii`
+- hint `us_lead_tw_path_v1` ← `sox_up_2330_up`
+- hint `night_session_confirm_v1` ← `tx_night_up_tw_up`
+- hint `cross_link_generic_v1` ← `sox_down_tw_not_down`
 
 WAVE_NEURONS_MATCH=false。不上話筒定案。
 

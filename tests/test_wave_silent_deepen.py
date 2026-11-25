@@ -40,6 +40,7 @@ def test_secondary_paths_1125_has_partial_fb():
 def test_run_deepen_gate_fields():
     payload = wd.run_deepen()
     assert payload["track"] == "wave_silent_deepen"
+    assert payload["variant"].startswith("deepen_v3")
     assert payload["buy_signal"] is False
     assert payload["phone_sync"] == "blocked"
     assert payload["WAVE_NEURONS_MATCH"] is False
@@ -48,6 +49,10 @@ def test_run_deepen_gate_fields():
         t.get("id") == "gap_reclaim_then_intraday_break"
         for t in (payload.get("chain_tags") or [])
     )
+    cm = payload.get("cross_mine") or {}
+    assert isinstance(cm.get("n_dig_worth"), int)
+    assert cm.get("n_dig_worth", -1) >= 0
+    assert "wave_strengthen_hints" in cm
 
 
 def test_1126_preflight_not_buy():

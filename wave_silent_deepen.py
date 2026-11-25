@@ -14,7 +14,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
+import wave_cross_relation_mine as crm
 import wave_pref_path_confront as pc
+import wave_sox_tsmc_te_confront as stx
 
 ROOT = Path(__file__).resolve().parent
 LAB = ROOT / "docs" / "expert_notes" / "飆客" / "decade_lab"
@@ -24,7 +26,7 @@ PREFLIGHT = LAB / "wave_intraday_preflight_20261126.json"
 TAIPEI = ZoneInfo("Asia/Taipei")
 
 TRACK = "wave_silent_deepen"
-VARIANT = "deepen_v1_chain_secondary_nested"
+VARIANT = "deepen_v3_cross_mine_2023"
 PHONE_SYNC = "blocked"
 PHONE_WARNING = "試標・推論／非他原文・非買訊・對質未過閘"
 MIN_N = 20
@@ -202,12 +204,14 @@ def build_1126_preflight(forward: Optional[Dict[str, Any]] = None) -> Dict[str, 
             "wave4_band": [41800.0, 42700.0],
             "wave4_mid": 42250.0,
             "oral_38795_night": 38795.0,
+            "cross_zh": "費半已收／台積2330／電子夜盤 TE 只對照，不准發明浪號",
         },
         "checks_zh": [
             "preferred＝FB_hold：收是否仍＞37837（盤中失守要記 partial）",
             "再失 37837 → 升權 M3／35000～35500",
             "W4 41800～42700 僅強勢再觸才升權",
             "夜盤口述 38795：只對他講過的位，不准發明新①",
+            "交叉：費半已收→台股日；2330／TWII 日盤；TE night 電子夜盤確認鏈",
         ],
         "phone_warning_fixed": PHONE_WARNING,
         "WAVE_NEURONS_MATCH": False,
@@ -248,13 +252,22 @@ def run_deepen(*, db_path: str = "") -> Dict[str, Any]:
         except Exception:
             db = str(ROOT / "data" / "wayne_market.db")
     nested = scan_nested_oral(db)
+    # 2023起聯動×位階挖礦 → 波浪強化候選（仍 blocked）
+    mine = crm.run_suite(db, since_ymd="20230101", write_daily=True)
+    crm.write_outputs(mine)
+    cross = stx.run_suite(db, since_ymd="20230101", run_mine=False)
+    stx.write_outputs(cross)
+    dig = ((mine.get("mine") or {}).get("dig_worth") or [])
+    hints = list(mine.get("wave_strengthen_hints") or [])
     g = pref_suite.get("gate") or {}
     payload = {
         "written_at": _now(),
         "tz": "Asia/Taipei",
         "track": TRACK,
         "variant": VARIANT,
-        "purpose_zh": "靜默加深：連鎖日＋次路徑＋巢狀口述對照（非買訊）",
+        "purpose_zh": (
+            "靜默加深：連鎖日＋次路徑＋巢狀口述＋2023聯動位階挖礦（非買訊）"
+        ),
         "phone_sync": PHONE_SYNC,
         "buy_signal": False,
         "not_buy_signal": True,
@@ -267,6 +280,7 @@ def run_deepen(*, db_path: str = "") -> Dict[str, Any]:
             "gate_n20": g.get("gate_n20"),
             "replace": False,
             "n_chains": len(chains),
+            "n_dig_worth": len(dig),
         },
         "pref_suite_ref": {
             "current_variant": pref_suite.get("current_variant"),
@@ -277,12 +291,26 @@ def run_deepen(*, db_path: str = "") -> Dict[str, Any]:
         "chain_tags": chain_tags,
         "secondary_paths": secondary,
         "nested_oral": nested,
+        "cross_mine": {
+            "variant": mine.get("variant"),
+            "n_dig_worth": len(dig),
+            "dig_ids": [d.get("id") for d in dig[:12]],
+            "dig_worth": dig[:8],
+            "wave_strengthen_hints": hints,
+            "coverage": mine.get("coverage"),
+        },
+        "sox_tsmc_te_ref": {
+            "variant": cross.get("variant"),
+            "gate": cross.get("gate"),
+            "flag_counts": cross.get("flag_counts"),
+        },
         "forbid_zh": [
             "不准當買訊",
             "不准發明未口述價／新①",
             "不准未收當收",
             "phone_sync=blocked 時不准定案浪號上話筒",
             "勝率不准混海選／黃金買點",
+            "dig_worth 未過閘不准直接改 preferred",
         ],
     }
     return payload
@@ -315,6 +343,7 @@ def write_outputs(payload: Dict[str, Any]) -> Tuple[Path, Path, Path]:
     for tag in payload.get("chain_tags") or []:
         lines.append(f"- tag `{tag.get('id')}`：{tag.get('zh')}")
     nest = payload.get("nested_oral") or {}
+    cm = payload.get("cross_mine") or {}
     lines += [
         "",
         "## 巢狀口述",
@@ -322,6 +351,14 @@ def write_outputs(payload: Dict[str, Any]) -> Tuple[Path, Path, Path]:
         f"- nested_flag={nest.get('n_nested_flag')} coarse_flag={nest.get('n_coarse_flag')} "
         f"n_rows={nest.get('n_rows')}",
         f"- {nest.get('note_zh')}",
+        "",
+        "## 2023聯動×位階挖礦",
+        "",
+        f"- dig_worth={cm.get('n_dig_worth')} ids={cm.get('dig_ids')}",
+    ]
+    for h in cm.get("wave_strengthen_hints") or []:
+        lines.append(f"- hint `{h.get('next_track')}` ← `{h.get('from_hyp')}`")
+    lines += [
         "",
         "WAVE_NEURONS_MATCH=false。不上話筒定案。",
         "",
