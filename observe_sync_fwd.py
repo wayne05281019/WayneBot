@@ -37,7 +37,8 @@ WRITEBACK_MD = MANUAL / "fwd_miss_writeback_latest.md"
 
 TRACK = "bk_fwd"
 VARIANT_CURRENT = "bk_fwd_v1_miss_map"
-VARIANT_NEXT = "bk_fwd_v2_bounce_reclaim_priority"
+# §13：1124 miss＝跳空收回 → 下一版優先 gap_reclaim（仍收集中，未過閘不換現況）
+VARIANT_NEXT = "bk_fwd_v3_gap_reclaim_hold"
 PHONE_SYNC = "blocked"
 
 # 新浪則卡（§13 下一版候選；試標鍋）
@@ -103,7 +104,39 @@ CARD_PENDING_NOT_VETO = {
     "not_buy_signal": True,
 }
 
-NEW_CARDS = (CARD_TOUCH_BOUNCE_RECLAIM, CARD_PENDING_NOT_VETO)
+CARD_GAP_RECLAIM_HOLD = {
+    "id": "WR-FWD-GAP-RECLAIM-HOLD",
+    "title_zh": "跳空開盤已站回→標 gap_reclaim_hold、下一窗升權 W4",
+    "category": "verify",
+    "source_kind": "trial_infer",
+    "his_words": [],
+    "trial_note_zh": (
+        "來自 eod miss_analysis（20261124）：preferred＝FB_reclaim 時，"
+        "若跳空開盤已＞收回位且全日 L＞收回位、C＞收回位 → 標 FB_gap_reclaim_hold；"
+        "下一窗升權 W4_reclaim_418_427；若再失收回位才回 M3／N1。"
+        "不准把大漲當新五波①、不准發明未口述新高、不是買訊。"
+    ),
+    "provenance": [
+        "wave_eod_verify_20261124.json#miss_analysis",
+        "wave_forward_infer_20261125.json",
+        "observe_sync_fwd.py",
+    ],
+    "ops_check_zh": (
+        "條件：preferred＝假跌破收回；官方已收柱 O＞收回位且 L＞收回位且 C＞收回位。"
+        "動作：標 FB_gap_reclaim_hold；下一窗升權口頭 W4 帶；再失收回位才回續弱帶。"
+        "硬禁：發明①／未口述新高／當買訊／改黃金買點。"
+    ),
+    "segment_labels": [
+        "FB_gap_reclaim_hold",
+        "false_break_reclaim",
+        "W4_reclaim_418_427",
+    ],
+    "phone_ok_with_warning": True,
+    "phone_warning": PHONE_WARNING_FIXED,
+    "not_buy_signal": True,
+}
+
+NEW_CARDS = (CARD_TOUCH_BOUNCE_RECLAIM, CARD_PENDING_NOT_VETO, CARD_GAP_RECLAIM_HOLD)
 
 
 def _now() -> str:
@@ -150,6 +183,30 @@ def classify_miss(
     narrative_fix_zh = ""
 
     if (
+        "FB_gap_reclaim_hold" in blob
+        or ("跳空開盤" in blob and "收回" in blob)
+        or ("跳空" in unexpected and "37837" in blob)
+    ):
+        kind = "gap_reclaim_hold_elevate_w4"
+        next_variant = "bk_fwd_v3_gap_reclaim_hold"
+        rule_ids = [
+            "WR-FWD-GAP-RECLAIM-HOLD",
+            "WR-OPS-FAKE-BREAK",
+            "WR-FWD-LOOP",
+            "WR-LEVEL-ORAL-ONLY",
+            "WR-SEGMENT-TRIAL-WARN",
+        ]
+        prefer_path = "W4_reclaim_418_427_band"
+        labels = ["FB_gap_reclaim_hold", "false_break_reclaim", "W4_reclaim_418_427"]
+        code_fix_zh = (
+            "preferred＝FB_reclaim：跳空 O＞收回位且全日 L／C＞收回位 → "
+            "標 FB_gap_reclaim_hold；下一窗升權 W4_reclaim_418_427；"
+            "再失收回位才回 M3／N1。不准把大漲當新①。"
+        )
+        narrative_fix_zh = (
+            "文敘：跳空收回完成；下一窗看波浪4帶；守住收回位；段號試標＋固定警語；非買訊。"
+        )
+    elif (
         "touched_then_bounce" in blob
         or ("收明顯反彈" in rp and "37837" in rp)
         or ("反彈" in unexpected and "假跌破" in rp)
@@ -574,8 +631,11 @@ def build_writeback_payload(
         "current_variant": VARIANT_CURRENT,
         "next_variant": {
             "variant": VARIANT_NEXT,
-            "from_kind": "target_touch_bounce_elevate_reclaim",
-            "note_zh": "20261123 miss：目標觸及後收彈→升權 FB reclaim；同件再生收集中",
+            "from_kind": "gap_reclaim_hold_elevate_w4",
+            "note_zh": (
+                "20261124 miss：跳空收回→FB_gap_reclaim_hold、下一窗升權 W4；"
+                "同件再生收集中（v2 bounce 仍保留可操作樣本）"
+            ),
             "gate_zh": "獨立交易日 n≥20 且贏該功能現況才替換（§13）；空名單不算",
         },
         "n_eod_miss": len(mapped),
