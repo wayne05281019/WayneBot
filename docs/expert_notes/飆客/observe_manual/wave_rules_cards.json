@@ -1,5 +1,5 @@
 {
-  "as_of_taipei": "2026-11-25T13:19:06+0800",
+  "as_of_taipei": "2026-11-25T15:06:42+0800",
   "track": "BK-WAVE",
   "tz": "Asia/Taipei",
   "phone_sync": "blocked",
@@ -19,7 +19,7 @@
     "sox_14.md / sox_14.json",
     "mine_wave_rules.py（僅對照・不准冒充他說）"
   ],
-  "n_cards": 25,
+  "n_cards": 26,
   "cards": [
     {
       "id": "WR-IRON-14-OVERLAP",
@@ -548,6 +548,28 @@
         "FB_gap_reclaim_hold",
         "false_break_reclaim",
         "W4_reclaim_418_427"
+      ],
+      "phone_ok_with_warning": true,
+      "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",
+      "not_buy_signal": true
+    },
+    {
+      "id": "WR-FWD-INTRADAY-BREAK-CLOSE-RECLAIM",
+      "title_zh": "盤中失收回位、收仍站回→標 intraday_break_close_reclaim、下一窗改 FB_hold",
+      "category": "verify",
+      "source_kind": "trial_infer",
+      "his_words": [],
+      "trial_note_zh": "來自 eod miss_analysis（20261125）：preferred＝W4_reclaim 時，若 H＜波浪4帶下沿且全日 L＜收回位但 C＞收回位 → 標 FB_intraday_break_close_reclaim；下一窗改優先 FB_hold；失守才升 M3／口頭目標帶；W4 降權至再觸帶。不准發明新五波①、不准發明未口述新低、不是買訊。",
+      "provenance": [
+        "wave_eod_verify_20261125.json#miss_analysis",
+        "wave_forward_infer_20261126.json",
+        "observe_sync_fwd.py"
+      ],
+      "ops_check_zh": "條件：preferred＝波浪4帶收回；官方已收柱 H＜帶下沿且 L＜收回位且 C＞收回位。動作：標 FB_intraday_break_close_reclaim；下一窗優先口頭收回位守住；再失才回續弱／目標帶；W4 降權。硬禁：發明①／未口述新低／當買訊／改黃金買點。",
+      "segment_labels": [
+        "FB_intraday_break_close_reclaim",
+        "false_break_hold",
+        "M3_resume_backup"
       ],
       "phone_ok_with_warning": true,
       "phone_warning": "試標・推論／非他原文・非買訊・對質未過閘",

@@ -1,5 +1,5 @@
 {
-  "written_at": "2026-11-25T13:19:06+0800",
+  "written_at": "2026-11-25T15:06:41+0800",
   "tz": "Asia/Taipei",
   "track": "wave_pref_path_3state",
   "purpose_zh": "preferred 路徑三態對質：觸位／守位／失效改口（非買訊）",
@@ -10,21 +10,21 @@
   "mix_forbidden_zh": "勝率不准混進海選／黃金買點／洞燭",
   "current_variant": "pref_3state_v1_verdict_map",
   "next_variant": {
-    "variant": "pref_3state_v2_gap_reclaim_w4",
-    "note_zh": "1124 gap_reclaim→W4 升權規則併入三態計分；收集中",
+    "variant": "pref_3state_v2_intraday_break_hold",
+    "note_zh": "1125 intraday_break→FB_hold 規則併入三態計分；收集中",
     "gate_zh": "獨立交易日 n≥20 且贏現況才替換（§13）"
   },
   "gate": {
     "min_n": 20,
-    "n_decided": 7,
-    "n_rows": 12,
-    "hit_rate": 0.7142857142857143,
+    "n_decided": 8,
+    "n_rows": 13,
+    "hit_rate": 0.625,
     "gate_n20": false,
     "replace": false,
     "WAVE_NEURONS_MATCH": false
   },
   "state_counts": {
-    "fail": 2,
+    "fail": 3,
     "hit": 5,
     "unknown": 3,
     "partial": 2
@@ -218,6 +218,22 @@
       "decided": true,
       "hit": true,
       "source_file": "docs/expert_notes/飆客/decade_lab/wave_eod_verify_20261124.json",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "not_buy_signal": true
+    },
+    {
+      "as_of": "20261125",
+      "preferred_id": "W4_reclaim_418_427_band",
+      "verdict_zh": "否決：未收回波浪4帶（H39983.91＜41800）",
+      "state": "fail",
+      "touch": false,
+      "hold": false,
+      "fail_retract": true,
+      "has_retract_hook": true,
+      "decided": true,
+      "hit": false,
+      "source_file": "docs/expert_notes/飆客/decade_lab/wave_eod_verify_20261125.json",
       "buy_signal": false,
       "phone_sync": "blocked",
       "not_buy_signal": true

@@ -1,7 +1,7 @@
 # 浪則卡（BK-WAVE）
 
-- as_of：`2026-11-25T13:19:06+0800`（Asia/Taipei）
-- 卡數：**25**
+- as_of：`2026-11-25T15:06:42+0800`（Asia/Taipei）
+- 卡數：**26**
 - 話筒警語（固定）：`試標・推論／非他原文・非買訊・對質未過閘`
 - 非買訊；`phone_sync=blocked`；離開敘事不准進產品；DC句不准寫成他說。
 
@@ -32,6 +32,7 @@
 | `WR-FWD-TOUCH-BOUNCE-RECLAIM` | verify | trial_infer | 目標觸及後收彈→升權假跌破收回 |
 | `WR-FWD-PENDING-NOT-VETO` | verify | trial_infer | 未觸及≠路徑否決（pending 升權） |
 | `WR-FWD-GAP-RECLAIM-HOLD` | verify | trial_infer | 跳空開盤已站回→標 gap_reclaim_hold、下一窗升權 W4 |
+| `WR-FWD-INTRADAY-BREAK-CLOSE-RECLAIM` | verify | trial_infer | 盤中失收回位、收仍站回→標 intraday_break_close_reclaim、下一窗改 FB_hold |
 
 ## 與現況 wave 碼落差
 

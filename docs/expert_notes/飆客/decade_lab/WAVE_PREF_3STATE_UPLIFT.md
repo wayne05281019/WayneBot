@@ -8,8 +8,8 @@ Asia/Taipei。不是買訊。`phone_sync=blocked`。
 ## 現況鍵／下一版（§13）
 | 軌 | 現況 | 下一版 | 閘 |
 |---|---|---|---|
-| SYNC-FWD miss 回寫 | `bk_fwd_v1_miss_map` | `bk_fwd_v3_gap_reclaim_hold` | n≥20 且贏現況才換 |
-| preferred 三態 | `pref_3state_v1_verdict_map` | `pref_3state_v2_gap_reclaim_w4` | 同上 |
+| SYNC-FWD miss 回寫 | `bk_fwd_v1_miss_map` | `bk_fwd_v4_intraday_break_close_reclaim` | n≥20 且贏現況才換 |
+| preferred 三態 | `pref_3state_v1_verdict_map` | `pref_3state_v2_intraday_break_hold` | 同上 |
 
 ## 跑法
 ```bash

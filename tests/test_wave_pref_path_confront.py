@@ -28,10 +28,25 @@ def test_classify_1124_gap_reclaim():
     assert row["phone_sync"] == "blocked"
 
 
-def test_fwd_next_variant_is_v3_gap():
+def test_fwd_next_variant_is_v4_intraday():
     assert sf.VARIANT_CURRENT == "bk_fwd_v1_miss_map"
-    assert sf.VARIANT_NEXT == "bk_fwd_v3_gap_reclaim_hold"
+    assert sf.VARIANT_NEXT == "bk_fwd_v4_intraday_break_close_reclaim"
     assert sf.VARIANT_CURRENT != sf.VARIANT_NEXT
+
+
+def test_classify_1125_intraday_break():
+    eod = json.loads((LAB / "wave_eod_verify_20261125.json").read_text(encoding="utf-8"))
+    row = sf.classify_miss(
+        as_of="20261125",
+        preferred=eod.get("preferred_was"),
+        miss=eod["miss_analysis"],
+    )
+    assert row["kind"] == "intraday_break_close_reclaim_elevate_hold"
+    assert row["actionable"] is True
+    assert "WR-FWD-INTRADAY-BREAK-CLOSE-RECLAIM" in row["rule_ids"]
+    assert row["prefer_path_id"] == "FB_hold_above_37837"
+    assert row["buy_signal"] is False
+    assert row["phone_sync"] == "blocked"
 
 
 def test_pref_3state_scores_1124_hit():
@@ -45,11 +60,21 @@ def test_pref_3state_scores_1124_hit():
     assert row["phone_sync"] == "blocked"
 
 
+def test_pref_3state_scores_1125_w4_fail():
+    eod = json.loads((LAB / "wave_eod_verify_20261125.json").read_text(encoding="utf-8"))
+    row = pc.score_eod(eod, source="wave_eod_verify_20261125.json")
+    assert row["preferred_id"] == "W4_reclaim_418_427_band"
+    assert row["state"] == "fail"
+    assert row["hit"] is False
+    assert row["decided"] is True
+    assert row["fail_retract"] is True
+
+
 def test_pref_3state_suite_gate_fields():
     payload = pc.run_suite()
     assert payload["track"] == "wave_pref_path_3state"
     assert payload["current_variant"] == "pref_3state_v1_verdict_map"
-    assert payload["next_variant"]["variant"] == "pref_3state_v2_gap_reclaim_w4"
+    assert payload["next_variant"]["variant"] == "pref_3state_v2_intraday_break_hold"
     assert payload["buy_signal"] is False
     assert payload["phone_sync"] == "blocked"
     g = payload["gate"]
