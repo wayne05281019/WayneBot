@@ -510,10 +510,22 @@ def judge_emergency(
     return {"push": bool(push), "score": int(score), "reasons": reasons}
 
 
+def _abs_db(db_path: str) -> str:
+    """相對路徑一律轉絕對，避免 cwd 不同寫到兩顆庫、日鎖失效重寄。"""
+    raw = str(db_path or "").strip()
+    if not raw:
+        return ""
+    try:
+        return os.path.abspath(raw)
+    except Exception:
+        return raw
+
+
 def _ensure(db_path: str) -> None:
-    if not db_path:
+    path = _abs_db(db_path)
+    if not path:
         return
-    conn = sqlite3.connect(db_path, timeout=30.0)
+    conn = sqlite3.connect(path, timeout=30.0)
     try:
         conn.executescript(_DDL)
         conn.commit()
@@ -1529,10 +1541,11 @@ def maybe_push_watch_week_posts(
 
 
 def _level_already(db_path: str, alert_key: str) -> bool:
-    if not db_path or not alert_key:
+    path = _abs_db(db_path)
+    if not path or not alert_key:
         return False
-    _ensure(db_path)
-    conn = sqlite3.connect(db_path, timeout=30.0)
+    _ensure(path)
+    conn = sqlite3.connect(path, timeout=30.0)
     try:
         row = conn.execute(
             "SELECT 1 FROM biaoke_level_alerts WHERE alert_key=?", (alert_key,)
@@ -1547,12 +1560,15 @@ def _level_already(db_path: str, alert_key: str) -> bool:
 def _bar_day_level_alerted(db_path: str, bar_ymd: str) -> bool:
     """同根官方柱日是否已推過任何關卡提醒（含舊版只記 idx:lv、尚未寫 idx:day）。"""
     day = str(bar_ymd or "").replace("-", "")[:8]
-    if not db_path or len(day) != 8:
+    path = _abs_db(db_path)
+    if not path or len(day) != 8:
         return False
-    if _level_already(db_path, f"idx:day:{day}"):
+    if _level_already(path, f"idx:day:{day}"):
         return True
-    _ensure(db_path)
-    conn = sqlite3.connect(db_path, timeout=30.0)
+    if _level_already(path, f"idx:levelhit:{day}"):
+        return True
+    _ensure(path)
+    conn = sqlite3.connect(path, timeout=30.0)
     try:
         row = conn.execute(
             "SELECT 1 FROM biaoke_level_alerts WHERE bar_date=? LIMIT 1",
@@ -1566,21 +1582,22 @@ def _bar_day_level_alerted(db_path: str, bar_ymd: str) -> bool:
 
 
 def _ensure_day_latch(db_path: str, bar_ymd: str, *, reason: str) -> None:
-    """補寫 idx:day，避免舊版只留 lv 鍵時晚上又拆第二則。"""
+    """補寫 idx:day／idx:levelhit，避免舊版只留 lv 鍵時晚上又拆第二則。"""
     day = str(bar_ymd or "").replace("-", "")[:8]
-    if not db_path or len(day) != 8:
+    path = _abs_db(db_path)
+    if not path or len(day) != 8:
         return
-    key = f"idx:day:{day}"
-    if _level_already(db_path, key):
-        return
-    _mark_level(
-        db_path,
-        key,
-        post_id="",
-        level=0.0,
-        bar_date=day,
-        reasons=[reason[:400]],
-    )
+    for key in (f"idx:day:{day}", f"idx:levelhit:{day}"):
+        if _level_already(path, key):
+            continue
+        _mark_level(
+            path,
+            key,
+            post_id="",
+            level=0.0,
+            bar_date=day,
+            reasons=[reason[:400]],
+        )
 
 
 def _mark_level(
@@ -1592,10 +1609,11 @@ def _mark_level(
     bar_date: str,
     reasons: Sequence[str],
 ) -> None:
-    if not db_path or not alert_key:
+    path = _abs_db(db_path)
+    if not path or not alert_key:
         return
-    _ensure(db_path)
-    conn = sqlite3.connect(db_path, timeout=30.0)
+    _ensure(path)
+    conn = sqlite3.connect(path, timeout=30.0)
     try:
         conn.execute(
             "INSERT OR REPLACE INTO biaoke_level_alerts"
@@ -1625,13 +1643,14 @@ def _claim_level_batch(
     rows: (alert_key, post_id, level, bar_date, reasons)
     BEGIN IMMEDIATE 擋住 ingest／tape 雙路徑競速。
     """
-    if not db_path:
+    path = _abs_db(db_path)
+    if not path:
         return False
     items = [r for r in (rows or []) if r and str(r[0] or "").strip()]
     if not items:
         return False
-    _ensure(db_path)
-    conn = sqlite3.connect(db_path, timeout=30.0)
+    _ensure(path)
+    conn = sqlite3.connect(path, timeout=30.0)
     try:
         conn.execute("BEGIN IMMEDIATE")
         for alert_key, _pid, _lv, _day, _why in items:
@@ -1772,13 +1791,15 @@ def maybe_push_marked_level_hits(
     """
     del now  # 官方柱是否已收走 is_official_daily_bar；保留參數相容呼叫端
     stats = {"checked": 0, "pushed": 0, "skipped": 0, "levels": 0}
+    db_path = _abs_db(db_path)
     if not db_path:
         return stats
     bar = _last_official_twii(db_path)
     if not bar:
         return {**stats, "skipped": "no_official"}
-    bar_ymd = str(bar["date"])
+    bar_ymd = str(bar["date"]).replace("-", "")[:8]
     day_key = f"idx:day:{bar_ymd}"
+    levelhit_key = f"idx:levelhit:{bar_ymd}"
     # 同日已寄過關卡提醒（含舊版只記 lv／body、尚未寫 day）→ 後到子集／夜盤重對一律略過
     if _bar_day_level_alerted(db_path, bar_ymd):
         _ensure_day_latch(
@@ -1860,6 +1881,28 @@ def maybe_push_marked_level_hits(
         )
     if not pending:
         return stats
+    # 日鎖先占（在 sync_retract／組文之前）：縮短 ingest＋tape／deploy 雙跑競速窗。
+    # 占到才准組文寄出；占失敗＝同日已有人寄／正在寄 → 略過。失敗即鎖死當日，寧可漏一則不准洗版。
+    day_claim = [
+        (
+            day_key,
+            "",
+            0.0,
+            bar_ymd,
+            [f"同日關卡提醒一則 n={len(pending)}"],
+        ),
+        (
+            levelhit_key,
+            "",
+            0.0,
+            bar_ymd,
+            [f"levelhit day lock n={len(pending)}"],
+        ),
+    ]
+    if not _claim_level_batch(db_path, day_claim):
+        stats["skipped"] += len(pending)
+        stats["day_latched"] = 1
+        return stats
     html = format_multi_level_hit_synthesis(
         levels=pending,
         bar_date=bar_ymd,
@@ -1886,15 +1929,12 @@ def maybe_push_marked_level_hits(
         logger.debug("level_hit SYNC-RETRACT 略過", exc_info=True)
     body_fp = _body_fingerprint(html)
     body_key = f"idx:body:{bar_ymd}:{body_fp}"
-    # 同日同關卡正文已推過（即使 level 鍵集合微變）→ 不重送
-    if body_fp and _level_already(db_path, body_key):
-        stats["skipped"] += len(pending)
-        return stats
-    claim_rows: List[Tuple[str, str, float, str, Sequence[str]]] = []
+    # lv／body 補記（日鎖已占；這裡失敗不影響「已鎖當日」）
+    extra_rows: List[Tuple[str, str, float, str, Sequence[str]]] = []
     for item in pending:
         sources = item["sources"]
         level = float(item["level"])
-        claim_rows.append(
+        extra_rows.append(
             (
                 str(item["key"]),
                 str(sources[0].get("post_id") or ""),
@@ -1909,7 +1949,7 @@ def maybe_push_marked_level_hits(
             )
         )
     if body_fp:
-        claim_rows.append(
+        extra_rows.append(
             (
                 body_key,
                 "",
@@ -1918,22 +1958,10 @@ def maybe_push_marked_level_hits(
                 [f"同日同關卡正文 n={len(pending)}"],
             )
         )
-    # 日鎖：與 level／body 同批 claim；任一路徑先佔到就不准再寄第二則
-    claim_rows.append(
-        (
-            day_key,
-            "",
-            0.0,
-            bar_ymd,
-            [f"同日關卡提醒一則 n={len(pending)}"],
-        )
-    )
-    # 先占位再送：ingest＋tape 雙呼叫／多 worker 也不洗版
-    if not _claim_level_batch(db_path, claim_rows):
-        stats["skipped"] += len(pending)
-        return stats
-    dedupe = body_key if body_fp else f"idx:coalesce:{bar_ymd}:{len(pending)}"
-    sent = _send_family(html, dedupe_key=dedupe, db_path=db_path)
+    if extra_rows:
+        _claim_level_batch(db_path, extra_rows)
+    # 穩定 dedupe：同日關卡提醒不依正文指紋（指紋變仍不准重寄）
+    sent = _send_family(html, dedupe_key=levelhit_key, db_path=db_path)
     stats["pushed"] = 1
     stats["levels"] = len(pending)
     logger.info(
