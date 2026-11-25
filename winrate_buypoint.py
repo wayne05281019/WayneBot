@@ -312,7 +312,18 @@ def scan_winrate_leave_zero(
         nav = None
 
     cleaned: List[Dict[str, Any]] = []
+    # 全市場掃與話筒同進程：每 N 檔讓出 GIL，避免 21:00 拖死查股／輪詢心跳。
+    _yield_every = 25
+    _scanned = 0
     for sid, df in (frames or {}).items():
+        _scanned += 1
+        if _scanned % _yield_every == 0:
+            try:
+                import time as _time
+
+                _time.sleep(0.01)
+            except Exception:
+                pass
         sid = str(sid or "").strip()
         if not sid or df is None or len(df) < 2:
             continue
