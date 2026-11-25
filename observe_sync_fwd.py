@@ -37,8 +37,9 @@ WRITEBACK_MD = MANUAL / "fwd_miss_writeback_latest.md"
 
 TRACK = "bk_fwd"
 VARIANT_CURRENT = "bk_fwd_v1_miss_map"
-# §13：1124 miss＝跳空收回 → 下一版優先 gap_reclaim（仍收集中，未過閘不換現況）
-VARIANT_NEXT = "bk_fwd_v3_gap_reclaim_hold"
+# §13：1125 miss＝盤中失收回位／收站回 → 下一版優先 intraday_break_close_reclaim
+# （v3 gap_reclaim 仍保留可操作樣本；未過閘不換現況）
+VARIANT_NEXT = "bk_fwd_v4_intraday_break_close_reclaim"
 PHONE_SYNC = "blocked"
 
 # 新浪則卡（§13 下一版候選；試標鍋）
@@ -136,7 +137,45 @@ CARD_GAP_RECLAIM_HOLD = {
     "not_buy_signal": True,
 }
 
-NEW_CARDS = (CARD_TOUCH_BOUNCE_RECLAIM, CARD_PENDING_NOT_VETO, CARD_GAP_RECLAIM_HOLD)
+CARD_INTRADAY_BREAK_CLOSE_RECLAIM = {
+    "id": "WR-FWD-INTRADAY-BREAK-CLOSE-RECLAIM",
+    "title_zh": "盤中失收回位、收仍站回→標 intraday_break_close_reclaim、下一窗改 FB_hold",
+    "category": "verify",
+    "source_kind": "trial_infer",
+    "his_words": [],
+    "trial_note_zh": (
+        "來自 eod miss_analysis（20261125）：preferred＝W4_reclaim 時，"
+        "若 H＜波浪4帶下沿且全日 L＜收回位但 C＞收回位 → 標 FB_intraday_break_close_reclaim；"
+        "下一窗改優先 FB_hold；失守才升 M3／口頭目標帶；W4 降權至再觸帶。"
+        "不准發明新五波①、不准發明未口述新低、不是買訊。"
+    ),
+    "provenance": [
+        "wave_eod_verify_20261125.json#miss_analysis",
+        "wave_forward_infer_20261126.json",
+        "observe_sync_fwd.py",
+    ],
+    "ops_check_zh": (
+        "條件：preferred＝波浪4帶收回；官方已收柱 H＜帶下沿且 L＜收回位且 C＞收回位。"
+        "動作：標 FB_intraday_break_close_reclaim；下一窗優先口頭收回位守住；"
+        "再失才回續弱／目標帶；W4 降權。"
+        "硬禁：發明①／未口述新低／當買訊／改黃金買點。"
+    ),
+    "segment_labels": [
+        "FB_intraday_break_close_reclaim",
+        "false_break_hold",
+        "M3_resume_backup",
+    ],
+    "phone_ok_with_warning": True,
+    "phone_warning": PHONE_WARNING_FIXED,
+    "not_buy_signal": True,
+}
+
+NEW_CARDS = (
+    CARD_TOUCH_BOUNCE_RECLAIM,
+    CARD_PENDING_NOT_VETO,
+    CARD_GAP_RECLAIM_HOLD,
+    CARD_INTRADAY_BREAK_CLOSE_RECLAIM,
+)
 
 
 def _now() -> str:
@@ -183,6 +222,35 @@ def classify_miss(
     narrative_fix_zh = ""
 
     if (
+        "FB_intraday_break_close_reclaim" in blob
+        or ("盤中" in blob and "失" in blob and "收" in blob and "站回" in blob)
+        or ("L＜" in rp and "C＞" in rp and "37837" in blob)
+    ):
+        kind = "intraday_break_close_reclaim_elevate_hold"
+        next_variant = "bk_fwd_v4_intraday_break_close_reclaim"
+        rule_ids = [
+            "WR-FWD-INTRADAY-BREAK-CLOSE-RECLAIM",
+            "WR-OPS-FAKE-BREAK",
+            "WR-FWD-LOOP",
+            "WR-LEVEL-ORAL-ONLY",
+            "WR-SEGMENT-TRIAL-WARN",
+        ]
+        prefer_path = "FB_hold_above_37837"
+        labels = [
+            "FB_intraday_break_close_reclaim",
+            "false_break_hold",
+            "M3_resume_backup",
+        ]
+        code_fix_zh = (
+            "preferred＝W4_reclaim：H＜帶下沿且 L＜收回位但 C＞收回位 → "
+            "標 FB_intraday_break_close_reclaim；下一窗改 FB_hold 優先；"
+            "再失才升 M3／目標帶；W4 降權。不准發明新①／未口述新低。"
+        )
+        narrative_fix_zh = (
+            "文敘：盤中失收回位、收站回；下一窗看守住 vs 再失；W4 降權；"
+            "段號試標＋固定警語；非買訊。"
+        )
+    elif (
         "FB_gap_reclaim_hold" in blob
         or ("跳空開盤" in blob and "收回" in blob)
         or ("跳空" in unexpected and "37837" in blob)
@@ -631,10 +699,10 @@ def build_writeback_payload(
         "current_variant": VARIANT_CURRENT,
         "next_variant": {
             "variant": VARIANT_NEXT,
-            "from_kind": "gap_reclaim_hold_elevate_w4",
+            "from_kind": "intraday_break_close_reclaim_elevate_hold",
             "note_zh": (
-                "20261124 miss：跳空收回→FB_gap_reclaim_hold、下一窗升權 W4；"
-                "同件再生收集中（v2 bounce 仍保留可操作樣本）"
+                "20261125 miss：盤中失收回位／收站回→FB_intraday_break_close_reclaim、"
+                "下一窗改 FB_hold；同件再生收集中（v3 gap／v2 bounce 仍保留樣本）"
             ),
             "gate_zh": "獨立交易日 n≥20 且贏該功能現況才替換（§13）；空名單不算",
         },

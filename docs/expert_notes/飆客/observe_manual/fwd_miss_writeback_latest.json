@@ -1,5 +1,5 @@
 {
-  "written_at": "2026-11-25T13:19:06+0800",
+  "written_at": "2026-11-25T15:06:42+0800",
   "tz": "Asia/Taipei",
   "track": "bk_fwd",
   "purpose_zh": "forward miss 回寫 observe_manual 下一版鍵／敘述修正／證據桶",
@@ -9,20 +9,21 @@
   "mix_forbidden_zh": "勝率不准混進海選／黃金買點；觀測≠主買訊",
   "current_variant": "bk_fwd_v1_miss_map",
   "next_variant": {
-    "variant": "bk_fwd_v3_gap_reclaim_hold",
-    "from_kind": "gap_reclaim_hold_elevate_w4",
-    "note_zh": "20261124 miss：跳空收回→FB_gap_reclaim_hold、下一窗升權 W4；同件再生收集中（v2 bounce 仍保留可操作樣本）",
+    "variant": "bk_fwd_v4_intraday_break_close_reclaim",
+    "from_kind": "intraday_break_close_reclaim_elevate_hold",
+    "note_zh": "20261125 miss：盤中失收回位／收站回→FB_intraday_break_close_reclaim、下一窗改 FB_hold；同件再生收集中（v3 gap／v2 bounce 仍保留樣本）",
     "gate_zh": "獨立交易日 n≥20 且贏該功能現況才替換（§13）；空名單不算"
   },
-  "n_eod_miss": 12,
-  "n_actionable": 12,
+  "n_eod_miss": 13,
+  "n_actionable": 13,
   "kind_counts": {
     "condition_defer": 2,
     "hold_fail_escalate": 4,
     "pending_not_veto": 3,
     "level_broke_follow_oral_band": 1,
     "target_touch_bounce_elevate_reclaim": 1,
-    "gap_reclaim_hold_elevate_w4": 1
+    "gap_reclaim_hold_elevate_w4": 1,
+    "intraday_break_close_reclaim_elevate_hold": 1
   },
   "miss_to_fix": [
     {
@@ -449,70 +450,108 @@
         "M2：收復 43135（低權）"
       ],
       "actual_path": "FB 成立（跳空開 39149＞37837，H/C 皆上）；M3/N1/W4/M2 否決。收 40122 仍在波浪4帶下、43135 下。"
+    },
+    {
+      "as_of": "20261125",
+      "preferred_was": "W4_reclaim_418_427_band",
+      "kind": "intraday_break_close_reclaim_elevate_hold",
+      "actionable": true,
+      "rule_ids": [
+        "WR-FWD-INTRADAY-BREAK-CLOSE-RECLAIM",
+        "WR-OPS-FAKE-BREAK",
+        "WR-FWD-LOOP",
+        "WR-LEVEL-ORAL-ONLY",
+        "WR-SEGMENT-TRIAL-WARN"
+      ],
+      "prefer_path_id": "FB_hold_above_37837",
+      "segment_labels": [
+        "FB_intraday_break_close_reclaim",
+        "false_break_hold",
+        "M3_resume_backup"
+      ],
+      "code_fix_zh": "preferred＝W4_reclaim：H＜帶下沿且 L＜收回位但 C＞收回位 → 標 FB_intraday_break_close_reclaim；下一窗改 FB_hold 優先；再失才升 M3／目標帶；W4 降權。不准發明新①／未口述新低。",
+      "narrative_fix_zh": "文敘：盤中失收回位、收站回；下一窗看守住 vs 再失；W4 降權；段號試標＋固定警語；非買訊。",
+      "rule_patch_src": "preferred＝W4_reclaim 時：若 H＜41800 且全日 L＜37837 但 C＞37837 → 標 FB_intraday_break_close_reclaim；下一窗改優先看守住 37837（FB_hold），失守才升 M3／35000；W4 降權至再觸帶。不准發明新五波①，不准發明未口述新低。",
+      "which_segment_broke": "wave4_band_reclaim 未發生；false_break_hold 盤中破、收站回→FB_intraday_break_close_reclaim；oral_target_* 未觸；M2 未收復。",
+      "next_variant": "bk_fwd_v4_intraday_break_close_reclaim",
+      "phone_warning_fixed": "試標・推論／非他原文・非買訊・對質未過閘",
+      "buy_signal": false,
+      "not_buy_signal": true,
+      "phone_sync": "blocked",
+      "mix_forbidden_zh": "勝率不准混進海選／黃金買點",
+      "source_file": "docs/expert_notes/飆客/decade_lab/wave_eod_verify_20261125.json",
+      "expected_segments": [
+        "W4：收回 41800～42700／42250（preferred）",
+        "FB_hold：收穩 37837 且不回測失守",
+        "M3：再失 37837 後探 35000～35500",
+        "N1：37837 下續弱",
+        "M2：收復 43135（低權）"
+      ],
+      "actual_path": "W4 否決（H39983.91＜41800）；FB_hold 部分（L36681.90 失守、C38195.43 站回）；M3/M2 否決；N1 部分。收－1926.92。"
     }
   ],
   "latest_actionable": {
-    "as_of": "20261124",
-    "preferred_was": "FB_reclaim_37837_watch",
-    "kind": "gap_reclaim_hold_elevate_w4",
+    "as_of": "20261125",
+    "preferred_was": "W4_reclaim_418_427_band",
+    "kind": "intraday_break_close_reclaim_elevate_hold",
     "actionable": true,
     "rule_ids": [
-      "WR-FWD-GAP-RECLAIM-HOLD",
+      "WR-FWD-INTRADAY-BREAK-CLOSE-RECLAIM",
       "WR-OPS-FAKE-BREAK",
       "WR-FWD-LOOP",
       "WR-LEVEL-ORAL-ONLY",
       "WR-SEGMENT-TRIAL-WARN"
     ],
-    "prefer_path_id": "W4_reclaim_418_427_band",
+    "prefer_path_id": "FB_hold_above_37837",
     "segment_labels": [
-      "FB_gap_reclaim_hold",
-      "false_break_reclaim",
-      "W4_reclaim_418_427"
+      "FB_intraday_break_close_reclaim",
+      "false_break_hold",
+      "M3_resume_backup"
     ],
-    "code_fix_zh": "preferred＝FB_reclaim：跳空 O＞收回位且全日 L／C＞收回位 → 標 FB_gap_reclaim_hold；下一窗升權 W4_reclaim_418_427；再失收回位才回 M3／N1。不准把大漲當新①。",
-    "narrative_fix_zh": "文敘：跳空收回完成；下一窗看波浪4帶；守住收回位；段號試標＋固定警語；非買訊。",
-    "rule_patch_src": "preferred＝FB_reclaim_37837 時：若跳空開盤已＞37837 且全日 L＞37837、C＞37837 → 標 FB_gap_reclaim_hold；下一窗升權 W4_reclaim_418_427；若再失 37837 才回 M3／N1。不准把大漲當新五波①，也不准發明未口述新高目標。",
-    "which_segment_broke": "false_break_reclaim／37837 成立；B-b_broke 延續句失效；wave4_band_reclaim 未發生；oral_target_* 未再探。",
-    "next_variant": "bk_fwd_v3_gap_reclaim_hold",
+    "code_fix_zh": "preferred＝W4_reclaim：H＜帶下沿且 L＜收回位但 C＞收回位 → 標 FB_intraday_break_close_reclaim；下一窗改 FB_hold 優先；再失才升 M3／目標帶；W4 降權。不准發明新①／未口述新低。",
+    "narrative_fix_zh": "文敘：盤中失收回位、收站回；下一窗看守住 vs 再失；W4 降權；段號試標＋固定警語；非買訊。",
+    "rule_patch_src": "preferred＝W4_reclaim 時：若 H＜41800 且全日 L＜37837 但 C＞37837 → 標 FB_intraday_break_close_reclaim；下一窗改優先看守住 37837（FB_hold），失守才升 M3／35000；W4 降權至再觸帶。不准發明新五波①，不准發明未口述新低。",
+    "which_segment_broke": "wave4_band_reclaim 未發生；false_break_hold 盤中破、收站回→FB_intraday_break_close_reclaim；oral_target_* 未觸；M2 未收復。",
+    "next_variant": "bk_fwd_v4_intraday_break_close_reclaim",
     "phone_warning_fixed": "試標・推論／非他原文・非買訊・對質未過閘",
     "buy_signal": false,
     "not_buy_signal": true,
     "phone_sync": "blocked",
     "mix_forbidden_zh": "勝率不准混進海選／黃金買點",
-    "source_file": "docs/expert_notes/飆客/decade_lab/wave_eod_verify_20261124.json",
+    "source_file": "docs/expert_notes/飆客/decade_lab/wave_eod_verify_20261125.json",
     "expected_segments": [
-      "FB：收回站穩 37837（preferred）",
-      "M3：再探 35000～35500",
-      "N1：37837 下續弱往 35000",
-      "W4：收回 41800～42700／42250",
+      "W4：收回 41800～42700／42250（preferred）",
+      "FB_hold：收穩 37837 且不回測失守",
+      "M3：再失 37837 後探 35000～35500",
+      "N1：37837 下續弱",
       "M2：收復 43135（低權）"
     ],
-    "actual_path": "FB 成立（跳空開 39149＞37837，H/C 皆上）；M3/N1/W4/M2 否決。收 40122 仍在波浪4帶下、43135 下。"
+    "actual_path": "W4 否決（H39983.91＜41800）；FB_hold 部分（L36681.90 失守、C38195.43 站回）；M3/M2 否決；N1 部分。收－1926.92。"
   },
   "narrative_fix": {
     "phone_warning_fixed": "試標・推論／非他原文・非買訊・對質未過閘",
-    "prefer_path_id": "W4_reclaim_418_427_band",
+    "prefer_path_id": "FB_hold_above_37837",
     "segment_labels": [
-      "FB_gap_reclaim_hold",
-      "false_break_reclaim",
-      "W4_reclaim_418_427"
+      "FB_intraday_break_close_reclaim",
+      "false_break_hold",
+      "M3_resume_backup"
     ],
-    "fix_zh": "文敘：跳空收回完成；下一窗看波浪4帶；守住收回位；段號試標＋固定警語；非買訊。",
+    "fix_zh": "文敘：盤中失收回位、收站回；下一窗看守住 vs 再失；W4 降權；段號試標＋固定警語；非買訊。",
     "forbid_zh": [
       "不准把反彈／收彈當新五波①",
       "不准發明未口述之新低目標",
       "不准改黃金買點／不當買訊",
       "DC／我估句不准寫成他說"
     ],
-    "as_of": "20261124",
-    "kind": "gap_reclaim_hold_elevate_w4"
+    "as_of": "20261125",
+    "kind": "intraday_break_close_reclaim_elevate_hold"
   },
   "wave_rules_ref": {
     "track": "BK-WAVE",
     "cards_file": "docs/expert_notes/飆客/observe_manual/wave_rules_cards.json",
     "evidence_file": "docs/expert_notes/飆客/observe_manual/segment_evidence.json",
     "rule_ids": [
-      "WR-FWD-GAP-RECLAIM-HOLD",
+      "WR-FWD-INTRADAY-BREAK-CLOSE-RECLAIM",
       "WR-OPS-FAKE-BREAK",
       "WR-FWD-LOOP",
       "WR-LEVEL-ORAL-ONLY",
@@ -526,7 +565,8 @@
   "new_card_ids": [
     "WR-FWD-TOUCH-BOUNCE-RECLAIM",
     "WR-FWD-PENDING-NOT-VETO",
-    "WR-FWD-GAP-RECLAIM-HOLD"
+    "WR-FWD-GAP-RECLAIM-HOLD",
+    "WR-FWD-INTRADAY-BREAK-CLOSE-RECLAIM"
   ],
   "deps_zh": [
     "observe_wave_rules.py",
@@ -535,7 +575,7 @@
     "MISSION_LOCK_20261123.md A7／C12"
   ],
   "cards_added": [
-    "WR-FWD-GAP-RECLAIM-HOLD"
+    "WR-FWD-INTRADAY-BREAK-CLOSE-RECLAIM"
   ],
   "evidence_samples_added": 0
 }

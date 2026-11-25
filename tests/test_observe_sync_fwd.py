@@ -56,7 +56,7 @@ def test_classify_pending_not_veto_2019ish():
 
 def test_variant_keys_section13():
     assert sf.VARIANT_CURRENT == "bk_fwd_v1_miss_map"
-    assert sf.VARIANT_NEXT == "bk_fwd_v3_gap_reclaim_hold"
+    assert sf.VARIANT_NEXT == "bk_fwd_v4_intraday_break_close_reclaim"
     assert sf.VARIANT_CURRENT != sf.VARIANT_NEXT
     assert sf.PHONE_SYNC == "blocked"
 
@@ -98,8 +98,8 @@ def test_propose_forward_narrative_patch_keeps_not_buy():
     assert patched["buy_signal"] is False
     assert patched["not_buy_signal"] is True
     assert "sync_fwd_narrative_fix" in patched
-    # 最新可操作 miss＝20261124 gap_reclaim → 下一窗升權 W4
-    assert patched["sync_fwd_narrative_fix"]["prefer_path_id"] == "W4_reclaim_418_427_band"
+    # 最新可操作 miss＝20261125 intraday_break → 下一窗改 FB_hold
+    assert patched["sync_fwd_narrative_fix"]["prefer_path_id"] == "FB_hold_above_37837"
     assert "SYNC-FWD" in (patched.get("phone_narrative_zh") or "")
     assert PHONE_WARNING_FIXED in (patched.get("phone_narrative_zh") or "")
 

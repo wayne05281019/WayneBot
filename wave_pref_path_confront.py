@@ -27,7 +27,7 @@ TAIPEI = ZoneInfo("Asia/Taipei")
 
 TRACK = "wave_pref_path_3state"
 VARIANT_CURRENT = "pref_3state_v1_verdict_map"
-VARIANT_NEXT = "pref_3state_v2_gap_reclaim_w4"
+VARIANT_NEXT = "pref_3state_v2_intraday_break_hold"
 PHONE_SYNC = "blocked"
 MIN_N = 20
 PHONE_WARNING = "試標・推論／非他原文・非買訊・對質未過閘"
@@ -184,7 +184,7 @@ def run_suite(lab: Optional[Path] = None) -> Dict[str, Any]:
         "current_variant": VARIANT_CURRENT,
         "next_variant": {
             "variant": VARIANT_NEXT,
-            "note_zh": "1124 gap_reclaim→W4 升權規則併入三態計分；收集中",
+            "note_zh": "1125 intraday_break→FB_hold 規則併入三態計分；收集中",
             "gate_zh": f"獨立交易日 n≥{MIN_N} 且贏現況才替換（§13）",
         },
         "gate": {
