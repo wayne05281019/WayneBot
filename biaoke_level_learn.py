@@ -7362,7 +7362,7 @@ def _resolve_huang_c_daily_spans(
     """日盤 C1–C4 轉折錨：底色起迄＝紫折起迄（官方柱高低）。
 
     C1 10/6高→10/18低｜C2→10/28高｜C3→週五低37837｜
-    C4＝C3底後反彈高→今日低（不准用收當終點；無反彈高則低→今日低）。
+    C4＝C3底後反彈高→其後官方最低尖（不准用收；不准只釘今日低而漏更低的前一根）。
     """
     empty: Dict[str, Any] = {"ok": False}
     if not bars:
@@ -7422,7 +7422,6 @@ def _resolve_huang_c_daily_spans(
         y1e = float(lo_vals[i1e])
         y2e = float(hi_vals[i2e])
         y3e = float(lo_vals[i3e])
-        # 終點＝今日低（遠／近紫折；收只留欄位對照，不准當折點）
         y_now_low = float(lo_vals[i_now])
         y_now_close = float(cl_vals[i_now])
     except (TypeError, ValueError, IndexError):
@@ -7440,16 +7439,30 @@ def _resolve_huang_c_daily_spans(
             y4_hi = float(hh)
     xs = [float(i1), float(i1e), float(i2e), float(i3e)]
     ys = [y1, y1e, y2e, y3e]
+    # 終點＝反彈高之後（無高則 C3 底之後）官方最低尖；
+    # 例：11/23 低 35442 後反彈，不准改釘 11/25 收／較高的今日低。
+    search_from = int(i3e) + 1
     if (
         i4_hi is not None
         and int(i4_hi) > int(i3e)
         and float(y4_hi) > float(y3e) + 1.0
     ):
-        # 同日高＝今：仍先釘高再接今日低（同 x）；異日則中間多一尖
         xs.append(float(i4_hi))
         ys.append(float(y4_hi))
-    xs.append(float(i_now))
-    ys.append(float(y_now_low))
+        search_from = int(i4_hi) + 1
+    i_end = int(i_now)
+    y_end = float(y_now_low)
+    if search_from <= int(i_now):
+        for ii in range(int(search_from), int(i_now) + 1):
+            try:
+                ll = float(lo_vals[ii])
+            except (TypeError, ValueError, IndexError):
+                continue
+            if ll > 0 and ll < float(y_end):
+                i_end = int(ii)
+                y_end = float(ll)
+    xs.append(float(i_end))
+    ys.append(float(y_end))
     return {
         "ok": True,
         "i1": i1,
@@ -7460,15 +7473,17 @@ def _resolve_huang_c_daily_spans(
         "i3e": i3e,
         "i4": i4,
         "i4_hi": int(i4_hi) if i4_hi is not None else None,
+        "i_end_low": int(i_end),
         "i_now": i_now,
         "y1": y1,
         "y1e": y1e,
         "y2e": y2e,
         "y3e": y3e,
         "y4_hi": float(y4_hi) if i4_hi is not None else None,
-        "y_now": float(y_now_low),
+        "y_now": float(y_end),
         "y_now_close": float(y_now_close),
-        # 紫折：C3底→反彈高→今日低（有高則六點；否則五點）
+        "y_today_low": float(y_now_low),
+        # 紫折：C3底→反彈高→其後官方最低尖（有高則≥六點）
         "xs": xs,
         "ys": ys,
     }
@@ -7561,7 +7576,7 @@ def _paint_huang_c_degree_path(
     *,
     fade: bool = False,
 ) -> bool:
-    """大C 紫折跟 C1–C4：高低尖點連線（≥五點；C3底後可多反彈高→今日低）。"""
+    """大C 紫折跟 C1–C4：高低尖點連線（≥五點；C3底後可多反彈高→其後官方最低尖）。"""
     if ax is None or not isinstance(spans, dict) or not spans.get("ok"):
         return False
     xs = list(spans.get("xs") or [])
@@ -7922,20 +7937,23 @@ def _huang_c60_c4_segments(
             continue
         # 全部不標浪號（手繪 C4 無①～⑤）
         out.append((int(ii), float(yy), ""))
-    # 窗末釘最新縮圖K收（教具鎖死畫到最新）；不准停在第一次碰到 43135
-    try:
-        c = float(rows[int(i_end)].get("close") or 0)
-        h = float(rows[int(i_end)].get("high") or 0)
-        lo = float(rows[int(i_end)].get("low") or 0)
-    except (TypeError, ValueError):
-        c = h = lo = 0.0
-    y_end = c if c > 0 else (h if h > 0 else lo)
-    if y_end <= 0:
+    # 窗末釘 C3 後官方最低尖（不准用收；反彈後不准停在較高今日低）
+    i_lo = int(i3)
+    y_lo = float(y3)
+    for ii in range(int(i3), int(i_end) + 1):
+        try:
+            ll = float((rows[ii] or {}).get("low") or 0)
+        except (TypeError, ValueError, IndexError):
+            continue
+        if ll > 0 and ll < float(y_lo):
+            i_lo = int(ii)
+            y_lo = float(ll)
+    if y_lo <= 0:
         return out
-    if out[-1][0] == int(i_end):
-        out[-1] = (int(i_end), float(y_end), "")
+    if out[-1][0] == int(i_lo):
+        out[-1] = (int(i_lo), float(y_lo), "")
     else:
-        out.append((int(i_end), float(y_end), ""))
+        out.append((int(i_lo), float(y_lo), ""))
     return out
 
 
@@ -9369,6 +9387,26 @@ def _c9_ext_bar_pivots(
             else:
                 wave += 1
                 out.append((i_end, y_last, f"C{wave}"))
+        # 日盤：已鎖的末段低尖若之後又創更低，改釘官方最低（三窗紫／九波末低不准停在較高綠K）
+        if out:
+            last_i, last_y, last_lab = out[-1]
+            try:
+                last_num = int(str(last_lab).lstrip("C"))
+            except ValueError:
+                last_num = -1
+            if last_lab != "B" and last_num % 2 == 1:
+                prev_i = int(out[-2][0]) if len(out) >= 2 else int(ib)
+                i_lo = int(last_i)
+                y_lo = float(last_y)
+                for ii in range(int(prev_i) + 1, int(i_end) + 1):
+                    try:
+                        ll = float(lows[ii])
+                    except (TypeError, ValueError, IndexError):
+                        continue
+                    if math.isfinite(ll) and ll > 0 and ll < float(y_lo):
+                        i_lo, y_lo = int(ii), float(ll)
+                if int(i_lo) != int(last_i) or abs(float(y_lo) - float(last_y)) > 0.5:
+                    out[-1] = (int(i_lo), float(y_lo), str(last_lab))
         trimmed: List[Tuple[int, float, str]] = []
         for row in out:
             lab = str(row[2])
@@ -18096,9 +18134,19 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     _c9_major_fade = _c9_now and len(_c9_pivots_far) >= 3
     _c_spans_far = _resolve_huang_c_daily_spans(bars, lows=lows, highs=highs)
     if not _paint_huang_c_degree_path(ax, _c_spans_far, fade=_c9_major_fade):
+        # 缺錨退回：末點仍釘 C 段官方最低尖（不准用收）
+        _i_lo = int(i_c)
+        _y_lo = float(lows[i_c]) if i_c < len(lows) else float(y_now)
+        for _ii in range(int(i_c), int(i_now) + 1):
+            try:
+                _ll = float(lows[_ii])
+            except (TypeError, ValueError, IndexError):
+                continue
+            if _ll > 0 and _ll < float(_y_lo):
+                _i_lo, _y_lo = int(_ii), float(_ll)
         ax.plot(
-            [i_b_end, i_c, i_now],
-            [y_b_end, float(closes[i_c]), y_now],
+            [i_b_end, i_c, _i_lo],
+            [y_b_end, float(lows[i_c]) if i_c < len(lows) else float(closes[i_c]), _y_lo],
             color="#ea80fc",
             lw=1.15 if _c9_major_fade else 2.1,
             alpha=0.28 if _c9_major_fade else 1.0,
@@ -19874,9 +19922,19 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     # 大C 紫折：跟 C1–C4 底色四段對齊；缺錨才退回舊兩段
     _c_spans_near = _resolve_huang_c_daily_spans(bars, lows=lows, highs=highs)
     if not _paint_huang_c_degree_path(ax, _c_spans_near, fade=_c9_near_fade):
+        # 缺錨退回：末點仍釘 C 段官方最低尖（不准用收）
+        _i_lo = int(i_c)
+        _y_lo = float(lows[i_c]) if i_c < len(lows) else float(y_now)
+        for _ii in range(int(i_c), int(i_now) + 1):
+            try:
+                _ll = float(lows[_ii])
+            except (TypeError, ValueError, IndexError):
+                continue
+            if _ll > 0 and _ll < float(_y_lo):
+                _i_lo, _y_lo = int(_ii), float(_ll)
         ax.plot(
-            [i_b_end, i_c, i_now],
-            [y_b_end, float(closes[i_c]), y_now],
+            [i_b_end, i_c, _i_lo],
+            [y_b_end, float(lows[i_c]) if i_c < len(lows) else float(closes[i_c]), _y_lo],
             color="#ea80fc",
             lw=1.2 if _c9_near_fade else 2.45,
             alpha=0.28 if _c9_near_fade else 1.0,
