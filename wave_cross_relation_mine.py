@@ -82,39 +82,48 @@ def _year(day: str) -> str:
 def _load_index(
     conn: sqlite3.Connection, symbol: str
 ) -> Dict[str, Dict[str, float]]:
-    rows = conn.execute(
-        """
-        SELECT REPLACE(CAST(date AS TEXT),'-',''), open, high, low, close
-        FROM index_daily WHERE symbol=? ORDER BY 1
-        """,
-        (symbol,),
-    ).fetchall()
+    try:
+        rows = conn.execute(
+            """
+            SELECT REPLACE(CAST(date AS TEXT),'-',''), open, high, low, close
+            FROM index_daily WHERE symbol=? ORDER BY 1
+            """,
+            (symbol,),
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return {}
     return _bars_from_rows(rows)
 
 
 def _load_stock(
     conn: sqlite3.Connection, sid: str
 ) -> Dict[str, Dict[str, float]]:
-    rows = conn.execute(
-        """
-        SELECT REPLACE(CAST(date AS TEXT),'-',''), open, high, low, close
-        FROM daily_quotes WHERE stock_id=? ORDER BY 1
-        """,
-        (sid,),
-    ).fetchall()
+    try:
+        rows = conn.execute(
+            """
+            SELECT REPLACE(CAST(date AS TEXT),'-',''), open, high, low, close
+            FROM daily_quotes WHERE stock_id=? ORDER BY 1
+            """,
+            (sid,),
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return {}
     return _bars_from_rows(rows)
 
 
 def _load_fut(
     conn: sqlite3.Connection, symbol: str, session: str
 ) -> Dict[str, Dict[str, float]]:
-    rows = conn.execute(
-        """
-        SELECT REPLACE(CAST(date AS TEXT),'-',''), open, high, low, close
-        FROM futures_daily WHERE symbol=? AND session=? ORDER BY 1
-        """,
-        (symbol, session),
-    ).fetchall()
+    try:
+        rows = conn.execute(
+            """
+            SELECT REPLACE(CAST(date AS TEXT),'-',''), open, high, low, close
+            FROM futures_daily WHERE symbol=? AND session=? ORDER BY 1
+            """,
+            (symbol, session),
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return {}
     return _bars_from_rows(rows)
 
 

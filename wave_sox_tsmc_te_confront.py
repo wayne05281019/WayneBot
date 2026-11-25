@@ -60,16 +60,7 @@ def _f(v: Any) -> Optional[float]:
     return n
 
 
-def _load_index(
-    conn: sqlite3.Connection, symbol: str
-) -> Dict[str, Dict[str, float]]:
-    rows = conn.execute(
-        """
-        SELECT REPLACE(CAST(date AS TEXT),'-',''), open, high, low, close
-        FROM index_daily WHERE symbol=? ORDER BY 1
-        """,
-        (symbol,),
-    ).fetchall()
+def _bars_from_rows(rows) -> Dict[str, Dict[str, float]]:
     out: Dict[str, Dict[str, float]] = {}
     prev: Optional[float] = None
     for d, o, h, lo, c in rows:
@@ -88,68 +79,56 @@ def _load_index(
         }
         prev = cc
     return out
+
+
+def _load_index(
+    conn: sqlite3.Connection, symbol: str
+) -> Dict[str, Dict[str, float]]:
+    try:
+        rows = conn.execute(
+            """
+            SELECT REPLACE(CAST(date AS TEXT),'-',''), open, high, low, close
+            FROM index_daily WHERE symbol=? ORDER BY 1
+            """,
+            (symbol,),
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return {}
+    return _bars_from_rows(rows)
 
 
 def _load_stock(
     conn: sqlite3.Connection, sid: str
 ) -> Dict[str, Dict[str, float]]:
-    rows = conn.execute(
-        """
-        SELECT REPLACE(CAST(date AS TEXT),'-',''), open, high, low, close
-        FROM daily_quotes WHERE stock_id=? ORDER BY 1
-        """,
-        (sid,),
-    ).fetchall()
-    out: Dict[str, Dict[str, float]] = {}
-    prev: Optional[float] = None
-    for d, o, h, lo, c in rows:
-        day = _ymd(d)
-        cc = _f(c)
-        if not day or not cc or cc <= 0:
-            continue
-        ret = None if prev is None else (cc / prev - 1.0) * 100.0
-        out[day] = {
-            "o": _f(o) or cc,
-            "h": _f(h) or cc,
-            "l": _f(lo) or cc,
-            "c": cc,
-            "ret": float(ret) if ret is not None else 0.0,
-            "ret_ok": ret is not None,
-        }
-        prev = cc
-    return out
+    try:
+        rows = conn.execute(
+            """
+            SELECT REPLACE(CAST(date AS TEXT),'-',''), open, high, low, close
+            FROM daily_quotes WHERE stock_id=? ORDER BY 1
+            """,
+            (sid,),
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return {}
+    return _bars_from_rows(rows)
 
 
 def _load_fut(
     conn: sqlite3.Connection, symbol: str, session: str
 ) -> Dict[str, Dict[str, float]]:
-    rows = conn.execute(
-        """
-        SELECT REPLACE(CAST(date AS TEXT),'-',''), open, high, low, close
-        FROM futures_daily
-        WHERE symbol=? AND session=?
-        ORDER BY 1
-        """,
-        (symbol, session),
-    ).fetchall()
-    out: Dict[str, Dict[str, float]] = {}
-    prev: Optional[float] = None
-    for d, o, h, lo, c in rows:
-        day = _ymd(d)
-        cc = _f(c)
-        if not day or not cc or cc <= 0:
-            continue
-        ret = None if prev is None else (cc / prev - 1.0) * 100.0
-        out[day] = {
-            "o": _f(o) or cc,
-            "h": _f(h) or cc,
-            "l": _f(lo) or cc,
-            "c": cc,
-            "ret": float(ret) if ret is not None else 0.0,
-            "ret_ok": ret is not None,
-        }
-        prev = cc
-    return out
+    try:
+        rows = conn.execute(
+            """
+            SELECT REPLACE(CAST(date AS TEXT),'-',''), open, high, low, close
+            FROM futures_daily
+            WHERE symbol=? AND session=?
+            ORDER BY 1
+            """,
+            (symbol, session),
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return {}
+    return _bars_from_rows(rows)
 
 
 def _prior_us_day(us_days: List[str], tw_day: str) -> Optional[str]:

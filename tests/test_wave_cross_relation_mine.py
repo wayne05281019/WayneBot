@@ -2,6 +2,8 @@
 """聯動×位階系統化挖礦：結構／閘門／非買訊。"""
 from __future__ import annotations
 
+import pytest
+
 import wave_cross_relation_mine as crm
 
 
@@ -65,18 +67,56 @@ def test_eval_hyp_on_synthetic_rows():
     assert out["phone_sync"] == "blocked"
 
 
-def test_run_suite_live_db_smoke():
-    from pathlib import Path
+def test_run_suite_schema_tolerant_smoke(tmp_path):
+    """smoke-no-db：空／缺表庫不得炸；結構欄位仍完整。"""
+    import sqlite3
 
-    db = str(Path(__file__).resolve().parents[1] / "data" / "wayne_market.db")
-    payload = crm.run_suite(db, write_daily=False)
-    assert payload.get("ok") is not False or payload.get("mine")
+    db = tmp_path / "empty.db"
+    conn = sqlite3.connect(str(db))
+    conn.execute("CREATE TABLE biaoke_posts (id TEXT, date TEXT, text TEXT, kind TEXT)")
+    conn.commit()
+    conn.close()
+    payload = crm.run_suite(str(db), write_daily=False)
     assert payload.get("buy_signal") is False
     assert payload.get("phone_sync") == "blocked"
     assert payload.get("WAVE_NEURONS_MATCH") is False
     assert (payload.get("gate") or {}).get("replace") is False
     mine = payload.get("mine") or {}
     assert mine.get("n_hypotheses", 0) >= 15
-    # 結構完整即可；dig_worth 數量依實盤
     assert "dig_worth" in mine
     assert "wave_strengthen_hints" in payload
+
+
+@pytest.mark.production_db
+def test_run_suite_live_db_smoke():
+    """需要完整行情表；不進 smoke-no-db。"""
+    import sqlite3
+    from pathlib import Path
+
+    db = Path(__file__).resolve().parents[1] / "data" / "wayne_market.db"
+    if not db.is_file():
+        pytest.skip("no wayne_market.db")
+    conn = sqlite3.connect(str(db))
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='index_daily'"
+        ).fetchone()
+        n = (
+            conn.execute("SELECT COUNT(*) FROM index_daily WHERE symbol='TWII'").fetchone()
+            if row
+            else (0,)
+        )
+    except sqlite3.Error:
+        row, n = None, (0,)
+    finally:
+        conn.close()
+    if not row or not n or int(n[0] or 0) < 20:
+        pytest.skip("index_daily TWII too thin (smoke-no-db)")
+    payload = crm.run_suite(str(db), write_daily=False)
+    assert payload.get("buy_signal") is False
+    assert payload.get("phone_sync") == "blocked"
+    assert payload.get("WAVE_NEURONS_MATCH") is False
+    assert (payload.get("gate") or {}).get("replace") is False
+    mine = payload.get("mine") or {}
+    assert mine.get("n_hypotheses", 0) >= 15
+    assert "dig_worth" in mine
