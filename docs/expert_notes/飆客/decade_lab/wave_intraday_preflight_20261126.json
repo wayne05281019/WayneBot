@@ -1,0 +1,35 @@
+{
+  "as_of": "20261126",
+  "written_at": "2026-11-26T01:07:02+0800",
+  "tz": "Asia/Taipei",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "not_buy_signal": true,
+  "bar_status": "pre_open_pending_official",
+  "note_zh": "未收不當收；開市後對官方柱再蓋 EOD。",
+  "preferred_infer": "FB_hold_above_37837",
+  "watch_levels": {
+    "hold_37837": 37837.05,
+    "ref_37164": 37164.0,
+    "target_350_355": [
+      35000.0,
+      35500.0
+    ],
+    "wave4_band": [
+      41800.0,
+      42700.0
+    ],
+    "wave4_mid": 42250.0,
+    "oral_38795_night": 38795.0,
+    "cross_zh": "費半已收／台積2330／電子夜盤 TE 只對照，不准發明浪號"
+  },
+  "checks_zh": [
+    "preferred＝FB_hold：收是否仍＞37837（盤中失守要記 partial）",
+    "再失 37837 → 升權 M3／35000～35500",
+    "W4 41800～42700 僅強勢再觸才升權",
+    "夜盤口述 38795：只對他講過的位，不准發明新①",
+    "交叉：費半已收→台股日；2330／TWII 日盤；TE night 電子夜盤確認鏈"
+  ],
+  "phone_warning_fixed": "試標・推論／非他原文・非買訊・對質未過閘",
+  "WAVE_NEURONS_MATCH": false
+}

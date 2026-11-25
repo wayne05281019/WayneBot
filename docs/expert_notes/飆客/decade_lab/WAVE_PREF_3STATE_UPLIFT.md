@@ -14,8 +14,14 @@ Asia/Taipei。不是買訊。`phone_sync=blocked`。
 ## 跑法
 ```bash
 python3 -c "import wave_pref_path_confront as pc; pc.main()"
+python3 -c "import wave_silent_deepen as wd; wd.main()"
 python3 scripts/observe_sync_fwd_writeback.py --write
 ```
+
+## 加深（靜默）
+- 連鎖日 preferred（例：1124 gap_reclaim → 1125 intraday_break）
+- 次路徑三態校準（非只看 preferred）
+- 巢狀口述（3-3轉3-4／細微波）vs 粗浪並記；`WAVE_NEURONS_MATCH=false`
 
 ## 硬禁
 不准當買訊、發明未口述價、未收當收、混海選／黃金買點勝率。
