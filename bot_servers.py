@@ -852,7 +852,8 @@ MENU_FULL_ALIASES = ("完整選單", "完整鍵盤")
 # v43：撤「啾哈觀盤」；第三排只留綜合篩選＋空白；上七下七＋三排七。
 # v44：第三排第 2 格「次級四浪」（五波可畫母體→EPS／股性／AI鏈分級；觀察非買訊）。
 # v45：次級四浪按後兩路＝打代號確認／實質十檔翻頁；盤中距離用現價（B）。
-MENU_LAYOUT_VERSION = "45"
+# v46：次級四浪實質十檔／單檔附結構圖（相簿）；觀察非買訊。
+MENU_LAYOUT_VERSION = "46"
 MAX_PICK_INLINE_ROWS = 8
 
 # 輸入列左邊三條槓（Telegram BotCommand）。跟下方兩排重複的不放，避免兩套入口。
@@ -9102,15 +9103,81 @@ class WayneTelegramBot:
                 except Exception:
                     pass
 
+    async def _wave4_send_media_group(
+        self, message, charts: list, *, caption0: str = ""
+    ) -> bool:
+        """實質十檔／單檔結構圖相簿；缺圖不擋文字。"""
+        paths = [
+            str(c.get("path") or "")
+            for c in (charts or [])
+            if c.get("path") and os.path.isfile(str(c.get("path")))
+        ]
+        if not paths:
+            return False
+        try:
+            from telegram import InputFile, InputMediaPhoto
+
+            async def _cell(path: str) -> str:
+                low = str(path).lower()
+                if low.endswith((".jpg", ".jpeg", ".album.jpg", ".png")):
+                    # PNG 先轉查股送圖慣例 JPEG，Telegram 較穩
+                    return await asyncio.to_thread(
+                        self._prepare_lookup_album_photo, path
+                    )
+                return path
+
+            send_paths = [
+                p
+                for p in await asyncio.gather(*[_cell(p) for p in paths[:10]])
+                if p and os.path.isfile(p)
+            ]
+            if not send_paths:
+                return False
+            cap0 = (caption0 or (charts[0].get("caption") if charts else "") or "")[
+                :1024
+            ]
+            handles = []
+            try:
+                media = []
+                for i, send_path in enumerate(send_paths):
+                    fh = open(send_path, "rb")
+                    handles.append(fh)
+                    fname = os.path.basename(send_path)
+                    if not fname.lower().endswith((".jpg", ".jpeg", ".png")):
+                        fname = (os.path.splitext(fname)[0] or "wave4") + ".jpg"
+                    file_obj = InputFile(fh, filename=fname)
+                    if i == 0 and cap0:
+                        media.append(
+                            InputMediaPhoto(media=file_obj, caption=cap0)
+                        )
+                    else:
+                        media.append(InputMediaPhoto(media=file_obj))
+                await message.reply_media_group(
+                    media=media,
+                    read_timeout=60,
+                    write_timeout=90,
+                    connect_timeout=20,
+                )
+                return True
+            finally:
+                for fh in handles:
+                    try:
+                        fh.close()
+                    except Exception:
+                        pass
+        except Exception:
+            logger.exception("次級四浪附圖相簿失敗")
+            return False
+
     async def _wave4_send_page(self, message, uid: str, page: int = 0):
         wait_h = await self._start_plain_wait(
             message,
             text_fn=lambda s: self._wait_bubble(
                 "次級四浪進行中",
                 s,
-                now="掃實質十檔",
-                rest="推送名單",
-                fill_sec=22.0,
+                now="掃實質十檔＋出圖",
+                rest="推送名單附圖",
+                fill_sec=40.0,
             ),
         )
         delivered = False
@@ -9122,6 +9189,7 @@ class WayneTelegramBot:
                     get_wave4_desk_cached,
                     intervene_page,
                     overlay_live_on_rows,
+                    paint_wave4_page_charts,
                 )
 
                 payload = get_wave4_desk_cached(self.db_path)
@@ -9134,11 +9202,22 @@ class WayneTelegramBot:
                     pages=pages,
                     live=live,
                 )
-                return html, live_rows, has_next, payload
+                chart_dir = os.path.join(
+                    getattr(self, "charts_dir", "data/charts") or "data/charts",
+                    "wave4",
+                    str(uid or "x"),
+                )
+                charts = paint_wave4_page_charts(
+                    live_rows,
+                    db_path=self.db_path,
+                    out_dir=chart_dir,
+                    page=int(page),
+                )
+                return html, live_rows, has_next, charts
 
             try:
-                html, live_rows, has_next, _payload = await asyncio.wait_for(
-                    asyncio.to_thread(_build), timeout=90.0
+                html, live_rows, has_next, charts = await asyncio.wait_for(
+                    asyncio.to_thread(_build), timeout=150.0
                 )
             except asyncio.TimeoutError:
                 await self._stop_plain_wait(*wait_h)
@@ -9165,6 +9244,15 @@ class WayneTelegramBot:
                 ),
                 disable_web_page_preview=True,
             )
+            # 附結構圖相簿（最多10張）；失敗只留文字，不准擋名單
+            if charts:
+                cap = (
+                    f"次級四浪・實質十檔第{int(page)+1}頁結構圖"
+                    "（觀察非買訊）"
+                )
+                await self._wave4_send_media_group(
+                    message, charts, caption0=cap
+                )
             delivered = True
         finally:
             if not delivered:
@@ -9177,7 +9265,11 @@ class WayneTelegramBot:
         wait_h = await self._start_plain_wait(
             message,
             text_fn=lambda s: self._wait_bubble(
-                "次級四浪進行中", s, now="查這檔", rest="出結構位", fill_sec=16.0
+                "次級四浪進行中",
+                s,
+                now="查這檔＋出圖",
+                rest="推結構位",
+                fill_sec=28.0,
             ),
         )
         delivered = False
@@ -9189,19 +9281,21 @@ class WayneTelegramBot:
                     find_wave4_row,
                     format_wave4_one_html,
                     get_wave4_desk_cached,
+                    paint_wave4_chart,
                 )
                 from live_quote import fetch_lookup_quote, is_live_merge_window
 
                 payload = get_wave4_desk_cached(self.db_path)
                 row = find_wave4_row(payload, stock_id)
                 live = False
+                chart_path = ""
                 if row is None:
-                    # 可畫母體沒這檔：仍回結構說明，不裝假五波
                     return (
                         f"<b>次級四浪・{stock_id}</b>\n"
                         "這檔目前不在可畫五波母體（或基準日異常）。"
                         "觀察非買訊；可改打別檔或看實質十檔。",
                         False,
+                        "",
                     )
                 if is_live_merge_window():
                     try:
@@ -9217,17 +9311,30 @@ class WayneTelegramBot:
                             live = True
                     except Exception:
                         pass
-                return format_wave4_one_html(row, live=live), True
+                chart_dir = os.path.join(
+                    getattr(self, "charts_dir", "data/charts") or "data/charts",
+                    "wave4",
+                    str(uid or "x"),
+                )
+                p = paint_wave4_chart(
+                    stock_id,
+                    db_path=self.db_path,
+                    out_dir=chart_dir,
+                    tag="one",
+                )
+                if p is not None:
+                    chart_path = str(p)
+                return format_wave4_one_html(row, live=live), True, chart_path
 
             try:
-                html, ok = await asyncio.wait_for(
-                    asyncio.to_thread(_build), timeout=60.0
+                html, ok, chart_path = await asyncio.wait_for(
+                    asyncio.to_thread(_build), timeout=90.0
                 )
             except asyncio.TimeoutError:
-                html, ok = "次級四浪查這檔逾時。稍後再試。", False
+                html, ok, chart_path = "次級四浪查這檔逾時。稍後再試。", False, ""
             except Exception:
                 logger.exception("次級四浪單檔失敗")
-                html, ok = "次級四浪查這檔失敗。", False
+                html, ok, chart_path = "次級四浪查這檔失敗。", False, ""
             await self._stop_plain_wait(*wait_h)
             kb = InlineKeyboardMarkup(
                 [
@@ -9243,6 +9350,17 @@ class WayneTelegramBot:
             await message.reply_html(
                 html, reply_markup=kb, disable_web_page_preview=True
             )
+            if chart_path and os.path.isfile(chart_path):
+                await self._wave4_send_media_group(
+                    message,
+                    [
+                        {
+                            "path": chart_path,
+                            "caption": f"{stock_id} 次級四浪結構（觀察非買訊）",
+                        }
+                    ],
+                    caption0=f"{stock_id} 次級四浪結構（觀察非買訊）",
+                )
             delivered = True
             _ = ok
         finally:

@@ -33,6 +33,8 @@ CHIP_LOOKBACK = 10
 PAGE_SIZE = 10  # 話筒實質十檔翻頁
 # 盤中距離用現價（2026-11-27 使用者鎖 B）；結構仍用已收日K回推。
 LIVE_ROOM_POLICY = "B_intraday_last"
+# 十檔附圖：並行上限（matplotlib 別開太兇）
+CHART_PAINT_WORKERS = 3
 
 # 使用者鎖：實質收入好的教過臉，未過四浪低也絕不准排除（觀察非買訊）。
 # horizon＝他口述遠距位，不是進場價、不是買訊。
@@ -399,7 +401,7 @@ def format_wave4_hub_html() -> str:
             "① 打代號／股名：辨識後請你確認，",
             "再出這檔結構位。",
             "② 實質十檔：有實質獲利，",
-            "最優先出10檔，可翻下一頁。",
+            "最優先出10檔＋結構圖，可翻下一頁。",
             "盤中距離用現價；結構用已收日K。",
             "買訊仍只認獲利剛離零／已過閘紅箭頭。",
         ]
@@ -580,6 +582,7 @@ def format_wave4_page_html(
         f"<b>次級四浪・實質十檔</b>",
         f"{head}｜第{int(page)+1}/{int(pages)}頁",
         "觀察非買訊。有實質獲利且最優。",
+        "本頁附結構圖相簿。",
         "被動元件搶反彈不進這頁。",
         "盤中距離＝現價。" if live else "距離＝母體收盤臉。",
         f"實質可翻共{payload.get('n_intervene') or 0}檔。",
@@ -707,3 +710,82 @@ def format_wave4_one_html(row: Dict[str, Any], *, live: bool = False) -> str:
         _wrap_bits(hz)
     lines.append("買訊仍只認獲利剛離零／已過閘紅箭頭。")
     return "\n".join(lines)
+
+
+def paint_wave4_chart(
+    stock_id: str,
+    *,
+    db_path: Path | str = DB_DEFAULT,
+    out_dir: Path | str,
+    tag: str = "",
+) -> Optional[Path]:
+    """渲一張次級四浪結構樣張；失敗回 None（不准假圖）。"""
+    sid = str(stock_id or "").strip()
+    if not sid:
+        return None
+    try:
+        from scripts.paint_focus_target_sample import paint
+    except Exception:
+        return None
+    out = Path(out_dir) / f"wave4_{sid}_{tag or 'x'}.png"
+    try:
+        paint(sid, out, db_path=Path(db_path))
+    except Exception:
+        return None
+    return out if out.is_file() and out.stat().st_size > 100 else None
+
+
+def paint_wave4_page_charts(
+    rows: Sequence[Dict[str, Any]],
+    *,
+    db_path: Path | str = DB_DEFAULT,
+    out_dir: Path | str,
+    page: int = 0,
+    max_workers: int = CHART_PAINT_WORKERS,
+) -> List[Dict[str, str]]:
+    """實質十檔附圖：依序／小並行出圖；缺圖略過。回 [{sid,name,path,caption}, ...]。"""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    out_dir_p = Path(out_dir)
+    out_dir_p.mkdir(parents=True, exist_ok=True)
+    tag = f"p{int(page)}"
+    jobs = []
+    for r in rows or []:
+        sid = str(r.get("stock_id") or "").strip()
+        if not sid:
+            continue
+        name = str(r.get("stock_name") or sid)
+        room = float(r.get("room_to_w4_pct") or 0)
+        live = "・現" if r.get("live_px") else ""
+        cap = f"{sid} {name} 距{room:.0f}%{live}（觀察非買訊）"
+        jobs.append((sid, name, cap))
+
+    def _one(sid: str) -> Optional[Path]:
+        return paint_wave4_chart(sid, db_path=db_path, out_dir=out_dir_p, tag=tag)
+
+    paths: Dict[str, Path] = {}
+    workers = max(1, min(int(max_workers), len(jobs) or 1))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futs = {pool.submit(_one, sid): sid for sid, _n, _c in jobs}
+        for fut in as_completed(futs):
+            sid = futs[fut]
+            try:
+                p = fut.result()
+            except Exception:
+                p = None
+            if p is not None:
+                paths[sid] = p
+    out: List[Dict[str, str]] = []
+    for sid, name, cap in jobs:
+        p = paths.get(sid)
+        if not p:
+            continue
+        out.append(
+            {
+                "stock_id": sid,
+                "stock_name": name,
+                "path": str(p),
+                "caption": cap[:200],
+            }
+        )
+    return out

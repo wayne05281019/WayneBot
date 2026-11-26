@@ -72,7 +72,7 @@ def test_file_note_matches_this_change():
     assert "綜合篩選" in raw
     assert "模擬倉" in raw or "AI倉" in raw
     assert pu._clean_note(raw) == (
-        "v45：第三排第1綜合篩選、第2次級四浪（打代號確認／實質十檔翻頁；盤中現價）；觀察非買訊；上七下七＋三排七；AI倉只回已關閉。"
+        "v46：第三排第1綜合篩選、第2次級四浪（十檔／單檔附結構圖；打代號確認；盤中現價）；觀察非買訊；上七下七＋三排七；AI倉只回已關閉。"
     )
 
 

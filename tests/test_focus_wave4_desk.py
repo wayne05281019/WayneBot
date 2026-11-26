@@ -176,8 +176,15 @@ def test_hub_two_paths():
     html = format_wave4_hub_html()
     assert "打代號" in html
     assert "實質十檔" in html
+    assert "結構圖" in html
     assert "現價" in html
     assert "非買訊" in html
+
+
+def test_paint_wave4_page_charts_skips_empty(tmp_path):
+    from focus_wave4_desk import paint_wave4_page_charts
+
+    assert paint_wave4_page_charts([], out_dir=tmp_path, db_path=tmp_path) == []
 
 
 def test_guangsheng_horizon_sid_is_6442_not_1815():

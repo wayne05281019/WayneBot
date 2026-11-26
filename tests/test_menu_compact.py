@@ -32,7 +32,7 @@ from wayne_db import init_database
 
 
 def test_full_menu_is_two_rows_no_compact():
-    assert MENU_LAYOUT_VERSION == "45"
+    assert MENU_LAYOUT_VERSION == "46"
     assert MENU_ROW1 == (
         MENU_BTN_WINRATE,
         "海選",
