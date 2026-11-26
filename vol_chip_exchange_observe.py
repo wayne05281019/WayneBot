@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
-"""查股當下：近 1～2 周「爆大量＋換手」觀察（不是買訊）。
+"""查股當下：近 1～2 周「爆大量＋振幅／法人」代理（不是買訊）。
 
-只用官方日 K 開高低收＋量；有三大法人張數就當換手輔助。
+只用官方日 K 開高低收＋量；有三大法人張數就當輔助。
+話筒高低卡**不上徽章**（門檻偏鬆、易誤讀成「換手成功」）；只默默落檔供對質。
 不准寫新主力／幹大事／漲幅空間。
 """
 from __future__ import annotations
@@ -9,8 +10,8 @@ from __future__ import annotations
 import sqlite3
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-NOTE_ZH = "近兩周爆量換手觀察（不是買訊）"
-BADGE_ZH = "近兩周爆量換手"
+NOTE_ZH = "近兩周大量＋振幅代理（不是買訊・不上卡）"
+BADGE_ZH = "近兩周爆量換手"  # 舊字；detect 仍回，attach 不上話筒徽章
 
 
 def _ymd(raw: Any) -> str:
@@ -185,22 +186,27 @@ def detect_recent_vol_chip_exchange(
 def attach_vol_chip_exchange_observe(
     card: Optional[dict], db_path: str, stock_id: str = ""
 ) -> Optional[Dict[str, Any]]:
-    """寫進決策卡：hit 才掛徽章與 observe 欄；永遠 buy_signal=False。
+    """寫進決策卡欄位供對質；hit 只默默落檔，**不上高低卡徽章／觀察條**。
 
-    hit 當日默默落檔（kind=vol_chip_exchange），供後續對質；不上話筒報過程。
+    永遠 buy_signal=False。話筒面只留能量化且不易誤讀的標（估值名單／剛離零等）。
     """
     if not isinstance(card, dict) or card.get("error"):
         return None
     sid = str(stock_id or card.get("stock_id") or "").strip()
     hit = detect_recent_vol_chip_exchange(db_path, sid)
+    # 強制：話筒不掛這枚舊徽章（含舊快取殘字）
+    hit["badge_zh"] = ""
+    hit["note_zh"] = NOTE_ZH if hit.get("hit") else ""
+    hit["phone_face"] = False
     card["vol_chip_exchange"] = hit
+    badges = [
+        b
+        for b in list(card.get("badges") or [])
+        if "爆量換手" not in str(b) and "大量換手" not in str(b)
+    ]
+    card["badges"] = badges
     if not hit.get("hit"):
         return hit
-    badge = str(hit.get("badge_zh") or BADGE_ZH)
-    badges = list(card.get("badges") or [])
-    if badge not in badges:
-        badges.insert(0, badge)
-    card["badges"] = badges
     try:
         from judge_tape import remember_rows
 
@@ -216,7 +222,7 @@ def attach_vol_chip_exchange_observe(
                     "profit_pct": card.get("gain_pct"),
                     "why": (
                         f"n_top={hit.get('n_top')} best={hit.get('best_rank')} "
-                        f"spikes={','.join(str(x) for x in spikes[:6])}"
+                        f"spikes={','.join(str(x) for x in spikes[:6])} phone_face=0"
                     ),
                     "src": "lookup",
                 }

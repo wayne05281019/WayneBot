@@ -58,7 +58,8 @@ def test_detect_hits_synthetic_spike_exchange(tmp_path):
     assert hit["wide_dates"]
 
 
-def test_attach_puts_badge_not_buy(tmp_path):
+def test_attach_silent_no_phone_badge(tmp_path):
+    """hit 仍默默落檔；話筒高低卡不上爆量換手徽章（易誤讀）。"""
     db = str(tmp_path / "vce2.db")
     _seed(db)
     # remember_rows 要當日開高低收＋量齊；用種子最後一日當 as_of
@@ -66,15 +67,17 @@ def test_attach_puts_badge_not_buy(tmp_path):
     card = {
         "stock_id": "9999",
         "stock_name": "測爆量",
-        "badges": ["整理格局"],
+        "badges": ["整理格局", BADGE_ZH],
         "close": 105.0,
         "gain_pct": 5.0,
         "latest_date": last,
     }
     attach_vol_chip_exchange_observe(card, db, "9999")
     assert card["vol_chip_exchange"]["hit"] is True
-    assert BADGE_ZH in card["badges"]
     assert card["vol_chip_exchange"]["buy_signal"] is False
+    assert card["vol_chip_exchange"].get("phone_face") is False
+    assert BADGE_ZH not in card["badges"]
+    assert not any("換手" in str(b) for b in card["badges"])
     from judge_tape import store_path
 
     import sqlite3 as _sq
