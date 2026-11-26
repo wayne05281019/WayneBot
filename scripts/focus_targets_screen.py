@@ -360,6 +360,227 @@ def scan(
     return out
 
 
+def vol_tier_of(near: int) -> str:
+    n = int(near or 0)
+    if n >= 2:
+        return "ge2"
+    if n == 1:
+        return "eq1"
+    return "none"
+
+
+def room_band_of(room: float) -> str:
+    r = float(room)
+    if r <= 0:
+        return "past"  # 已過／觸及次級四浪高；仍可畫、仍納入分級
+    if r < 15.0:
+        return "tight"
+    if r <= 35.0:
+        return "near25"
+    if r <= 55.0:
+        return "wide"
+    return "deep"
+
+
+def eps_fields(con: sqlite3.Connection, sid: str) -> Tuple[Optional[float], bool]:
+    """latest season eps；獲利＝最新季>0 或同年度累計>0。"""
+    rows = con.execute(
+        "SELECT year, season, eps FROM quarterly_income WHERE stock_id=? "
+        "ORDER BY year DESC, season DESC LIMIT 12",
+        (sid,),
+    ).fetchall()
+    if not rows:
+        return None, False
+    eps_last: Optional[float] = None
+    for _y, _s, e in rows:
+        if e is None:
+            continue
+        eps_last = float(e)
+        break
+    if eps_last is not None and eps_last > 0:
+        return eps_last, True
+    # 同年度累計（最新年各季加總；累計形取最大季）
+    years = sorted({int(y) for y, _s, e in rows if e is not None}, reverse=True)
+    if not years:
+        return eps_last, False
+    y0 = years[0]
+    season_eps = {
+        int(s): float(e)
+        for y, s, e in rows
+        if int(y) == y0 and e is not None
+    }
+    if not season_eps:
+        return eps_last, False
+    # 累計形：季節遞增 → 取最大季當 cum
+    vals = [season_eps[s] for s in sorted(season_eps)]
+    cumish = vals[-1]
+    if len(vals) >= 2 and all(vals[i] <= vals[i + 1] + 1e-9 for i in range(len(vals) - 1)):
+        profit = cumish > 0
+    else:
+        profit = sum(vals) > 0
+    return eps_last, bool(profit)
+
+
+def taught_ai_tags_for(sid: str) -> List[str]:
+    try:
+        from industry_fine import extra_tags_for  # type: ignore
+    except Exception:
+        return list((_taught_ai_sids().get(str(sid)) or []))
+    tags = [str(t) for t in (extra_tags_for(sid) or [])]
+    ai = set(AI_TAUGHT_GROUPS)
+    out = [t for t in tags if t in ai]
+    if out:
+        return out
+    return list((_taught_ai_sids().get(str(sid)) or []))
+
+
+def industry_chain_for(con: sqlite3.Connection, sid: str) -> str:
+    row = con.execute(
+        "SELECT chain FROM stock_fine_industry WHERE stock_id=? LIMIT 1",
+        (sid,),
+    ).fetchone()
+    return str(row[0] or "") if row else ""
+
+
+def assign_tier(
+    *,
+    vol_tier: str,
+    eps_profit: bool,
+    taught_ai: bool,
+    room_band: str,
+) -> str:
+    """A 最佳 → D。觀察非買訊。"""
+    if (
+        vol_tier == "ge2"
+        and eps_profit
+        and taught_ai
+        and room_band in ("near25", "tight")
+    ):
+        return "A"
+    if (
+        (vol_tier in ("ge2", "eq1") or taught_ai)
+        and eps_profit
+        and room_band not in ("deep", "past")
+    ):
+        return "B"
+    if eps_profit or taught_ai:
+        return "C"
+    return "D"
+
+
+def enrich_hit(con: sqlite3.Connection, hit: Dict[str, Any]) -> Dict[str, Any]:
+    sid = str(hit.get("stock_id") or "")
+    near = int(hit.get("bottom_near_year_ago_bars") or 0)
+    room = float(hit.get("room_to_w4_pct") or 0.0)
+    vt = vol_tier_of(near)
+    rb = room_band_of(room)
+    eps_last, eps_ok = eps_fields(con, sid)
+    tags = taught_ai_tags_for(sid)
+    chain = industry_chain_for(con, sid)
+    taught_ai = bool(tags)
+    tier = assign_tier(
+        vol_tier=vt, eps_profit=eps_ok, taught_ai=taught_ai, room_band=rb
+    )
+    out = dict(hit)
+    out.update(
+        {
+            "vol_tier": vt,
+            "room_band": rb,
+            "eps_last": eps_last,
+            "eps_profit": bool(eps_ok),
+            "taught_tags": tags,
+            "taught_ai": taught_ai,
+            "industry_chain": chain,
+            "tier": tier,
+            "observe_only_zh": "觀察非買訊",
+        }
+    )
+    return out
+
+
+def merge_and_tier(
+    *screen_paths: Path,
+    db_path: Path = DB_DEFAULT,
+) -> Dict[str, Any]:
+    """合併各市場可畫五波命中 → 補 EPS／AI 鏈／量價分級。不准先剔除可畫檔。"""
+    by_sid: Dict[str, Dict[str, Any]] = {}
+    asof = ""
+    sources: List[str] = []
+    for p in screen_paths:
+        path = Path(p)
+        if not path.is_file():
+            continue
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        sources.append(str(path))
+        asof = str(raw.get("asof") or asof)
+        for h in raw.get("hits") or []:
+            sid = str(h.get("stock_id") or "").strip()
+            if not sid:
+                continue
+            # 可畫全收：已過四浪高也納入（room_band=past），不准先剔除
+            prev = by_sid.get(sid)
+            if prev is None or float(h.get("score") or -1e9) > float(
+                prev.get("score") or -1e9
+            ):
+                by_sid[sid] = dict(h)
+    con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    enriched = [enrich_hit(con, h) for h in by_sid.values()]
+    con.close()
+
+    def _sort_key(h: Dict[str, Any]) -> Tuple:
+        room = float(h.get("room_to_w4_pct") or 0.0)
+        return (-float(h.get("score") or 0.0), abs(room - 25.0), str(h.get("stock_id")))
+
+    tiers: Dict[str, List[Dict[str, Any]]] = {k: [] for k in ("A", "B", "C", "D")}
+    for h in enriched:
+        tiers.setdefault(str(h.get("tier") or "D"), []).append(h)
+    for k in tiers:
+        tiers[k].sort(key=_sort_key)
+    counts = {k: len(tiers[k]) for k in ("A", "B", "C", "D")}
+    return {
+        "ok": True,
+        "asof": asof,
+        "as_of_taipei": datetime.now(TAIPEI).isoformat(timespec="seconds"),
+        "note_zh": (
+            "五波畫得出＝全部納入再分級；"
+            "爆兩次巨量更好、一次也可、沒爆仍可觀察；"
+            "分級看距四浪高／EPS獲利／AI鏈地位；觀察非買訊"
+        ),
+        "sources": sources,
+        "n_hits": sum(counts.values()),
+        "n_per_tier": counts,
+        "tiers": tiers,
+        "hits": [h for k in ("A", "B", "C", "D") for h in tiers[k]],
+    }
+
+
+def format_tiered_txt(pack: Dict[str, Any]) -> str:
+    lines: List[str] = []
+    counts = pack.get("n_per_tier") or {}
+    lines.append(
+        f"asof={pack.get('asof')} n={pack.get('n_hits')} "
+        f"A={counts.get('A',0)} B={counts.get('B',0)} "
+        f"C={counts.get('C',0)} D={counts.get('D',0)}｜觀察非買訊"
+    )
+    lines.append(str(pack.get("note_zh") or ""))
+    for tier in ("A", "B", "C", "D"):
+        rows = (pack.get("tiers") or {}).get(tier) or []
+        lines.append(f"\n=== Tier {tier}（{len(rows)}）===")
+        for h in rows:
+            tags = ",".join(h.get("taught_tags") or []) or "—"
+            eps = h.get("eps_last")
+            eps_s = f"{eps:.2f}" if isinstance(eps, (int, float)) else "—"
+            lines.append(
+                f"{h.get('stock_id')} {h.get('stock_name')} "
+                f"room={h.get('room_to_w4_pct')}% "
+                f"nearVol={h.get('bottom_near_year_ago_bars')} "
+                f"vol={h.get('vol_tier')} band={h.get('room_band')} "
+                f"eps={eps_s} profit={1 if h.get('eps_profit') else 0} "
+                f"taught={tags} score={h.get('score')}"
+            )
+    return "\n".join(lines) + "\n"
+
+
 def main() -> None:
     import argparse
 
@@ -373,7 +594,29 @@ def main() -> None:
         help="<=0 可畫全收（預設）；>0 才截斷",
     )
     ap.add_argument("--out", default="")
+    ap.add_argument(
+        "--merge-tier",
+        nargs="+",
+        default=None,
+        help="合併既有 screen JSON 並分級輸出",
+    )
+    ap.add_argument("--tier-json", default="")
+    ap.add_argument("--tier-txt", default="")
     args = ap.parse_args()
+    if args.merge_tier:
+        pack = merge_and_tier(*[Path(p) for p in args.merge_tier])
+        jpath = Path(args.tier_json) if args.tier_json else (
+            Path("/opt/cursor/artifacts") / f"focus_tiered_{pack.get('asof') or 'na'}.json"
+        )
+        tpath = Path(args.tier_txt) if args.tier_txt else jpath.with_suffix(".txt")
+        jpath.parent.mkdir(parents=True, exist_ok=True)
+        jpath.write_text(json.dumps(pack, ensure_ascii=False, indent=2), encoding="utf-8")
+        tpath.write_text(format_tiered_txt(pack), encoding="utf-8")
+        print("TIER_JSON", jpath)
+        print("TIER_TXT", tpath)
+        print("n_per_tier", pack.get("n_per_tier"), "n", pack.get("n_hits"))
+        return
+
     out = scan(top_n=int(args.top_n), limit=int(args.limit), market=args.market)
     LAB.mkdir(parents=True, exist_ok=True)
     tag = args.market or "all"

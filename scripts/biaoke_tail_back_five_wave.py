@@ -427,9 +427,12 @@ def try_five_wave_back_from_low(
         )
 
     best_fail: Optional[TailBackFive] = None
+    best_any_five: Optional[TailBackFive] = None
+    # 現價：優先「次級四浪高仍在上方」(room>0)；健策／南電近段峰常已過四浪高
+    last_close = float(bars[-1]["close"]) if bars else 0.0
 
     def _try_piv(peak: Pivot, piv: List[Pivot]) -> Optional[TailBackFive]:
-        nonlocal best_fail
+        nonlocal best_fail, best_any_five
         prior_high = Pivot(
             i=int(peak.i),
             price=float(bars[int(peak.i)]["high"]),
@@ -438,12 +441,12 @@ def try_five_wave_back_from_low(
         )
         five = _thin_to_five_down(piv)
         ok, reason = _five_wave_ok(five)
-        if ok:
+        if ok and five and len(five) >= 6:
             note = (
                 f"由尾回推五波可定義：高{five[0].price:.0f}→低{five[5].price:.0f}；"
                 f"今日連回新開始低{new_start.price:.0f}"
             )
-            return TailBackFive(
+            hit = TailBackFive(
                 ok_new_start=True,
                 ok_five=True,
                 today_up=today_up,
@@ -453,6 +456,13 @@ def try_five_wave_back_from_low(
                 fail_reason_zh="",
                 note_zh=note,
             )
+            # room>0：立刻收（由近到遠第一個仍有回測空間）
+            if float(five[4].price) > last_close + 1e-9:
+                return hit
+            # 可畫但已過四浪高：先記下，繼續找仍有空間的起點
+            if best_any_five is None:
+                best_any_five = hit
+            return None
         if best_fail is None:
             best_fail = TailBackFive(
                 ok_new_start=True,
@@ -485,6 +495,8 @@ def try_five_wave_back_from_low(
         if got is not None:
             return got
 
+    if best_any_five is not None:
+        return best_any_five
     return best_fail or TailBackFive(
         ok_new_start=True,
         ok_five=False,

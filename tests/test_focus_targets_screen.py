@@ -54,3 +54,66 @@ def test_taught_ai_sids_include_heat_abf_passive():
     # 使用者點名：健策／奇鋐／國巨／南電都要在母體強制列
     for sid in ("3653", "3017", "2327", "8046"):
         assert sid in m, sid
+
+
+def test_vol_room_bands_and_tier_ladder():
+    from scripts.focus_targets_screen import (
+        assign_tier,
+        room_band_of,
+        vol_tier_of,
+    )
+
+    assert vol_tier_of(3) == "ge2"
+    assert vol_tier_of(1) == "eq1"
+    assert vol_tier_of(0) == "none"
+    assert room_band_of(24.7) == "near25"
+    assert room_band_of(9.0) == "tight"
+    assert room_band_of(40.0) == "wide"
+    assert room_band_of(60.0) == "deep"
+    assert room_band_of(-3.0) == "past"
+    # A：雙爆＋EPS＋AI＋近／緊空間
+    assert (
+        assign_tier(
+            vol_tier="ge2", eps_profit=True, taught_ai=True, room_band="near25"
+        )
+        == "A"
+    )
+    assert (
+        assign_tier(
+            vol_tier="ge2", eps_profit=True, taught_ai=True, room_band="tight"
+        )
+        == "A"
+    )
+    # B：單爆或 AI＋EPS＋非深
+    assert (
+        assign_tier(
+            vol_tier="eq1", eps_profit=True, taught_ai=False, room_band="wide"
+        )
+        == "B"
+    )
+    assert (
+        assign_tier(
+            vol_tier="none", eps_profit=True, taught_ai=True, room_band="near25"
+        )
+        == "B"
+    )
+    # C：可畫＋EPS 或 AI（深空仍可 C）
+    assert (
+        assign_tier(
+            vol_tier="none", eps_profit=True, taught_ai=False, room_band="deep"
+        )
+        == "C"
+    )
+    assert (
+        assign_tier(
+            vol_tier="none", eps_profit=False, taught_ai=True, room_band="deep"
+        )
+        == "C"
+    )
+    # D：僅可畫
+    assert (
+        assign_tier(
+            vol_tier="none", eps_profit=False, taught_ai=False, room_band="near25"
+        )
+        == "D"
+    )
