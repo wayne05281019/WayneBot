@@ -32,6 +32,51 @@ def test_assign_intervene_needs_eps_and_chain():
     assert "實質" in why or "AI" in why
 
 
+def test_quality_below_w4_low_still_intervene():
+    """台光電型：未過四浪低也不排除。"""
+    row = Wave4Row(
+        stock_id="2383",
+        stock_name="台光電",
+        market="TW",
+        close=3660,
+        wave3_low=3690,
+        wave4=4565,
+        room_to_w4_pct=24.7,
+        above_w4_low=False,
+        bottom_near_year_ago_bars=3,
+        score=120,
+        eps_last=15.0,
+        eps_profit=True,
+        taught_tags=["PCB"],
+        chip_label="外資偏愛",
+    )
+    bucket, why = _assign_bucket(row)
+    assert bucket == "intervene"
+    assert "不准排除" in why or "8000" in why
+
+
+def test_passive_is_rebound_sprint():
+    """被動元件＝搶反彈短衝，不當成長線值得介入。"""
+    row = Wave4Row(
+        stock_id="2327",
+        stock_name="國巨",
+        market="TW",
+        close=800,
+        room_to_w4_pct=30.0,
+        above_w4_low=True,
+        bottom_near_year_ago_bars=1,
+        score=90,
+        eps_last=14.0,
+        eps_profit=True,
+        taught_tags=["被動元件"],
+        industry_chain="電子上游-被動元件",
+        chip_label="外資偏愛",
+    )
+    bucket, why = _assign_bucket(row)
+    assert bucket == "sprint"
+    assert "搶反彈" in why
+
+
 def test_assign_sprint_when_no_eps():
     row = Wave4Row(
         stock_id="9999",
@@ -86,3 +131,5 @@ def test_format_html_has_buckets():
     assert "值得介入" in html
     assert "短衝" in html
     assert "非買訊" in html
+    assert "四浪高" in html
+    assert "搶反彈" in html or "被動元件" in html

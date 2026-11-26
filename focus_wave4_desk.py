@@ -3,8 +3,8 @@
 
 使用者鎖（2026-11-26）：
 - 五波畫得出＝全部納入再分級
-- 可畫＝五波下跌走完、正在反彈／往上；路徑先往次級四浪高靠近
-- 再怎麼快，結構上也要碰到次級相關位才談回頭；未按結構就破＝偏弱股
+- 可畫＝五波下跌走完、正在反彈／往上
+- 要搶的＝次級四浪高；連四浪低（③低）都過不了／當天下來＝偏沒力
 - 再挑：最值得介入 vs 短衝搶一波（實質 EPS vs 技術反彈）
 - 股性：外資／投信／自營（官方淨買賣；不准假成本）
 - 觀察非買訊；不准改 leave_zero／ma60_lower
@@ -28,6 +28,23 @@ from scripts.focus_targets_screen import (
 TAIPEI = ZoneInfo("Asia/Taipei")
 CHIP_LOOKBACK = 10
 
+# 使用者鎖：實質收入好的教過臉，未過四浪低也絕不准排除（觀察非買訊）。
+# horizon＝他口述遠距位，不是進場價、不是買訊。
+QUALITY_HORIZON_ZH: Dict[str, str] = {
+    "2383": "台光電實質收入好：未過四浪低也不排除；12個月內看8000（口述遠距，非買訊）",
+    "1815": "光聖實質臉：未過四浪低也不排除；一定過2500（口述遠距，非買訊）",
+}
+# 被動元件這類＝比較是搶反彈／短衝臉，不是台光電那種實質長線臉。
+REBOUND_TAUGHT_TAGS = frozenset({"被動元件"})
+
+
+def _is_rebound_face(row: "Wave4Row") -> bool:
+    tags = set(row.taught_tags or [])
+    if tags & REBOUND_TAUGHT_TAGS:
+        return True
+    chain = str(row.industry_chain or "")
+    return "被動元件" in chain
+
 
 @dataclass
 class Wave4Row:
@@ -35,11 +52,14 @@ class Wave4Row:
     stock_name: str
     market: str
     close: float
-    room_to_w4_pct: float
-    bottom_near_year_ago_bars: int
-    score: float
-    eps_last: Optional[float]
-    eps_profit: bool
+    wave4: float = 0.0  # 次級四浪高＝要搶的位
+    wave3_low: float = 0.0  # ③低＝四浪低；至少要過才有力
+    room_to_w4_pct: float = 0.0
+    above_w4_low: bool = True
+    bottom_near_year_ago_bars: int = 0
+    score: float = 0.0
+    eps_last: Optional[float] = None
+    eps_profit: bool = False
     taught_tags: List[str] = field(default_factory=list)
     industry_chain: str = ""
     chip_label: str = ""
@@ -128,8 +148,13 @@ def _chip_label(
     return f"偏散戶／雜訊{tag}"
 
 def _assign_bucket(row: Wave4Row) -> Tuple[str, str]:
-    """intervene＝值得介入；sprint＝短衝；watch＝可畫仍觀察。"""
-    ai = bool(row.taught_tags)
+    """intervene＝值得介入；sprint＝短衝／搶反彈；watch＝可畫仍觀察。
+
+    路徑：搶次級四浪高；連四浪低都過不了＝偏沒力。
+    實質收入好（台光電／光聖）不准排除；被動元件這類＝比較搶反彈。
+    """
+    rebound = _is_rebound_face(row)
+    ai = bool(row.taught_tags) and not rebound  # 被動元件不當成長線 AI 實質臉
     room = float(row.room_to_w4_pct)
     near = int(row.bottom_near_year_ago_bars)
     chip = row.chip_label or ""
@@ -137,6 +162,7 @@ def _assign_bucket(row: Wave4Row) -> Tuple[str, str]:
     chip_ready = chip not in ("", "籌碼未齊")
     eps_ok = bool(row.eps_profit)
     past = room <= 0
+    weak = not bool(row.above_w4_low)  # 尚未過③低＝四浪低
 
     why_bits = [
         f"距四浪高{room:.1f}%",
@@ -144,13 +170,36 @@ def _assign_bucket(row: Wave4Row) -> Tuple[str, str]:
         chip or "籌碼未齊",
     ]
     if row.taught_tags:
-        why_bits.append("AI鏈:" + "/".join(row.taught_tags[:2]))
+        why_bits.append("鏈:" + "/".join(row.taught_tags[:2]))
     if near >= 2:
         why_bits.append(f"底爆量{near}根")
     elif near == 1:
         why_bits.append("底單爆量")
     if past:
         why_bits.append("已過四浪高")
+    if rebound:
+        why_bits.append("被動元件型＝搶反彈")
+
+    quality = bool(
+        eps_ok
+        and not rebound
+        and (ai or row.stock_id in QUALITY_HORIZON_ZH)
+    )
+    if weak and quality:
+        why_bits.append("未過四浪低仍留（實質收入好不准排除）")
+    elif weak:
+        why_bits.append("未過四浪低＝偏沒力")
+    hz = QUALITY_HORIZON_ZH.get(row.stock_id)
+    if hz:
+        why_bits.append(hz.split("；")[-1] if "；" in hz else hz)
+
+    # 被動元件這類：比較是搶反彈，不進值得介入長線桶
+    if rebound and not past:
+        return "sprint", "；".join(why_bits) + "→搶反彈短衝"
+
+    # 連四浪低都過不了：雜訊／無實質 → 弱；有實質＋鏈＝不准排除，繼續走介入閘
+    if weak and not past and not quality:
+        return "sprint", "；".join(why_bits) + "→連四浪低都過不了＝弱"
 
     # 短衝：缺 EPS 保護＝技術反彈臉；或深空無鏈無量
     if (not eps_ok) or (room > 55 and not ai and near == 0):
@@ -162,7 +211,7 @@ def _assign_bucket(row: Wave4Row) -> Tuple[str, str]:
             return "watch", "；".join(why_bits) + "→有實質但近窗法人偏賣"
         return "watch", "；".join(why_bits) + "→法人偏賣改觀察"
 
-    # 值得介入：EPS＋（AI鏈或機構偏愛）＋合理距四浪高（約5–50%）
+    # 值得介入：EPS＋（實質鏈或機構偏愛）＋合理距四浪高（約5–50%）
     if eps_ok and (ai or inst) and (15 <= room <= 45 or (near >= 1 and 8 <= room <= 55)) and not past:
         return "intervene", "；".join(why_bits) + "→實質＋鏈／籌碼"
     if eps_ok and ai and 5 <= room <= 55 and not past:
@@ -192,12 +241,18 @@ def enrich_hits(
             f, t, d, chip_asof = _chip_sums(con, sid)
             tags = list(taught_map.get(sid) or [])
             chain = _industry(con, sid)
+            above = h.get("above_w4_low")
+            if above is None and h.get("wave3_low") is not None:
+                above = float(h.get("close") or 0) + 1e-9 >= float(h.get("wave3_low") or 0)
             row = Wave4Row(
                 stock_id=sid,
                 stock_name=str(h.get("stock_name") or sid),
                 market=str(h.get("market") or ""),
                 close=float(h.get("close") or 0),
+                wave4=float(h.get("wave4") or 0),
+                wave3_low=float(h.get("wave3_low") or 0),
                 room_to_w4_pct=float(h.get("room_to_w4_pct") or 0),
+                above_w4_low=bool(True if above is None else above),
                 bottom_near_year_ago_bars=int(h.get("bottom_near_year_ago_bars") or 0),
                 score=float(h.get("score") or 0),
                 eps_last=eps_v,
@@ -250,14 +305,17 @@ def build_wave4_desk(
         "title_zh": "次級四浪",
         "not_buy_signal": True,
         "rule_zh": (
-            "可畫＝五波下跌走完、正在反彈／往上，先往次級四浪高靠近；"
-            "未按結構就走壞＝偏弱。母體全收後再依EPS／AI鏈／股性分級。"
-            "雙爆更好、單爆也可。觀察非買訊。"
+            "可畫＝五波下跌走完、正在反彈；要搶的是次級四浪高；"
+            "連四浪低（③低）都過不了／當天下來＝偏沒力；"
+            "實質收入好（台光電／光聖型）絕不准因未過四浪低排除；"
+            "被動元件這類比較是搶反彈短衝臉。"
+            "母體全收後再依EPS／鏈／股性分級。雙爆更好、單爆也可。觀察非買訊。"
         ),
         "chip_rule_zh": (
             f"股性＝近{CHIP_LOOKBACK}日官方 foreign_net／trust_net／dealer_net 加總誰主導；"
             "不准畫假主力成本。"
         ),
+        "quality_horizon_zh": dict(QUALITY_HORIZON_ZH),
         "n_universe": scanned.get("n_universe"),
         "n_hits": len(rows),
         "n_intervene": len(intervene),
@@ -276,8 +334,8 @@ def format_wave4_desk_html(payload: Dict[str, Any], *, max_each: int = 12) -> st
     asof = str(payload.get("asof") or "")
     lines = [
         f"<b>次級四浪</b>（{asof[:4]}/{asof[4:6]}/{asof[6:8]} 盤後母體）",
-        "觀察非買訊。可畫＝五波走完、正在反彈／往上次級四浪高。",
-        "未按結構就破＝偏弱。全收後再分級。",
+        "觀察非買訊。要搶＝次級四浪高；連四浪低都過不了／當天下來＝偏沒力。",
+        "實質好（台光電／光聖）不排除；被動元件這類＝搶反彈。",
         (
             f"可畫 {payload.get('n_hits')}｜"
             f"值得介入 {payload.get('n_intervene')}｜"

@@ -83,7 +83,9 @@ class FocusHit:
     wave_start: float
     wave_end: float
     wave4: float
+    wave3_low: float  # ③低＝次級四浪起點／四浪低；反彈至少要過這才有力
     room_to_w4_pct: float
+    above_w4_low: bool
     new_start_date: str
     wave_start_date: str
     wave_end_date: str
@@ -274,10 +276,11 @@ def scan(
         if not tb.ok_new_start or tb.new_start is None:
             continue
         pts = tb.five_points
-        w0, w4, w5 = pts[0], pts[4], pts[5]
+        w0, w3, w4, w5 = pts[0], pts[3], pts[4], pts[5]
         close = float(bars[-1]["close"])
         # 可畫就納入：已過四浪高也留（分級標「已過」），不准因空間砍掉
         room = (w4.price - close) / close * 100.0
+        above_w4_low = close + 1e-9 >= float(w3.price)  # 過③低＝過四浪低，才有力道
         ref_v, ref_d = year_ago_peak_vol(bars, asof)
         near_n = count_bottom_near_year_ago(
             bars, ref_vol=ref_v, new_start_i=int(tb.new_start.i)
@@ -296,14 +299,33 @@ def scan(
                 "五波可畫＝納入範圍；底部未達將近一年前巨量仍可觀察"
                 "（雙爆更好、單爆也可；分級另看距四浪高／EPS／AI鏈地位）"
             )
+        quality_keep = sid in taught  # 教過 AI 鏈臉：實質好的不准因未過四浪低砍掉
         if room <= 0:
-            vol_note = "已過／觸及次級四浪高；五波可畫仍納入分級。" + vol_note
+            vol_note = "已過／觸及次級四浪高（要搶的位）；五波可畫仍納入分級。" + vol_note
+        elif not above_w4_low:
+            if quality_keep:
+                vol_note = (
+                    "尚未過次級四浪低（③低），但教過實質臉仍全收不排除；"
+                    "雜訊股連這都過不了／當天下來才＝偏沒力。"
+                    + vol_note
+                )
+            else:
+                vol_note = (
+                    "尚未過次級四浪低（③低）；連這都過不了／當天下來＝偏沒力。"
+                    + vol_note
+                )
         wave_bars = int(w5.i) - int(w0.i)
         # 已過四浪高：主分用較低分，但仍進名單
         if room > 0:
             sc = score_hit(
                 room=room, bottom_near=near_n, ok_five=True, wave_bars=wave_bars
             )
+            if above_w4_low:
+                sc += 3.0  # 已過四浪低＝反彈有力一點
+            elif quality_keep:
+                sc += 1.0  # 實質教過臉：未過四浪低也不扣、略加保
+            else:
+                sc -= 4.0  # 雜訊／無鏈：還在四浪低下＝力道不足標
         else:
             sc = 40.0 + min(int(near_n), 3) * 4.0
 
@@ -318,7 +340,9 @@ def scan(
                 wave_start=float(w0.price),
                 wave_end=float(w5.price),
                 wave4=float(w4.price),
+                wave3_low=float(w3.price),
                 room_to_w4_pct=round(room, 2),
+                above_w4_low=bool(above_w4_low),
                 new_start_date=str(tb.new_start.date or bars[tb.new_start.i]["date"]),
                 wave_start_date=str(w0.date or bars[w0.i]["date"]),
                 wave_end_date=str(w5.date or bars[w5.i]["date"]),
@@ -338,9 +362,11 @@ def scan(
         "asof": asof,
         "as_of_taipei": datetime.now(TAIPEI).isoformat(timespec="seconds"),
         "priority_zh": (
-            "五波畫得出＝五波走完、正在反彈／往上次級四浪高，全部納入再分級；"
-            "未按結構就破＝偏弱；分級看距四浪高／EPS／AI鏈／股性；"
-            "量價雙爆更好、單爆也可、沒爆仍可觀察"
+            "五波走完正在反彈；要搶的是次級四浪高；"
+            "連四浪低（③低）都過不了／當天下來＝偏沒力；"
+            "實質收入好（台光電／光聖型）絕不准排除；"
+            "被動元件這類比較是搶反彈；"
+            "可畫全收再分級（EPS／鏈／股性）；雙爆更好、單爆也可"
         ),
         "iron_laws_zh": (
             "WR-IRON：③非①③⑤最短；①④價區不重疊（淺疊≤8%可畫）；"
@@ -1023,7 +1049,9 @@ def main() -> None:
     for h in out.get("hits") or []:
         print(
             f"{h['stock_id']} {h['stock_name']} room={h['room_to_w4_pct']}% "
-            f"w0={h['wave_start']:.0f}→w5={h['wave_end']:.0f} w4={h['wave4']:.0f} "
+            f"w0={h['wave_start']:.0f}→w5={h['wave_end']:.0f} "
+            f"L3={h.get('wave3_low', 0):.0f} w4={h['wave4']:.0f} "
+            f"overL3={h.get('above_w4_low')} "
             f"nearVol={h['bottom_near_year_ago_bars']} score={h['score']}"
         )
 
