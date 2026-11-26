@@ -317,8 +317,9 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "_TEACH_EIGHT_WAVE_INSET_W_FRAC" in src
     assert "_c_flash_step" in src
     assert 'panels="far"' in src or "panels: str" in src
-    # 遠窗大C 必須自大B末連到今，不准 10/6 後斷線
-    assert "[i_b_end, i_c, i_now]" in far_blk
+    # 遠窗大C 缺錨退回：自大B末連到 C 段官方最低尖（不准用收／不准斷在 10/6）
+    assert "[i_b_end, i_c, _i_lo]" in far_blk
+    assert "官方最低尖" in far_blk
     assert "緩坡" in src or "非垂直" in src
     assert "不准把 A 包進去" in src or "A 必須在黃框" in src
     assert "_TEACH_STAMP_FS" in src
@@ -5841,14 +5842,22 @@ def test_huang_c60_anchors_and_wave_paint_wired():
         assert abs(float(three[1]) - 41856.0) < 120
         assert abs(float(four[1]) - 43135.0) < 40
         assert abs(float(five[1]) - 37837.0) < 30
-        # C4 反彈折：不標①～⑤；白折跟到最新縮圖K（不准停在第一次碰到次級4壓）
+        # C4 反彈折：不標①～⑤；末點釘 C3 後官方最低尖（不准用收／不准停較高今日低）
         c4 = anc.get("c4") or []
         assert len(c4) >= 2
         labs4 = [str(p[2]) for p in c4]
         assert not any(x in {"①", "②", "③", "④", "⑤"} for x in labs4), labs4
         assert abs(float(anc.get("c4_press") or 0) - 43135.0) < 40
-        assert int(c4[-1][0]) == len(rows) - 1
-        assert abs(float(c4[-1][1]) - float(rows[-1].get("close") or 0)) < 1.0
+        i3 = int(anc["i3"])
+        i_lo = min(
+            range(i3, len(rows)),
+            key=lambda i: float((rows[i] or {}).get("low") or 1e18),
+        )
+        assert int(c4[-1][0]) == int(i_lo)
+        assert abs(float(c4[-1][1]) - float(rows[i_lo].get("low") or 0)) < 1.0
+        # 若末日收高於最低尖，不准把末點改釘收
+        if abs(float(rows[-1].get("close") or 0) - float(rows[i_lo].get("low") or 0)) > 1.0:
+            assert abs(float(c4[-1][1]) - float(rows[-1].get("close") or 0)) > 1.0
     paint = inspect.getsource(_paint_huang_c60_structure)
     assert "中繼上" in paint and "中繼下" in paint
     assert "alpha=0.07" in paint  # 底色再淺
