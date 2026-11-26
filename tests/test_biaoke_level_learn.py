@@ -317,8 +317,9 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "_TEACH_EIGHT_WAVE_INSET_W_FRAC" in src
     assert "_c_flash_step" in src
     assert 'panels="far"' in src or "panels: str" in src
-    # 遠窗大C 必須自大B末連到今，不准 10/6 後斷線
-    assert "[i_b_end, i_c, i_now]" in far_blk
+    # 遠窗大C 缺錨退回：自大B末連到 C 段官方最低尖（不准用收／不准斷在 10/6）
+    assert "[i_b_end, i_c, _i_lo]" in far_blk
+    assert "官方最低尖" in far_blk
     assert "緩坡" in src or "非垂直" in src
     assert "不准把 A 包進去" in src or "A 必須在黃框" in src
     assert "_TEACH_STAMP_FS" in src
@@ -5841,14 +5842,22 @@ def test_huang_c60_anchors_and_wave_paint_wired():
         assert abs(float(three[1]) - 41856.0) < 120
         assert abs(float(four[1]) - 43135.0) < 40
         assert abs(float(five[1]) - 37837.0) < 30
-        # C4 反彈折：不標①～⑤；白折跟到最新縮圖K（不准停在第一次碰到次級4壓）
+        # C4 反彈折：不標①～⑤；末點釘 C3 後官方最低尖（不准用收／不准停較高今日低）
         c4 = anc.get("c4") or []
         assert len(c4) >= 2
         labs4 = [str(p[2]) for p in c4]
         assert not any(x in {"①", "②", "③", "④", "⑤"} for x in labs4), labs4
         assert abs(float(anc.get("c4_press") or 0) - 43135.0) < 40
-        assert int(c4[-1][0]) == len(rows) - 1
-        assert abs(float(c4[-1][1]) - float(rows[-1].get("close") or 0)) < 1.0
+        i3 = int(anc["i3"])
+        i_lo = min(
+            range(i3, len(rows)),
+            key=lambda i: float((rows[i] or {}).get("low") or 1e18),
+        )
+        assert int(c4[-1][0]) == int(i_lo)
+        assert abs(float(c4[-1][1]) - float(rows[i_lo].get("low") or 0)) < 1.0
+        # 若末日收高於最低尖，不准把末點改釘收
+        if abs(float(rows[-1].get("close") or 0) - float(rows[i_lo].get("low") or 0)) > 1.0:
+            assert abs(float(c4[-1][1]) - float(rows[-1].get("close") or 0)) > 1.0
     paint = inspect.getsource(_paint_huang_c60_structure)
     assert "中繼上" in paint and "中繼下" in paint
     assert "alpha=0.07" in paint  # 底色再淺
@@ -6267,7 +6276,7 @@ def test_pressure_break_labels_split_slant_vs_41760():
 
 
 def test_huang_c_purple_path_low_high_today_low():
-    """遠／近紫折：11/06低→反彈高→今日低（不准終點用收）。"""
+    """遠／近紫折：11/06低→反彈高→其後官方最低尖（不准終點用收）。"""
     import sqlite3
     from pathlib import Path
 
@@ -6298,16 +6307,84 @@ def test_huang_c_purple_path_low_high_today_low():
     assert len(xs) == len(ys) >= 6
     i3 = int(xs[-3])
     i_hi = int(xs[-2])
-    i_now = int(xs[-1])
+    i_end = int(xs[-1])
     assert str(bars[i3].get("date")) == "20261106"
     assert abs(float(ys[-3]) - float(bars[i3]["low"])) < 0.05
-    assert i3 < i_hi < i_now
+    assert i3 < i_hi <= i_end
     assert abs(float(ys[-2]) - float(bars[i_hi]["high"])) < 0.05
-    # 終點釘今日低（收＝低的日子也算對；不准改釘收盤欄）
-    assert abs(float(ys[-1]) - float(bars[i_now]["low"])) < 0.05
-    assert abs(float(sp.get("y_now")) - float(bars[i_now]["low"])) < 0.05
-    close_now = float(bars[i_now]["close"])
-    low_now = float(bars[i_now]["low"])
-    if abs(close_now - low_now) > 1.0:
-        assert abs(float(ys[-1]) - close_now) > 1.0
+    # 終點＝反彈高之後官方最低尖（不准釘收）
+    assert abs(float(ys[-1]) - float(bars[i_end]["low"])) < 0.05
+    hi_i = int(i_hi)
+    ext_i = min(range(hi_i + 1, len(bars)), key=lambda i: float(bars[i]["low"]))
+    assert int(i_end) == int(ext_i)
+    assert abs(float(ys[-1]) - float(bars[ext_i]["low"])) < 0.05
+    close_end = float(bars[i_end]["close"])
+    low_end = float(bars[i_end]["low"])
+    if abs(close_end - low_end) > 1.0:
+        assert abs(float(ys[-1]) - close_end) > 1.0
+
+
+def test_huang_c_purple_path_snaps_extreme_low_not_today():
+    """反彈後又創更低：紫折末點釘最低尖，不准停在較高的今日低／收。"""
+    from biaoke_level_learn import _resolve_huang_c_daily_spans
+
+    # 精簡錨：10/6高→10/18低→10/28高→11/6低→11/12高→11/23極低→11/25較高
+    bars = []
+    # pad before 10/6
+    for i in range(1, 6):
+        bars.append(
+            {
+                "date": f"2026100{i}",
+                "open": 48000,
+                "high": 48500,
+                "low": 47500,
+                "close": 48000,
+            }
+        )
+    bars.extend(
+        [
+            {"date": "20261006", "open": 49500, "high": 49968, "low": 49400, "close": 49800},
+            {"date": "20261007", "open": 49000, "high": 49200, "low": 48500, "close": 48800},
+            {"date": "20261008", "open": 48800, "high": 49000, "low": 48000, "close": 48200},
+            {"date": "20261009", "open": 48200, "high": 48400, "low": 47800, "close": 47900},
+            {"date": "20261010", "open": 47900, "high": 48100, "low": 47000, "close": 47200},
+            {"date": "20261013", "open": 47200, "high": 47400, "low": 46800, "close": 46900},
+            {"date": "20261014", "open": 46900, "high": 47100, "low": 46500, "close": 46600},
+            {"date": "20261015", "open": 46600, "high": 46800, "low": 46300, "close": 46400},
+            {"date": "20261016", "open": 46400, "high": 46600, "low": 46200, "close": 46300},
+            {"date": "20261017", "open": 46300, "high": 46500, "low": 46200, "close": 46250},
+            {"date": "20261018", "open": 46200, "high": 46800, "low": 46170, "close": 46800},
+            {"date": "20261020", "open": 46800, "high": 46900, "low": 46400, "close": 46500},
+            {"date": "20261021", "open": 46500, "high": 46700, "low": 46300, "close": 46400},
+            {"date": "20261022", "open": 46400, "high": 46600, "low": 46200, "close": 46300},
+            {"date": "20261023", "open": 46300, "high": 46500, "low": 46100, "close": 46200},
+            {"date": "20261024", "open": 46200, "high": 46800, "low": 46100, "close": 46700},
+            {"date": "20261027", "open": 46700, "high": 46900, "low": 46500, "close": 46800},
+            {"date": "20261028", "open": 46800, "high": 47060, "low": 46600, "close": 47000},
+            {"date": "20261029", "open": 47000, "high": 47100, "low": 46000, "close": 46100},
+            {"date": "20261030", "open": 46100, "high": 46200, "low": 45000, "close": 45100},
+            {"date": "20261031", "open": 45100, "high": 45200, "low": 44000, "close": 44100},
+            {"date": "20261103", "open": 44100, "high": 44200, "low": 42000, "close": 42100},
+            {"date": "20261104", "open": 42100, "high": 42200, "low": 40000, "close": 40100},
+            {"date": "20261105", "open": 40100, "high": 40200, "low": 39000, "close": 39100},
+            {"date": "20261106", "open": 38900, "high": 40400, "low": 37837, "close": 39700},
+            {"date": "20261110", "open": 42000, "high": 43135, "low": 41900, "close": 42700},
+            {"date": "20261111", "open": 43100, "high": 44257, "low": 42700, "close": 44257},
+            {"date": "20261112", "open": 44180, "high": 44525, "low": 42943, "close": 43091},
+            {"date": "20261120", "open": 37646, "high": 37646, "low": 35738, "close": 36033},
+            {"date": "20261123", "open": 35899, "high": 37108, "low": 35442, "close": 36811},
+            {"date": "20261124", "open": 39148, "high": 40180, "low": 39148, "close": 40122},
+            {"date": "20261125", "open": 39983, "high": 39983, "low": 36681, "close": 38195},
+        ]
+    )
+    sp = _resolve_huang_c_daily_spans(bars)
+    assert sp.get("ok")
+    xs = list(sp.get("xs") or [])
+    ys = list(sp.get("ys") or [])
+    i_end = int(xs[-1])
+    assert str(bars[i_end]["date"]) == "20261123"
+    assert abs(float(ys[-1]) - 35442.0) < 0.05
+    # 不准停在 11/25 今日低或收
+    assert abs(float(ys[-1]) - 36681.0) > 1.0
+    assert abs(float(ys[-1]) - 38195.0) > 1.0
 
