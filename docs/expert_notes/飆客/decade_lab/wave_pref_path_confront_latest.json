@@ -1,5 +1,5 @@
 {
-  "written_at": "2026-11-26T01:07:02+0800",
+  "written_at": "2026-11-26T14:01:39+0800",
   "tz": "Asia/Taipei",
   "track": "wave_pref_path_3state",
   "purpose_zh": "preferred 路徑三態對質：觸位／守位／失效改口（非買訊）",
@@ -16,16 +16,16 @@
   },
   "gate": {
     "min_n": 20,
-    "n_decided": 8,
-    "n_rows": 13,
-    "hit_rate": 0.625,
+    "n_decided": 9,
+    "n_rows": 14,
+    "hit_rate": 0.6666666666666666,
     "gate_n20": false,
     "replace": false,
     "WAVE_NEURONS_MATCH": false
   },
   "state_counts": {
     "fail": 3,
-    "hit": 5,
+    "hit": 6,
     "unknown": 3,
     "partial": 2
   },
@@ -234,6 +234,22 @@
       "decided": true,
       "hit": false,
       "source_file": "docs/expert_notes/飆客/decade_lab/wave_eod_verify_20261125.json",
+      "buy_signal": false,
+      "phone_sync": "blocked",
+      "not_buy_signal": true
+    },
+    {
+      "as_of": "20261126",
+      "preferred_id": "FB_hold_above_37837",
+      "verdict_zh": "通過：全日 L38435.99 與收 39151.81 皆＞37837（守住假跌破底）",
+      "state": "hit",
+      "touch": true,
+      "hold": true,
+      "fail_retract": false,
+      "has_retract_hook": true,
+      "decided": true,
+      "hit": true,
+      "source_file": "docs/expert_notes/飆客/decade_lab/wave_eod_verify_20261126.json",
       "buy_signal": false,
       "phone_sync": "blocked",
       "not_buy_signal": true
