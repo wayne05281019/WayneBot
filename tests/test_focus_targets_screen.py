@@ -45,3 +45,12 @@ def test_bottom_near_counts_against_ref():
     bars = [{"date": f"202611{10+i:02d}", "volume": v} for i, v in enumerate([100, 8000, 8100, 200])]
     n = count_bottom_near_year_ago(bars, ref_vol=10000.0, new_start_i=1)
     assert n >= 2
+
+
+def test_taught_ai_sids_include_heat_abf_passive():
+    from scripts.focus_targets_screen import _taught_ai_sids
+
+    m = _taught_ai_sids()
+    # 使用者點名：健策／奇鋐／國巨／南電都要在母體強制列
+    for sid in ("3653", "3017", "2327", "8046"):
+        assert sid in m, sid

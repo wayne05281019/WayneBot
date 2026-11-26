@@ -175,3 +175,55 @@ def test_iron_rejects_w3_shortest():
     ok, reason = iron_laws_down_five(five)
     assert ok is False
     assert "③" in reason
+
+
+def test_steep_crash_day_swing_can_define_five():
+    """急殺短段（健策／南電型）：fractal 抽稀後只剩2點時，逐日擺動備援仍可畫。"""
+    bars: list[dict] = []
+    # 平盤墊高 → 波段高 → 急殺數日 → 新開始低 → 反彈上漲
+    path = [
+        (5000, 5100, 4900, 5050),
+        (5050, 5200, 5000, 5150),
+        (5200, 6360, 5825, 6225),  # peak
+        (6215, 6340, 5605, 5605),
+        (5860, 5980, 5290, 5345),
+        (5235, 5335, 4815, 4815),
+        (4335, 4445, 4335, 4335),
+        (4520, 4765, 4075, 4570),  # bounce day
+        (4500, 4520, 4115, 4115),
+        (3705, 3705, 3705, 3705),
+        (3375, 3815, 3335, 3685),  # new start low 3335
+        (4050, 4050, 4050, 4050),
+        (4180, 4455, 3845, 4170),
+        (4585, 4585, 4585, 4585),  # today up
+    ]
+    for i, (o, h, l, c) in enumerate(path):
+        bars.append(
+            {
+                "date": f"{20261110 + i}",
+                "open": float(o),
+                "high": float(h),
+                "low": float(l),
+                "close": float(c),
+                "volume": 3000.0,
+            }
+        )
+    # 補足長度
+    while len(bars) < 40:
+        bars.insert(
+            0,
+            {
+                "date": f"{20261001 + len(bars)}",
+                "open": 4800.0,
+                "high": 4900.0,
+                "low": 4700.0,
+                "close": 4850.0,
+                "volume": 1000.0,
+            },
+        )
+    r = analyze_bars(bars)
+    assert r.ok_new_start is True
+    assert r.ok_five is True, r.fail_reason_zh
+    assert r.five_points and len(r.five_points) == 6
+    ok, reason = iron_laws_down_five(r.five_points)
+    assert ok, reason

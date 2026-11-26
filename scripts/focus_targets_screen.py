@@ -2,12 +2,14 @@
 # -*- coding: utf-8 -*-
 """最近重點標的觀察掃（非買訊）。
 
-優先序（2026-11-26 使用者鎖）：
-1. 近幾日可「由尾回推」定義五波下跌＋新開始起漲（台光電／光聖型）
-2. 量價只當輔證，對齊飆大 11/26 文語意——不是自創「一年級」口號：
-   - 台光電句：「底部連續爆 2 根『去年 12 月將近一年的巨量』」
-     ＝底部連續巨量，量能級距接近約一年前（去年 12 月前後）出現過的巨量
-   - 台積電句：低檔量價「籌碼沉澱」→ 排除最差破底劇本（輔證，非本掃主閘）
+優先序（2026-11-26 使用者鎖；同夜補排）：
+1. 近幾日可「由尾回推」定義五波下跌＋新開始起漲（台光電／光聖型）＝主閘
+2. 下降五波畫得出 → 目前都有機會回測次級四浪最高，至少也測得到低；
+   還要看距四浪高多遠、有無實際 EPS 獲利、在 AI 產業鏈的地位
+3. 量價輔證：底點爆大量後再爆一次更好；只爆一次也可；沒爆仍可觀察（不擋主閘）
+4. 量價語意對齊飆大 11/26——不是自創「一年級」口號：
+   - 「去年 12 月將近一年的巨量」＝級距對照約一年前巨量
+   - 台積＝籌碼沉澱排除最差破底（輔證）
 
 硬邊界：Asia/Taipei；官方日 K；觀察非買訊；不准發明個股 5／9 浪號認證。
 """
@@ -33,6 +35,41 @@ YEAR_AGO_BACK_DAYS = 400
 YEAR_AGO_NEAR_DAYS = 200
 BOTTOM_VOL_LOOKBACK = 8
 NEAR_YEAR_AGO_FRAC = 0.80  # ≥ 一年前巨量×0.8 算「將近」
+
+# 教過且與 AI 鏈相關的組＝掃檔必納（成交額前段漏掉也要試畫）
+AI_TAUGHT_GROUPS = (
+    "光通訊",
+    "低軌衛星",
+    "記憶體製造",
+    "記憶體控制",
+    "記憶體模組",
+    "記憶體通路",
+    "記憶體封測",
+    "高階測試",
+    "ASIC",
+    "散熱",
+    "PCB",
+    "ABF",
+    "電源管理",
+    "無塵室",
+    "被動元件",
+)
+
+
+def _taught_ai_sids() -> Dict[str, List[str]]:
+    """sid → taught group names。讀不到 industry_fine 就不強制。"""
+    try:
+        from industry_fine import TAUGHT_GROUPS  # type: ignore
+    except Exception:
+        return {}
+    out: Dict[str, List[str]] = {}
+    for g in AI_TAUGHT_GROUPS:
+        for sid in TAUGHT_GROUPS.get(g) or ():
+            s = str(sid).strip()
+            if not s:
+                continue
+            out.setdefault(s, []).append(str(g))
+    return out
 
 
 @dataclass
@@ -182,20 +219,50 @@ def score_hit(
 def scan(
     db_path: Path = DB_DEFAULT,
     *,
-    top_n: int = 150,
-    limit: int = 60,
+    top_n: int = 200,
+    limit: int = 0,
     market: Optional[str] = None,
 ) -> Dict[str, Any]:
+    """掃可畫五波標的。
+
+    limit<=0＝可畫全收（使用者鎖：畫得出＝納入範圍再分級，不准先砍）。
+    """
     con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     asof = latest_full_asof(con)
     if not asof:
         con.close()
         return {"ok": False, "error": "no asof"}
     universe: List[Tuple[str, str, str]] = []
+    seen: set[str] = set()
     markets = (str(market),) if market in ("TW", "TWO") else ("TW", "TWO")
     for mkt in markets:
         for sid, name in top_n_by_turnover(con, market=mkt, as_of=asof, n=top_n):
+            if sid in seen:
+                continue
+            seen.add(sid)
             universe.append((sid, name, mkt))
+    # 教過 AI 鏈強制納入母體（健策／南電／國巨等不因成交額窗漏掉）
+    taught = _taught_ai_sids()
+    for sid, _groups in taught.items():
+        if sid in seen:
+            continue
+        row = con.execute(
+            "SELECT stock_name, market FROM daily_quotes WHERE stock_id=? AND date=?",
+            (sid, asof),
+        ).fetchone()
+        if not row:
+            row = con.execute(
+                "SELECT stock_name, market FROM daily_quotes WHERE stock_id=? "
+                "ORDER BY date DESC LIMIT 1",
+                (sid,),
+            ).fetchone()
+        if not row:
+            continue
+        name, mkt = str(row[0] or sid), str(row[1] or "")
+        if market in ("TW", "TWO") and mkt != market:
+            continue
+        seen.add(sid)
+        universe.append((sid, name, mkt or "TW"))
     hits: List[FocusHit] = []
     for sid, name, mkt in universe:
         bars = load_bars(con, sid, 280)
@@ -209,8 +276,7 @@ def scan(
         pts = tb.five_points
         w0, w4, w5 = pts[0], pts[4], pts[5]
         close = float(bars[-1]["close"])
-        if w4.price <= close + 1e-9:
-            continue  # 已過四浪高＝本鈕「距四浪高空間」觀察結束
+        # 可畫就納入：已過四浪高也留（分級標「已過」），不准因空間砍掉
         room = (w4.price - close) / close * 100.0
         ref_v, ref_d = year_ago_peak_vol(bars, asof)
         near_n = count_bottom_near_year_ago(
@@ -226,11 +292,21 @@ def scan(
                 f"底部近窗1根量接近約一年前巨量（對照{ref_d or '—'} {ref_v:.0f}張）"
             )
         else:
-            vol_note = "五波＋新起漲為主；底部未達『將近一年前巨量』連續級距（仍可觀察）"
+            vol_note = (
+                "五波可畫＝納入範圍；底部未達將近一年前巨量仍可觀察"
+                "（雙爆更好、單爆也可；分級另看距四浪高／EPS／AI鏈地位）"
+            )
+        if room <= 0:
+            vol_note = "已過／觸及次級四浪高；五波可畫仍納入分級。" + vol_note
         wave_bars = int(w5.i) - int(w0.i)
-        sc = score_hit(
-            room=room, bottom_near=near_n, ok_five=True, wave_bars=wave_bars
-        )
+        # 已過四浪高：主分用較低分，但仍進名單
+        if room > 0:
+            sc = score_hit(
+                room=room, bottom_near=near_n, ok_five=True, wave_bars=wave_bars
+            )
+        else:
+            sc = 40.0 + min(int(near_n), 3) * 4.0
+
         hits.append(
             FocusHit(
                 stock_id=sid,
@@ -254,15 +330,21 @@ def scan(
             )
         )
     hits.sort(key=lambda h: (-h.score, -h.room_to_w4_pct, h.stock_id))
-    hits = hits[: int(limit)]
+    # limit<=0：可畫全收；>0 才截（僅除錯用）
+    if int(limit) > 0:
+        hits = hits[: int(limit)]
     out = {
         "ok": True,
         "asof": asof,
         "as_of_taipei": datetime.now(TAIPEI).isoformat(timespec="seconds"),
-        "priority_zh": "先五波回推＋新起漲，且過下跌推進鐵律；量價只輔證",
+        "priority_zh": (
+            "五波畫得出＝全部納入再分級；"
+            "分級看距四浪高／EPS獲利／AI鏈地位；"
+            "量價雙爆更好、單爆也可、沒爆仍可觀察"
+        ),
         "iron_laws_zh": (
-            "WR-IRON：③非①③⑤最短；①④價區不重疊；"
-            "下跌序 H2<H0、L3<L1、L5<L3。未過關＝不算可定義五波。"
+            "WR-IRON：③非①③⑤最短；①④價區不重疊（淺疊≤8%可畫）；"
+            "下跌序 H2<H0、L3<L1、L5<L3。急殺短段可用逐日擺動備援轉折。"
         ),
         "oral_vol_zh": (
             "台光電原文＝底部連續爆2根『去年12月將近一年的巨量』"
@@ -270,6 +352,7 @@ def scan(
             "台積＝籌碼沉澱排除最差破底。觀察非買訊。"
         ),
         "n_universe": len(universe),
+        "n_taught_forced": len(taught),
         "n_hits": len(hits),
         "hits": [asdict(h) for h in hits],
     }
@@ -282,8 +365,13 @@ def main() -> None:
 
     ap = argparse.ArgumentParser()
     ap.add_argument("--market", choices=("TW", "TWO"), default=None)
-    ap.add_argument("--top-n", type=int, default=150)
-    ap.add_argument("--limit", type=int, default=60)
+    ap.add_argument("--top-n", type=int, default=200)
+    ap.add_argument(
+        "--limit",
+        type=int,
+        default=0,
+        help="<=0 可畫全收（預設）；>0 才截斷",
+    )
     ap.add_argument("--out", default="")
     args = ap.parse_args()
     out = scan(top_n=int(args.top_n), limit=int(args.limit), market=args.market)
