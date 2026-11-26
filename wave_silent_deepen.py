@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import sqlite3
 from datetime import datetime
@@ -22,11 +23,12 @@ ROOT = Path(__file__).resolve().parent
 LAB = ROOT / "docs" / "expert_notes" / "飆客" / "decade_lab"
 OUT_JSON = LAB / "wave_silent_deepen_latest.json"
 OUT_MD = LAB / "wave_silent_deepen_latest.md"
-PREFLIGHT = LAB / "wave_intraday_preflight_20261126.json"
 TAIPEI = ZoneInfo("Asia/Taipei")
 
 TRACK = "wave_silent_deepen"
+# §13：v3 仍收樣；同件再生下一版 v4（守位連鎖＋練畫對質）
 VARIANT = "deepen_v3_cross_mine_2023"
+NEXT_VARIANT = "deepen_v4_hold_chain_paint_2026"
 PHONE_SYNC = "blocked"
 PHONE_WARNING = "試標・推論／非他原文・非買訊・對質未過閘"
 MIN_N = 20
@@ -179,43 +181,156 @@ def scan_nested_oral(db_path: str, *, limit: int = 40) -> Dict[str, Any]:
     }
 
 
-def build_1126_preflight(forward: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """開市前預檢：只列已口述位與 preferred；未收不當收。"""
-    fwd = forward
-    if fwd is None:
-        path = LAB / "wave_forward_infer_20261126.json"
+def _latest_forward() -> Dict[str, Any]:
+    """讀最新 forward infer（優先 latest，再掃日期檔）。"""
+    for path in (
+        LAB / "wave_forward_infer_latest.json",
+        LAB / "wave_forward_infer_20261127.json",
+        LAB / "wave_forward_infer_20261126.json",
+    ):
         if path.is_file():
-            fwd = json.loads(path.read_text(encoding="utf-8"))
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            if isinstance(data, dict) and data:
+                return data
+    return {}
+
+
+def build_next_preflight(forward: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """下一開市日預檢：只列已口述位與 preferred；未收不當收。"""
+    fwd = forward if isinstance(forward, dict) else _latest_forward()
     pref = str((fwd or {}).get("preferred_infer") or "FB_hold_above_37837")
+    as_of = str((fwd or {}).get("infer_for") or "").strip() or "20261127"
     return {
-        "as_of": "20261126",
+        "as_of": as_of,
         "written_at": _now(),
         "tz": "Asia/Taipei",
         "phone_sync": PHONE_SYNC,
         "buy_signal": False,
         "not_buy_signal": True,
         "bar_status": "pre_open_pending_official",
-        "note_zh": "未收不當收；開市後對官方柱再蓋 EOD。",
+        "note_zh": "未收不當收；開市後對官方柱再蓋 EOD。不准發明新①。",
         "preferred_infer": pref,
+        "from_as_of_day": str((fwd or {}).get("as_of_day") or ""),
         "watch_levels": {
             "hold_37837": 37837.05,
             "ref_37164": 37164.0,
             "target_350_355": [35000.0, 35500.0],
             "wave4_band": [41800.0, 42700.0],
             "wave4_mid": 42250.0,
-            "oral_38795_night": 38795.0,
             "cross_zh": "費半已收／台積2330／電子夜盤 TE 只對照，不准發明浪號",
         },
         "checks_zh": [
             "preferred＝FB_hold：收是否仍＞37837（盤中失守要記 partial）",
             "再失 37837 → 升權 M3／35000～35500",
             "W4 41800～42700 僅強勢再觸才升權",
-            "夜盤口述 38795：只對他講過的位，不准發明新①",
             "交叉：費半已收→台股日；2330／TWII 日盤；TE night 電子夜盤確認鏈",
+            "練畫：遠窗／結構只對他點過的位，WAVE_NEURONS_MATCH=false",
         ],
         "phone_warning_fixed": PHONE_WARNING,
         "WAVE_NEURONS_MATCH": False,
+        "next_variant": NEXT_VARIANT,
     }
+
+
+def build_1126_preflight(forward: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """相容舊測：固定讀 1126 forward；新碼請用 build_next_preflight。"""
+    path = LAB / "wave_forward_infer_20261126.json"
+    fwd = forward
+    if fwd is None and path.is_file():
+        try:
+            fwd = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            fwd = None
+    pre = build_next_preflight(fwd if isinstance(fwd, dict) else None)
+    # 舊契約：as_of 仍標 1126（該日開市前預檢檔）
+    pre["as_of"] = "20261126"
+    if not pre.get("preferred_infer"):
+        pre["preferred_infer"] = "FB_hold_above_37837"
+    return pre
+
+
+def run_paint_practice(*, db_path: str = "", panels: str = "far") -> Dict[str, Any]:
+    """靜默練畫：本機渲遠窗／試畫結構，對官方柱；不上話筒、非買訊。"""
+    out: Dict[str, Any] = {
+        "ok": False,
+        "panels": str(panels or "far"),
+        "paths": [],
+        "note_zh": "",
+        "buy_signal": False,
+        "phone_sync": PHONE_SYNC,
+        "WAVE_NEURONS_MATCH": False,
+    }
+    # pytest 預設略過真渲（太慢）；設 WAYNE_WAVE_PAINT_PRACTICE=1 才在測中真畫
+    if os.getenv("PYTEST_CURRENT_TEST") and os.getenv("WAYNE_WAVE_PAINT_PRACTICE") != "1":
+        out["note_zh"] = "pytest 略過真渲（設 WAYNE_WAVE_PAINT_PRACTICE=1 才練畫）"
+        out["skipped"] = "pytest"
+        return out
+    if os.getenv("WAYNE_WAVE_PAINT_PRACTICE", "1").strip() in {"0", "false", "no"}:
+        out["note_zh"] = "WAYNE_WAVE_PAINT_PRACTICE 關閉，略過練畫"
+        out["skipped"] = "env"
+        return out
+    db = str(db_path or "").strip()
+    if not db:
+        try:
+            from config import get_db_path
+
+            db = str(get_db_path() or "")
+        except Exception:
+            db = str(ROOT / "data" / "wayne_market.db")
+    if not db or not Path(db).is_file():
+        out["note_zh"] = "無行情庫，略過練畫"
+        return out
+    try:
+        from biaoke_level_learn import paint_open_day_hypothesis
+
+        painted = paint_open_day_hypothesis(
+            db, force=True, panels=str(panels or "far")
+        )
+    except Exception as exc:
+        out["note_zh"] = f"練畫失敗：{type(exc).__name__}"
+        return out
+    paths: List[str] = []
+    if isinstance(painted, dict):
+        for key in (
+            "far_path",
+            "near_path",
+            "micro_path",
+            "path",
+            "tx60_path",
+            "oral_path",
+            "out_path",
+        ):
+            val = painted.get(key)
+            if isinstance(val, str) and val.strip():
+                paths.append(val.strip())
+        for key in ("far", "near", "micro", "paths", "kit"):
+            val = painted.get(key)
+            if isinstance(val, dict):
+                for vv in val.values():
+                    if isinstance(vv, str) and vv.strip():
+                        paths.append(vv.strip())
+            elif isinstance(val, list):
+                for vv in val:
+                    if isinstance(vv, str) and vv.strip():
+                        paths.append(vv.strip())
+        # 去重保序
+        paths = list(dict.fromkeys(paths))
+    out["ok"] = bool(paths) or bool(
+        isinstance(painted, dict) and painted.get("ok")
+    )
+    out["paths"] = paths[:8]
+    out["as_of"] = str((painted or {}).get("as_of") or "") if isinstance(painted, dict) else ""
+    out["slot_id"] = str((painted or {}).get("slot_id") or "") if isinstance(painted, dict) else ""
+    out["paint_keys"] = sorted(list(painted.keys()))[:24] if isinstance(painted, dict) else []
+    out["note_zh"] = (
+        "靜默練畫完成（只對他點過的位；WAVE_NEURONS_MATCH=false；非買訊）"
+        if out["ok"]
+        else "練畫未產出圖檔（可能缺柱／逾時）；繼續收樣"
+    )
+    return out
 
 
 def run_deepen(*, db_path: str = "") -> Dict[str, Any]:
@@ -230,7 +345,7 @@ def run_deepen(*, db_path: str = "") -> Dict[str, Any]:
             }
         )
     chains = chain_consecutive(eods)
-    # 1124→1125 連鎖標籤（材料）
+    # 連鎖標籤（材料；繼續收樣，未過閘不換現況）
     chain_tags = []
     for ch in chains:
         if ch.get("from_as_of") == "20261124" and ch.get("to_as_of") == "20261125":
@@ -240,6 +355,17 @@ def run_deepen(*, db_path: str = "") -> Dict[str, Any]:
                     "zh": (
                         "1124 FB 跳空收回成立 → 1125 preferred W4 否決且盤中失 37837 收站回；"
                         "下一窗改 FB_hold（已回寫 v4）。繼續收樣，未過閘不換現況。"
+                    ),
+                }
+            )
+        if ch.get("from_as_of") == "20261125" and ch.get("to_as_of") == "20261126":
+            chain_tags.append(
+                {
+                    "id": "intraday_break_then_hold_pass",
+                    "zh": (
+                        "1125 W4 否決／盤中失 37837 收站回 → 1126 preferred FB_hold 通過"
+                        "（全日 L／C 皆＞37837）。準度樣本＋1；下一窗續 FB_hold。"
+                        "v4 候選＝守位連鎖＋練畫對質；n≥20 且贏現況才換。"
                     ),
                 }
             )
@@ -259,14 +385,16 @@ def run_deepen(*, db_path: str = "") -> Dict[str, Any]:
     stx.write_outputs(cross)
     dig = ((mine.get("mine") or {}).get("dig_worth") or [])
     hints = list(mine.get("wave_strengthen_hints") or [])
+    paint = run_paint_practice(db_path=db, panels="far")
     g = pref_suite.get("gate") or {}
     payload = {
         "written_at": _now(),
         "tz": "Asia/Taipei",
         "track": TRACK,
         "variant": VARIANT,
+        "next_variant": NEXT_VARIANT,
         "purpose_zh": (
-            "靜默加深：連鎖日＋次路徑＋巢狀口述＋2023聯動位階挖礦（非買訊）"
+            "靜默加深：連鎖日＋次路徑＋巢狀口述＋2023聯動位階挖礦＋練畫（非買訊）"
         ),
         "phone_sync": PHONE_SYNC,
         "buy_signal": False,
@@ -281,6 +409,7 @@ def run_deepen(*, db_path: str = "") -> Dict[str, Any]:
             "replace": False,
             "n_chains": len(chains),
             "n_dig_worth": len(dig),
+            "paint_ok": bool(paint.get("ok")),
         },
         "pref_suite_ref": {
             "current_variant": pref_suite.get("current_variant"),
@@ -291,6 +420,7 @@ def run_deepen(*, db_path: str = "") -> Dict[str, Any]:
         "chain_tags": chain_tags,
         "secondary_paths": secondary,
         "nested_oral": nested,
+        "paint_practice": paint,
         "cross_mine": {
             "variant": mine.get("variant"),
             "n_dig_worth": len(dig),
@@ -311,6 +441,7 @@ def run_deepen(*, db_path: str = "") -> Dict[str, Any]:
             "phone_sync=blocked 時不准定案浪號上話筒",
             "勝率不准混海選／黃金買點",
             "dig_worth 未過閘不准直接改 preferred",
+            "練畫不上話筒；WAVE_NEURONS_MATCH=false",
         ],
     }
     return payload
@@ -326,10 +457,12 @@ def write_outputs(payload: Dict[str, Any]) -> Tuple[Path, Path, Path]:
         "# 波浪靜默加深",
         "",
         f"寫入：`{payload.get('written_at')}`（Asia/Taipei）。",
-        f"軌：`{TRACK}`／`{VARIANT}`｜phone_sync=blocked｜非買訊",
+        f"軌：`{TRACK}`／`{VARIANT}`｜下一版 `{payload.get('next_variant') or NEXT_VARIANT}`"
+        f"｜phone_sync=blocked｜非買訊",
         "",
         f"- pref n={g.get('pref_n_decided')} hit_rate={g.get('pref_hit_rate')} "
-        f"gate_n20={g.get('gate_n20')} replace={g.get('replace')} chains={g.get('n_chains')}",
+        f"gate_n20={g.get('gate_n20')} replace={g.get('replace')} chains={g.get('n_chains')} "
+        f"paint_ok={g.get('paint_ok')}",
         f"- 警語：`{PHONE_WARNING}`",
         "",
         "## 連鎖",
@@ -344,6 +477,7 @@ def write_outputs(payload: Dict[str, Any]) -> Tuple[Path, Path, Path]:
         lines.append(f"- tag `{tag.get('id')}`：{tag.get('zh')}")
     nest = payload.get("nested_oral") or {}
     cm = payload.get("cross_mine") or {}
+    paint = payload.get("paint_practice") or {}
     lines += [
         "",
         "## 巢狀口述",
@@ -351,6 +485,12 @@ def write_outputs(payload: Dict[str, Any]) -> Tuple[Path, Path, Path]:
         f"- nested_flag={nest.get('n_nested_flag')} coarse_flag={nest.get('n_coarse_flag')} "
         f"n_rows={nest.get('n_rows')}",
         f"- {nest.get('note_zh')}",
+        "",
+        "## 靜默練畫",
+        "",
+        f"- ok={paint.get('ok')} panels={paint.get('panels')} "
+        f"paths_n={len(paint.get('paths') or [])}",
+        f"- {paint.get('note_zh')}",
         "",
         "## 2023聯動×位階挖礦",
         "",
@@ -364,14 +504,15 @@ def write_outputs(payload: Dict[str, Any]) -> Tuple[Path, Path, Path]:
         "",
     ]
     OUT_MD.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    pre = build_1126_preflight()
-    PREFLIGHT.write_text(
+    pre = build_next_preflight()
+    preflight_path = LAB / f"wave_intraday_preflight_{pre.get('as_of')}.json"
+    preflight_path.write_text(
         json.dumps(pre, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
     # refresh pref confront artifacts too
     pref = pc.run_suite()
     pc.write_outputs(pref)
-    return OUT_JSON, OUT_MD, PREFLIGHT
+    return OUT_JSON, OUT_MD, preflight_path
 
 
 def main() -> int:
