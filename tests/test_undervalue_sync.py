@@ -158,3 +158,79 @@ def test_run_is_current_requires_eps_calc_tag():
     assert not run_is_current({"status": "success", "note": "uv_growth_fair_v1 star=6"})
     assert not run_is_current({"status": "running", "note": EPS_CALC_TAG})
     assert run_is_current({"status": "success", "note": f"{EPS_CALC_TAG} uv_growth_fair_v1"})
+
+
+def test_lookup_undervalue_face_badge_star_and_watch(tmp_path, monkeypatch):
+    """查股高低卡：在低估名單內才掛★／☆；估值≠買訊。"""
+    from undervalue_sync import (
+        EPS_CALC_TAG,
+        attach_undervalue_lookup_badge,
+        ensure_tables,
+        lookup_undervalue_face_badge,
+    )
+
+    db = str(tmp_path / "uv_face.db")
+    init_database(db)
+    ensure_tables(db)
+    as_of = "20261117"
+    conn = sqlite3.connect(db)
+    try:
+        conn.execute(
+            "INSERT INTO undervalue_runs "
+            "(as_of, status, n_star, n_watch, note, started_at, finished_at) "
+            "VALUES (?, 'success', 1, 1, ?, '', '')",
+            (as_of, EPS_CALC_TAG),
+        )
+        conn.execute(
+            "INSERT INTO undervalue_picks "
+            "(as_of, stock_id, name, mark, close, pe, pe_est, peer_pe_median, "
+            "dist_to_floor_pct, flow_shares, reason, detail_json) "
+            "VALUES (?, '6574', '穎崴', 'star', 100, 8, 0, 15, 10, 0, '', '')",
+            (as_of,),
+        )
+        conn.execute(
+            "INSERT INTO undervalue_picks "
+            "(as_of, stock_id, name, mark, close, pe, pe_est, peer_pe_median, "
+            "dist_to_floor_pct, flow_shares, reason, detail_json) "
+            "VALUES (?, '2330', '台積電', 'watch', 500, 20, 0, 22, 5, 0, '', '')",
+            (as_of,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    monkeypatch.setattr(
+        "import_health.latest_complete_quote_date", lambda _p: as_of
+    )
+    star = lookup_undervalue_face_badge(db, "6574")
+    assert star["hit"] is True
+    assert star["badge_zh"] == "低估名單★"
+    assert star["buy_signal"] is False
+    watch = lookup_undervalue_face_badge(db, "2330")
+    assert watch["badge_zh"] == "低估觀察☆"
+    miss = lookup_undervalue_face_badge(db, "9999")
+    assert miss["hit"] is False
+    card = {"stock_id": "6574", "badges": ["整理格局", "近兩周爆量換手"]}
+    attach_undervalue_lookup_badge(card, db, "6574")
+    assert card["badges"][0] == "低估名單★"
+    assert "整理格局" in card["badges"]
+
+
+def test_trim_lookup_badges_drops_vol_chip_keeps_uv():
+    from wayne_navigator import _trim_lookup_badges
+
+    out = _trim_lookup_badges(
+        [
+            "近兩周爆量換手",
+            "低估名單★",
+            "獲利剛離零",
+            "創20日新高",
+            "多頭排列",
+            "波動放大",
+            "月K上坡",
+        ],
+        monthly="月K上坡",
+    )
+    assert "近兩周爆量換手" not in out
+    assert "低估名單★" in out
+    assert "獲利剛離零" in out
+    assert len(out) <= 5

@@ -283,6 +283,78 @@ def resolve_button_as_of(db_path: str) -> str:
     return prev or as_of
 
 
+def lookup_undervalue_face_badge(db_path: str, stock_id: str) -> Dict[str, Any]:
+    """查股高低卡面：若在最新低估名單內就回徽章字。估值≠買訊。
+
+    star→低估名單★；watch／emerging→低估觀察☆。不在名單＝空 badge。
+    """
+    sid = str(stock_id or "").strip()
+    out: Dict[str, Any] = {
+        "stock_id": sid,
+        "hit": False,
+        "mark": "",
+        "as_of": "",
+        "badge_zh": "",
+        "buy_signal": False,
+    }
+    if not sid or not db_path:
+        return out
+    try:
+        ensure_tables(db_path)
+        as_of = resolve_button_as_of(db_path)
+        if len(str(as_of or "")) != 8:
+            return out
+        conn = sqlite3.connect(str(db_path), timeout=15.0)
+        try:
+            row = conn.execute(
+                "SELECT mark FROM undervalue_picks WHERE as_of=? AND stock_id=? LIMIT 1",
+                (as_of, sid),
+            ).fetchone()
+        finally:
+            conn.close()
+    except Exception:
+        return out
+    if not row:
+        return out
+    mark = str(row[0] or "").strip().lower()
+    if mark == "star":
+        badge = "低估名單★"
+    elif mark in ("watch", "emerging"):
+        badge = "低估觀察☆"
+    else:
+        return out
+    out.update(
+        {
+            "hit": True,
+            "mark": mark,
+            "as_of": as_of,
+            "badge_zh": badge,
+            "buy_signal": False,
+        }
+    )
+    return out
+
+
+def attach_undervalue_lookup_badge(
+    card: Optional[dict], db_path: str, stock_id: str = ""
+) -> Optional[Dict[str, Any]]:
+    """查股面掛低估名單徽章（優先置頂）；永遠 buy_signal=False。"""
+    if not isinstance(card, dict) or card.get("error"):
+        return None
+    sid = str(stock_id or card.get("stock_id") or "").strip()
+    hit = lookup_undervalue_face_badge(db_path, sid)
+    card["undervalue_face"] = hit
+    if not hit.get("hit"):
+        return hit
+    badge = str(hit.get("badge_zh") or "")
+    if not badge:
+        return hit
+    badges = [b for b in list(card.get("badges") or []) if b != badge]
+    badges.insert(0, badge)
+    card["badges"] = badges
+    return hit
+
+
 def run_undervalue_sync(
     db_path: str,
     *,

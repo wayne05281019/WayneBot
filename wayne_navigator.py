@@ -1322,6 +1322,11 @@ class NavigatorEngine:
                 alert=str(last_tbl.get("預警") or ""),
                 prev_profit_pct=prev_p,
             )
+            # 與高低卡同一套公式：剛離零／貼零觀察掛面（不是新買訊規則）
+            if rel_kind == "just_left" and "獲利剛離零" not in badges:
+                badges.insert(0, "獲利剛離零")
+            elif rel_kind == "at_floor" and "獲利貼零觀察" not in badges:
+                badges.insert(0, "獲利貼零觀察")
             stance, stance_kind = card_daily_stance(
                 profit_pct=float(last_tbl.get("profit_pct") or 0),
                 alert=str(last_tbl.get("預警") or ""),
@@ -1555,9 +1560,12 @@ class NavigatorEngine:
         except Exception:
             pass
         try:
+            from undervalue_sync import attach_undervalue_lookup_badge
             from vol_chip_exchange_observe import attach_vol_chip_exchange_observe
 
+            # 爆量換手：只默默落檔，不上徽章。低估名單★／☆：查股面可見（估值≠買訊）。
             attach_vol_chip_exchange_observe(payload, self.db_path, stock_id)
+            attach_undervalue_lookup_badge(payload, self.db_path, stock_id)
         except Exception:
             pass
         try:
@@ -3855,21 +3863,34 @@ def temp_trend_note_cell_style(note: str, base: str):
 
 
 def _trim_lookup_badges(badges: list, monthly: str = "") -> list:
-    """查股徽章最多 5；爆量換手觀察優先保留，其次月K。"""
+    """查股徽章最多 5；優先保留低估名單／剛離零／貼零，其次月K。爆量換手不上卡。"""
     out = []
     for b in list(badges or []):
         b = str(b or "").strip()
-        if b and "None" not in b and b not in out:
-            out.append(b)
+        if not b or "None" in b or b in out:
+            continue
+        # 舊「爆量換手」已撤出話筒面（代理偏鬆、易誤讀）
+        if "爆量換手" in b or "大量換手" in b:
+            continue
+        out.append(b)
     monthly = str(monthly or "").strip()
     if monthly and monthly not in out:
         out.append(monthly)
-    keep_vol = next((b for b in out if "爆量換手" in b), "")
+    keep_uv = next((b for b in out if "低估" in b), "")
+    keep_lz = next((b for b in out if b in ("獲利剛離零", "獲利貼零觀察")), "")
     if len(out) > 5:
-        reserved = [b for b in (keep_vol, monthly) if b]
+        reserved = [b for b in (keep_uv, keep_lz, monthly) if b]
+        # 去重保留序
+        seen = set()
+        reserved_u = []
+        for b in reserved:
+            if b not in seen:
+                seen.add(b)
+                reserved_u.append(b)
+        reserved = reserved_u[:3]
         core = [b for b in out if b not in reserved][: 5 - len(reserved)]
         merged = []
-        for b in list(reserved[:1]) + core + ([monthly] if monthly and monthly != keep_vol else []):
+        for b in reserved + core:
             if b and b not in merged:
                 merged.append(b)
         out = merged[:5]
@@ -3884,9 +3905,15 @@ def _badge_style(text: str):
         return C["white"], C["neutral_fg"]
     if t.startswith("月K"):
         return C["navy"], C["white"]
-    if "爆量換手" in t:
-        # 觀察注記：琥珀底白字，跟紀律粉紅／多空冷熱分開
-        return "#E65100", C["white"]
+    if "低估名單" in t:
+        # 估值折價大：葉綠底；估值≠買訊
+        return "#2E7D32", C["white"]
+    if "低估觀察" in t:
+        return "#558B2F", C["white"]
+    if t in ("獲利剛離零",):
+        return C["pill_lo"], C["white"]
+    if t in ("獲利貼零觀察",):
+        return C["navy"], C["white"]
     hot_keys = ("創", "新高", "少追", "過熱", "多頭", "上坡", "突破", "注意", "背離")
     cold_keys = ("低", "冷", "超跌", "止跌", "下坡", "箱型")
     if any(k in t for k in hot_keys) or ("高" in t and "低" not in t):
@@ -5498,19 +5525,19 @@ def render_first_glance_png(
     if exn:
         footer_src = [exn] + [n for n in footer_src if n != exn]
     footer_src = [n for n in footer_src if n][:3]
-    # 爆量換手＝觀察條（不是紀律、不是買訊）
+    # 觀察條：只掛低估名單面標（估值≠買訊）；爆量換手代理不上話筒面
     observe_src = []
     try:
-        vce = (card or {}).get("vol_chip_exchange") or {}
-        if vce.get("hit") and vce.get("note_zh"):
-            observe_src = [str(vce.get("note_zh"))]
-        elif not vce and dbp:
-            from vol_chip_exchange_observe import detect_recent_vol_chip_exchange
+        uvf = (card or {}).get("undervalue_face") or {}
+        if uvf.get("hit") and uvf.get("badge_zh"):
+            observe_src = [f"{uvf.get('badge_zh')}（估值≠買訊）"]
+        elif dbp and stock_id:
+            from undervalue_sync import lookup_undervalue_face_badge
 
-            vce = detect_recent_vol_chip_exchange(dbp, str(stock_id or ""))
-            if vce.get("hit") and vce.get("note_zh"):
-                observe_src = [str(vce.get("note_zh"))]
-                card["vol_chip_exchange"] = vce
+            uvf = lookup_undervalue_face_badge(dbp, str(stock_id or ""))
+            if uvf.get("hit") and uvf.get("badge_zh"):
+                observe_src = [f"{uvf.get('badge_zh')}（估值≠買訊）"]
+                card["undervalue_face"] = uvf
     except Exception:
         observe_src = []
 
