@@ -1,0 +1,330 @@
+{
+  "ok": true,
+  "as_of": "20261126",
+  "teach_post_id": "190014392",
+  "teach_as_of": "20261126",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "not_buy_signal": true,
+  "vol_rule_zh": "一年級巨量＝max(0.70×近250根最大量, 年窗p92)；不用60日中位×3。連續一年級＝2383型；一年級後量縮沉澱＝2330型。",
+  "universe": {
+    "TW_top": 100,
+    "TWO_top": 100,
+    "scanned_with_asof_bar": 200
+  },
+  "n_hits": 4,
+  "hits": [
+    {
+      "stock_id": "3443",
+      "stock_name": "創意",
+      "market": "TW",
+      "close": 5390.0,
+      "low_60": 4860.0,
+      "high_120": 8750.0,
+      "dist_to_low_pct": 10.91,
+      "drawdown_pct": 38.4,
+      "vol_today": 1813.0,
+      "vol_year_max": 8751.0,
+      "year_grade_floor": 6125.7,
+      "vol_ratio_year": 0.207,
+      "consec_year_grade": 1,
+      "style": "sediment",
+      "score": 66.4,
+      "note_zh": "距60低10.9%；相對120高回撤38.4%；一年級門檻=6126（年最大8751）；近5日一年級×1；樣式=sediment",
+      "year_grade_dates": [
+        "20261123"
+      ]
+    },
+    {
+      "stock_id": "3006",
+      "stock_name": "晶豪科",
+      "market": "TW",
+      "close": 185.0,
+      "low_60": 165.5,
+      "high_120": 319.0,
+      "dist_to_low_pct": 11.78,
+      "drawdown_pct": 42.01,
+      "vol_today": 15981.0,
+      "vol_year_max": 80580.0,
+      "year_grade_floor": 56406.0,
+      "vol_ratio_year": 0.198,
+      "consec_year_grade": 1,
+      "style": "sediment",
+      "score": 66.19,
+      "note_zh": "距60低11.8%；相對120高回撤42.0%；一年級門檻=56406（年最大80580）；近5日一年級×1；樣式=sediment",
+      "year_grade_dates": [
+        "20261124"
+      ]
+    },
+    {
+      "stock_id": "2890",
+      "stock_name": "永豐金",
+      "market": "TW",
+      "close": 35.55,
+      "low_60": 34.5,
+      "high_120": 47.5,
+      "dist_to_low_pct": 3.04,
+      "drawdown_pct": 25.16,
+      "vol_today": 152747.0,
+      "vol_year_max": 152747.0,
+      "year_grade_floor": 106922.9,
+      "vol_ratio_year": 1.0,
+      "consec_year_grade": 1,
+      "style": "year_grade_near_low",
+      "score": 64.54,
+      "note_zh": "距60低3.0%；相對120高回撤25.2%；一年級門檻=106923（年最大152747）；近5日一年級×1；樣式=year_grade_near_low",
+      "year_grade_dates": [
+        "20261126"
+      ]
+    },
+    {
+      "stock_id": "2330",
+      "stock_name": "台積電",
+      "market": "TW",
+      "close": 2145.0,
+      "low_60": 1970.0,
+      "high_120": 2590.0,
+      "dist_to_low_pct": 8.88,
+      "drawdown_pct": 17.18,
+      "vol_today": 45892.0,
+      "vol_year_max": 110714.0,
+      "year_grade_floor": 77499.8,
+      "vol_ratio_year": 0.415,
+      "consec_year_grade": 1,
+      "style": "sediment",
+      "score": 60.93,
+      "note_zh": "距60低8.9%；相對120高回撤17.2%；一年級門檻=77500（年最大110714）；近5日一年級×2；樣式=sediment",
+      "year_grade_dates": [
+        "20261106",
+        "20261120",
+        "20261125"
+      ]
+    }
+  ],
+  "rule_zh": "先抓一年級大量；浪由尾回推：今日上漲→連回前幾日低點＝新開始；由該低往回試畫五波。觀察定義用，非買訊／非話筒浪認證。",
+  "tail_back_method_zh": "先一年級大量；今日上漲則連回前幾日低點＝新開始；由該低往回試畫五波（起-1-2-3-4-終）。觀察定義用，非買訊／非話筒浪認證。",
+  "written_at": "2026-11-26T21:08:00+0800",
+  "tail_back_enrich": [
+    {
+      "stock_id": "3443",
+      "tail_back": {
+        "ok_new_start": true,
+        "ok_five": true,
+        "today_up": true,
+        "new_start": {
+          "i": 216,
+          "price": 4860.0,
+          "kind": "L",
+          "date": "20261123"
+        },
+        "prior_high": {
+          "i": 188,
+          "price": 8750.0,
+          "kind": "H",
+          "date": "20261007"
+        },
+        "five_points": [
+          {
+            "i": 188,
+            "price": 8750.0,
+            "kind": "H",
+            "date": "20261007"
+          },
+          {
+            "i": 195,
+            "price": 7065.0,
+            "kind": "L",
+            "date": "20261019"
+          },
+          {
+            "i": 197,
+            "price": 8490.0,
+            "kind": "H",
+            "date": "20261021"
+          },
+          {
+            "i": 205,
+            "price": 5765.0,
+            "kind": "L",
+            "date": "20261106"
+          },
+          {
+            "i": 210,
+            "price": 8645.0,
+            "kind": "H",
+            "date": "20261113"
+          },
+          {
+            "i": 216,
+            "price": 4860.0,
+            "kind": "L",
+            "date": "20261123"
+          }
+        ],
+        "fail_reason_zh": "",
+        "note_zh": "由尾回推五波可定義：高8750→低4860；今日連回新開始低4860"
+      }
+    },
+    {
+      "stock_id": "3006",
+      "tail_back": {
+        "ok_new_start": true,
+        "ok_five": true,
+        "today_up": true,
+        "new_start": {
+          "i": 218,
+          "price": 165.5,
+          "kind": "L",
+          "date": "20261125"
+        },
+        "prior_high": {
+          "i": 171,
+          "price": 319.0,
+          "kind": "H",
+          "date": "20260910"
+        },
+        "five_points": [
+          {
+            "i": 171,
+            "price": 319.0,
+            "kind": "H",
+            "date": "20260910"
+          },
+          {
+            "i": 193,
+            "price": 226.5,
+            "kind": "L",
+            "date": "20261015"
+          },
+          {
+            "i": 201,
+            "price": 291.5,
+            "kind": "H",
+            "date": "20261029"
+          },
+          {
+            "i": 205,
+            "price": 193.0,
+            "kind": "L",
+            "date": "20261106"
+          },
+          {
+            "i": 209,
+            "price": 247.5,
+            "kind": "H",
+            "date": "20261112"
+          },
+          {
+            "i": 218,
+            "price": 165.5,
+            "kind": "L",
+            "date": "20261125"
+          }
+        ],
+        "fail_reason_zh": "",
+        "note_zh": "由尾回推五波可定義：高319→低166；今日連回新開始低166"
+      }
+    },
+    {
+      "stock_id": "2890",
+      "tail_back": {
+        "ok_new_start": false,
+        "ok_five": false,
+        "today_up": false,
+        "new_start": null,
+        "prior_high": null,
+        "five_points": [],
+        "fail_reason_zh": "今日非上漲，先不定義新開始",
+        "note_zh": "規則：今日上漲才連回前低當新開始"
+      }
+    },
+    {
+      "stock_id": "2330",
+      "tail_back": {
+        "ok_new_start": false,
+        "ok_five": false,
+        "today_up": false,
+        "new_start": null,
+        "prior_high": null,
+        "five_points": [],
+        "fail_reason_zh": "今日非上漲，先不定義新開始",
+        "note_zh": "規則：今日上漲才連回前低當新開始"
+      }
+    },
+    {
+      "stock_id": "2330",
+      "tail_back": {
+        "ok_new_start": false,
+        "ok_five": false,
+        "today_up": false,
+        "new_start": null,
+        "prior_high": null,
+        "five_points": [],
+        "fail_reason_zh": "今日非上漲，先不定義新開始",
+        "note_zh": "規則：今日上漲才連回前低當新開始"
+      },
+      "role": "teach_ref"
+    },
+    {
+      "stock_id": "2383",
+      "tail_back": {
+        "ok_new_start": true,
+        "ok_five": true,
+        "today_up": true,
+        "new_start": {
+          "i": 216,
+          "price": 2560.0,
+          "kind": "L",
+          "date": "20261123"
+        },
+        "prior_high": {
+          "i": 152,
+          "price": 6470.0,
+          "kind": "H",
+          "date": "20260818"
+        },
+        "five_points": [
+          {
+            "i": 152,
+            "price": 6470.0,
+            "kind": "H",
+            "date": "20260818"
+          },
+          {
+            "i": 174,
+            "price": 4635.0,
+            "kind": "L",
+            "date": "20260917"
+          },
+          {
+            "i": 186,
+            "price": 6325.0,
+            "kind": "H",
+            "date": "20261007"
+          },
+          {
+            "i": 205,
+            "price": 3690.0,
+            "kind": "L",
+            "date": "20261106"
+          },
+          {
+            "i": 208,
+            "price": 4565.0,
+            "kind": "H",
+            "date": "20261111"
+          },
+          {
+            "i": 216,
+            "price": 2560.0,
+            "kind": "L",
+            "date": "20261123"
+          }
+        ],
+        "fail_reason_zh": "",
+        "note_zh": "由尾回推五波可定義：高6470→低2560；今日連回新開始低2560"
+      },
+      "role": "teach_ref"
+    }
+  ]
+}
