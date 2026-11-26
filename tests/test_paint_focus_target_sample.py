@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from scripts.paint_focus_target_sample import (
+    _dodge_right_ys,
     _eps_singles_cum,
     _rev_yi,
     pick_forward_pressure_zone,
@@ -13,6 +14,17 @@ def test_rev_yi_thousand_to_yi():
     # 庫內千元 → 億（與介紹卡／100000 同）
     assert _rev_yi(24472758.0) == "244.73"
     assert _rev_yi(100000) == "1.00"
+
+
+def test_right_tags_dodge_close_vs_zone_edge():
+    # 收 3660 貼壓下緣 3690 → 顯示 Y 必須拉開
+    ys = _dodge_right_ys([4565.0, 3920.0, 3690.0, 3660.0], y_lo=2500.0, y_hi=6500.0)
+    assert len(ys) == 4
+    # 高→低顯示序仍對應原 index 價序；相鄰顯示間距夠
+    ordered = sorted(ys, reverse=True)
+    gaps = [ordered[i] - ordered[i + 1] for i in range(3)]
+    assert min(gaps) >= (6500.0 - 2500.0) * 0.055 - 1e-6
+    assert abs(ys[3] - ys[2]) >= (6500.0 - 2500.0) * 0.055 - 1e-6
 
 
 def test_eps_singles_from_cumulative():

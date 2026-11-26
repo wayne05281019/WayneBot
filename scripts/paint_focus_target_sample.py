@@ -56,6 +56,92 @@ def _rev_yi(v: float) -> str:
     return f"{x / 100000:.2f}"
 
 
+def _dodge_right_ys(
+    prices: List[float],
+    *,
+    y_lo: float,
+    y_hi: float,
+    min_gap_frac: float = 0.055,
+) -> List[float]:
+    """右側角標顯示 Y：依價由高到低排，強制最小間距，不准互壓。"""
+    if not prices:
+        return []
+    span = max(y_hi - y_lo, 1.0)
+    gap = span * float(min_gap_frac)
+    # 高→低處理，再映回原序
+    order = sorted(range(len(prices)), key=lambda i: prices[i], reverse=True)
+    placed = [0.0] * len(prices)
+    last = y_hi + gap
+    for i in order:
+        y = float(prices[i])
+        # 不可高過上一標太多擠；至少距上一標 gap
+        y = min(y, last - gap)
+        placed[i] = y
+        last = y
+    # 若整體太低，整組上推；太高則下壓
+    mn, mx = min(placed), max(placed)
+    if mn < y_lo:
+        shift = y_lo - mn
+        placed = [y + shift for y in placed]
+        mx = max(placed)
+    if mx > y_hi:
+        shift = mx - y_hi
+        placed = [y - shift for y in placed]
+        # 再保間距（由高到低掃一次）
+        order = sorted(range(len(placed)), key=lambda i: placed[i], reverse=True)
+        last = y_hi + gap
+        for i in order:
+            y = min(placed[i], last - gap)
+            placed[i] = max(y, y_lo)
+            last = placed[i]
+    return placed
+
+
+def _paint_right_price_tags(
+    ax,
+    *,
+    x_anchor: float,
+    tags: List[Dict[str, Any]],
+    y_lo: float,
+    y_hi: float,
+    prop,
+) -> None:
+    """右側價位角標：真價連虛線到錯開後的顯示位。"""
+    if not tags:
+        return
+    prices = [float(t["price"]) for t in tags]
+    dys = _dodge_right_ys(prices, y_lo=y_lo, y_hi=y_hi)
+    x_text = x_anchor + 1.2
+    for t, dy in zip(tags, dys):
+        ax.annotate(
+            str(t["text"]),
+            xy=(x_anchor, float(t["price"])),
+            xytext=(x_text, dy),
+            textcoords="data",
+            color=t.get("color", "#111"),
+            fontsize=float(t.get("fontsize", 9.5)),
+            fontweight="bold",
+            fontproperties=prop,
+            va="center",
+            ha="left",
+            clip_on=False,
+            zorder=14,
+            arrowprops=dict(
+                arrowstyle="-",
+                color=t.get("edge", "#94a3b8"),
+                lw=0.9,
+                shrinkA=0,
+                shrinkB=2,
+            ),
+            bbox=dict(
+                boxstyle="round,pad=0.22",
+                facecolor=t.get("facecolor", "#fff"),
+                edgecolor=t.get("edge", "#94a3b8"),
+                alpha=0.97,
+            ),
+        )
+
+
 def _eps_singles_cum(
     qi: List[Tuple[int, int, float]], year: int
 ) -> Tuple[Dict[int, float], Optional[float]]:
@@ -249,44 +335,10 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
         band_lab = (
             "前方大量壓力區" if zone_role == "forward" else "大量區（現價落區內）"
         )
-        # 壓力帶用灰藍，黃色留給「新起漲」白／黃教法線
+        # 壓力帶用灰藍，黃色留給「新起漲」；右緣數字稍後統一錯開
         ax.axhspan(lo, hi, facecolor="#cbd5e1", alpha=0.45, zorder=1, label=band_lab)
         ax.axhline(hi, color="#475569", ls="-", lw=1.45, alpha=0.95)
         ax.axhline(lo, color="#475569", ls="-", lw=1.45, alpha=0.95)
-        ax.annotate(
-            f"壓上緣 {hi:.0f}",
-            xy=(n - 1, hi),
-            xytext=(10, 6),
-            textcoords="offset points",
-            color="#1e293b",
-            fontsize=10,
-            fontweight="bold",
-            fontproperties=prop,
-            clip_on=False,
-            bbox=dict(
-                boxstyle="round,pad=0.22",
-                facecolor="#f8fafc",
-                edgecolor="#64748b",
-                alpha=0.97,
-            ),
-        )
-        ax.annotate(
-            f"壓下緣 {lo:.0f}",
-            xy=(n - 1, lo),
-            xytext=(10, -16),
-            textcoords="offset points",
-            color="#1e293b",
-            fontsize=10,
-            fontweight="bold",
-            fontproperties=prop,
-            clip_on=False,
-            bbox=dict(
-                boxstyle="round,pad=0.22",
-                facecolor="#f8fafc",
-                edgecolor="#64748b",
-                alpha=0.97,
-            ),
-        )
 
     yr = max(highs) - min(lows)
     for i, (o, h, l, c) in enumerate(zip(opens, highs, lows, closes)):
@@ -381,23 +433,6 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
         alpha=0.92,
         label=f"次級四浪高 {w4.price:.0f}",
     )
-    ax.annotate(
-        f"四浪高 {w4.price:.0f}",
-        xy=(n - 1, w4.price),
-        xytext=(10, 6),
-        textcoords="offset points",
-        color="#991b1b",
-        fontsize=10,
-        fontweight="bold",
-        fontproperties=prop,
-        clip_on=False,
-        bbox=dict(
-            boxstyle="round,pad=0.22",
-            facecolor="#fee2e2",
-            edgecolor="#f87171",
-            alpha=0.97,
-        ),
-    )
 
     # 黃線＝五波走完後的新一波起漲（新開始低 → 今日收）
     bounce_from = ns if ns is not None else (pts[-1] if pts else None)
@@ -431,12 +466,15 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
                 zorder=9,
                 solid_capstyle="round",
             )
-            # 「新起漲」標在黃線中段偏右上，避開紫線轉折數字
+            # 「新起漲」只標在黃線中段左側，不准擠右緣（會壓壓下緣／收）
+            mx = j + (n - 1 - j) * 0.38
+            my = bounce_from.price + (close - bounce_from.price) * 0.38
             ax.annotate(
                 "新起漲",
-                xy=(j + (n - 1 - j) * 0.62, bounce_from.price + (close - bounce_from.price) * 0.62),
-                xytext=(10, 14),
+                xy=(mx, my),
+                xytext=(-8, 12),
                 textcoords="offset points",
+                ha="right",
                 color="#854d0e",
                 fontsize=8.5,
                 fontweight="bold",
@@ -451,24 +489,6 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
             )
 
     ax.axhline(close, color="#0f766e", ls=":", lw=1.15, alpha=0.75)
-    # 收盤標放右側、略低於線，避壓上緣／四浪高角標
-    ax.annotate(
-        f"收 {close:.0f}",
-        xy=(n - 1, close),
-        xytext=(10, -22),
-        textcoords="offset points",
-        color="#115e59",
-        fontsize=10.5,
-        fontweight="bold",
-        fontproperties=prop,
-        clip_on=False,
-        bbox=dict(
-            boxstyle="round,pad=0.25",
-            facecolor="#ccfbf1",
-            edgecolor="#14b8a6",
-            alpha=0.97,
-        ),
-    )
 
     zone_i = None
     if zone_date:
@@ -563,20 +583,20 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
         zorder=10,
     )
 
-    # 空間％放右上內側，不跟表頭搶位
+    # 空間％放圖內右上、但離開右緣角標欄
     ax.text(
-        0.995,
-        0.88,
-        f"距四浪高還有\n{room:.1f}%",
+        0.78,
+        0.97,
+        f"距四浪高還有 {room:.1f}%",
         transform=ax.transAxes,
         ha="right",
         va="top",
-        fontsize=11,
+        fontsize=10.5,
         fontweight="bold",
         fontproperties=prop,
         color="#b91c1c",
         bbox=dict(
-            boxstyle="round,pad=0.35",
+            boxstyle="round,pad=0.32",
             facecolor="#fee2e2",
             edgecolor="#f87171",
             alpha=0.95,
@@ -603,13 +623,65 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
     )
     ax.set_ylabel("價（元）", fontproperties=prop)
     axv.set_ylabel("成交量（張）", fontproperties=prop)
-    # 右留空：明天起往右長；左＝滾動掉舊根
-    ax.set_xlim(-1.2, n - 1 + FUTURE_PAD)
+    # 右留空：明天起往右長；左＝滾動掉舊根；右緣還要給錯開角標
+    ax.set_xlim(-1.2, n - 1 + FUTURE_PAD + 10)
     # 上方多留一點給轉折標，避免貼齊表頭
     y_hi = max(highs + [w4.price, float(zone["high"]) if zone else 0])
     y_lo = min(lows)
     pad = (y_hi - y_lo) * 0.06
-    ax.set_ylim(y_lo - pad * 0.4, y_hi + pad * 1.15)
+    ylim_lo = y_lo - pad * 0.4
+    ylim_hi = y_hi + pad * 1.15
+    ax.set_ylim(ylim_lo, ylim_hi)
+
+    # 右側價位角標統一錯開：四浪高／壓上／壓下／收 —— 不准互壓
+    right_tags: List[Dict[str, Any]] = [
+        {
+            "price": float(w4.price),
+            "text": f"四浪高 {w4.price:.0f}",
+            "color": "#991b1b",
+            "facecolor": "#fee2e2",
+            "edge": "#f87171",
+            "fontsize": 9.5,
+        },
+        {
+            "price": float(close),
+            "text": f"收 {close:.0f}",
+            "color": "#115e59",
+            "facecolor": "#ccfbf1",
+            "edge": "#14b8a6",
+            "fontsize": 10.0,
+        },
+    ]
+    if zone:
+        right_tags.extend(
+            [
+                {
+                    "price": float(zone["high"]),
+                    "text": f"壓上緣 {float(zone['high']):.0f}",
+                    "color": "#1e293b",
+                    "facecolor": "#f8fafc",
+                    "edge": "#64748b",
+                    "fontsize": 9.2,
+                },
+                {
+                    "price": float(zone["low"]),
+                    "text": f"壓下緣 {float(zone['low']):.0f}",
+                    "color": "#1e293b",
+                    "facecolor": "#f8fafc",
+                    "edge": "#64748b",
+                    "fontsize": 9.2,
+                },
+            ]
+        )
+    _paint_right_price_tags(
+        ax,
+        x_anchor=float(n - 1),
+        tags=right_tags,
+        y_lo=ylim_lo + (ylim_hi - ylim_lo) * 0.04,
+        y_hi=ylim_hi - (ylim_hi - ylim_lo) * 0.06,
+        prop=prop,
+    )
+
     step = max(1, n // 10)
     ticks = list(range(0, n, step))
     axv.set_xticks(ticks)
