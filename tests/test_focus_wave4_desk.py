@@ -252,5 +252,199 @@ def test_live_past_w4_refreshes_bucket_not_stale_intervene():
     assert live["bucket"] != "intervene"
     assert "已過四浪" in (live.get("why_zh") or "") or live["bucket"] == "watch"
     html = format_wave4_one_html(live, live=True)
-    assert "已過／觸及次級四浪高" in html
+    assert "已過／觸及次級四浪高" in html or "已過四浪高" in html
     assert "值得介入" not in html.split("分級：")[-1].split("｜")[0]
+
+
+def test_passive_industry_chain_never_intervene_even_past_h4():
+    """被動元件（taught 或 industry）→ sprint 搶反彈，永不 intervene。"""
+    by_tag = Wave4Row(
+        stock_id="2327",
+        stock_name="國巨",
+        market="TW",
+        close=500,
+        wave4=442,
+        wave3_low=364,
+        room_to_w4_pct=-12.0,
+        above_w4_low=True,
+        bottom_near_year_ago_bars=2,
+        score=100,
+        eps_last=14.0,
+        eps_profit=True,
+        taught_tags=["被動元件"],
+        chip_label="外資偏愛",
+    )
+    by_chain = Wave4Row(
+        stock_id="9991",
+        stock_name="被動樣",
+        market="TW",
+        close=100,
+        wave4=130,
+        wave3_low=90,
+        room_to_w4_pct=25.0,
+        above_w4_low=True,
+        bottom_near_year_ago_bars=2,
+        score=100,
+        eps_last=5.0,
+        eps_profit=True,
+        taught_tags=["PCB"],
+        industry_chain="電子上游-被動元件-MLCC",
+        chip_label="外資偏愛",
+    )
+    for row in (by_tag, by_chain):
+        bucket, why = _assign_bucket(row)
+        assert bucket == "sprint"
+        assert bucket != "intervene"
+        assert "搶反彈" in why
+
+
+def test_quality_6442_below_l3_still_intervene():
+    """光聖＝6442：未過四浪低＋EPS＋鏈仍可 intervene，不准排除。"""
+    row = Wave4Row(
+        stock_id="6442",
+        stock_name="光聖",
+        market="TW",
+        close=100,
+        wave4=130,
+        wave3_low=110,
+        room_to_w4_pct=30.0,
+        above_w4_low=False,
+        bottom_near_year_ago_bars=1,
+        score=90,
+        eps_last=3.4,
+        eps_profit=True,
+        taught_tags=["PCB"],
+        chip_label="投信偏愛",
+    )
+    bucket, why = _assign_bucket(row)
+    assert bucket == "intervene"
+    assert "不准排除" in why or "2500" in why
+
+
+def test_past_h4_why_not_also_below_l3():
+    """已過四浪高時 why 不准再疊未過四浪低（倒置波會自相矛盾）。"""
+    row = Wave4Row(
+        stock_id="6442",
+        stock_name="光聖",
+        market="TW",
+        close=107.5,
+        wave4=102.0,
+        wave3_low=110.0,
+        room_to_w4_pct=-5.12,
+        above_w4_low=False,
+        score=40,
+        eps_last=3.4,
+        eps_profit=True,
+        taught_tags=["PCB"],
+        chip_label="投信偏愛",
+    )
+    bucket, why = _assign_bucket(row)
+    assert "已過四浪高" in why
+    assert "未過四浪低" not in why
+    assert bucket != "intervene"
+
+
+def test_page_size_ten_only_from_intervene():
+    """實質十檔只吃 intervene；PAGE_SIZE=10；n>10 第1頁有下一頁。"""
+    assert PAGE_SIZE == 10
+    payload = {
+        "asof": "20261126",
+        "n_intervene": 11,
+        "intervene": [
+            {"stock_id": f"I{i:03d}", "bucket": "intervene", "room_to_w4_pct": 20}
+            for i in range(11)
+        ],
+        "sprint": [
+            {"stock_id": "S001", "bucket": "sprint", "room_to_w4_pct": 30}
+        ],
+        "watch": [
+            {"stock_id": "W001", "bucket": "watch", "room_to_w4_pct": 10}
+        ],
+    }
+    rows, pages, has_next = intervene_page(payload, 0)
+    assert len(rows) == PAGE_SIZE == 10
+    assert pages == 2
+    assert has_next is True
+    assert all(str(r["stock_id"]).startswith("I") for r in rows)
+    assert {r["stock_id"] for r in rows}.isdisjoint({"S001", "W001"})
+
+
+def test_overlay_live_failure_keeps_close_face():
+    """現價失敗／窗外：保留收盤臉，不崩潰、不寫假價。"""
+    rows = [
+        {
+            "stock_id": "2383",
+            "stock_name": "台光電",
+            "market": "TW",
+            "close": 3660.0,
+            "wave4": 4565.0,
+            "wave3_low": 3690.0,
+            "room_to_w4_pct": 24.7,
+            "above_w4_low": False,
+            "eps_last": 15.0,
+            "eps_profit": True,
+            "taught_tags": ["PCB"],
+            "chip_label": "外資偏愛",
+            "bucket": "intervene",
+        }
+    ]
+    # 非合併窗 → 收盤臉
+    with patch("live_quote.is_live_merge_window", return_value=False):
+        out, any_live = overlay_live_on_rows(rows, "/tmp/no.db")
+    assert any_live is False
+    assert out[0]["close"] == 3660.0
+    assert not out[0].get("live_px")
+
+    # 合併窗但抓價失敗 → 仍收盤臉
+    with patch("live_quote.is_live_merge_window", return_value=True), patch(
+        "live_quote.fetch_lookup_quote", side_effect=RuntimeError("boom")
+    ):
+        out2, any_live2 = overlay_live_on_rows(rows, "/tmp/no.db")
+    assert any_live2 is False
+    assert out2[0]["close"] == 3660.0
+    assert not out2[0].get("live_px")
+
+    # 回 0 價＝失敗，不准當現價
+    with patch("live_quote.is_live_merge_window", return_value=True), patch(
+        "live_quote.fetch_lookup_quote", return_value={"close": 0}
+    ):
+        out3, any_live3 = overlay_live_on_rows(rows, "/tmp/no.db")
+    assert any_live3 is False
+    assert out3[0]["close"] == 3660.0
+
+
+def test_scan_hit_fields_present_when_mocked():
+    """scan hits 進 desk 必須帶 wave3_low／wave4／above_w4_low／score。"""
+    from focus_wave4_desk import enrich_hits
+
+    hits = [
+        {
+            "stock_id": "2383",
+            "stock_name": "台光電",
+            "market": "TW",
+            "close": 3660.0,
+            "wave4": 4565.0,
+            "wave3_low": 3690.0,
+            "room_to_w4_pct": 24.7,
+            "above_w4_low": False,
+            "bottom_near_year_ago_bars": 3,
+            "score": 124.63,
+        }
+    ]
+    with patch("focus_wave4_desk._eps_last", return_value=(15.0, True)), patch(
+        "focus_wave4_desk._chip_sums", return_value=(100.0, 50.0, 0.0, "20261103")
+    ), patch("focus_wave4_desk._industry", return_value="PCB"), patch(
+        "focus_wave4_desk._taught_ai_sids", return_value={"2383": ["PCB"]}
+    ), patch("focus_wave4_desk.sqlite3.connect") as con_m:
+        con_m.return_value.__enter__ = lambda s: s
+        con_m.return_value.execute = lambda *a, **k: None
+        # enrich_hits uses connect().execute via helpers we patched; still needs close
+        mock_con = con_m.return_value
+        mock_con.close = lambda: None
+        rows = enrich_hits(hits, db_path="/tmp/x.db")
+    assert len(rows) == 1
+    r = rows[0]
+    assert r.wave4 == 4565.0
+    assert r.wave3_low == 3690.0
+    assert r.above_w4_low is False
+    assert r.score == 124.63

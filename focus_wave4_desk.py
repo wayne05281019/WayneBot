@@ -198,18 +198,20 @@ def _assign_bucket(row: Wave4Row) -> Tuple[str, str]:
         and not rebound
         and (ai or row.stock_id in QUALITY_HORIZON_ZH)
     )
-    if weak and quality:
-        # 短句：話筒 18 全形寬，不准括註單獨成行
+    # 已過四浪高就不要再疊「未過四浪低」文案
+    if not past and weak and quality:
         why_bits.append("未過四浪低仍留（實質不准排除）")
-    elif weak:
+    elif not past and weak:
         why_bits.append("未過四浪低＝偏沒力")
     hz = QUALITY_HORIZON_ZH.get(row.stock_id)
     if hz:
         why_bits.append(hz.split("；")[-1] if "；" in hz else hz)
 
-    # 被動元件這類：比較是搶反彈，不進值得介入長線桶
-    if rebound and not past:
-        return "sprint", "；".join(why_bits) + "→搶反彈短衝"
+    # 被動元件：永遠搶反彈短衝，不准進值得介入（含已過四浪高）
+    if rebound:
+        return "sprint", "；".join(why_bits) + (
+            "→已過四浪仍搶反彈臉" if past else "→搶反彈短衝"
+        )
 
     # 連四浪低都過不了：雜訊／無實質 → 弱；有實質＋鏈＝不准排除，繼續走介入閘
     if weak and not past and not quality:
