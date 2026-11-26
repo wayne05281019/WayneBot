@@ -94,7 +94,7 @@ def _seed_market_db(path: str) -> str:
 class TestMarketMenuE2E:
     def test_layout_version_and_button_label(self):
         assert MENU_BTN_MARKET == "台股大盤"
-        assert MENU_LAYOUT_VERSION == "44"
+        assert MENU_LAYOUT_VERSION == "45"
         bot = WayneTelegramBot.__new__(WayneTelegramBot)
         row1 = [b.text for b in bot._reply_menu().keyboard[0]]
         row2 = [b.text for b in bot._reply_menu().keyboard[1]]

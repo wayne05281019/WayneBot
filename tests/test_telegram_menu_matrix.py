@@ -177,6 +177,7 @@ def test_instant_ack_before_slow_work(label, hint):
     bot.combo_screen_cmd = WayneTelegramBot.combo_screen_cmd.__get__(
         bot, WayneTelegramBot
     )
+    bot.wave4_cmd = WayneTelegramBot.wave4_cmd.__get__(bot, WayneTelegramBot)
     with patch("money_flow.format_flow_html", return_value="<b>資金</b>"), patch(
         "money_flow.resolve_flow_as_of", return_value=("20260902", "")
     ), patch("money_flow.recompute_sector_flow", return_value=1), patch(
@@ -226,6 +227,8 @@ def test_instant_ack_before_slow_work(label, hint):
             asyncio.run(bot.pipeline_cmd(_update(msg), MagicMock()))
         elif label == MENU_BTN_COMBO_SCREEN:
             asyncio.run(bot.combo_screen_cmd(_update(msg), MagicMock()))
+        elif label == MENU_BTN_WAVE4:
+            asyncio.run(bot.wave4_cmd(_update(msg), MagicMock()))
         else:
             asyncio.run(bot.flow_cmd(_update(msg), MagicMock()))
 

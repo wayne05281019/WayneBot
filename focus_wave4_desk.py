@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import sqlite3
+import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -27,6 +28,9 @@ from scripts.focus_targets_screen import (
 
 TAIPEI = ZoneInfo("Asia/Taipei")
 CHIP_LOOKBACK = 10
+PAGE_SIZE = 10  # 話筒實質十檔翻頁
+# 盤中距離用現價（2026-11-27 使用者鎖 B）；結構仍用已收日K回推。
+LIVE_ROOM_POLICY = "B_intraday_last"
 
 # 使用者鎖：實質收入好的教過臉，未過四浪低也絕不准排除（觀察非買訊）。
 # horizon＝他口述遠距位，不是進場價、不是買訊。
@@ -36,6 +40,9 @@ QUALITY_HORIZON_ZH: Dict[str, str] = {
 }
 # 被動元件這類＝比較是搶反彈／短衝臉，不是台光電那種實質長線臉。
 REBOUND_TAUGHT_TAGS = frozenset({"被動元件"})
+
+_DESK_CACHE: Dict[str, Any] = {"key": "", "ts": 0.0, "payload": None}
+_DESK_TTL_SEC = 180.0
 
 
 def _is_rebound_face(row: "Wave4Row") -> bool:
@@ -372,4 +379,168 @@ def format_wave4_desk_html(payload: Dict[str, Any], *, max_each: int = 12) -> st
             "股性看近10日外資／投信／自營淨買賣；買訊仍只認獲利剛離零／已過閘紅箭頭。",
         ]
     )
+    return "\n".join(lines)
+
+
+def format_wave4_hub_html() -> str:
+    """按「次級四浪」後第一頁：兩路分流說明。"""
+    return "\n".join(
+        [
+            "<b>次級四浪</b>（觀察非買訊）",
+            "① 打代號／股名：智慧辨識後請你確認，再出這檔結構位。",
+            "② 實質十檔：有實質獲利且最優先出 10 檔，可翻下一頁。",
+            "盤中距離用現價；結構用已收日K。買訊仍只認獲利剛離零／已過閘紅箭頭。",
+        ]
+    )
+
+
+def get_wave4_desk_cached(
+    db_path: Path | str = DB_DEFAULT, *, top_n: int = 200, force: bool = False
+) -> Dict[str, Any]:
+    path = str(Path(db_path))
+    now = time.time()
+    hit = _DESK_CACHE.get("payload")
+    if (
+        not force
+        and hit
+        and _DESK_CACHE.get("key") == path
+        and now - float(_DESK_CACHE.get("ts") or 0) < _DESK_TTL_SEC
+    ):
+        return hit
+    payload = build_wave4_desk(path, top_n=int(top_n))
+    _DESK_CACHE["key"] = path
+    _DESK_CACHE["ts"] = now
+    _DESK_CACHE["payload"] = payload
+    return payload
+
+
+def apply_live_close(row: Dict[str, Any], live_close: float) -> Dict[str, Any]:
+    """盤中 B：用現價重算距四浪高／是否過四浪低；不重畫五波。"""
+    px = float(live_close or 0)
+    w4 = float(row.get("wave4") or 0)
+    l3 = float(row.get("wave3_low") or 0)
+    if px <= 0 or w4 <= 0:
+        return dict(row)
+    out = dict(row)
+    out["close"] = px
+    out["room_to_w4_pct"] = round((w4 - px) / px * 100.0, 2)
+    if l3 > 0:
+        out["above_w4_low"] = px + 1e-9 >= l3
+    out["live_px"] = True
+    return out
+
+
+def overlay_live_on_rows(
+    rows: Sequence[Dict[str, Any]],
+    db_path: Path | str = DB_DEFAULT,
+) -> Tuple[List[Dict[str, Any]], bool]:
+    """開市合併窗才抓現價；失敗就保留收盤臉。"""
+    try:
+        from live_quote import fetch_lookup_quote, is_live_merge_window
+    except Exception:
+        return [dict(r) for r in rows], False
+    if not is_live_merge_window():
+        return [dict(r) for r in rows], False
+    path = str(db_path)
+    out: List[Dict[str, Any]] = []
+    any_live = False
+    for r in rows:
+        sid = str(r.get("stock_id") or "")
+        mkt = str(r.get("market") or "")
+        px = 0.0
+        try:
+            rt = fetch_lookup_quote(sid, mkt, path) or {}
+            px = float(rt.get("close") or 0)
+        except Exception:
+            px = 0.0
+        if px > 0:
+            out.append(apply_live_close(r, px))
+            any_live = True
+        else:
+            out.append(dict(r))
+    return out, any_live
+
+
+def intervene_page(
+    payload: Dict[str, Any], page: int = 0, *, page_size: int = PAGE_SIZE
+) -> Tuple[List[Dict[str, Any]], int, bool]:
+    """回 (本頁列, 總頁數, 還有下一頁)。"""
+    all_rows = list(payload.get("intervene") or [])
+    n = len(all_rows)
+    ps = max(1, int(page_size))
+    pages = max(1, (n + ps - 1) // ps) if n else 1
+    p = max(0, min(int(page), pages - 1))
+    sl = all_rows[p * ps : (p + 1) * ps]
+    has_next = (p + 1) * ps < n
+    return sl, pages, has_next
+
+
+def format_wave4_page_html(
+    payload: Dict[str, Any],
+    rows: Sequence[Dict[str, Any]],
+    *,
+    page: int = 0,
+    pages: int = 1,
+    live: bool = False,
+) -> str:
+    asof = str(payload.get("asof") or "")
+    head = f"{asof[:4]}/{asof[4:6]}/{asof[6:8]}" if len(asof) == 8 else asof
+    lines = [
+        f"<b>次級四浪・實質十檔</b>（{head}｜第{int(page)+1}/{int(pages)}頁）",
+        "觀察非買訊。有實質獲利且最優；被動元件搶反彈不進這頁。",
+        "盤中距離＝現價。" if live else "距離＝母體收盤臉。",
+        f"實質可翻共 {payload.get('n_intervene') or 0} 檔。",
+        "",
+    ]
+    if not rows:
+        lines.append("（本頁尚無）")
+    for r in rows:
+        tags = "/".join(r.get("taught_tags") or []) or "—"
+        live_tag = "・現價" if r.get("live_px") else ""
+        low_tag = "" if r.get("above_w4_low", True) else "・未過四浪低"
+        lines.append(
+            f"<code>{r.get('stock_id')}</code> {r.get('stock_name')} "
+            f"距{float(r.get('room_to_w4_pct') or 0):.0f}%{live_tag}{low_tag} "
+            f"EPS{r.get('eps_last') if r.get('eps_last') is not None else '—'} "
+            f"{tags}"
+        )
+    lines.append("")
+    lines.append("點代號看出結構；買訊仍只認獲利剛離零／已過閘紅箭頭。")
+    return "\n".join(lines)
+
+
+def find_wave4_row(payload: Dict[str, Any], stock_id: str) -> Optional[Dict[str, Any]]:
+    sid = str(stock_id or "").strip()
+    if not sid:
+        return None
+    for bucket in ("intervene", "sprint", "watch"):
+        for r in payload.get(bucket) or []:
+            if str(r.get("stock_id") or "") == sid:
+                return dict(r)
+    return None
+
+
+def format_wave4_one_html(row: Dict[str, Any], *, live: bool = False) -> str:
+    sid = str(row.get("stock_id") or "")
+    name = str(row.get("stock_name") or sid)
+    w4 = float(row.get("wave4") or 0)
+    l3 = float(row.get("wave3_low") or 0)
+    close = float(row.get("close") or 0)
+    room = float(row.get("room_to_w4_pct") or 0)
+    hz = QUALITY_HORIZON_ZH.get(sid, "")
+    lines = [
+        f"<b>次級四浪・{sid} {name}</b>",
+        "觀察非買訊。要搶＝次級四浪高；連四浪低都過不了／當天下來＝偏沒力。",
+        f"現價 {close:g}" if live or row.get("live_px") else f"收 {close:g}",
+        f"四浪高 {w4:g}｜四浪低 {l3:g}｜距高 {room:.1f}%",
+        (
+            "已過四浪低"
+            if row.get("above_w4_low", True)
+            else "尚未過四浪低"
+        ),
+        f"分級：{row.get('bucket') or '—'}｜{row.get('why_zh') or ''}",
+    ]
+    if hz:
+        lines.append(hz)
+    lines.append("買訊仍只認獲利剛離零／已過閘紅箭頭。")
     return "\n".join(lines)

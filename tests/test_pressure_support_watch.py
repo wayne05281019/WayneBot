@@ -132,7 +132,7 @@ def test_menu_seven_plus_seven_pressure_after_overnight():
         WayneTelegramBot,
     )
 
-    assert MENU_LAYOUT_VERSION == "44"
+    assert MENU_LAYOUT_VERSION == "45"
     assert len(MENU_ROW1) == 7 and len(MENU_ROW2) == 7
     from bot_servers import MENU_ROW3, MENU_BTN_COMBO_SCREEN, MENU_BTN_WAVE4, MENU_BTN_SLOT
     assert len(MENU_ROW3) == 7 and MENU_ROW3[0] == MENU_BTN_COMBO_SCREEN

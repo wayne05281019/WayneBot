@@ -2,7 +2,17 @@
 """次級四浪分級：EPS／股性桶。"""
 from __future__ import annotations
 
-from focus_wave4_desk import Wave4Row, _assign_bucket, _chip_label, format_wave4_desk_html
+from focus_wave4_desk import (
+    Wave4Row,
+    _assign_bucket,
+    _chip_label,
+    apply_live_close,
+    format_wave4_desk_html,
+    format_wave4_hub_html,
+    format_wave4_one_html,
+    format_wave4_page_html,
+    intervene_page,
+)
 
 
 def test_chip_label_foreign_dominant():
@@ -133,3 +143,44 @@ def test_format_html_has_buckets():
     assert "非買訊" in html
     assert "四浪高" in html
     assert "搶反彈" in html or "被動元件" in html
+
+
+def test_hub_two_paths():
+    html = format_wave4_hub_html()
+    assert "打代號" in html
+    assert "實質十檔" in html
+    assert "現價" in html
+    assert "非買訊" in html
+
+
+def test_intervene_page_ten_and_live_room():
+    payload = {
+        "asof": "20261126",
+        "n_intervene": 12,
+        "intervene": [
+            {
+                "stock_id": f"{i:04d}",
+                "stock_name": f"n{i}",
+                "room_to_w4_pct": 20.0,
+                "wave4": 120.0,
+                "wave3_low": 90.0,
+                "close": 100.0,
+                "eps_last": 1.0,
+                "taught_tags": ["PCB"],
+                "above_w4_low": True,
+            }
+            for i in range(12)
+        ],
+    }
+    rows, pages, has_next = intervene_page(payload, 0)
+    assert len(rows) == 10
+    assert pages == 2
+    assert has_next
+    page_html = format_wave4_page_html(payload, rows, page=0, pages=2, live=True)
+    assert "實質十檔" in page_html
+    assert "現價" in page_html
+    live = apply_live_close(rows[0], 110.0)
+    assert live["live_px"] is True
+    assert abs(live["room_to_w4_pct"] - (120 - 110) / 110 * 100) < 0.05
+    one = format_wave4_one_html(live, live=True)
+    assert "四浪高" in one and "非買訊" in one

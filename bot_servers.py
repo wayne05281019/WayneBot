@@ -851,7 +851,8 @@ MENU_FULL_ALIASES = ("完整選單", "完整鍵盤")
 # v41：第二排隱藏「流水線」（綜合篩選已串節點＋名單）；上七下七＋三排七，第二排名稱可完整顯示。
 # v43：撤「啾哈觀盤」；第三排只留綜合篩選＋空白；上七下七＋三排七。
 # v44：第三排第 2 格「次級四浪」（五波可畫母體→EPS／股性／AI鏈分級；觀察非買訊）。
-MENU_LAYOUT_VERSION = "44"
+# v45：次級四浪按後兩路＝打代號確認／實質十檔翻頁；盤中距離用現價（B）。
+MENU_LAYOUT_VERSION = "45"
 MAX_PICK_INLINE_ROWS = 8
 
 # 輸入列左邊三條槓（Telegram BotCommand）。跟下方兩排重複的不放，避免兩套入口。
@@ -8981,17 +8982,84 @@ class WayneTelegramBot:
                 except Exception:
                     pass
 
-    async def wave4_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """次級四浪：五波可畫母體→EPS／股性／AI鏈分級；觀察非買訊。
+    def _wave4_hub_keyboard(self):
+        return InlineKeyboardMarkup(
+            [
+                [InlineKeyboardButton("打代號／股名", callback_data="w4:ask")],
+                [
+                    InlineKeyboardButton(
+                        "實質十檔（最優）", callback_data="w4:list:0"
+                    )
+                ],
+            ]
+        )
 
-        第一則必須 LOADING；讀庫進 to_thread。
+    def _wave4_hits_keyboard(self, hits):
+        """次級四浪撞名選擇器：點了仍出四浪卡，不准跳查股兩張圖。"""
+        rows = []
+        pair = []
+        for h in (hits or [])[:8]:
+            c = str(h.get("stock_id") or "").strip()
+            n = str(h.get("stock_name") or "").strip()
+            if not c:
+                continue
+            label = f"{c} {n}".strip()[:16] or c
+            pair.append(InlineKeyboardButton(label, callback_data=f"w4:q:{c}"))
+            if len(pair) == 2:
+                rows.append(pair)
+                pair = []
+        if pair:
+            rows.append(pair)
+        rows.append(
+            [InlineKeyboardButton("回次級四浪", callback_data="w4:hub")]
+        )
+        return InlineKeyboardMarkup(rows) if rows else None
+
+    def _wave4_page_keyboard(self, rows, *, page: int, has_next: bool):
+        kb = []
+        for r in rows or []:
+            sid = str(r.get("stock_id") or "").strip()
+            name = str(r.get("stock_name") or "").strip()
+            if not sid:
+                continue
+            label = f"{sid} {name}".strip()[:22] or sid
+            kb.append(
+                [InlineKeyboardButton(label, callback_data=f"w4:q:{sid}")]
+            )
+        nav = []
+        if int(page) > 0:
+            nav.append(
+                InlineKeyboardButton(
+                    "◀ 上一頁", callback_data=f"w4:list:{int(page) - 1}"
+                )
+            )
+        if has_next:
+            nav.append(
+                InlineKeyboardButton(
+                    "下一頁 ▶", callback_data=f"w4:list:{int(page) + 1}"
+                )
+            )
+        if nav:
+            kb.append(nav)
+        kb.append(
+            [
+                InlineKeyboardButton("打代號／股名", callback_data="w4:ask"),
+                InlineKeyboardButton("回選單", callback_data="w4:hub"),
+            ]
+        )
+        return InlineKeyboardMarkup(kb) if kb else self._wave4_hub_keyboard()
+
+    async def wave4_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """次級四浪：按後兩路＝打代號確認／實質十檔翻頁；觀察非買訊。
+
+        第一則必須 LOADING；盤中距離用現價（B）。
         """
         uid = str(update.effective_user.id)
         message = update.message
         wait_h = await self._start_plain_wait(
             message,
             text_fn=lambda s: self._wait_bubble(
-                "次級四浪進行中", s, now="掃五波分級", rest="推送名單", fill_sec=22.0
+                "次級四浪進行中", s, now="選路徑", rest="兩路入口", fill_sec=8.0
             ),
         )
         try:
@@ -9010,30 +9078,14 @@ class WayneTelegramBot:
                 await self._enter_main_menu(message, uid)
             except Exception:
                 logger.exception("次級四浪進主選單失敗，仍組頁")
+            from focus_wave4_desk import format_wave4_hub_html
 
-            def _build() -> str:
-                from focus_wave4_desk import build_wave4_desk, format_wave4_desk_html
-
-                payload = build_wave4_desk(self.db_path)
-                return format_wave4_desk_html(payload)
-
-            try:
-                html = await asyncio.wait_for(
-                    asyncio.to_thread(_build), timeout=90.0
-                )
-            except asyncio.TimeoutError:
-                html = (
-                    "次級四浪逾時。"
-                    "掃母體或分級太慢，稍後再按「次級四浪」。"
-                )
-            except Exception:
-                logger.exception("次級四浪組頁失敗")
-                html = "次級四浪失敗。稍後再試。"
-            if not (html or "").strip():
-                html = "目前組不出次級四浪（基準日或庫異常）。觀察非買訊。"
+            html = format_wave4_hub_html()
             await self._stop_plain_wait(*wait_h)
             await message.reply_html(
-                html, reply_markup=self._reply_menu(uid), disable_web_page_preview=True
+                html,
+                reply_markup=self._wave4_hub_keyboard(),
+                disable_web_page_preview=True,
             )
             delivered = True
         finally:
@@ -9042,6 +9094,197 @@ class WayneTelegramBot:
                     await self._stop_plain_wait(*wait_h)
                 except Exception:
                     pass
+
+    async def _wave4_send_page(self, message, uid: str, page: int = 0):
+        wait_h = await self._start_plain_wait(
+            message,
+            text_fn=lambda s: self._wait_bubble(
+                "次級四浪進行中",
+                s,
+                now="掃實質十檔",
+                rest="推送名單",
+                fill_sec=22.0,
+            ),
+        )
+        delivered = False
+        try:
+
+            def _build():
+                from focus_wave4_desk import (
+                    format_wave4_page_html,
+                    get_wave4_desk_cached,
+                    intervene_page,
+                    overlay_live_on_rows,
+                )
+
+                payload = get_wave4_desk_cached(self.db_path)
+                rows, pages, has_next = intervene_page(payload, int(page))
+                live_rows, live = overlay_live_on_rows(rows, self.db_path)
+                html = format_wave4_page_html(
+                    payload,
+                    live_rows,
+                    page=int(page),
+                    pages=pages,
+                    live=live,
+                )
+                return html, live_rows, has_next, payload
+
+            try:
+                html, live_rows, has_next, _payload = await asyncio.wait_for(
+                    asyncio.to_thread(_build), timeout=90.0
+                )
+            except asyncio.TimeoutError:
+                await self._stop_plain_wait(*wait_h)
+                await message.reply_html(
+                    "次級四浪逾時。稍後再按「實質十檔」。",
+                    reply_markup=self._wave4_hub_keyboard(),
+                    disable_web_page_preview=True,
+                )
+                return
+            except Exception:
+                logger.exception("次級四浪十檔失敗")
+                await self._stop_plain_wait(*wait_h)
+                await message.reply_html(
+                    "次級四浪十檔失敗。稍後再試。",
+                    reply_markup=self._wave4_hub_keyboard(),
+                    disable_web_page_preview=True,
+                )
+                return
+            await self._stop_plain_wait(*wait_h)
+            await message.reply_html(
+                html or "目前組不出實質十檔。觀察非買訊。",
+                reply_markup=self._wave4_page_keyboard(
+                    live_rows, page=int(page), has_next=bool(has_next)
+                ),
+                disable_web_page_preview=True,
+            )
+            delivered = True
+        finally:
+            if not delivered:
+                try:
+                    await self._stop_plain_wait(*wait_h)
+                except Exception:
+                    pass
+
+    async def _wave4_send_one(self, message, uid: str, stock_id: str):
+        wait_h = await self._start_plain_wait(
+            message,
+            text_fn=lambda s: self._wait_bubble(
+                "次級四浪進行中", s, now="查這檔", rest="出結構位", fill_sec=16.0
+            ),
+        )
+        delivered = False
+        try:
+
+            def _build():
+                from focus_wave4_desk import (
+                    apply_live_close,
+                    find_wave4_row,
+                    format_wave4_one_html,
+                    get_wave4_desk_cached,
+                )
+                from live_quote import fetch_lookup_quote, is_live_merge_window
+
+                payload = get_wave4_desk_cached(self.db_path)
+                row = find_wave4_row(payload, stock_id)
+                live = False
+                if row is None:
+                    # 可畫母體沒這檔：仍回結構說明，不裝假五波
+                    return (
+                        f"<b>次級四浪・{stock_id}</b>\n"
+                        "這檔目前不在可畫五波母體（或基準日異常）。"
+                        "觀察非買訊；可改打別檔或看實質十檔。",
+                        False,
+                    )
+                if is_live_merge_window():
+                    try:
+                        rt = (
+                            fetch_lookup_quote(
+                                stock_id, row.get("market") or "", str(self.db_path)
+                            )
+                            or {}
+                        )
+                        px = float(rt.get("close") or 0)
+                        if px > 0:
+                            row = apply_live_close(row, px)
+                            live = True
+                    except Exception:
+                        pass
+                return format_wave4_one_html(row, live=live), True
+
+            try:
+                html, ok = await asyncio.wait_for(
+                    asyncio.to_thread(_build), timeout=60.0
+                )
+            except asyncio.TimeoutError:
+                html, ok = "次級四浪查這檔逾時。稍後再試。", False
+            except Exception:
+                logger.exception("次級四浪單檔失敗")
+                html, ok = "次級四浪查這檔失敗。", False
+            await self._stop_plain_wait(*wait_h)
+            kb = InlineKeyboardMarkup(
+                [
+                    [
+                        InlineKeyboardButton(
+                            "實質十檔", callback_data="w4:list:0"
+                        ),
+                        InlineKeyboardButton("再查一檔", callback_data="w4:ask"),
+                    ],
+                    [InlineKeyboardButton("回選單", callback_data="w4:hub")],
+                ]
+            )
+            await message.reply_html(
+                html, reply_markup=kb, disable_web_page_preview=True
+            )
+            delivered = True
+            _ = ok
+        finally:
+            if not delivered:
+                try:
+                    await self._stop_plain_wait(*wait_h)
+                except Exception:
+                    pass
+
+    async def _handle_wave4_callback(self, q, uid: str, data: str):
+        message = q.message
+        actor = self._pending_actor(message, uid=uid)
+        try:
+            await q.answer()
+        except Exception:
+            pass
+        if data == "w4:hub":
+            from focus_wave4_desk import format_wave4_hub_html
+
+            self._pending.pop(actor, None)
+            await message.reply_html(
+                format_wave4_hub_html(),
+                reply_markup=self._wave4_hub_keyboard(),
+                disable_web_page_preview=True,
+            )
+            return
+        if data == "w4:ask":
+            self._pending[actor] = "wave4:ask"
+            await message.reply_html(
+                "請打<b>代號</b>或<b>股名</b>（同音／打不準會列出請你點確認）。"
+                "觀察非買訊。",
+                reply_markup=self._reply_menu(uid),
+                disable_web_page_preview=True,
+            )
+            return
+        if data.startswith("w4:list:"):
+            self._pending.pop(actor, None)
+            try:
+                page = int(data.split(":")[-1])
+            except ValueError:
+                page = 0
+            await self._wave4_send_page(message, uid, page=max(0, page))
+            return
+        if data.startswith("w4:q:"):
+            self._pending.pop(actor, None)
+            sid = data.split(":", 2)[-1].strip()
+            if sid:
+                await self._wave4_send_one(message, uid, sid)
+            return
 
     async def combo_screen_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """綜合篩選：機構式串節點（流水線／連買等各關）；非買訊、不准合成總分榜。
@@ -10215,6 +10458,32 @@ class WayneTelegramBot:
                 self._pending[actor] = "dongzhu"
                 await self._send_dongzhu_hold(update.message, raw or text)
                 return
+            if pending == "wave4:ask":
+                if _text_escapes_pending(text):
+                    self._pending.pop(actor, None)
+                else:
+                    q = (raw or text or "").strip()
+                    hits = await asyncio.to_thread(lookup_stocks, self.db_path, q)
+                    if hits_need_picker(hits):
+                        self._pending[actor] = "wave4:ask"
+                        await update.message.reply_html(
+                            "有多檔相近，請點確認（次級四浪）：\n"
+                            + self._hits_list_html(hits),
+                            reply_markup=self._wave4_hits_keyboard(hits),
+                            disable_web_page_preview=True,
+                        )
+                        return
+                    if len(hits) == 1:
+                        self._pending.pop(actor, None)
+                        code = str(hits[0].get("stock_id") or "")
+                        await self._wave4_send_one(update.message, uid, code)
+                        return
+                    self._pending[actor] = "wave4:ask"
+                    await update.message.reply_text(
+                        "找不到這檔。請再打代號或股名；同音會列出請你點。",
+                        reply_markup=self._reply_menu(uid),
+                    )
+                    return
             pending = self._pending.pop(actor, "")
             if pending in ("card", "dcard", "chips", "fund", "industry", "watch"):
                 handled = await self._handle_pending_pick(
@@ -13030,6 +13299,9 @@ class WayneTelegramBot:
             return
         if data.startswith("uv:page:"):
             await self._handle_undervalue_page_callback(q, uid, data)
+            return
+        if data.startswith("w4:"):
+            await self._handle_wave4_callback(q, uid, data)
             return
         if data.startswith("lz:"):
             try:
