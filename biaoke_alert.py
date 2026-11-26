@@ -68,10 +68,17 @@ CREATE TABLE IF NOT EXISTS biaoke_chat_dedupe (
 # 族＝意圖，不是單一名詞。新詞只要落在同一族就會加分。
 _EXIT = re.compile(
     r"(出清|一股不留|全部賣(?!光)|全部出|先回收|不要再碰|不要再布局|"
-    r"不要再介入|不要再買|停損|減碼一半|減碼\s*1\s*/\s*2|"
+    r"不要再介入|不要再買|減碼一半|減碼\s*1\s*/\s*2|"
     r"調節總持股|今天不要有動作|不能介入布局|"
-    r"逃命(?!波))"
+    r"逃命(?!波)|"
+    # 停損＝出場指令；「設好停損／設下停損」是承接風控，不准當出清急推
+    # （2026-11-26 190014392 誤推：設好停損放手一搏）
+    r"(?<!設好)(?<!設下)(?<!設定)(?<!做好)停損)"
 )
+_BUYISH_HOLD = re.compile(
+    r"(承接|介入|上車|布局|抄底|撿鑽石|勇敢承接|放手一搏)"
+)
+_STOPLOSS_RISK_MGMT = re.compile(r"(設好|設下|設定|做好)\s*停損")
 _HYPOTHETICAL_ACT = re.compile(
     r"(如果|萬一|假如|要是|若是).{0,80}"
     r"(賣出|先賣|抽出|出清|逃命|先回收|減碼|一股不留)"
@@ -444,11 +451,22 @@ def stance_flip(text: str, prev_text: str = "") -> Tuple[int, List[str]]:
 
 
 def _clear_now(blob: str) -> bool:
-    """現在就要出清。如果／萬一／舊回憶賣光不算。"""
+    """現在就要出清。如果／萬一／舊回憶賣光不算。
+
+    「設好停損＋承接／上車」＝風控買法，不准當出清急推。
+    """
     if not _EXIT.search(blob):
         return False
     if _HYPOTHETICAL_ACT.search(blob) or _HISTORICAL_SELL.search(blob):
         return False
+    # 只被「停損」字樣點到、且上下文是設停損去承接 → 非出清
+    if _STOPLOSS_RISK_MGMT.search(blob) and _BUYISH_HOLD.search(blob):
+        hard = re.compile(
+            r"(出清|一股不留|全部賣(?!光)|全部出|先回收|逃命(?!波)|"
+            r"不要再碰|不要再布局|不要再介入|不要再買|減碼一半)"
+        )
+        if not hard.search(blob):
+            return False
     return True
 
 

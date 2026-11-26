@@ -42,6 +42,24 @@ def test_full_exit_is_emergency_even_without_700():
     assert "出清" in "".join(j["reasons"])
 
 
+def test_teach_set_stoploss_buy_is_not_urgent():
+    """2026-11-26 190014392：設好停損放手一搏＝承接風控，不准急推出清。"""
+    j = judge_emergency(
+        "台積電台光電量價結構確認11/25是最後回馬槍洗盤。"
+        "勇敢承接介入，設好停損放手一搏，是最佳交易彎腰撿鑽石的交易策略。",
+        move={"ok": False, "drop": 0, "pct": 0},
+    )
+    assert not j["push"]
+
+
+def test_bare_stoploss_exit_still_urgent():
+    j = judge_emergency(
+        "該停損了先回收。",
+        move={"ok": False, "drop": 0, "pct": 0},
+    )
+    assert j["push"]
+
+
 def test_degree_retract_plus_night_crash():
     j = judge_emergency(
         "夜盤目前大跌，最樂觀第五波兩次擴延已經沒了，改走 A-c。",
