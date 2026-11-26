@@ -153,6 +153,15 @@ def test_hub_two_paths():
     assert "非買訊" in html
 
 
+def test_guangsheng_horizon_sid_is_6442_not_1815():
+    """資料正確性：光聖＝6442；1815是富喬，不准掛錯遠距。"""
+    from focus_wave4_desk import QUALITY_HORIZON_ZH
+
+    assert "6442" in QUALITY_HORIZON_ZH
+    assert "光聖" in QUALITY_HORIZON_ZH["6442"]
+    assert "1815" not in QUALITY_HORIZON_ZH
+
+
 def test_intervene_page_ten_and_live_room():
     payload = {
         "asof": "20261126",
