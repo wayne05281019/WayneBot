@@ -1,0 +1,51 @@
+{
+  "as_of_taipei": "2026-11-26T20:10:00+08:00",
+  "as_of_day": "20261126",
+  "post_id": "190014392",
+  "published": "2026-11-26 17:53",
+  "title_zh": "台積電台光電量價結構確認11/25是最後回馬槍洗盤",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "not_buy_signal": true,
+  "WAVE_NEURONS_MATCH": false,
+  "source": "biaoke_posts+attachment_png",
+  "attachments": [
+    {
+      "url": "https://image.cmoney.tw/attachment/post/1795622400/e0cb68a6-9e65-4463-b60f-0d526a300147_l.png",
+      "local": "/opt/cursor/artifacts/biaoke_teach_1126/teach_2383_or_first.png",
+      "about_zh": "台光電：底部連續爆巨量（問題量）＝產業／公司相關資金承接推測"
+    },
+    {
+      "url": "https://image.cmoney.tw/attachment/post/1795622400/3db8c2c3-b0b1-4378-9534-d7efb03197ee_l.png",
+      "local": "/opt/cursor/artifacts/biaoke_teach_1126/teach_2330_or_second.png",
+      "about_zh": "台積電：低檔大量／籌碼沉澱，交叉排除最差 abc-x-abc 破底劇本"
+    }
+  ],
+  "oral_points_zh": [
+    "台積電量價出現初步籌碼沉澱 → 排除最差波浪 abc-x-abc 持續破底到三萬下的規劃可能性",
+    "台光電底部連續爆近一年級巨量兩根 → 吃掉短線波段籌碼；問題量推測熟悉產業／公司派相關承接",
+    "兩檔最重要 AI 股：至少 11/25 是最佳上車點或回馬槍洗盤高達五～六成；設停損承接＝彎腰撿鑽石交易策略（他的說法）",
+    "自回：量價結構實務常比細微波拆解好用；細微量價無 100% 絕對穩定，尤其中小型投機股",
+    "自回：細微波可用 15 分確認含擴延完整結構；極端波形要用另一套技術分析交叉驗證"
+  ],
+  "internalize_rule_zh": {
+    "observe_only": true,
+    "core": "波浪位階 × 量價結構交叉：低檔巨量／連續問題量／籌碼沉澱，用來觀察落底／回馬槍，不是均線空頭就不敢看",
+    "stock_screen_proxy": [
+      "近 60 日低附近（洗盤區）",
+      "近窗出現相對中位／高分位巨量",
+      "連續 2 根巨量 → 2383 型問題量承接",
+      "巨量後量縮但仍有量 → 2330 型籌碼沉澱"
+    ],
+    "forbid": [
+      "不准當話筒買訊（買訊仍只認 leave_zero／已過閘 ma60_lower）",
+      "不准發明個股 5／9 浪號",
+      "不准把路人留言當他的判斷",
+      "未收不當收"
+    ]
+  },
+  "related_same_day_zh": [
+    "11:43–11:47：量價結構＝現象／屬性非鐵律；可畫撐壓取代均線（例台光電、智邦）",
+    "09:18：波浪＋量價看到的世界遠超一般技術分析"
+  ]
+}
