@@ -1,5 +1,5 @@
 {
-  "written_at": "2026-11-26T01:07:02+0800",
+  "written_at": "2026-11-26T14:01:39+0800",
   "tz": "Asia/Taipei",
   "track": "wave_silent_deepen",
   "variant": "deepen_v3_cross_mine_2023",
@@ -11,11 +11,11 @@
   "WAVE_NEURONS_MATCH": false,
   "gate": {
     "min_n": 20,
-    "pref_n_decided": 8,
-    "pref_hit_rate": 0.625,
+    "pref_n_decided": 9,
+    "pref_hit_rate": 0.6666666666666666,
     "gate_n20": false,
     "replace": false,
-    "n_chains": 7,
+    "n_chains": 8,
     "n_dig_worth": 16
   },
   "pref_suite_ref": {
@@ -23,7 +23,7 @@
     "next_variant": "pref_3state_v2_intraday_break_hold",
     "state_counts": {
       "fail": 3,
-      "hit": 5,
+      "hit": 6,
       "unknown": 3,
       "partial": 2
     }
@@ -117,6 +117,19 @@
       "to_state": "fail",
       "to_hit": false,
       "miss_kind_hint_zh": "preferred＝W4_reclaim 時：若 H＜41800 且全日 L＜37837 但 C＞37837 → 標 FB_intraday_break_close_reclaim；下一窗改優先看守住 37837（FB_hold），失守才升 M3／35000；W4 降權至再觸帶。不准發明新五波①，不准發明未口述新低。",
+      "buy_signal": false,
+      "phone_sync": "blocked"
+    },
+    {
+      "from_as_of": "20261125",
+      "to_as_of": "20261126",
+      "from_preferred": "W4_reclaim_418_427_band",
+      "from_state": "fail",
+      "from_hit": false,
+      "to_preferred": "FB_hold_above_37837",
+      "to_state": "hit",
+      "to_hit": true,
+      "miss_kind_hint_zh": "preferred＝FB_hold 且全日 L＞37837、C＞37837 → 標 false_break_hold 通過；下一窗維持 FB_hold 優先；W4 仍降權至再觸帶；失 37837 才升 M3／35000。不准發明新五波①。",
       "buy_signal": false,
       "phone_sync": "blocked"
     }
@@ -496,6 +509,41 @@
           "state": "fail",
           "is_preferred": false,
           "verdict_zh": "否決：未收復 43135（H39983.91≪43135）"
+        }
+      ]
+    },
+    {
+      "as_of": "20261126",
+      "paths": [
+        {
+          "id": "FB_hold_above_37837",
+          "state": "hit",
+          "is_preferred": true,
+          "verdict_zh": "通過：全日 L38435.99 與收 39151.81 皆＞37837（守住假跌破底）"
+        },
+        {
+          "id": "M3_resume_toward_35000",
+          "state": "fail",
+          "is_preferred": false,
+          "verdict_zh": "否決：未失 37837，亦未探 35000～35500（L38435.99≫35500）"
+        },
+        {
+          "id": "N1_fail_back_below_37837",
+          "state": "fail",
+          "is_preferred": false,
+          "verdict_zh": "否決：未回到 37837 下（L／C 皆＞37837）"
+        },
+        {
+          "id": "W4_reclaim_418_427_band",
+          "state": "fail",
+          "is_preferred": false,
+          "verdict_zh": "否決：未收回波浪4帶（H39459.95＜41800）"
+        },
+        {
+          "id": "M2_dead_reclaim_watch",
+          "state": "fail",
+          "is_preferred": false,
+          "verdict_zh": "否決：未收復 43135（H39459.95≪43135）"
         }
       ]
     }

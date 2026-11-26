@@ -1,9 +1,9 @@
 # 波浪靜默加深
 
-寫入：`2026-11-26T01:07:02+0800`（Asia/Taipei）。
+寫入：`2026-11-26T14:01:39+0800`（Asia/Taipei）。
 軌：`wave_silent_deepen`／`deepen_v3_cross_mine_2023`｜phone_sync=blocked｜非買訊
 
-- pref n=8 hit_rate=0.625 gate_n20=False replace=False chains=7
+- pref n=9 hit_rate=0.6666666666666666 gate_n20=False replace=False chains=8
 - 警語：`試標・推論／非他原文・非買訊・對質未過閘`
 
 ## 連鎖
@@ -15,6 +15,7 @@
 - `20261116` M3_lose_41760_then_friday=hit → `20261117` M3_seek_37837_after_41760_fail=unknown
 - `20261120` M3_seek_37837_continue=hit → `20261123` M3_extend_toward_35579=partial
 - `20261124` FB_reclaim_37837_watch=hit → `20261125` W4_reclaim_418_427_band=fail
+- `20261125` W4_reclaim_418_427_band=fail → `20261126` FB_hold_above_37837=hit
 - tag `gap_reclaim_then_intraday_break`：1124 FB 跳空收回成立 → 1125 preferred W4 否決且盤中失 37837 收站回；下一窗改 FB_hold（已回寫 v4）。繼續收樣，未過閘不換現況。
 
 ## 巢狀口述

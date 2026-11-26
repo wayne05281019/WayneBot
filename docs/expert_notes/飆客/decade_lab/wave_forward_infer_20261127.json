@@ -1,0 +1,143 @@
+{
+  "as_of_taipei": "2026-11-26T15:10:00+0800",
+  "as_of_day": "20261126",
+  "infer_for": "20261127",
+  "today_job": "post_close_next_session_infer",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "certainty": false,
+  "segment_numbers": "REQUIRED",
+  "calendar_zh": "下一開市日＝11/27（若休市再順延）。",
+  "from_eod_zh": "11/26 TWII O38435.99/H39459.95/L38435.99/C39151.81：FB_hold 通過；M3/N1/W4/M2 否決。",
+  "from_oral_zh": "11/20～22飆大：37837 假跌破；修正目標 35000～35500；波浪4帶 41800～42700／42250；極限 33000；非買訊。不准發明新五波①。",
+  "paths": [
+    {
+      "id": "FB_hold_above_37837",
+      "priority": 1,
+      "status": "推論／未定案（守位續權）",
+      "must_happen_zh": "下一開市日優先：收仍站穩 37837 之上；若再失＝升 M3",
+      "segments_provisional": [
+        {
+          "label": "false_break_hold",
+          "role": "收穩週五低／C3底之上",
+          "level": 37837.05
+        },
+        {
+          "label": "oral_37164_ref",
+          "role": "4/23低對照（已口述）",
+          "level": 37164.0
+        }
+      ],
+      "levels": {
+        "hold": 37837.05,
+        "ref_37164": 37164.0
+      },
+      "invalidate_zh": "收破 37837＝FB 降權；再探 35000～35500 升權"
+    },
+    {
+      "id": "M3_resume_toward_35000",
+      "priority": 2,
+      "status": "推論／未定案（再失後備）",
+      "must_happen_zh": "僅當再失 37837：再探口頭 35000～35500／未有效破 35000 前仍目標帶觀察",
+      "segments_provisional": [
+        {
+          "label": "B-b_rebreak",
+          "role": "37837 再失",
+          "level": 37837.05
+        },
+        {
+          "label": "oral_target_hi",
+          "role": "修正目標上沿（已口述）",
+          "level": 35500.0
+        },
+        {
+          "label": "oral_target_lo",
+          "role": "修正目標下沿（已口述）",
+          "level": 35000.0
+        }
+      ],
+      "levels": {
+        "rebreak": 37837.05,
+        "target_hi": 35500.0,
+        "target_lo": 35000.0
+      },
+      "invalidate_zh": "收穩 37837 之上＝維持 FB 優先；有效破 35000→他點過之極限／系統風險觀察（不准發明①）"
+    },
+    {
+      "id": "N1_fail_back_below_37837",
+      "priority": 3,
+      "status": "推論／未定案",
+      "must_happen_zh": "若假跌破收回失敗：收回到 37837 下並續弱",
+      "segments_provisional": [
+        {
+          "label": "lose_37837",
+          "role": "37837 再失",
+          "level": 37837.05
+        },
+        {
+          "label": "path_to_35000",
+          "role": "銜接口頭 35000",
+          "level": 35000.0
+        }
+      ],
+      "levels": {
+        "cap": 37837.05,
+        "retest": 35000.0
+      },
+      "invalidate_zh": "收復並站穩 37837＝降權此句"
+    },
+    {
+      "id": "W4_reclaim_418_427_band",
+      "priority": 4,
+      "status": "推論／未定案（降權・待再觸）",
+      "must_happen_zh": "僅當強勢再觸／收回 41800～42700（回測平均 42250）才升權",
+      "segments_provisional": [
+        {
+          "label": "wave4_band_reclaim",
+          "role": "收回波浪4帶",
+          "lo": 41800.0,
+          "hi": 42700.0
+        },
+        {
+          "label": "wave4_mid_42250",
+          "role": "回測平均",
+          "level": 42250.0
+        }
+      ],
+      "levels": {
+        "lo": 41800.0,
+        "mid": 42250.0,
+        "hi": 42700.0
+      },
+      "invalidate_zh": "未觸帶＝維持降權；失守 37837＝改回 M3／35000"
+    },
+    {
+      "id": "M2_dead_reclaim_watch",
+      "priority": 5,
+      "status": "對照／低權",
+      "must_happen_zh": "僅當強勢收復 43135 才升權（低機率）",
+      "segments_provisional": [
+        {
+          "label": "post_hold_reclaim",
+          "role": "若再收復 43135",
+          "level": 43135.92
+        }
+      ],
+      "levels": {
+        "reclaim": 43135.92
+      },
+      "invalidate_zh": "未收復則維持低權；收復≠新五波①"
+    }
+  ],
+  "preferred_infer": "FB_hold_above_37837",
+  "bottom_band": {
+    "lo": 35000.0,
+    "hi": 35500.0,
+    "source": "oral-correct-target-350-355",
+    "note": "11/20～22口頭；僅再失 37837 才升為近門檻"
+  },
+  "not_buy_signal": true,
+  "not_new_impulse1_zh": "守住 37837 ≠ 自動新五波升；不准標新①。",
+  "evidence_gate_zh": "S9：本窗 preferred＝守住 37837（FB_hold），憑據＝11/26 官方 L／C 皆＞37837 且 H 未到 W4；失敗則升 M3／35000。無憑據不標新①、不發明未口述新低。",
+  "phone_narrative_zh": "段號仍 phone_sync=blocked；非買訊；不准發明①～⑤。"
+}

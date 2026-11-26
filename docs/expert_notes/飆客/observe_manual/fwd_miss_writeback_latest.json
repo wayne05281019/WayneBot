@@ -1,5 +1,5 @@
 {
-  "written_at": "2026-11-25T15:06:42+0800",
+  "written_at": "2026-11-26T14:01:39+0800",
   "tz": "Asia/Taipei",
   "track": "bk_fwd",
   "purpose_zh": "forward miss 回寫 observe_manual 下一版鍵／敘述修正／證據桶",
@@ -14,7 +14,7 @@
     "note_zh": "20261125 miss：盤中失收回位／收站回→FB_intraday_break_close_reclaim、下一窗改 FB_hold；同件再生收集中（v3 gap／v2 bounce 仍保留樣本）",
     "gate_zh": "獨立交易日 n≥20 且贏該功能現況才替換（§13）；空名單不算"
   },
-  "n_eod_miss": 13,
+  "n_eod_miss": 14,
   "n_actionable": 13,
   "kind_counts": {
     "condition_defer": 2,
@@ -23,7 +23,8 @@
     "level_broke_follow_oral_band": 1,
     "target_touch_bounce_elevate_reclaim": 1,
     "gap_reclaim_hold_elevate_w4": 1,
-    "intraday_break_close_reclaim_elevate_hold": 1
+    "intraday_break_close_reclaim_elevate_hold": 1,
+    "narrative_only": 1
   },
   "miss_to_fix": [
     {
@@ -488,6 +489,38 @@
         "M2：收復 43135（低權）"
       ],
       "actual_path": "W4 否決（H39983.91＜41800）；FB_hold 部分（L36681.90 失守、C38195.43 站回）；M3/M2 否決；N1 部分。收－1926.92。"
+    },
+    {
+      "as_of": "20261126",
+      "preferred_was": "FB_hold_above_37837",
+      "kind": "narrative_only",
+      "actionable": false,
+      "rule_ids": [
+        "WR-FWD-LOOP",
+        "WR-LEVEL-ORAL-ONLY",
+        "WR-SEGMENT-TRIAL-WARN"
+      ],
+      "prefer_path_id": "",
+      "segment_labels": [],
+      "code_fix_zh": "preferred＝FB_hold 且全日 L＞37837、C＞37837 → 標 false_break_hold 通過；下一窗維持 FB_hold 優先；W4 仍降權至再觸帶；失 37837 才升 M3／35000。不准發明新五波①。",
+      "narrative_fix_zh": "他 11/20～22：37837 假跌破／目標 35000～35500；波浪4帶 41800～42700。官方 11/26：守住 37837、未到 W4、未探目標帶——假跌破收回後的守位窗對上。",
+      "rule_patch_src": "preferred＝FB_hold 且全日 L＞37837、C＞37837 → 標 false_break_hold 通過；下一窗維持 FB_hold 優先；W4 仍降權至再觸帶；失 37837 才升 M3／35000。不准發明新五波①。",
+      "which_segment_broke": "無：preferred FB_hold 通過；降權路徑 W4／M3／N1／M2 皆未發生。",
+      "next_variant": "bk_fwd_v4_intraday_break_close_reclaim",
+      "phone_warning_fixed": "試標・推論／非他原文・非買訊・對質未過閘",
+      "buy_signal": false,
+      "not_buy_signal": true,
+      "phone_sync": "blocked",
+      "mix_forbidden_zh": "勝率不准混進海選／黃金買點",
+      "source_file": "docs/expert_notes/飆客/decade_lab/wave_eod_verify_20261126.json",
+      "expected_segments": [
+        "FB_hold：收穩 37837（preferred；最好全日不回測失守）",
+        "M3：再失 37837 後探 35000～35500",
+        "N1：37837 下續弱",
+        "W4：收回 41800～42700／42250（降權）",
+        "M2：收復 43135（低權）"
+      ],
+      "actual_path": "FB_hold 通過（L／C 皆＞37837）；M3／N1／W4／M2 否決。收＋956.38。"
     }
   ],
   "latest_actionable": {
@@ -574,8 +607,6 @@
     "wave_forward_infer_*.json",
     "MISSION_LOCK_20261123.md A7／C12"
   ],
-  "cards_added": [
-    "WR-FWD-INTRADAY-BREAK-CLOSE-RECLAIM"
-  ],
+  "cards_added": [],
   "evidence_samples_added": 0
 }

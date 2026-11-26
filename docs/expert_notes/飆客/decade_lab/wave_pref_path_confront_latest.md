@@ -1,10 +1,10 @@
 # preferred 路徑三態對質（靜默）
 
-寫入：`2026-11-26T01:07:02+0800`（Asia/Taipei）。
+寫入：`2026-11-26T14:01:39+0800`（Asia/Taipei）。
 軌：`wave_pref_path_3state`｜現況 `pref_3state_v1_verdict_map`｜下一版 `pref_3state_v2_intraday_break_hold`
 
-- n_decided=8 hit_rate=0.625 gate_n20=False replace=False
-- state_counts={'fail': 3, 'hit': 5, 'unknown': 3, 'partial': 2}
+- n_decided=9 hit_rate=0.6666666666666666 gate_n20=False replace=False
+- state_counts={'fail': 3, 'hit': 6, 'unknown': 3, 'partial': 2}
 - 警語：`試標・推論／非他原文・非買訊・對質未過閘`
 
 不是買訊。不上話筒定案。WAVE_NEURONS_MATCH=false。
@@ -26,3 +26,4 @@
 | `20261123` | `M3_extend_toward_35579` | partial | None |
 | `20261124` | `FB_reclaim_37837_watch` | hit | True |
 | `20261125` | `W4_reclaim_418_427_band` | fail | False |
+| `20261126` | `FB_hold_above_37837` | hit | True |
