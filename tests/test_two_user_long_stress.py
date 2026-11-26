@@ -170,6 +170,8 @@ def _bot(db: str) -> WayneTelegramBot:
     bot.dongzhu_cmd = _bind_hit(hits, MENU_BTN_DONGZHU)
     bot.streak_cmd = _bind_hit(hits, "連買區")
     bot.menu_cmd = _bind_hit(hits, "選單")
+    bot.combo_screen_cmd = _bind_hit(hits, "綜合篩選")
+    bot.wave4_cmd = _bind_hit(hits, "次級四浪")
 
     async def _ai(message, uid):
         hits.setdefault(str(uid), []).append("AI倉")
@@ -352,6 +354,7 @@ def test_two_users_all_buttons_and_help_topics_interleaved(tmp_path):
         MENU_BTN_LEAVE_ZERO,
         MENU_BTN_DONGZHU,
         "綜合篩選",
+        "次級四浪",
     ]
     assert "流水線" not in ALL_BUTTONS
     assert "啾哈觀盤" not in ALL_BUTTONS
@@ -379,7 +382,24 @@ def test_two_users_all_buttons_and_help_topics_interleaved(tmp_path):
     asyncio.run(run())
     for uid in (WAYNE, BRO):
         names = set(bot._stress_hits[uid])
-        for need in ("勝率買點", "海選", "持股", "加入觀察", "飆客", "大盤", "資金", "波浪位階", "沖區", "壓撐觀察", "低估名單", "連買區", "剛脫離零", MENU_BTN_DONGZHU):
+        for need in (
+            "勝率買點",
+            "海選",
+            "持股",
+            "加入觀察",
+            "飆客",
+            "大盤",
+            "資金",
+            "波浪位階",
+            "沖區",
+            "壓撐觀察",
+            "低估名單",
+            "連買區",
+            "剛脫離零",
+            MENU_BTN_DONGZHU,
+            "綜合篩選",
+            "次級四浪",
+        ):
             assert need in names, (uid, need, names)
     assert bot._last_card[WAYNE] == "2330"
     assert bot._last_card[BRO] == "2317"
