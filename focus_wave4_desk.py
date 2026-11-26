@@ -12,7 +12,9 @@
 from __future__ import annotations
 
 import sqlite3
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -43,6 +45,10 @@ REBOUND_TAUGHT_TAGS = frozenset({"被動元件"})
 
 _DESK_CACHE: Dict[str, Any] = {"key": "", "ts": 0.0, "payload": None}
 _DESK_TTL_SEC = 180.0
+_DESK_CACHE_LOCK = threading.Lock()
+# 實質十檔盤中現價：有界並行（失敗／逾時→收盤臉）
+_LIVE_OVERLAY_WORKERS = 6
+_LIVE_QUOTE_TIMEOUT_SEC = 5.0
 
 
 def _is_rebound_face(row: "Wave4Row") -> bool:
@@ -193,7 +199,8 @@ def _assign_bucket(row: Wave4Row) -> Tuple[str, str]:
         and (ai or row.stock_id in QUALITY_HORIZON_ZH)
     )
     if weak and quality:
-        why_bits.append("未過四浪低仍留（實質收入好不准排除）")
+        # 短句：話筒 18 全形寬，不准括註單獨成行
+        why_bits.append("未過四浪低仍留（實質不准排除）")
     elif weak:
         why_bits.append("未過四浪低＝偏沒力")
     hz = QUALITY_HORIZON_ZH.get(row.stock_id)
@@ -383,13 +390,16 @@ def format_wave4_desk_html(payload: Dict[str, Any], *, max_each: int = 12) -> st
 
 
 def format_wave4_hub_html() -> str:
-    """按「次級四浪」後第一頁：兩路分流說明。"""
+    """按「次級四浪」後第一頁：兩路分流說明（話筒約18全形寬）。"""
     return "\n".join(
         [
             "<b>次級四浪</b>（觀察非買訊）",
-            "① 打代號／股名：智慧辨識後請你確認，再出這檔結構位。",
-            "② 實質十檔：有實質獲利且最優先出 10 檔，可翻下一頁。",
-            "盤中距離用現價；結構用已收日K。買訊仍只認獲利剛離零／已過閘紅箭頭。",
+            "① 打代號／股名：辨識後請你確認，",
+            "再出這檔結構位。",
+            "② 實質十檔：有實質獲利最優先出10檔，",
+            "可翻下一頁。",
+            "盤中距離用現價；結構用已收日K。",
+            "買訊仍只認獲利剛離零／已過閘紅箭頭。",
         ]
     )
 
@@ -407,11 +417,22 @@ def get_wave4_desk_cached(
         and now - float(_DESK_CACHE.get("ts") or 0) < _DESK_TTL_SEC
     ):
         return hit
-    payload = build_wave4_desk(path, top_n=int(top_n))
-    _DESK_CACHE["key"] = path
-    _DESK_CACHE["ts"] = now
-    _DESK_CACHE["payload"] = payload
-    return payload
+    # 雙重檢查：冷 miss 只准一人建桌，避免多線 stampede 重複 scan
+    with _DESK_CACHE_LOCK:
+        now = time.time()
+        hit = _DESK_CACHE.get("payload")
+        if (
+            not force
+            and hit
+            and _DESK_CACHE.get("key") == path
+            and now - float(_DESK_CACHE.get("ts") or 0) < _DESK_TTL_SEC
+        ):
+            return hit
+        payload = build_wave4_desk(path, top_n=int(top_n))
+        _DESK_CACHE["key"] = path
+        _DESK_CACHE["ts"] = time.time()
+        _DESK_CACHE["payload"] = payload
+        return payload
 
 
 def refresh_row_bucket(row: Dict[str, Any]) -> Dict[str, Any]:
@@ -469,31 +490,52 @@ def apply_live_close(row: Dict[str, Any], live_close: float) -> Dict[str, Any]:
 def overlay_live_on_rows(
     rows: Sequence[Dict[str, Any]],
     db_path: Path | str = DB_DEFAULT,
+    *,
+    max_workers: int = 6,
 ) -> Tuple[List[Dict[str, Any]], bool]:
-    """開市合併窗才抓現價；失敗就保留收盤臉。"""
+    """開市合併窗才抓現價；失敗就保留收盤臉。
+
+    十檔並行抓價（有上限），避免逐檔串行拖慢話筒。
+    """
     try:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
         from live_quote import fetch_lookup_quote, is_live_merge_window
     except Exception:
         return [dict(r) for r in rows], False
     if not is_live_merge_window():
         return [dict(r) for r in rows], False
     path = str(db_path)
-    out: List[Dict[str, Any]] = []
-    any_live = False
-    for r in rows:
+    base = [dict(r) for r in rows]
+    if not base:
+        return base, False
+
+    def _px(r: Dict[str, Any]) -> float:
         sid = str(r.get("stock_id") or "")
         mkt = str(r.get("market") or "")
-        px = 0.0
         try:
             rt = fetch_lookup_quote(sid, mkt, path) or {}
-            px = float(rt.get("close") or 0)
+            return float(rt.get("close") or 0)
         except Exception:
-            px = 0.0
+            return 0.0
+
+    prices = [0.0] * len(base)
+    workers = max(1, min(int(max_workers), len(base)))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futs = {pool.submit(_px, r): i for i, r in enumerate(base)}
+        for fut in as_completed(futs):
+            i = futs[fut]
+            try:
+                prices[i] = float(fut.result() or 0)
+            except Exception:
+                prices[i] = 0.0
+    out: List[Dict[str, Any]] = []
+    any_live = False
+    for r, px in zip(base, prices):
         if px > 0:
             out.append(apply_live_close(r, px))
             any_live = True
         else:
-            out.append(dict(r))
+            out.append(r)
     return out, any_live
 
 
@@ -522,26 +564,31 @@ def format_wave4_page_html(
     asof = str(payload.get("asof") or "")
     head = f"{asof[:4]}/{asof[4:6]}/{asof[6:8]}" if len(asof) == 8 else asof
     lines = [
-        f"<b>次級四浪・實質十檔</b>（{head}｜第{int(page)+1}/{int(pages)}頁）",
-        "觀察非買訊。有實質獲利且最優；被動元件搶反彈不進這頁。",
+        f"<b>次級四浪・實質十檔</b>",
+        f"{head}｜第{int(page)+1}/{int(pages)}頁",
+        "觀察非買訊。有實質獲利且最優。",
+        "被動元件搶反彈不進這頁。",
         "盤中距離＝現價。" if live else "距離＝母體收盤臉。",
-        f"實質可翻共 {payload.get('n_intervene') or 0} 檔。",
+        f"實質可翻共{payload.get('n_intervene') or 0}檔。",
         "",
     ]
     if not rows:
         lines.append("（本頁尚無）")
     for r in rows:
         tags = "/".join(r.get("taught_tags") or []) or "—"
-        live_tag = "・現價" if r.get("live_px") else ""
-        low_tag = "" if r.get("above_w4_low", True) else "・未過四浪低"
+        live_tag = "・現" if r.get("live_px") else ""
+        low_tag = "" if r.get("above_w4_low", True) else "・未過低"
+        eps = r.get("eps_last")
+        eps_s = f"{eps:.2f}" if isinstance(eps, (int, float)) else "—"
+        # 兩行：代號名距％｜EPS／鏈，避免孤字蓋數字
         lines.append(
             f"<code>{r.get('stock_id')}</code> {r.get('stock_name')} "
-            f"距{float(r.get('room_to_w4_pct') or 0):.0f}%{live_tag}{low_tag} "
-            f"EPS{r.get('eps_last') if r.get('eps_last') is not None else '—'} "
-            f"{tags}"
+            f"距{float(r.get('room_to_w4_pct') or 0):.0f}%{live_tag}{low_tag}"
         )
+        lines.append(f"EPS{eps_s} {tags}")
     lines.append("")
-    lines.append("點代號看出結構；買訊仍只認獲利剛離零／已過閘紅箭頭。")
+    lines.append("點代號看出結構。")
+    lines.append("買訊仍只認獲利剛離零／已過閘紅箭頭。")
     return "\n".join(lines)
 
 
@@ -581,13 +628,51 @@ def format_wave4_one_html(row: Dict[str, Any], *, live: bool = False) -> str:
     }.get(str(row.get("bucket") or ""), str(row.get("bucket") or "—"))
     lines = [
         f"<b>次級四浪・{sid} {name}</b>",
-        "觀察非買訊。要搶＝次級四浪高；連四浪低都過不了／當天下來＝偏沒力。",
+        "觀察非買訊。要搶＝次級四浪高；",
+        "連四浪低都過不了／當天下來＝偏沒力。",
         f"現價 {close:g}" if live or row.get("live_px") else f"收 {close:g}",
-        f"四浪高 {w4:g}｜四浪低 {l3:g}｜距高 {room:.1f}%",
+        f"四浪高 {w4:g}｜四浪低 {l3:g}",
+        f"距高 {room:.1f}%",
         low_line,
-        f"分級：{bucket_zh}｜{row.get('why_zh') or ''}",
+        f"分級：{bucket_zh}",
     ]
+    def _wrap_bits(text: str) -> None:
+        raw = (
+            str(text or "")
+            .replace("；", "；|")
+            .replace("→", "|→")
+            .replace("（", "|（")
+        )
+        chunk = ""
+        for part in raw.split("|"):
+            part = part.strip().lstrip("；").strip()
+            if not part:
+                continue
+            trial = f"{chunk}{part}" if chunk else part
+            w = sum(2 if ord(c) > 127 else 1 for c in trial)
+            if chunk and w > 36:
+                lines.append(chunk)
+                chunk = part
+            else:
+                chunk = trial
+            # 單段仍過長就硬切
+            while sum(2 if ord(c) > 127 else 1 for c in chunk) > 36:
+                acc = ""
+                for ch in chunk:
+                    tw = sum(2 if ord(c) > 127 else 1 for c in acc + ch)
+                    if acc and tw > 36:
+                        lines.append(acc)
+                        acc = ch
+                    else:
+                        acc += ch
+                chunk = acc.lstrip("；").strip()
+        if chunk:
+            lines.append(chunk)
+
+    why = str(row.get("why_zh") or "").strip()
+    if why:
+        _wrap_bits(why)
     if hz:
-        lines.append(hz)
+        _wrap_bits(hz)
     lines.append("買訊仍只認獲利剛離零／已過閘紅箭頭。")
     return "\n".join(lines)

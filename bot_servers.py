@@ -9078,7 +9078,7 @@ class WayneTelegramBot:
                 await self._enter_main_menu(message, uid)
             except Exception:
                 logger.exception("次級四浪進主選單失敗，仍組頁")
-            from focus_wave4_desk import format_wave4_hub_html
+            from focus_wave4_desk import format_wave4_hub_html, get_wave4_desk_cached
 
             html = format_wave4_hub_html()
             await self._stop_plain_wait(*wait_h)
@@ -9088,6 +9088,13 @@ class WayneTelegramBot:
                 disable_web_page_preview=True,
             )
             delivered = True
+            # 預熱母體快取，實質十檔按下去更快（失敗不擋話筒）
+            try:
+                asyncio.create_task(
+                    asyncio.to_thread(get_wave4_desk_cached, self.db_path)
+                )
+            except Exception:
+                pass
         finally:
             if not delivered:
                 try:
