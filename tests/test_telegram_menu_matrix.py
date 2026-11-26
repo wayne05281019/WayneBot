@@ -19,6 +19,7 @@ from bot_servers import (
     MENU_BTN_MARKET,
     MENU_BTN_PIPELINE,
     MENU_BTN_COMBO_SCREEN,
+    MENU_BTN_WAVE4,
     MENU_BTN_REPORT,
     MENU_BTN_STREAK,
     MENU_BTN_WAVE_STATUS,
@@ -31,6 +32,7 @@ MENU_BUTTONS = [
     (MENU_BTN_CARD, "decision_card_btn"),
     (MENU_BTN_PIPELINE, "pipeline_cmd"),
     (MENU_BTN_COMBO_SCREEN, "combo_screen_cmd"),
+    (MENU_BTN_WAVE4, "wave4_cmd"),
     (MENU_BTN_WAVE_STATUS, "wave_status_cmd"),
     (MENU_BTN_CHONG, "chong_zone_cmd"),
     ("當沖", "daytrade_cmd"),  # 隱藏打字入口仍認
@@ -56,6 +58,7 @@ INSTANT_ACK_BUTTONS = {
     MENU_BTN_FLOW: "資金輪動進行中",
     MENU_BTN_PIPELINE: "流水線觀測進行中",
     MENU_BTN_COMBO_SCREEN: "綜合篩選進行中",
+    MENU_BTN_WAVE4: "次級四浪進行中",
 }
 
 

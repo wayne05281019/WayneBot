@@ -50,7 +50,7 @@ def test_reply_keyboard_matches_menu_layout():
     assert MENU_BTN_PIPELINE not in row2
     assert MENU_BTN_AI not in row2
     assert row2[-1] == MENU_BTN_DONGZHU
-    assert MENU_LAYOUT_VERSION == "43"
+    assert MENU_LAYOUT_VERSION == "44"
 
 
 def test_picture_guide_cancelled_stubs_remain():

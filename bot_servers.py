@@ -239,6 +239,8 @@ def _text_escapes_pending(text: str) -> bool:
         return True
     if t in MENU_BTN_PIPELINE_ALIASES or t in MENU_BTN_COMBO_SCREEN_ALIASES:
         return True
+    if t in MENU_BTN_WAVE4_ALIASES:
+        return True
     if t in MENU_BTN_BIAOKE_ALIASES or t in MENU_BTN_LEAVE_BIAOKE_ALIASES:
         return True
     if t in MENU_BTN_LEAVE_DONGZHU_ALIASES:
@@ -695,6 +697,14 @@ MENU_BTN_PIPELINE_ALIASES = (
 )
 # 最終鈕（§9 鎖名）：機構式串節點篩選；第三排第 1 格。
 MENU_BTN_COMBO_SCREEN = "綜合篩選"
+# 次級四浪：第三排第 2 格（2026-11-26 使用者鎖名）；五波可畫母體再分級；觀察非買訊。
+MENU_BTN_WAVE4 = "次級四浪"
+MENU_BTN_WAVE4_ALIASES = (
+    MENU_BTN_WAVE4,
+    "次級四浪觀察",
+    "四浪回測",
+    "wave4",
+)
 MENU_BTN_COMBO_SCREEN_ALIASES = (
     MENU_BTN_COMBO_SCREEN,
     "綜合",
@@ -790,10 +800,10 @@ MENU_ROW2 = (
     MENU_BTN_LEAVE_ZERO,
     MENU_BTN_DONGZHU,
 )
-# 第三排七格：第 1＝綜合篩選；2–7 全形空白保留（啾哈觀盤已撤）。
+# 第三排七格：第 1＝綜合篩選；第 2＝次級四浪；3–7 全形空白保留。
 MENU_ROW3 = (
     MENU_BTN_COMBO_SCREEN,
-    MENU_BTN_SLOT,
+    MENU_BTN_WAVE4,
     MENU_BTN_SLOT,
     MENU_BTN_SLOT,
     MENU_BTN_SLOT,
@@ -840,7 +850,8 @@ MENU_FULL_ALIASES = ("完整選單", "完整鍵盤")
 # v40：第三排七格；第 1＝綜合篩選（機構式串節點：流水線／連買等）；2–7 空白保留。上七下八＋三排七。
 # v41：第二排隱藏「流水線」（綜合篩選已串節點＋名單）；上七下七＋三排七，第二排名稱可完整顯示。
 # v43：撤「啾哈觀盤」；第三排只留綜合篩選＋空白；上七下七＋三排七。
-MENU_LAYOUT_VERSION = "43"
+# v44：第三排第 2 格「次級四浪」（五波可畫母體→EPS／股性／AI鏈分級；觀察非買訊）。
+MENU_LAYOUT_VERSION = "44"
 MAX_PICK_INLINE_ROWS = 8
 
 # 輸入列左邊三條槓（Telegram BotCommand）。跟下方兩排重複的不放，避免兩套入口。
@@ -8970,6 +8981,68 @@ class WayneTelegramBot:
                 except Exception:
                     pass
 
+    async def wave4_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """次級四浪：五波可畫母體→EPS／股性／AI鏈分級；觀察非買訊。
+
+        第一則必須 LOADING；讀庫進 to_thread。
+        """
+        uid = str(update.effective_user.id)
+        message = update.message
+        wait_h = await self._start_plain_wait(
+            message,
+            text_fn=lambda s: self._wait_bubble(
+                "次級四浪進行中", s, now="掃五波分級", rest="推送名單", fill_sec=22.0
+            ),
+        )
+        try:
+            await self._pin_reply_menu(message)
+        except Exception:
+            pass
+        delivered = False
+        try:
+            try:
+                self._touch_user(
+                    uid, getattr(update.effective_user, "first_name", "") or ""
+                )
+            except Exception:
+                pass
+            try:
+                await self._enter_main_menu(message, uid)
+            except Exception:
+                logger.exception("次級四浪進主選單失敗，仍組頁")
+
+            def _build() -> str:
+                from focus_wave4_desk import build_wave4_desk, format_wave4_desk_html
+
+                payload = build_wave4_desk(self.db_path)
+                return format_wave4_desk_html(payload)
+
+            try:
+                html = await asyncio.wait_for(
+                    asyncio.to_thread(_build), timeout=90.0
+                )
+            except asyncio.TimeoutError:
+                html = (
+                    "次級四浪逾時。"
+                    "掃母體或分級太慢，稍後再按「次級四浪」。"
+                )
+            except Exception:
+                logger.exception("次級四浪組頁失敗")
+                html = "次級四浪失敗。稍後再試。"
+            if not (html or "").strip():
+                html = "目前組不出次級四浪（基準日或庫異常）。觀察非買訊。"
+            await self._stop_plain_wait(*wait_h)
+            await message.reply_html(
+                html, reply_markup=self._reply_menu(uid), disable_web_page_preview=True
+            )
+            delivered = True
+        finally:
+            if not delivered:
+                try:
+                    await self._stop_plain_wait(*wait_h)
+                except Exception:
+                    pass
+
     async def combo_screen_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """綜合篩選：機構式串節點（流水線／連買等各關）；非買訊、不准合成總分榜。
 
@@ -9913,6 +9986,15 @@ class WayneTelegramBot:
             logger.info("主選單：綜合篩選 uid=%s", uid)
             self._pending.pop(actor, None)
             await self.combo_screen_cmd(update, context)
+            return
+        if text in MENU_BTN_WAVE4_ALIASES or text.lower().lstrip("/") in (
+            "wave4",
+            "secondary_w4",
+            "w4",
+        ):
+            logger.info("主選單：次級四浪 uid=%s", uid)
+            self._pending.pop(actor, None)
+            await self.wave4_cmd(update, context)
             return
         # 第三排空白保留格＝忽略，不准當指令。
         if (update.message.text or "") == MENU_BTN_SLOT:

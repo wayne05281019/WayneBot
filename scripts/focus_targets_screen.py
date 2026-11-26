@@ -581,6 +581,383 @@ def format_tiered_txt(pack: Dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+# --- 次級四浪：股性＋EPS 深分級（觀察非買訊）---
+CHIP_WINDOW_N = 10
+CHIP_LEAD_RATIO = 1.35
+CHIP_FLAT_FRAC_OF_VOL = 0.02  # |淨額|合計 / 近窗日均量 < 2% → 近乎平
+RETAIL_VOL_VS_MEDIAN = 1.6
+MUST_CHECK_SIDS = (
+    "2383",
+    "3653",
+    "3017",
+    "2327",
+    "8046",
+    "3037",
+    "6442",
+    "2408",
+    "2344",
+    "3324",
+    "3105",
+)
+
+CHIP_LABEL_HEURISTIC_ZH = (
+    "近 N=10 個「已有三大法人欄」交易日，加總 daily_quotes.foreign_net／"
+    "trust_net／dealer_net（單位＝張，官方 T86／櫃買寫進日 K；"
+    "缺 T86 的全日全 0 日跳過，不准當真 0 張）。"
+    "三者買超淨額最大且相對第二名達 clear lead（≥1.35×）→ "
+    "外資／投信／自營；三者近乎平＋近窗量明顯高於中位量且法人弱 → 偏散戶。"
+    "不准發明主力成本；broker_branch_trades 全市場分點不抓。"
+)
+
+
+def last_chip_asof(con: sqlite3.Connection) -> str:
+    """市場上最後一日三大法人有非零寫入的 asof。"""
+    row = con.execute(
+        "SELECT MAX(date) FROM daily_quotes WHERE "
+        "ABS(COALESCE(foreign_net,0))+ABS(COALESCE(trust_net,0))"
+        "+ABS(COALESCE(dealer_net,0))>0"
+    ).fetchone()
+    return _ymd(row[0]) if row and row[0] else ""
+
+
+def chip_window_rows(
+    con: sqlite3.Connection, sid: str, *, n: int = CHIP_WINDOW_N
+) -> Tuple[str, List[Tuple[str, float, float, float, float]]]:
+    """回傳 (chip_asof, [(date, foreign, trust, dealer, volume), ...]) 近→遠。
+
+    只取 ≤ 市場最後有法人欄之日，再往前湊滿 N 個交易日（該股有量）。
+    """
+    asof = last_chip_asof(con)
+    if not asof:
+        return "", []
+    rows = con.execute(
+        "SELECT date, COALESCE(foreign_net,0), COALESCE(trust_net,0), "
+        "COALESCE(dealer_net,0), COALESCE(volume,0) "
+        "FROM daily_quotes WHERE stock_id=? AND date<=? AND volume>0 "
+        "ORDER BY date DESC LIMIT ?",
+        (sid, asof, int(n)),
+    ).fetchall()
+    out: List[Tuple[str, float, float, float, float]] = []
+    for r in rows:
+        d = _ymd(r[0])
+        if not d:
+            continue
+        out.append((d, float(r[1]), float(r[2]), float(r[3]), float(r[4])))
+    return asof, out
+
+
+def classify_chip_label(
+    foreign_sum: float,
+    trust_sum: float,
+    dealer_sum: float,
+    *,
+    vol_mean: float,
+    vol_median_prior: float,
+    lead_ratio: float = CHIP_LEAD_RATIO,
+) -> Tuple[str, bool, str]:
+    """回 (chip_label, constructive, detail_zh)。
+
+    chip_label ∈ {外資, 投信, 自營, 偏散戶, 籌碼平淡, 缺資料}
+    constructive＝機構買超主導且淨額為正。
+    """
+    trips = [
+        ("外資", float(foreign_sum)),
+        ("投信", float(trust_sum)),
+        ("自營", float(dealer_sum)),
+    ]
+    abs_sum = sum(abs(v) for _k, v in trips)
+    if abs_sum <= 1e-9 and float(vol_mean or 0) <= 0:
+        return "缺資料", False, "近窗無法人淨額"
+    flat_cut = max(50.0, float(vol_mean or 0) * CHIP_FLAT_FRAC_OF_VOL * CHIP_WINDOW_N)
+    # 買超側（淨額>0）為主；全賣則看賣壓最輕／偏散戶
+    buyers = sorted(trips, key=lambda x: x[1], reverse=True)
+    top_k, top_v = buyers[0]
+    second_v = buyers[1][1]
+    retail_hot = bool(
+        vol_median_prior > 0
+        and vol_mean >= float(vol_median_prior) * RETAIL_VOL_VS_MEDIAN
+        and abs_sum < flat_cut * 2
+    )
+    if abs_sum < flat_cut:
+        if retail_hot:
+            return "偏散戶", False, (
+                f"法人近乎平(|F|+|T|+|D|={abs_sum:.0f}張<{flat_cut:.0f})，"
+                f"近窗量{vol_mean:.0f}>中位×{RETAIL_VOL_VS_MEDIAN}"
+            )
+        return "籌碼平淡", False, (
+            f"法人近乎平(|F|+|T|+|D|={abs_sum:.0f}張)，量未顯熱"
+        )
+    clear = top_v > 0 and top_v >= max(second_v, 0) * float(lead_ratio) and top_v >= flat_cut * 0.25
+    if clear:
+        return top_k, True, (
+            f"{top_k}買超主導 F={foreign_sum:.0f}/T={trust_sum:.0f}/D={dealer_sum:.0f}張 "
+            f"(lead≥{lead_ratio}×)"
+        )
+    # 無明確買超主導：高量＋法人弱 → 偏散戶；否則標相對最大者（含賣超）
+    if retail_hot or (top_v <= 0 and abs_sum < flat_cut * 3):
+        return "偏散戶", False, (
+            f"無明確機構買超 F={foreign_sum:.0f}/T={trust_sum:.0f}/D={dealer_sum:.0f}張"
+            + ("，量熱偏散戶" if retail_hot else "")
+        )
+    if top_v > 0:
+        return top_k, True, (
+            f"{top_k}相對買超 F={foreign_sum:.0f}/T={trust_sum:.0f}/D={dealer_sum:.0f}張"
+            "（未達 clear lead）"
+        )
+    # 全賣：標賣最多的機構，不算建設性
+    sellers = sorted(trips, key=lambda x: x[1])  # most negative first
+    sk, sv = sellers[0]
+    return sk, False, (
+        f"機構偏賣（最重{sk} {sv:.0f}張）F={foreign_sum:.0f}/T={trust_sum:.0f}/D={dealer_sum:.0f}張"
+    )
+
+
+def _vol_median(vals: Sequence[float]) -> float:
+    xs = sorted(float(v) for v in vals)
+    if not xs:
+        return 0.0
+    mid = len(xs) // 2
+    if len(xs) % 2:
+        return xs[mid]
+    return 0.5 * (xs[mid - 1] + xs[mid])
+
+
+def enrich_chip_character(con: sqlite3.Connection, hit: Dict[str, Any]) -> Dict[str, Any]:
+    """在 enrich_hit 之上補股性標籤與近窗法人加總。"""
+    sid = str(hit.get("stock_id") or "")
+    chip_asof, rows = chip_window_rows(con, sid, n=CHIP_WINDOW_N)
+    foreign_sum = sum(r[1] for r in rows)
+    trust_sum = sum(r[2] for r in rows)
+    dealer_sum = sum(r[3] for r in rows)
+    vols = [r[4] for r in rows]
+    vol_mean = (sum(vols) / len(vols)) if vols else 0.0
+    # 前段中位量：再往前抓 20 日
+    prior = con.execute(
+        "SELECT COALESCE(volume,0) FROM daily_quotes WHERE stock_id=? AND date<? "
+        "AND volume>0 ORDER BY date DESC LIMIT 20",
+        (sid, chip_asof or "99999999"),
+    ).fetchall()
+    vol_med = _vol_median([float(r[0]) for r in prior]) if prior else vol_mean
+    label, constructive, detail = classify_chip_label(
+        foreign_sum,
+        trust_sum,
+        dealer_sum,
+        vol_mean=vol_mean,
+        vol_median_prior=vol_med,
+    )
+    out = dict(hit)
+    out.update(
+        {
+            "chip_asof": chip_asof,
+            "chip_n": len(rows),
+            "chip_foreign_sum": round(foreign_sum, 1),
+            "chip_trust_sum": round(trust_sum, 1),
+            "chip_dealer_sum": round(dealer_sum, 1),
+            "chip_unit": "張",
+            "chip_label": label,
+            "chip_constructive": bool(constructive),
+            "chip_detail_zh": detail,
+            "nearVol": int(hit.get("bottom_near_year_ago_bars") or 0),
+        }
+    )
+    return out
+
+
+def assign_character_bucket(hit: Dict[str, Any]) -> str:
+    """最值得介入 vs 短衝搶一波。觀察非買訊。
+
+    規則：EPS≤0／缺 → 短衝；有實質獲利＋（AI鏈或建設性機構買超）→ 值得介入；
+    其餘（僅技術空間／散戶熱／法人弱）→ 短衝。
+    """
+    eps = hit.get("eps_last")
+    eps_ok = bool(hit.get("eps_profit"))
+    if eps is None or (isinstance(eps, (int, float)) and float(eps) <= 0) or not eps_ok:
+        return "短衝搶一波"
+    taught = bool(hit.get("taught_ai"))
+    constructive = bool(hit.get("chip_constructive"))
+    label = str(hit.get("chip_label") or "")
+    if taught or constructive:
+        return "最值得介入"
+    if label == "偏散戶":
+        return "短衝搶一波"
+    # 有 EPS 但無 AI、無建設性籌碼 → 技術反彈側
+    return "短衝搶一波"
+
+
+def character_score(hit: Dict[str, Any], bucket: str) -> float:
+    """桶內排序分（非買訊）。"""
+    base = float(hit.get("score") or 0.0)
+    room = float(hit.get("room_to_w4_pct") or 0.0)
+    near = int(hit.get("nearVol") or hit.get("bottom_near_year_ago_bars") or 0)
+    eps = hit.get("eps_last")
+    eps_v = float(eps) if isinstance(eps, (int, float)) else 0.0
+    taught = 1.0 if hit.get("taught_ai") else 0.0
+    constructive = 1.0 if hit.get("chip_constructive") else 0.0
+    retail = 1.0 if hit.get("chip_label") == "偏散戶" else 0.0
+    room_face = max(0.0, 35.0 - abs(room - 25.0))  # 貼 25% 臉
+    if bucket == "最值得介入":
+        return (
+            base
+            + 40.0 * taught
+            + min(50.0, max(0.0, eps_v))
+            + 25.0 * constructive
+            + room_face
+            + 8.0 * min(near, 4)
+        )
+    # 短衝：薄 EPS／散戶熱／量爆加分；深虧 EPS 也算技術側
+    thin = 0.0
+    if eps is None or eps_v <= 0:
+        thin = 30.0
+    elif eps_v < 2.0:
+        thin = 15.0
+    return (
+        base
+        + thin
+        + 22.0 * retail
+        + 6.0 * min(near, 4)
+        + room_face * 0.6
+        - 15.0 * taught  # AI 鏈不該排在短衝頂
+    )
+
+
+def build_why_zh(hit: Dict[str, Any], bucket: str) -> str:
+    eps = hit.get("eps_last")
+    eps_s = f"{eps:.2f}" if isinstance(eps, (int, float)) else "缺"
+    tags = ",".join(hit.get("taught_tags") or []) or "—"
+    ftd = (
+        f"F{hit.get('chip_foreign_sum', 0):.0f}/"
+        f"T{hit.get('chip_trust_sum', 0):.0f}/"
+        f"D{hit.get('chip_dealer_sum', 0):.0f}張"
+        f"（近{hit.get('chip_n', 0)}日≤{hit.get('chip_asof') or '?'}）"
+    )
+    bits = [
+        f"股性={hit.get('chip_label')}",
+        f"法人加總{ftd}",
+        f"EPS季={eps_s}{'獲利' if hit.get('eps_profit') else '無保護'}",
+        f"AI鏈={tags}",
+        f"room={hit.get('room_to_w4_pct')}%",
+        f"nearVol={hit.get('nearVol', hit.get('bottom_near_year_ago_bars'))}",
+    ]
+    if bucket == "最值得介入":
+        bits.append("實質收益保護＋AI／建設性籌碼側")
+    else:
+        bits.append("技術反彈／散戶熱／薄EPS側")
+    bits.append("觀察非買訊")
+    return "；".join(str(b) for b in bits)
+
+
+def character_tier_pack(
+    *screen_paths: Path,
+    db_path: Path = DB_DEFAULT,
+) -> Dict[str, Any]:
+    """合併可畫五波母體 → 股性＋EPS 深分兩桶。past-w4 全留。"""
+    base = merge_and_tier(*screen_paths, db_path=db_path)
+    con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    enriched: List[Dict[str, Any]] = []
+    for h in base.get("hits") or []:
+        row = enrich_chip_character(con, h)
+        bucket = assign_character_bucket(row)
+        score = round(character_score(row, bucket), 2)
+        row["character_bucket"] = bucket
+        row["character_score"] = score
+        row["why_zh"] = build_why_zh(row, bucket)
+        row["observe_only_zh"] = "觀察非買訊"
+        enriched.append(row)
+    con.close()
+
+    buckets: Dict[str, List[Dict[str, Any]]] = {
+        "最值得介入": [],
+        "短衝搶一波": [],
+    }
+    for h in enriched:
+        buckets.setdefault(str(h.get("character_bucket")), []).append(h)
+    for k in buckets:
+        buckets[k].sort(
+            key=lambda x: (-float(x.get("character_score") or 0), str(x.get("stock_id")))
+        )
+    counts = {k: len(buckets[k]) for k in ("最值得介入", "短衝搶一波")}
+    by_sid = {str(h.get("stock_id")): h for h in enriched}
+    must_rows = []
+    for sid in MUST_CHECK_SIDS:
+        h = by_sid.get(sid)
+        if not h:
+            must_rows.append(
+                {
+                    "stock_id": sid,
+                    "in_mother": False,
+                    "character_bucket": None,
+                    "why_zh": "不在可畫五波母體",
+                }
+            )
+            continue
+        must_rows.append(
+            {
+                "stock_id": sid,
+                "stock_name": h.get("stock_name"),
+                "in_mother": True,
+                "character_bucket": h.get("character_bucket"),
+                "chip_label": h.get("chip_label"),
+                "eps_last": h.get("eps_last"),
+                "character_score": h.get("character_score"),
+                "why_zh": h.get("why_zh"),
+            }
+        )
+    return {
+        "ok": True,
+        "asof": base.get("asof"),
+        "as_of_taipei": datetime.now(TAIPEI).isoformat(timespec="seconds"),
+        "button_zh": "次級四浪",
+        "note_zh": (
+            "母體＝可畫五波（含已過四浪高）；再依股性＋EPS 深分："
+            "最值得介入＝收益保護／AI鏈＋建設性籌碼；"
+            "短衝搶一波＝技術反彈／散戶熱／薄EPS。觀察非買訊。"
+        ),
+        "chip_label_heuristic_zh": CHIP_LABEL_HEURISTIC_ZH,
+        "chip_window_n": CHIP_WINDOW_N,
+        "sources": base.get("sources"),
+        "n_mother": int(base.get("n_hits") or 0),
+        "n_per_bucket": counts,
+        "buckets": buckets,
+        "must_check": must_rows,
+        "observe_only_zh": "觀察非買訊",
+    }
+
+
+def format_character_tier_txt(pack: Dict[str, Any], *, top_n: int = 25) -> str:
+    lines: List[str] = []
+    counts = pack.get("n_per_bucket") or {}
+    lines.append(
+        f"asof={pack.get('asof')} 次級四浪｜母體n={pack.get('n_mother')} "
+        f"值得介入={counts.get('最值得介入', 0)} "
+        f"短衝搶一波={counts.get('短衝搶一波', 0)}｜觀察非買訊"
+    )
+    lines.append(str(pack.get("note_zh") or ""))
+    lines.append(str(pack.get("chip_label_heuristic_zh") or ""))
+    for bucket in ("最值得介入", "短衝搶一波"):
+        rows = (pack.get("buckets") or {}).get(bucket) or []
+        lines.append(f"\n=== {bucket}（共{len(rows)}；列 top {top_n}）===")
+        for h in rows[: int(top_n)]:
+            eps = h.get("eps_last")
+            eps_s = f"{eps:.2f}" if isinstance(eps, (int, float)) else "—"
+            tags = ",".join(h.get("taught_tags") or []) or "—"
+            lines.append(
+                f"{h.get('stock_id')} {h.get('stock_name')} "
+                f"room={h.get('room_to_w4_pct')}% "
+                f"nearVol={h.get('nearVol', h.get('bottom_near_year_ago_bars'))} "
+                f"eps={eps_s} taught={tags} "
+                f"chip={h.get('chip_label')} "
+                f"score={h.get('character_score')} "
+                f"| {h.get('why_zh')}"
+            )
+    lines.append("\n=== must-check ===")
+    for m in pack.get("must_check") or []:
+        lines.append(
+            f"{m.get('stock_id')} {m.get('stock_name') or ''} "
+            f"bucket={m.get('character_bucket')} | {m.get('why_zh')}"
+        )
+    return "\n".join(lines) + "\n"
+
+
 def main() -> None:
     import argparse
 
@@ -602,7 +979,29 @@ def main() -> None:
     )
     ap.add_argument("--tier-json", default="")
     ap.add_argument("--tier-txt", default="")
+    ap.add_argument(
+        "--character-tier",
+        nargs="+",
+        default=None,
+        help="合併 screen JSON → 股性＋EPS 深分兩桶（次級四浪）",
+    )
+    ap.add_argument("--character-json", default="")
+    ap.add_argument("--character-txt", default="")
     args = ap.parse_args()
+    if args.character_tier:
+        pack = character_tier_pack(*[Path(p) for p in args.character_tier])
+        jpath = Path(args.character_json) if args.character_json else (
+            Path("/opt/cursor/artifacts")
+            / f"focus_w4_character_tier_{pack.get('asof') or 'na'}.json"
+        )
+        tpath = Path(args.character_txt) if args.character_txt else jpath.with_suffix(".txt")
+        jpath.parent.mkdir(parents=True, exist_ok=True)
+        jpath.write_text(json.dumps(pack, ensure_ascii=False, indent=2), encoding="utf-8")
+        tpath.write_text(format_character_tier_txt(pack), encoding="utf-8")
+        print("CHARACTER_JSON", jpath)
+        print("CHARACTER_TXT", tpath)
+        print("n_per_bucket", pack.get("n_per_bucket"), "mother", pack.get("n_mother"))
+        return
     if args.merge_tier:
         pack = merge_and_tier(*[Path(p) for p in args.merge_tier])
         jpath = Path(args.tier_json) if args.tier_json else (

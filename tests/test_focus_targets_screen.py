@@ -117,3 +117,78 @@ def test_vol_room_bands_and_tier_ladder():
         )
         == "D"
     )
+
+
+def test_chip_label_dominant_and_retail():
+    from scripts.focus_targets_screen import classify_chip_label
+
+    lab, ok, _ = classify_chip_label(
+        5000, 200, -100, vol_mean=3000, vol_median_prior=2000
+    )
+    assert lab == "外資" and ok
+    lab, ok, _ = classify_chip_label(
+        100, 4000, 50, vol_mean=3000, vol_median_prior=2000
+    )
+    assert lab == "投信" and ok
+    lab, ok, _ = classify_chip_label(
+        10, -20, 3500, vol_mean=3000, vol_median_prior=2000
+    )
+    assert lab == "自營" and ok
+    # 近乎平＋量熱 → 偏散戶
+    lab, ok, _ = classify_chip_label(
+        5, -3, 2, vol_mean=8000, vol_median_prior=2000
+    )
+    assert lab == "偏散戶" and not ok
+
+
+def test_character_bucket_eps_and_ai():
+    from scripts.focus_targets_screen import assign_character_bucket
+
+    assert (
+        assign_character_bucket(
+            {
+                "eps_last": 10.0,
+                "eps_profit": True,
+                "taught_ai": True,
+                "chip_constructive": False,
+                "chip_label": "外資",
+            }
+        )
+        == "最值得介入"
+    )
+    assert (
+        assign_character_bucket(
+            {
+                "eps_last": 5.0,
+                "eps_profit": True,
+                "taught_ai": False,
+                "chip_constructive": True,
+                "chip_label": "投信",
+            }
+        )
+        == "最值得介入"
+    )
+    assert (
+        assign_character_bucket(
+            {
+                "eps_last": None,
+                "eps_profit": False,
+                "taught_ai": True,
+                "chip_constructive": True,
+                "chip_label": "外資",
+            }
+        )
+        == "短衝搶一波"
+    )
+    assert (
+        assign_character_bucket(
+            {
+                "eps_last": 1.0,
+                "eps_profit": True,
+                "taught_ai": False,
+                "chip_constructive": False,
+                "chip_label": "偏散戶",
+            }
+        )
+        == "短衝搶一波"
+    )

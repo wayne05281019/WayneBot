@@ -22,6 +22,7 @@ from bot_servers import (
     MENU_ROW2,
     MENU_ROW3,
     MENU_BTN_COMBO_SCREEN,
+    MENU_BTN_WAVE4,
     MENU_BTN_SLOT,
     WayneTelegramBot,
     MENU_BTN_WATCH,
@@ -31,7 +32,7 @@ from wayne_db import init_database
 
 
 def test_full_menu_is_two_rows_no_compact():
-    assert MENU_LAYOUT_VERSION == "43"
+    assert MENU_LAYOUT_VERSION == "44"
     assert MENU_ROW1 == (
         MENU_BTN_WINRATE,
         "海選",
@@ -61,7 +62,8 @@ def test_full_menu_is_two_rows_no_compact():
     assert [b.text for b in kb.keyboard[1]] == list(MENU_ROW2)
     assert [b.text for b in kb.keyboard[2]] == list(MENU_ROW3)
     assert MENU_ROW3[0] == MENU_BTN_COMBO_SCREEN
-    assert MENU_ROW3[1:] == (MENU_BTN_SLOT,) * 6
+    assert MENU_ROW3[1] == MENU_BTN_WAVE4
+    assert MENU_ROW3[2:] == (MENU_BTN_SLOT,) * 5
     assert len(kb.keyboard) == 3
 
 
