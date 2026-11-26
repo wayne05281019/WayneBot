@@ -134,13 +134,130 @@ def _filter_degree(
     return out
 
 
+def _right_dominant_highs(
+    bars: Sequence[Dict[str, float]],
+    *,
+    start_i: int,
+    end_i: int,
+) -> List[Pivot]:
+    """右側無更高高的波段起點候選（由近→遠）。
+
+    台光電教法：新開始低 2560 往回，起點是 10/7 的 6325，不是更早絕對高 6470。
+    取「從此高到終低之間沒有更高高」的 H，再由近到遠試五波。
+    """
+    if end_i <= start_i + 4:
+        return []
+    highs = [float(b["high"]) for b in bars]
+    lows = [float(b["low"]) for b in bars]
+    raw = _fractal_pivots(highs[start_i : end_i + 1], lows[start_i : end_i + 1], left=2)
+    for p in raw:
+        p.i = start_i + p.i
+        p.date = str(bars[p.i].get("date") or "")
+    # 也允許窗內絕對最高日當候選（即使不是 fractal）
+    jmax = max(range(start_i, end_i + 1), key=lambda j: highs[j])
+    abs_peak = Pivot(
+        i=jmax,
+        price=highs[jmax],
+        kind="H",
+        date=str(bars[jmax].get("date") or ""),
+    )
+    h_piv = [p for p in raw if p.kind == "H"]
+    if not any(p.i == abs_peak.i for p in h_piv):
+        h_piv.append(abs_peak)
+    # 右側主導：peak..end 內 max high == peak.high
+    cands: List[Pivot] = []
+    for p in h_piv:
+        if p.i >= end_i - 4:
+            continue
+        seg_max = max(highs[p.i : end_i + 1])
+        if highs[p.i] + 1e-9 >= seg_max:
+            cands.append(p)
+    # 由近到遠（越靠近終低越先試＝本段結構，不跨到上一段）
+    cands.sort(key=lambda p: p.i, reverse=True)
+    # 去重 index
+    seen: set[int] = set()
+    out: List[Pivot] = []
+    for p in cands:
+        if p.i in seen:
+            continue
+        seen.add(p.i)
+        out.append(p)
+    return out
+
+
+def _pivots_peak_to_low(
+    bars: Sequence[Dict[str, float]],
+    peak: Pivot,
+    new_start: Pivot,
+) -> List[Pivot]:
+    """波段高→新開始低：轉折點（強制起高終低、交替）。"""
+    peak_abs = int(peak.i)
+    i5 = int(new_start.i)
+    sub_h = [float(b["high"]) for b in bars[peak_abs : i5 + 1]]
+    sub_l = [float(b["low"]) for b in bars[peak_abs : i5 + 1]]
+    raw = _fractal_pivots(sub_h, sub_l, left=2)
+    for p in raw:
+        p.i = peak_abs + p.i
+        p.date = str(bars[p.i].get("date") or "")
+    piv = _filter_degree(raw, min_bars=2, min_pct=0.012)
+    piv = [p for p in piv if peak_abs <= p.i <= i5]
+    prior_high = Pivot(
+        i=peak_abs,
+        price=float(bars[peak_abs]["high"]),
+        kind="H",
+        date=str(bars[peak_abs].get("date") or ""),
+    )
+    if not piv or piv[0].kind != "H" or piv[0].i != peak_abs:
+        piv = [prior_high] + [p for p in piv if p.i > peak_abs]
+    if piv[-1].kind != "L" or piv[-1].i != i5:
+        piv = [p for p in piv if p.i < i5] + [
+            Pivot(i=i5, price=float(new_start.price), kind="L", date=new_start.date)
+        ]
+    alt: List[Pivot] = []
+    for p in piv:
+        if not alt:
+            alt.append(p)
+            continue
+        if p.kind == alt[-1].kind:
+            if p.kind == "H" and p.price >= alt[-1].price:
+                alt[-1] = p
+            elif p.kind == "L" and p.price <= alt[-1].price:
+                alt[-1] = p
+        else:
+            alt.append(p)
+    return alt
+
+
+def _five_wave_ok(five: Sequence[Pivot]) -> Tuple[bool, str]:
+    """結構＋第3段非1/3/5最短。"""
+    if not (
+        len(five) == 6
+        and five[0].kind == "H"
+        and five[-1].kind == "L"
+        and all(five[k].kind == ("H" if k % 2 == 0 else "L") for k in range(6))
+    ):
+        return False, f"轉折抽稀後={len(five)}，無法穩定定義五波"
+    legs = [
+        abs(five[1].price - five[0].price),
+        abs(five[3].price - five[2].price),
+        abs(five[5].price - five[4].price),
+    ]
+    if legs[1] + 1e-9 < min(legs[0], legs[2]):
+        return False, "第3段是1/3/5中最短（五波檢核未過）"
+    return True, ""
+
+
 def try_five_wave_back_from_low(
     bars: Sequence[Dict[str, float]],
     new_start: Pivot,
     *,
     search_back: int = 120,
 ) -> TailBackFive:
-    """由新開始低點往回，試畫前一段下跌的五波（0高→1低→2高→3低→4高→5低）。"""
+    """由新開始低點往回，試畫前一段下跌的五波（0高→1低→2高→3低→4高→5低）。
+
+    起點不取搜尋窗絕對最高（會跨到上一段，如 6470）；改取右側無更高高、
+    由近到遠第一個能過五波檢核的波段高（台光電＝6325→2560）。
+    """
     today_up = True
     if new_start is None:
         return TailBackFive(
@@ -163,97 +280,62 @@ def try_five_wave_back_from_low(
         )
 
     start_i = max(0, i5 - int(search_back))
-    seg_highs = [float(b["high"]) for b in bars[start_i : i5 + 1]]
-    seg_lows = [float(b["low"]) for b in bars[start_i : i5 + 1]]
-    # 段內最高＝波段起點候選
-    local_peak_j = max(range(len(seg_highs)), key=lambda j: seg_highs[j])
-    peak_abs = start_i + local_peak_j
-    prior_high = Pivot(
-        i=peak_abs,
-        price=float(bars[peak_abs]["high"]),
-        kind="H",
-        date=str(bars[peak_abs].get("date") or ""),
-    )
-
-    if peak_abs >= i5 - 4:
+    cands = _right_dominant_highs(bars, start_i=start_i, end_i=i5)
+    if not cands:
         return TailBackFive(
             ok_new_start=True,
             ok_five=False,
             today_up=today_up,
             new_start=new_start,
-            prior_high=prior_high,
-            fail_reason_zh="高點太靠近低點，不像完整下跌段",
+            fail_reason_zh="找不到右側主導波段高",
         )
 
-    # 只在「波段高 → 新開始低」這一段上找轉折
-    sub_h = [float(b["high"]) for b in bars[peak_abs : i5 + 1]]
-    sub_l = [float(b["low"]) for b in bars[peak_abs : i5 + 1]]
-    raw = _fractal_pivots(sub_h, sub_l, left=2)
-    # 映射回絕對 index
-    for p in raw:
-        p.i = peak_abs + p.i
-        p.date = str(bars[p.i].get("date") or "")
-
-    # 強制端點：起點高、終點低
-    piv = _filter_degree(raw, min_bars=2, min_pct=0.012)
-    # 清掉端點外、並確保起高終低
-    piv = [p for p in piv if peak_abs <= p.i <= i5]
-    if not piv or piv[0].kind != "H" or piv[0].i != peak_abs:
-        piv = [prior_high] + [p for p in piv if p.i > peak_abs]
-    if piv[-1].kind != "L" or piv[-1].i != i5:
-        piv = [p for p in piv if p.i < i5] + [
-            Pivot(i=i5, price=float(new_start.price), kind="L", date=new_start.date)
-        ]
-    # 再交替清理
-    alt: List[Pivot] = []
-    for p in piv:
-        if not alt:
-            alt.append(p)
-            continue
-        if p.kind == alt[-1].kind:
-            if p.kind == "H" and p.price >= alt[-1].price:
-                alt[-1] = p
-            elif p.kind == "L" and p.price <= alt[-1].price:
-                alt[-1] = p
-        else:
-            alt.append(p)
-    piv = alt
-
-    # 目標結構：H L H L H L ＝ 6 個點（浪0～浪5）
-    # 若點數 > 6，抽稀到最顯著的 5 浪（保留端點，中間選幅度大的）
-    five = _thin_to_five_down(piv)
-    ok = len(five) == 6 and five[0].kind == "H" and five[-1].kind == "L"
-    ok = ok and all(five[k].kind == ("H" if k % 2 == 0 else "L") for k in range(6))
-
-    reason = ""
-    note = ""
-    if ok:
-        # 軟規則：第3浪（點2→點3）跌幅不應是 1/3/5 最短（常見檢核）
-        legs = [
-            abs(five[1].price - five[0].price),
-            abs(five[3].price - five[2].price),
-            abs(five[5].price - five[4].price),
-        ]
-        if legs[1] + 1e-9 < min(legs[0], legs[2]):
-            ok = False
-            reason = "第3段是1/3/5中最短（五波檢核未過）"
-        else:
+    best_fail: Optional[TailBackFive] = None
+    for peak in cands:
+        piv = _pivots_peak_to_low(bars, peak, new_start)
+        five = _thin_to_five_down(piv)
+        ok, reason = _five_wave_ok(five)
+        prior_high = Pivot(
+            i=int(peak.i),
+            price=float(bars[int(peak.i)]["high"]),
+            kind="H",
+            date=str(bars[int(peak.i)].get("date") or ""),
+        )
+        if ok:
             note = (
                 f"由尾回推五波可定義：高{five[0].price:.0f}→低{five[5].price:.0f}；"
                 f"今日連回新開始低{new_start.price:.0f}"
             )
-    else:
-        reason = reason or f"轉折點數={len(piv)}，抽稀後={len(five)}，無法穩定定義五波"
+            return TailBackFive(
+                ok_new_start=True,
+                ok_five=True,
+                today_up=today_up,
+                new_start=new_start,
+                prior_high=prior_high,
+                five_points=list(five),
+                fail_reason_zh="",
+                note_zh=note,
+            )
+        if best_fail is None:
+            best_fail = TailBackFive(
+                ok_new_start=True,
+                ok_five=False,
+                today_up=today_up,
+                new_start=new_start,
+                prior_high=prior_high,
+                five_points=list(five) if five else list(piv),
+                fail_reason_zh=reason
+                or f"轉折點數={len(piv)}，抽稀後={len(five)}，無法穩定定義五波",
+                note_zh="五波未過關，僅標新開始與波段高",
+            )
 
-    return TailBackFive(
+    return best_fail or TailBackFive(
         ok_new_start=True,
-        ok_five=bool(ok),
+        ok_five=False,
         today_up=today_up,
         new_start=new_start,
-        prior_high=prior_high,
-        five_points=five if five else piv,
-        fail_reason_zh=reason,
-        note_zh=note or ("五波未過關，僅標新開始與波段高" if not ok else note),
+        prior_high=cands[0],
+        fail_reason_zh="候選起點皆未過五波檢核",
     )
 
 
