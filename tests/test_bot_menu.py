@@ -93,6 +93,52 @@ def test_hamburger_only_unique_not_two_row_duplicates():
     )
 
 
+def test_value_fund_busy_latch_blocks_repress():
+    """價值三圖慢：同人連按只出一次等待，第二次回進行中。"""
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from bot_servers import WayneTelegramBot
+
+    async def _run():
+        bot = WayneTelegramBot.__new__(WayneTelegramBot)
+        bot.db_path = ":memory:"
+        bot.charts_dir = "/tmp"
+        bot._trade_running = set()
+        msg = MagicMock()
+        msg.reply_text = AsyncMock()
+        msg.reply_html = AsyncMock()
+        msg.reply_photo = AsyncMock()
+        bot._uid_from_message = lambda m: "99"
+        bot._actor_key = lambda m, uid="": f"a:{uid or '99'}"
+        bot._hit_is_emerging = lambda code, hits: False
+        bot._hub_keyboard = lambda *a, **k: None
+        bot._start_plain_wait = AsyncMock(return_value=(None, None, None))
+        bot._stop_plain_wait = AsyncMock()
+        bot._wait_bubble = lambda *a, **k: "wait"
+
+        async def fake_to_thread(fn, *a, **k):
+            await asyncio.sleep(0.2)
+            return {"paths": []}
+
+        with patch(
+            "bot_servers.lookup_stocks",
+            return_value=[{"stock_id": "3715", "stock_name": "定穎投控"}],
+        ), patch("bot_servers.asyncio.to_thread", side_effect=fake_to_thread), patch(
+            "fundamentals.format_fundamentals_html", return_value="<b>ok</b>"
+        ):
+            first = asyncio.create_task(bot._send_fund_to(msg, "3715"))
+            await asyncio.sleep(0.05)
+            await bot._send_fund_to(msg, "3715")
+            await first
+        assert any("進行中" in str(c) for c in msg.reply_text.await_args_list)
+        assert bot._start_plain_wait.await_count == 1
+        assert bot._stop_plain_wait.await_count == 1
+        assert not bot._trade_running
+
+    asyncio.run(_run())
+
+
 def test_image_surfaces_wait_vanishes_after_photo():
     import inspect
 
@@ -104,6 +150,14 @@ def test_image_surfaces_wait_vanishes_after_photo():
     industry = inspect.getsource(WayneTelegramBot._send_industry)
     assert industry.index("_start_plain_wait") < industry.index("reply_photo")
     assert industry.index("reply_photo") < industry.index("_stop_plain_wait")
+    # 價值三圖偏慢：等待泡泡＋同人防連按，不准畫面沉默
+    fund = inspect.getsource(WayneTelegramBot._send_fund_to)
+    assert "價值三圖進行中" in fund
+    assert "_trade_slot_try_begin" in fund and "value_fund" in fund
+    assert fund.index("_start_plain_wait") < fund.index("reply_photo")
+    assert fund.index("reply_photo") < fund.index("_stop_plain_wait")
+    assert fund.index("_trade_slot_try_begin") < fund.index("_start_plain_wait")
+    assert "_trade_slot_end" in fund
     # 大盤附圖＝暗底遠／近／超近；prep-once＋send∥paint；遠窗硬閘
     wave = inspect.getsource(WayneTelegramBot._send_market_wave_charts)
     assert wave.index("_start_plain_wait") < wave.index("_send_market_teach_one")
