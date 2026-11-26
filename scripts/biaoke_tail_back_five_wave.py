@@ -228,8 +228,42 @@ def _pivots_peak_to_low(
     return alt
 
 
-def _five_wave_ok(five: Sequence[Pivot]) -> Tuple[bool, str]:
-    """結構＋第3段非1/3/5最短。"""
+def _ranges_overlap(a0: float, a1: float, b0: float, b1: float) -> bool:
+    lo_a, hi_a = (a0, a1) if a0 <= a1 else (a1, a0)
+    lo_b, hi_b = (b0, b1) if b0 <= b1 else (b1, b0)
+    return not (hi_b < lo_a - 1e-9 or lo_b > hi_a + 1e-9)
+
+
+def _overlap_depth_pct(a0: float, a1: float, b0: float, b1: float) -> float:
+    lo_a, hi_a = (a0, a1) if a0 <= a1 else (a1, a0)
+    lo_b, hi_b = (b0, b1) if b0 <= b1 else (b1, b0)
+    inter = min(hi_a, hi_b) - max(lo_a, lo_b)
+    if inter <= 0:
+        return 0.0
+    short = min(hi_a - lo_a, hi_b - lo_b)
+    if short <= 1e-12:
+        return 1.0
+    return float(inter / short)
+
+
+# ①④ 淺疊容差：南亞科型只差數檔（深度≤8%）仍算「畫得出五波」觀察過關；
+# 深度更大＝真重疊，鐵律擋。非買訊／非話筒浪認證。
+IRON_14_SOFT_DEPTH = 0.08
+
+
+def iron_laws_down_five(
+    five: Sequence[Pivot],
+    *,
+    soft_overlap_depth: float = IRON_14_SOFT_DEPTH,
+) -> Tuple[bool, str]:
+    """下跌五波推進鐵律（對齊 WR-IRON-*／wave8 簡核）。
+
+    點序：H0,L1,H2,L3,H4,L5
+    - ③非最短（①③⑤）
+    - ①與④價區不重疊（淺疊深度≤soft 仍過，標淺疊）
+    - ②不穿越起點（H2 < H0）
+    - ③創新低（L3 < L1）；⑤再創新低（L5 < L3）
+    """
     if not (
         len(five) == 6
         and five[0].kind == "H"
@@ -237,14 +271,30 @@ def _five_wave_ok(five: Sequence[Pivot]) -> Tuple[bool, str]:
         and all(five[k].kind == ("H" if k % 2 == 0 else "L") for k in range(6))
     ):
         return False, f"轉折抽稀後={len(five)}，無法穩定定義五波"
-    legs = [
-        abs(five[1].price - five[0].price),
-        abs(five[3].price - five[2].price),
-        abs(five[5].price - five[4].price),
-    ]
-    if legs[1] + 1e-9 < min(legs[0], legs[2]):
-        return False, "第3段是1/3/5中最短（五波檢核未過）"
+    h0, l1, h2, l3, h4, l5 = (float(five[i].price) for i in range(6))
+    # 下跌方向硬序
+    if not (h2 < h0 - 1e-9):
+        return False, "鐵律：②高不得穿越起點（H2≥H0）"
+    if not (l3 < l1 - 1e-9):
+        return False, "鐵律：③須低於①低（L3≥L1）"
+    if not (l5 < l3 - 1e-9):
+        return False, "鐵律：⑤須再創新低（L5≥L3）"
+    # WR-IRON-W3-NOT-SHORTEST
+    legs135 = [abs(l1 - h0), abs(l3 - h2), abs(l5 - h4)]
+    if legs135[1] + 1e-9 < min(legs135[0], legs135[2]):
+        return False, "鐵律：③非①③⑤最短"
+    # WR-IRON-14-OVERLAP：①價區 vs ④價區（淺疊容差）
+    depth = _overlap_depth_pct(h0, l1, l3, h4)
+    if depth > float(soft_overlap_depth) + 1e-12:
+        return False, f"鐵律：①與④價區不重疊（深度{depth:.0%}）"
+    if depth > 1e-12:
+        return True, f"淺疊{depth:.0%}≤容差{float(soft_overlap_depth):.0%}（觀察可畫）"
     return True, ""
+
+
+def _five_wave_ok(five: Sequence[Pivot]) -> Tuple[bool, str]:
+    """結構＋下跌推進鐵律。"""
+    return iron_laws_down_five(five)
 
 
 def try_five_wave_back_from_low(

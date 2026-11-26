@@ -2,7 +2,12 @@
 """由尾回推五波（觀察）單元測。"""
 from __future__ import annotations
 
-from scripts.biaoke_tail_back_five_wave import analyze_bars, find_new_start_low
+from scripts.biaoke_tail_back_five_wave import (
+    Pivot,
+    analyze_bars,
+    find_new_start_low,
+    iron_laws_down_five,
+)
 
 
 def _bars_down_five_then_up() -> list[dict]:
@@ -124,3 +129,49 @@ def test_start_prefers_near_structure_not_older_abs_high():
     assert abs(r.five_points[0].price - 6325) < 1.0
     assert r.five_points[0].price < 6400  # 不准吃到 6470
     assert abs(r.five_points[-1].price - 2560) < 1.0
+    ok, reason = iron_laws_down_five(r.five_points)
+    assert ok, reason
+
+
+def test_iron_rejects_w1_w4_overlap():
+    # ④高大幅衝進①價區 → 鐵律否
+    five = [
+        Pivot(0, 100.0, "H"),
+        Pivot(1, 80.0, "L"),
+        Pivot(2, 95.0, "H"),
+        Pivot(3, 70.0, "L"),
+        Pivot(4, 92.0, "H"),  # deep overlap w1 80–100
+        Pivot(5, 60.0, "L"),
+    ]
+    ok, reason = iron_laws_down_five(five)
+    assert ok is False
+    assert "①與④" in reason or "不重疊" in reason
+
+
+def test_iron_allows_shallow_14_overlap_like_2408():
+    # 南亞科型：④只淺疊①數檔（深度≈5%）→ 觀察可畫
+    five = [
+        Pivot(0, 537.0, "H"),
+        Pivot(1, 412.0, "L"),
+        Pivot(2, 497.5, "H"),
+        Pivot(3, 324.0, "L"),
+        Pivot(4, 417.0, "H"),
+        Pivot(5, 255.5, "L"),
+    ]
+    ok, reason = iron_laws_down_five(five)
+    assert ok is True
+    assert "淺疊" in reason
+
+
+def test_iron_rejects_w3_shortest():
+    five = [
+        Pivot(0, 100.0, "H"),
+        Pivot(1, 70.0, "L"),  # w1=30
+        Pivot(2, 85.0, "H"),
+        Pivot(3, 78.0, "L"),  # w3=7 shortest
+        Pivot(4, 84.0, "H"),
+        Pivot(5, 50.0, "L"),  # w5=34
+    ]
+    ok, reason = iron_laws_down_five(five)
+    assert ok is False
+    assert "③" in reason
