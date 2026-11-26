@@ -2,7 +2,10 @@
 """次級四浪分級：EPS／股性桶。"""
 from __future__ import annotations
 
+from unittest.mock import patch
+
 from focus_wave4_desk import (
+    PAGE_SIZE,
     Wave4Row,
     _assign_bucket,
     _chip_label,
@@ -12,6 +15,7 @@ from focus_wave4_desk import (
     format_wave4_one_html,
     format_wave4_page_html,
     intervene_page,
+    overlay_live_on_rows,
 )
 
 
@@ -84,6 +88,29 @@ def test_passive_is_rebound_sprint():
     )
     bucket, why = _assign_bucket(row)
     assert bucket == "sprint"
+    assert "搶反彈" in why
+
+
+def test_passive_past_w4_still_sprint_not_intervene():
+    """被動元件已過四浪高仍搶反彈臉，不准進值得介入。"""
+    row = Wave4Row(
+        stock_id="2327",
+        stock_name="國巨",
+        market="TW",
+        close=1200,
+        room_to_w4_pct=-5.0,
+        above_w4_low=True,
+        bottom_near_year_ago_bars=1,
+        score=90,
+        eps_last=14.0,
+        eps_profit=True,
+        taught_tags=["被動元件"],
+        industry_chain="電子上游-被動元件",
+        chip_label="外資偏愛",
+    )
+    bucket, why = _assign_bucket(row)
+    assert bucket == "sprint"
+    assert "intervene" != bucket
     assert "搶反彈" in why
 
 

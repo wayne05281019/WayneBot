@@ -14,7 +14,7 @@ from __future__ import annotations
 import sqlite3
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, wait
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -491,14 +491,14 @@ def overlay_live_on_rows(
     rows: Sequence[Dict[str, Any]],
     db_path: Path | str = DB_DEFAULT,
     *,
-    max_workers: int = 6,
+    max_workers: int = _LIVE_OVERLAY_WORKERS,
+    quote_timeout_sec: float = _LIVE_QUOTE_TIMEOUT_SEC,
 ) -> Tuple[List[Dict[str, Any]], bool]:
-    """開市合併窗才抓現價；失敗就保留收盤臉。
+    """開市合併窗才抓現價；失敗／逾時就保留收盤臉（不准假現價）。
 
-    十檔並行抓價（有上限），避免逐檔串行拖慢話筒。
+    十檔有界並行抓價（workers 上限 8），避免逐檔串行拖慢話筒。
     """
     try:
-        from concurrent.futures import ThreadPoolExecutor, as_completed
         from live_quote import fetch_lookup_quote, is_live_merge_window
     except Exception:
         return [dict(r) for r in rows], False
@@ -512,6 +512,8 @@ def overlay_live_on_rows(
     def _px(r: Dict[str, Any]) -> float:
         sid = str(r.get("stock_id") or "")
         mkt = str(r.get("market") or "")
+        if not sid:
+            return 0.0
         try:
             rt = fetch_lookup_quote(sid, mkt, path) or {}
             return float(rt.get("close") or 0)
@@ -519,15 +521,23 @@ def overlay_live_on_rows(
             return 0.0
 
     prices = [0.0] * len(base)
-    workers = max(1, min(int(max_workers), len(base)))
-    with ThreadPoolExecutor(max_workers=workers) as pool:
+    workers = max(1, min(8, int(max_workers or _LIVE_OVERLAY_WORKERS), len(base)))
+    to = float(quote_timeout_sec or _LIVE_QUOTE_TIMEOUT_SEC)
+    pool = ThreadPoolExecutor(max_workers=workers)
+    try:
         futs = {pool.submit(_px, r): i for i, r in enumerate(base)}
-        for fut in as_completed(futs):
+        done, not_done = wait(futs, timeout=to)
+        for fut in done:
             i = futs[fut]
             try:
                 prices[i] = float(fut.result() or 0)
             except Exception:
                 prices[i] = 0.0
+        for fut in not_done:
+            prices[futs[fut]] = 0.0  # 逾時 → 收盤臉
+    finally:
+        # 不快等慢線；HTTP 仍受 MIS connect/read timeout 綁住
+        pool.shutdown(wait=False, cancel_futures=True)
     out: List[Dict[str, Any]] = []
     any_live = False
     for r, px in zip(base, prices):
@@ -535,7 +545,7 @@ def overlay_live_on_rows(
             out.append(apply_live_close(r, px))
             any_live = True
         else:
-            out.append(r)
+            out.append(r)  # 保留原收盤 close，不寫假價
     return out, any_live
 
 
