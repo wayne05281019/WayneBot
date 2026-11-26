@@ -9346,6 +9346,7 @@ class WayneTelegramBot:
 
         # 按鈕／指令路徑只讀庫，不跑全市場 sync（那會卡死整機；交給盤後流水線）。
         # 價值三圖＝總覽／月營收／季報；只吃官方欄，不准造假。
+        # 三張渲圖偏慢：先出等待泡泡＋同人同鈕防連按（對齊籌碼／產業）。
         code = str(code or "").strip()
         hits = lookup_stocks(self.db_path, code)
         uid = str(self._uid_from_message(message) or "0")
@@ -9359,6 +9360,19 @@ class WayneTelegramBot:
             return
         if hits:
             code = str(hits[0].get("stock_id") or code).strip()
+        actor = self._actor_key(message, uid=uid)
+        if not self._trade_slot_try_begin(actor, "value_fund"):
+            await message.reply_text(
+                "價值三圖進行中，請稍候完成後再按。",
+                reply_markup=self._hub_keyboard(code, em=em),
+            )
+            return
+        wait_h = await self._start_plain_wait(
+            message,
+            text_fn=lambda s: self._wait_bubble(
+                "價值三圖進行中", s, now="總覽／月／季", fill_sec=40.0
+            ),
+        )
 
         def _paint():
             from value_fund_panels import render_value_fund_panels
@@ -9367,43 +9381,47 @@ class WayneTelegramBot:
                 code, self.db_path, self.charts_dir, uid=uid
             )
 
-        painted = None
         try:
-            painted = await asyncio.to_thread(_paint)
-        except Exception:
-            logger.exception("價值三圖失敗 code=%s", code)
             painted = None
-        paths = list((painted or {}).get("paths") or [])
-        # 點開＝全螢幕橫圖；caption 提示打橫看（Pro Max 橫拿最清楚）
-        caps = ("價值・總覽", "價值・月營收", "價值・季報")
-        tip = "｜點開打橫看"
-        sent = 0
-        for i, pth in enumerate(paths):
-            if not pth or not os.path.isfile(pth):
-                continue
             try:
-                send_path = self._prepare_lookup_album_photo(pth)
-                with open(send_path, "rb") as f:
-                    await message.reply_photo(
-                        photo=f,
-                        caption=(
-                            f"{html_escape(code)}　"
-                            f"{caps[i] if i < len(caps) else '價值'}"
-                            f"{tip if i == 0 else ''}"
-                        ),
-                        reply_markup=self._hub_keyboard(code, em=em)
-                        if i == len(paths) - 1
-                        else None,
-                    )
-                sent += 1
+                painted = await asyncio.to_thread(_paint)
             except Exception:
-                logger.exception("價值圖送出失敗 code=%s i=%s", code, i)
-        if sent:
-            return
-        html = await asyncio.to_thread(format_fundamentals_html, code, self.db_path)
-        await message.reply_html(
-            html, reply_markup=self._hub_keyboard(code, em=em), disable_web_page_preview=True
-        )
+                logger.exception("價值三圖失敗 code=%s", code)
+                painted = None
+            paths = list((painted or {}).get("paths") or [])
+            # 點開＝全螢幕橫圖；caption 提示打橫看（Pro Max 橫拿最清楚）
+            caps = ("價值・總覽", "價值・月營收", "價值・季報")
+            tip = "｜點開打橫看"
+            sent = 0
+            for i, pth in enumerate(paths):
+                if not pth or not os.path.isfile(pth):
+                    continue
+                try:
+                    send_path = self._prepare_lookup_album_photo(pth)
+                    with open(send_path, "rb") as f:
+                        await message.reply_photo(
+                            photo=f,
+                            caption=(
+                                f"{html_escape(code)}　"
+                                f"{caps[i] if i < len(caps) else '價值'}"
+                                f"{tip if i == 0 else ''}"
+                            ),
+                            reply_markup=self._hub_keyboard(code, em=em)
+                            if i == len(paths) - 1
+                            else None,
+                        )
+                    sent += 1
+                except Exception:
+                    logger.exception("價值圖送出失敗 code=%s i=%s", code, i)
+            if sent:
+                return
+            html = await asyncio.to_thread(format_fundamentals_html, code, self.db_path)
+            await message.reply_html(
+                html, reply_markup=self._hub_keyboard(code, em=em), disable_web_page_preview=True
+            )
+        finally:
+            await self._stop_plain_wait(*wait_h)
+            self._trade_slot_end(actor, "value_fund")
 
     async def industry_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         args = context.args or []
@@ -13047,6 +13065,10 @@ class WayneTelegramBot:
             await q.answer("興櫃海選開始")
             await self._run_emerging_screening(q.message)
             return
+        if data.startswith("f:"):
+            await q.answer("價值三圖")
+            await self._send_fund_to(q.message, data[2:].strip())
+            return
         await q.answer()
         if data == "hx":
             try:
@@ -13150,9 +13172,6 @@ class WayneTelegramBot:
             return
         if data.startswith("h:"):
             await self._send_chips_to(q.message, data[2:].strip(), str(q.from_user.id))
-            return
-        if data.startswith("f:"):
-            await self._send_fund_to(q.message, data[2:].strip())
             return
         if data.startswith("n:"):
             uid = str(q.from_user.id)
