@@ -3667,7 +3667,10 @@ def test_far_tx_skips_fill_forward_dup_candles():
 
 
 def test_tx_next_layer_33799_is_press_not_support():
-    """破 6/10 大量撐後下一層：3/6 區高 33799＝壓；撐＝32820。不准把 33799 當撐。"""
+    """破 6/10 大量撐後下一層跟價取近：11/4 區（現價重疊）勝遠方 3 月區。
+
+    舊錯：把遠方區高 33799 當撐。現況：prox 最近＋同距取量大；撐＝區低、壓＝區高。
+    """
     from biaoke_level_learn import (
         _nearest_vol_support_row,
         _next_support_resist,
@@ -3723,9 +3726,11 @@ def test_tx_next_layer_33799_is_press_not_support():
     assert bool((sr["primary"] or {}).get("broke_support")) is True
     nxt = sr.get("next") or {}
     assert nxt, "破撐後必須掛下一層大量區"
-    assert _ymd(nxt.get("date")) in ("20260306", "20260304")
-    # 區高＝壓（約 33799／34444）；撐＝區低，绝不是 33799
-    assert float(nxt.get("high") or 0) >= 33790.0
+    # 現價 38936 落在 11/4 帶內 → 跟價近層，不准遠方 3 月蓋過
+    assert _ymd(nxt.get("date")) == "20261104"
+    assert float(nxt.get("high") or 0) == 42298.0
+    assert float(nxt.get("low") or 0) == 38799.0
+    # 撐＝區低；绝不准把任何區高（含舊 33799）當撐
     assert abs(float(nxt.get("low") or 0) - 33799.0) > 50.0
     near = _nearest_vol_support_row(sr, px=38936.0)
     assert near is not None
