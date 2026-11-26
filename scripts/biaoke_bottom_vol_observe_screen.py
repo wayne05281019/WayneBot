@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""飆大量價落底觀察掃：對齊 20261126 文（2330／2383）的量價＋波浪交叉驗證。
+"""飆大量價落底觀察掃：對齊 20261126 文（2330／2383）的量價＋轉折結構。
 
 硬邊界：
 - Asia/Taipei；官方日 K；未收不當收
-- 觀察／對照，不是買訊；不准發明個股 5／9
+- 觀察／對照，不是買訊；不准發明個股 5／9（只標轉折高低，不標浪號）
 - 話筒進場仍只認 leave_zero／已過閘 ma60_lower
+
+量門檻（對齊原文「近一年級巨量／問題量」）：
+- 以近 ~250 根官方量為一年窗
+- 一年級＝ max(0.70×年最大量, 年窗 p92)
+- 不准再用「60 日中位×3」冒充一年級（會把金融股事件量誤判）
 """
 from __future__ import annotations
 
@@ -22,9 +27,17 @@ ROOT = Path(__file__).resolve().parents[1]
 LAB = ROOT / "docs" / "expert_notes" / "飆客" / "decade_lab"
 DB_DEFAULT = ROOT / "data" / "wayne_market.db"
 
-# 對齊原文教學（190014392）
 TEACH_POST_ID = "190014392"
 TEACH_AS_OF = "20261126"
+
+# 對齊 2330／2383 官方柱：一年級 ≈ 0.70–0.85×年最大
+YEAR_LOOKBACK = 250
+YEAR_GRADE_MAX_FRAC = 0.70
+YEAR_GRADE_PCTL = 0.92
+MIN_DRAWDOWN_PCT = 15.0  # 相對近 120 高
+MAX_DIST_TO_LOW_PCT = 15.0  # 相對近 60 低（洗盤區）
+CONSEC_WINDOW = 5
+SEDIMENT_LOOKBACK = 15
 
 
 @dataclass
@@ -34,14 +47,18 @@ class Hit:
     market: str  # TW / TWO
     close: float
     low_60: float
+    high_120: float
     dist_to_low_pct: float
+    drawdown_pct: float
     vol_today: float
-    vol_med_60: float
-    vol_ratio: float
-    consec_huge: int
-    style: str  # giant_consec | sediment | both
+    vol_year_max: float
+    year_grade_floor: float
+    vol_ratio_year: float
+    consec_year_grade: int
+    style: str  # year_grade_consec | sediment | both
     score: float
     note_zh: str
+    year_grade_dates: List[str]
 
 
 def _num(x: Any) -> float:
@@ -89,7 +106,6 @@ def top_n_by_turnover(
         s = str(sid or "").strip()
         if len(s) != 4 or not s.isdigit():
             continue
-        # ETF 常見 00xx；排除
         if s.startswith("00"):
             continue
         amt = _num(tov)
@@ -103,7 +119,7 @@ def top_n_by_turnover(
 
 
 def load_bars(
-    con: sqlite3.Connection, sid: str, *, lookback: int = 260
+    con: sqlite3.Connection, sid: str, *, lookback: int = 280
 ) -> List[Dict[str, float]]:
     rows = con.execute(
         """
@@ -131,85 +147,107 @@ def load_bars(
     return out
 
 
-def score_bottom_vol(bars: Sequence[Dict[str, float]]) -> Optional[Hit]:
-    """量價落底觀察（對齊教學，非買訊）。
+def year_grade_floor(vols: Sequence[float]) -> Tuple[float, float]:
+    """回傳 (floor, year_max)。"""
+    clean = [v for v in vols if v > 0]
+    if len(clean) < 80:
+        return 0.0, 0.0
+    ymax = max(clean)
+    vs = sorted(clean)
+    pctl = vs[min(len(vs) - 1, int(len(vs) * YEAR_GRADE_PCTL))]
+    return max(ymax * YEAR_GRADE_MAX_FRAC, pctl), ymax
 
-    - 近窗接近 60 低（洗盤／回馬槍區）
-    - 近 5 日出現相對 60 日中位巨量（問題量／承接）
-    - 連續 2 根巨量加分（2383 型）
-    - 巨量後量縮沉澱加分（2330 型籌碼沉澱）
+
+def score_bottom_vol(bars: Sequence[Dict[str, float]]) -> Optional[Hit]:
+    """量價落底觀察（對齊「近一年級巨量」，非買訊）。
+
+    - 相對近 120 高須有明顯修正
+    - 仍在近 60 低洗盤區
+    - 近窗出現一年級巨量（不是 60 中位×3）
+    - 連續一年級＝2383 型問題量；一年級後量縮沉澱＝2330 型
     """
-    if len(bars) < 80:
+    if len(bars) < 120:
         return None
-    win = list(bars[-60:])
+    year = list(bars[-YEAR_LOOKBACK:]) if len(bars) >= YEAR_LOOKBACK else list(bars)
+    win60 = list(bars[-60:])
+    win120 = list(bars[-120:])
     last = bars[-1]
-    vols = [b["volume"] for b in win if b["volume"] > 0]
-    if len(vols) < 30:
+    vols_year = [b["volume"] for b in year]
+    floor, ymax = year_grade_floor(vols_year)
+    if floor <= 0 or ymax <= 0:
         return None
-    vols_sorted = sorted(vols)
-    med = vols_sorted[len(vols_sorted) // 2]
-    if med <= 0:
-        return None
-    low60 = min(b["low"] for b in win if b["low"] > 0)
+
+    low60 = min(b["low"] for b in win60 if b["low"] > 0)
+    high120 = max(b["high"] for b in win120 if b["high"] > 0)
     close = last["close"]
-    if close <= 0 or low60 <= 0:
+    if close <= 0 or low60 <= 0 or high120 <= 0:
         return None
     dist = (close - low60) / low60 * 100.0
-    # 離 60 低太遠＝不像落底／回馬槍區
-    if dist > 18.0:
+    dd = (high120 - close) / high120 * 100.0
+    if dist > MAX_DIST_TO_LOW_PCT:
+        return None
+    if dd < MIN_DRAWDOWN_PCT:
         return None
 
-    # 近 5 日巨量：≥ max(3×中位, 60日 90 分位)
-    p90 = vols_sorted[int(len(vols_sorted) * 0.90)]
-    huge_floor = max(med * 3.0, p90)
-    recent = list(bars[-5:])
-    huge_flags = [1 if b["volume"] >= huge_floor - 1e-9 else 0 for b in recent]
-    if sum(huge_flags) < 1:
-        return None
+    def is_yg(v: float) -> bool:
+        return v >= floor - 1e-9
 
+    recent5 = list(bars[-CONSEC_WINDOW:])
+    yg5 = [1 if is_yg(b["volume"]) else 0 for b in recent5]
     consec = 0
     run = 0
-    for f in huge_flags:
+    for f in yg5:
         if f:
             run += 1
             consec = max(consec, run)
         else:
             run = 0
 
-    # 沉澱：近 10 日內曾巨量，末日量 < 該巨量×0.65 且仍 ≥ 中位（不是無量）
+    look = list(bars[-SEDIMENT_LOOKBACK:])
+    yg_dates = [b["date"] for b in look if is_yg(b["volume"])]
+    peak_yg = max((b["volume"] for b in look if is_yg(b["volume"])), default=0.0)
+
+    # 沉澱：近窗有一年級，末日量明顯低於該峰但仍不是無量
+    med60_vols = sorted(b["volume"] for b in win60 if b["volume"] > 0)
+    med60 = med60_vols[len(med60_vols) // 2] if med60_vols else 0.0
     sediment = False
-    peak_v = 0.0
-    for b in bars[-10:]:
-        if b["volume"] >= huge_floor:
-            peak_v = max(peak_v, b["volume"])
-    if peak_v > 0 and med <= last["volume"] < peak_v * 0.65:
-        sediment = True
+    if peak_yg > 0 and med60 > 0:
+        if med60 * 0.5 <= last["volume"] < peak_yg * 0.65:
+            # 一年級當日須貼近低檔（該日低點距 60 低不太遠）
+            near_low_yg = False
+            for b in look:
+                if is_yg(b["volume"]) and b["low"] > 0:
+                    d_lo = (b["low"] - low60) / low60 * 100.0
+                    if d_lo <= 12.0:
+                        near_low_yg = True
+                        break
+            sediment = near_low_yg
 
     style = ""
     score = 0.0
     if consec >= 2:
-        style = "giant_consec"
-        score += 40 + 10 * min(consec, 3)
+        style = "year_grade_consec"
+        score += 45 + 10 * min(consec, 3)
     if sediment:
         style = "both" if style else "sediment"
-        score += 35
+        score += 40
     if not style:
-        style = "giant_near_low"
-        score += 20
+        # 單根一年級貼低：仍可觀察，但分數較低
+        if sum(yg5) >= 1 and dist <= 10.0:
+            style = "year_grade_near_low"
+            score += 25
+        else:
+            return None
 
-    # 愈貼低愈像洗盤區；近 5 日有長下影／收復加分
-    score += max(0.0, 18.0 - dist)
-    bounce = 0.0
-    if len(bars) >= 3:
-        lo3 = min(b["low"] for b in bars[-3:])
-        if lo3 > 0:
-            bounce = (close - lo3) / lo3 * 100.0
-            if bounce >= 3.0:
-                score += min(15.0, bounce)
+    score += max(0.0, MAX_DIST_TO_LOW_PCT - dist)
+    score += min(20.0, dd / 2.0)
+    # 愈接近年最大愈像原文「一年級」
+    score += min(15.0, (last["volume"] / ymax) * 15.0) if ymax else 0.0
 
     note = (
-        f"距60低{dist:.1f}%；近5日巨量×{sum(huge_flags)}；"
-        f"量比中位{last['volume']/med:.1f}×；樣式={style}"
+        f"距60低{dist:.1f}%；相對120高回撤{dd:.1f}%；"
+        f"一年級門檻={floor:.0f}（年最大{ymax:.0f}）；"
+        f"近{CONSEC_WINDOW}日一年級×{sum(yg5)}；樣式={style}"
     )
     return Hit(
         stock_id="",
@@ -217,14 +255,18 @@ def score_bottom_vol(bars: Sequence[Dict[str, float]]) -> Optional[Hit]:
         market="",
         close=close,
         low_60=low60,
+        high_120=high120,
         dist_to_low_pct=round(dist, 2),
+        drawdown_pct=round(dd, 2),
         vol_today=last["volume"],
-        vol_med_60=med,
-        vol_ratio=round(last["volume"] / med, 2),
-        consec_huge=int(consec),
+        vol_year_max=ymax,
+        year_grade_floor=round(floor, 1),
+        vol_ratio_year=round(last["volume"] / ymax, 3) if ymax else 0.0,
+        consec_year_grade=int(consec),
         style=style,
         score=round(score, 2),
         note_zh=note,
+        year_grade_dates=yg_dates[-6:],
     )
 
 
@@ -246,7 +288,6 @@ def screen(
         for market, pool in (("TW", tw), ("TWO", two)):
             for sid, name, _amt in pool:
                 bars = load_bars(con, sid)
-                # 末日須＝asof
                 if not bars or bars[-1]["date"] != asof:
                     continue
                 scanned += 1
@@ -266,6 +307,10 @@ def screen(
             "phone_sync": "blocked",
             "buy_signal": False,
             "not_buy_signal": True,
+            "vol_rule_zh": (
+                "一年級巨量＝max(0.70×近250根最大量, 年窗p92)；"
+                "不用60日中位×3。連續一年級＝2383型；一年級後量縮沉澱＝2330型。"
+            ),
             "universe": {
                 "TW_top": len(tw),
                 "TWO_top": len(two),
@@ -274,9 +319,9 @@ def screen(
             "n_hits": len(hits),
             "hits": hits,
             "rule_zh": (
-                "對齊飆大 11/26：近60低＋近窗巨量（問題量／承接）；"
-                "連續巨量＝2383型；巨量後量縮沉澱＝2330型。"
-                "觀察用，不是買訊；不准發明個股浪號。"
+                "對齊飆大 11/26：修正回撤＋近60低洗盤區＋近一年級巨量／沉澱。"
+                "圖上只畫轉折高低與水平位，不准發明個股 5／9。"
+                "觀察用，不是買訊。"
             ),
             "written_at": datetime.now(TAIPEI).strftime("%Y-%m-%dT%H:%M:%S%z"),
         }
@@ -309,9 +354,11 @@ def main() -> int:
                 "as_of": payload.get("as_of"),
                 "n_hits": payload.get("n_hits"),
                 "universe": payload.get("universe"),
-                "top5": [
-                    f"{h['stock_id']}{h['stock_name']}@{h['style']}:{h['score']}"
-                    for h in (payload.get("hits") or [])[:5]
+                "vol_rule_zh": payload.get("vol_rule_zh"),
+                "top8": [
+                    f"{h['stock_id']}{h['stock_name']}@{h['style']}:"
+                    f"{h['score']}/yr{h['vol_ratio_year']}"
+                    for h in (payload.get("hits") or [])[:8]
                 ],
             },
             ensure_ascii=False,
