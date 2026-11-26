@@ -414,8 +414,44 @@ def get_wave4_desk_cached(
     return payload
 
 
+def refresh_row_bucket(row: Dict[str, Any]) -> Dict[str, Any]:
+    """現價改了 room／above_w4_low 後，分級桶與 why 必須重算，不准留收盤舊文案。"""
+    out = dict(row)
+    if "eps_profit" in out:
+        eps_ok = bool(out.get("eps_profit"))
+    else:
+        try:
+            eps_ok = float(out.get("eps_last") or 0) > 0
+        except (TypeError, ValueError):
+            eps_ok = False
+    wr = Wave4Row(
+        stock_id=str(out.get("stock_id") or ""),
+        stock_name=str(out.get("stock_name") or ""),
+        market=str(out.get("market") or ""),
+        close=float(out.get("close") or 0),
+        wave4=float(out.get("wave4") or 0),
+        wave3_low=float(out.get("wave3_low") or 0),
+        room_to_w4_pct=float(out.get("room_to_w4_pct") or 0),
+        above_w4_low=bool(out.get("above_w4_low", True)),
+        bottom_near_year_ago_bars=int(out.get("bottom_near_year_ago_bars") or 0),
+        score=float(out.get("score") or 0),
+        eps_last=out.get("eps_last"),
+        eps_profit=eps_ok,
+        taught_tags=list(out.get("taught_tags") or []),
+        industry_chain=str(out.get("industry_chain") or ""),
+        chip_label=str(out.get("chip_label") or ""),
+        foreign_net_sum=float(out.get("foreign_net_sum") or 0),
+        trust_net_sum=float(out.get("trust_net_sum") or 0),
+        dealer_net_sum=float(out.get("dealer_net_sum") or 0),
+    )
+    bucket, why = _assign_bucket(wr)
+    out["bucket"] = bucket
+    out["why_zh"] = why
+    return out
+
+
 def apply_live_close(row: Dict[str, Any], live_close: float) -> Dict[str, Any]:
-    """盤中 B：用現價重算距四浪高／是否過四浪低；不重畫五波。"""
+    """盤中 B：用現價重算距四浪高／是否過四浪低；不重畫五波；分級同步重算。"""
     px = float(live_close or 0)
     w4 = float(row.get("wave4") or 0)
     l3 = float(row.get("wave3_low") or 0)
@@ -427,7 +463,7 @@ def apply_live_close(row: Dict[str, Any], live_close: float) -> Dict[str, Any]:
     if l3 > 0:
         out["above_w4_low"] = px + 1e-9 >= l3
     out["live_px"] = True
-    return out
+    return refresh_row_bucket(out)
 
 
 def overlay_live_on_rows(
@@ -528,17 +564,28 @@ def format_wave4_one_html(row: Dict[str, Any], *, live: bool = False) -> str:
     close = float(row.get("close") or 0)
     room = float(row.get("room_to_w4_pct") or 0)
     hz = QUALITY_HORIZON_ZH.get(sid, "")
+    past = room <= 0
+    low_line = (
+        "現價已過／觸及次級四浪高"
+        if past
+        else (
+            "已過四浪低"
+            if row.get("above_w4_low", True)
+            else "尚未過四浪低"
+        )
+    )
+    bucket_zh = {
+        "intervene": "值得介入",
+        "sprint": "短衝／搶反彈",
+        "watch": "觀察",
+    }.get(str(row.get("bucket") or ""), str(row.get("bucket") or "—"))
     lines = [
         f"<b>次級四浪・{sid} {name}</b>",
         "觀察非買訊。要搶＝次級四浪高；連四浪低都過不了／當天下來＝偏沒力。",
         f"現價 {close:g}" if live or row.get("live_px") else f"收 {close:g}",
         f"四浪高 {w4:g}｜四浪低 {l3:g}｜距高 {room:.1f}%",
-        (
-            "已過四浪低"
-            if row.get("above_w4_low", True)
-            else "尚未過四浪低"
-        ),
-        f"分級：{row.get('bucket') or '—'}｜{row.get('why_zh') or ''}",
+        low_line,
+        f"分級：{bucket_zh}｜{row.get('why_zh') or ''}",
     ]
     if hz:
         lines.append(hz)

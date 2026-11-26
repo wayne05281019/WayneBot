@@ -166,8 +166,12 @@ def test_intervene_page_ten_and_live_room():
                 "wave3_low": 90.0,
                 "close": 100.0,
                 "eps_last": 1.0,
+                "eps_profit": True,
                 "taught_tags": ["PCB"],
                 "above_w4_low": True,
+                "bucket": "intervene",
+                "why_zh": "舊收盤文案",
+                "chip_label": "外資偏愛",
             }
             for i in range(12)
         ],
@@ -184,3 +188,33 @@ def test_intervene_page_ten_and_live_room():
     assert abs(live["room_to_w4_pct"] - (120 - 110) / 110 * 100) < 0.05
     one = format_wave4_one_html(live, live=True)
     assert "四浪高" in one and "非買訊" in one
+
+
+def test_live_past_w4_refreshes_bucket_not_stale_intervene():
+    """條件錯回歸：現價已過四浪高，不准還掛收盤時的值得介入舊文案。"""
+    row = {
+        "stock_id": "2383",
+        "stock_name": "台光電",
+        "market": "TW",
+        "close": 3660.0,
+        "wave4": 4565.0,
+        "wave3_low": 3690.0,
+        "room_to_w4_pct": 24.7,
+        "above_w4_low": False,
+        "bottom_near_year_ago_bars": 3,
+        "score": 120,
+        "eps_last": 15.0,
+        "eps_profit": True,
+        "taught_tags": ["PCB"],
+        "chip_label": "外資偏愛",
+        "bucket": "intervene",
+        "why_zh": "舊收盤→實質＋鏈",
+    }
+    live = apply_live_close(row, 5000.0)
+    assert live["room_to_w4_pct"] < 0
+    assert live["above_w4_low"] is True
+    assert live["bucket"] != "intervene"
+    assert "已過四浪" in (live.get("why_zh") or "") or live["bucket"] == "watch"
+    html = format_wave4_one_html(live, live=True)
+    assert "已過／觸及次級四浪高" in html
+    assert "值得介入" not in html.split("分級：")[-1].split("｜")[0]
