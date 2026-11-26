@@ -3,9 +3,10 @@
 
 使用者鎖（2026-11-26）：
 - 五波畫得出＝全部納入再分級
-- 再挑：最值得介入 vs 短衝搶一波
-- 股性：外資／投信／自營／偏散戶（認 daily_quotes 官方淨買賣；不准假成本）
-- 實質 EPS 獲利保護 vs 跌深技術反彈
+- 可畫＝五波下跌走完、正在反彈／往上；路徑先往次級四浪高靠近
+- 再怎麼快，結構上也要碰到次級相關位才談回頭；未按結構就破＝偏弱股
+- 再挑：最值得介入 vs 短衝搶一波（實質 EPS vs 技術反彈）
+- 股性：外資／投信／自營（官方淨買賣；不准假成本）
 - 觀察非買訊；不准改 leave_zero／ma60_lower
 """
 from __future__ import annotations
@@ -249,7 +250,8 @@ def build_wave4_desk(
         "title_zh": "次級四浪",
         "not_buy_signal": True,
         "rule_zh": (
-            "五波可畫＝母體全收；再依EPS實質、AI鏈地位、近10日外資／投信／自營淨買賣股性分級。"
+            "可畫＝五波下跌走完、正在反彈／往上，先往次級四浪高靠近；"
+            "未按結構就走壞＝偏弱。母體全收後再依EPS／AI鏈／股性分級。"
             "雙爆更好、單爆也可。觀察非買訊。"
         ),
         "chip_rule_zh": (
@@ -274,7 +276,8 @@ def format_wave4_desk_html(payload: Dict[str, Any], *, max_each: int = 12) -> st
     asof = str(payload.get("asof") or "")
     lines = [
         f"<b>次級四浪</b>（{asof[:4]}/{asof[4:6]}/{asof[6:8]} 盤後母體）",
-        "觀察非買訊。五波可畫全收後再分級。",
+        "觀察非買訊。可畫＝五波走完、正在反彈／往上次級四浪高。",
+        "未按結構就破＝偏弱。全收後再分級。",
         (
             f"可畫 {payload.get('n_hits')}｜"
             f"值得介入 {payload.get('n_intervene')}｜"

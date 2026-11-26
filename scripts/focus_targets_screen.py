@@ -338,8 +338,8 @@ def scan(
         "asof": asof,
         "as_of_taipei": datetime.now(TAIPEI).isoformat(timespec="seconds"),
         "priority_zh": (
-            "五波畫得出＝全部納入再分級；"
-            "分級看距四浪高／EPS獲利／AI鏈地位；"
+            "五波畫得出＝五波走完、正在反彈／往上次級四浪高，全部納入再分級；"
+            "未按結構就破＝偏弱；分級看距四浪高／EPS／AI鏈／股性；"
             "量價雙爆更好、單爆也可、沒爆仍可觀察"
         ),
         "iron_laws_zh": (
