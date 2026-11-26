@@ -299,7 +299,7 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
             )
         )
 
-    # 教法對齊籌碼K線：白線＝五波下跌；黃線＝新一波起漲
+    # 教法：紫細線＝五波下跌（淺底比白線黑邊清楚）；黃線＝新一波起漲
     labels = ["起", "1", "2", "3", "4", "終"]
     vis_pts = []
     for k, p in enumerate(pts):
@@ -309,36 +309,34 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
     if len(vis_pts) >= 2:
         xs_w = [t[0] for t in vis_pts]
         ys_w = [t[1] for t in vis_pts]
-        # 深色墊底＋白線，淺底也看得清「白線五波」
-        ax.plot(xs_w, ys_w, color="#0f172a", lw=5.2, zorder=6, solid_capstyle="round")
         ax.plot(
             xs_w,
             ys_w,
-            color="#f8fafc",
-            lw=3.4,
+            color="#7c3aed",
+            lw=1.45,
             zorder=7,
             solid_capstyle="round",
-            label="白線＝五波下跌",
+            label="紫細線＝五波下跌",
         )
         for j, price, kind, lab in vis_pts:
             ax.scatter(
                 [j],
                 [price],
-                s=64,
-                c="#f8fafc",
+                s=28,
+                c="#7c3aed",
                 zorder=9,
-                edgecolors="#0f172a",
-                lw=1.4,
+                edgecolors="#fff",
+                lw=0.55,
             )
-            # 起／終加大標；中間轉折也標清
+            # 起／終側標（仿籌碼K線）；中間轉折錯開上下，避免互壓
             if lab == "起":
                 ax.annotate(
                     f"← {price:.0f}",
                     xy=(j, price),
-                    xytext=(8, 10),
+                    xytext=(10, 8),
                     textcoords="offset points",
                     color="#dc2626",
-                    fontsize=10,
+                    fontsize=9.5,
                     fontweight="bold",
                     fontproperties=prop,
                     zorder=10,
@@ -347,23 +345,29 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
                 ax.annotate(
                     f"{price:.0f} →",
                     xy=(j, price),
-                    xytext=(-52, -18),
+                    xytext=(-48, -16),
                     textcoords="offset points",
                     color="#16a34a",
-                    fontsize=10,
+                    fontsize=9.5,
                     fontweight="bold",
                     fontproperties=prop,
                     zorder=10,
                 )
             else:
+                dy = 14 if kind == "H" else -20
+                # 點 2／3 再微偏，減與鄰標重疊
+                if lab == "2":
+                    dy = 16
+                elif lab == "3":
+                    dy = -22
                 ax.annotate(
-                    f"{lab}\n{price:.0f}",
+                    f"{lab} {price:.0f}",
                     xy=(j, price),
-                    xytext=(0, 12 if kind == "H" else -22),
+                    xytext=(0, dy),
                     textcoords="offset points",
                     ha="center",
-                    color="#0f172a",
-                    fontsize=8.5,
+                    color="#5b21b6",
+                    fontsize=8,
                     fontweight="bold",
                     fontproperties=prop,
                     zorder=10,
@@ -414,8 +418,8 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
             ax.plot(
                 [j, n - 1],
                 [bounce_from.price, close],
-                color="#0f172a",
-                lw=5.0,
+                color="#ca8a04",
+                lw=2.4,
                 zorder=8,
                 solid_capstyle="round",
             )
@@ -423,41 +427,43 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
                 [j, n - 1],
                 [bounce_from.price, close],
                 color="#facc15",
-                lw=3.2,
+                lw=1.9,
                 zorder=9,
                 solid_capstyle="round",
             )
+            # 「新起漲」標在黃線中段偏右上，避開紫線轉折數字
             ax.annotate(
                 "新起漲",
-                xy=((j + n - 1) / 2.0, (bounce_from.price + close) / 2.0),
-                xytext=(12, 8),
+                xy=(j + (n - 1 - j) * 0.62, bounce_from.price + (close - bounce_from.price) * 0.62),
+                xytext=(10, 14),
                 textcoords="offset points",
                 color="#854d0e",
-                fontsize=9,
+                fontsize=8.5,
                 fontweight="bold",
                 fontproperties=prop,
                 zorder=12,
                 bbox=dict(
-                    boxstyle="round,pad=0.2",
+                    boxstyle="round,pad=0.18",
                     facecolor="#fef9c3",
                     edgecolor="#eab308",
                     alpha=0.95,
                 ),
             )
 
-    ax.axhline(close, color="#0f766e", ls=":", lw=1.25, alpha=0.8)
+    ax.axhline(close, color="#0f766e", ls=":", lw=1.15, alpha=0.75)
+    # 收盤標放右側、略低於線，避壓上緣／四浪高角標
     ax.annotate(
         f"收 {close:.0f}",
         xy=(n - 1, close),
-        xytext=(10, -18),
+        xytext=(10, -22),
         textcoords="offset points",
         color="#115e59",
-        fontsize=11,
+        fontsize=10.5,
         fontweight="bold",
         fontproperties=prop,
         clip_on=False,
         bbox=dict(
-            boxstyle="round,pad=0.28",
+            boxstyle="round,pad=0.25",
             facecolor="#ccfbf1",
             edgecolor="#14b8a6",
             alpha=0.97,
@@ -537,18 +543,19 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
         f"前三季累計　{cum_s} 元（無月EPS官方）\n"
         f"{mr_line}"
     )
+    # 基本面盒靠左下，避開黃線終段
     ax.text(
         0.01,
-        0.02,
+        0.015,
         fund,
         transform=ax.transAxes,
         ha="left",
         va="bottom",
-        fontsize=8.5,
+        fontsize=8.2,
         fontproperties=prop,
         color="#1f2937",
         bbox=dict(
-            boxstyle="round,pad=0.45",
+            boxstyle="round,pad=0.4",
             facecolor="#fff7ed",
             edgecolor="#fdba74",
             alpha=0.96,
@@ -556,19 +563,20 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
         zorder=10,
     )
 
+    # 空間％放右上內側，不跟表頭搶位
     ax.text(
-        0.99,
-        0.98,
+        0.995,
+        0.88,
         f"距四浪高還有\n{room:.1f}%",
         transform=ax.transAxes,
         ha="right",
         va="top",
-        fontsize=12,
+        fontsize=11,
         fontweight="bold",
         fontproperties=prop,
         color="#b91c1c",
         bbox=dict(
-            boxstyle="round,pad=0.4",
+            boxstyle="round,pad=0.35",
             facecolor="#fee2e2",
             edgecolor="#f87171",
             alpha=0.95,
@@ -579,25 +587,29 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
     asof_face = f"{asof[0:4]}/{asof[4:6]}/{asof[6:8]} 盤後"
     title = f"{sid}　{name}　收盤 {close:.0f} 元"
     ohlc_line = f"開 {open_:.0f}　高 {high:.0f}　低 {low:.0f}　收 {close:.0f}　量 {vol:.0f} 張"
-    sub = (
-        f"{asof_face}｜{ohlc_line}｜白線五波下跌／黃線新起漲｜"
-        f"滾動近{WIN}根（新日進、左邊掉；右留{FUTURE_PAD}根空位）｜觀察非買訊"
+    # 表頭兩行：標題單獨；副標拆兩行，不准壓進圖內文字
+    sub1 = f"{asof_face}｜{ohlc_line}｜觀察非買訊"
+    sub2 = f"紫細線＝五波下跌　黃線＝新起漲｜滾動近{WIN}根（新日進、左邊掉；右留{FUTURE_PAD}根空位）"
+    ax.set_title(
+        title, color="#111", fontsize=15.5, pad=30, fontweight="bold", fontproperties=prop
     )
-    ax.set_title(title, color="#111", fontsize=16, pad=14, fontweight="bold", fontproperties=prop)
-    ax.text(
-        0.0,
-        1.018,
-        sub,
-        transform=ax.transAxes,
-        color="#444",
-        fontsize=8.2,
-        fontproperties=prop,
+    ax.legend(
+        loc="upper left",
+        fontsize=6.8,
+        framealpha=0.92,
+        ncol=2,
+        bbox_to_anchor=(0.01, 0.99),
+        borderpad=0.35,
     )
-    ax.legend(loc="upper center", fontsize=7.2, framealpha=0.9, ncol=3)
     ax.set_ylabel("價（元）", fontproperties=prop)
     axv.set_ylabel("成交量（張）", fontproperties=prop)
     # 右留空：明天起往右長；左＝滾動掉舊根
     ax.set_xlim(-1.2, n - 1 + FUTURE_PAD)
+    # 上方多留一點給轉折標，避免貼齊表頭
+    y_hi = max(highs + [w4.price, float(zone["high"]) if zone else 0])
+    y_lo = min(lows)
+    pad = (y_hi - y_lo) * 0.06
+    ax.set_ylim(y_lo - pad * 0.4, y_hi + pad * 1.15)
     step = max(1, n // 10)
     ticks = list(range(0, n, step))
     axv.set_xticks(ticks)
@@ -605,7 +617,30 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
         [dates[i][4:6] + "/" + dates[i][6:8] for i in ticks], fontsize=8
     )
 
-    fig.tight_layout()
+    fig.subplots_adjust(top=0.86, hspace=0.10)
+    # 副標放在標題與圖之間（figure 座標），不准壓進圖內
+    fig.canvas.draw()
+    ax_pos = ax.get_position()
+    fig.text(
+        ax_pos.x0,
+        min(ax_pos.y1 + 0.034, 0.955),
+        sub1,
+        color="#374151",
+        fontsize=8.0,
+        fontproperties=prop,
+        ha="left",
+        va="bottom",
+    )
+    fig.text(
+        ax_pos.x0,
+        min(ax_pos.y1 + 0.012, 0.935),
+        sub2,
+        color="#6b7280",
+        fontsize=7.6,
+        fontproperties=prop,
+        ha="left",
+        va="bottom",
+    )
     out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out, dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
     plt.close()
