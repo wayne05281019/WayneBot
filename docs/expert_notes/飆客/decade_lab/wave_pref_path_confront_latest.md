@@ -1,6 +1,6 @@
 # preferred 路徑三態對質（靜默）
 
-寫入：`2026-11-26T14:01:39+0800`（Asia/Taipei）。
+寫入：`2026-11-26T16:53:34+0800`（Asia/Taipei）。
 軌：`wave_pref_path_3state`｜現況 `pref_3state_v1_verdict_map`｜下一版 `pref_3state_v2_intraday_break_hold`
 
 - n_decided=9 hit_rate=0.6666666666666666 gate_n20=False replace=False
