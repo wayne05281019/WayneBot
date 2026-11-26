@@ -499,6 +499,63 @@ def test_secondary_prefers_near_price_over_far_max_vol():
     assert float(layer.get("prox_gap") or 0) == 0.0  # 現價落在下一層內
 
 
+def test_secondary_same_prox_prefers_deeper_heavier_vol():
+    """近窗有命中時，深窗同距（prox=0）更大區仍勝出（2317 級近深分叉）。"""
+    day = date(2026, 2, 1)
+    rows = []
+    for i in range(200):
+        d = (day + timedelta(days=i)).strftime("%Y%m%d")
+        if i == 30:
+            # 深窗：與現價重疊、量更大
+            o, h, l, c, v = 225, 233.0, 218.0, 228, 173257
+        elif i == 160:
+            # 近窗：與現價重疊、量較小
+            o, h, l, c, v = 220, 227.5, 212.5, 222, 89094
+        elif i == 175:
+            # 主大量
+            o, h, l, c, v = 255, 266.5, 253.5, 260, 200000
+        elif i == 199:
+            # 收破主撐 253.5，落在兩層重疊帶內
+            o, h, l, c, v = 230, 235, 220, 225, 4000
+        else:
+            o, h, l, c, v = 260, 265, 255, 262, 800
+        rows.append(
+            {
+                "date": d,
+                "open": float(o),
+                "high": float(h),
+                "low": float(l),
+                "close": float(c),
+                "volume": float(v),
+            }
+        )
+    near_only = find_secondary_vol_zone(
+        rows,
+        direction="below",
+        ref_lo=253.5,
+        exclude_date=rows[175]["date"],
+        close=225.0,
+        lookback=40,
+        allow_earlier=False,
+    )
+    assert near_only is not None
+    assert float(near_only["low"]) == 212.5
+    deep = find_secondary_vol_zone(
+        rows,
+        direction="below",
+        ref_lo=253.5,
+        exclude_date=rows[175]["date"],
+        close=225.0,
+        lookback=40,
+        allow_earlier=True,
+    )
+    assert deep is not None
+    assert float(deep["low"]) == 218.0
+    assert float(deep["high"]) == 233.0
+    assert float(deep.get("prox_gap") or 0) == 0.0
+    assert float(deep["volume"]) == 173257.0
+
+
 def test_next_layer_history_keeps_deep_window_and_face():
     """可視近窗可短；下一層歷史至少深窗，臉末日覆寫收價。"""
     day = date(2026, 1, 1)

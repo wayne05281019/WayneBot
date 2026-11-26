@@ -63,8 +63,7 @@ WRITTEN_ABSOLUTE_TARGETS: Dict[str, Tuple[Dict[str, Any], ...]] = {
 }
 
 _DEFAULT_LOOKBACK = 40
-_EARLIER_LOOKBACK = 80  # 近窗內次層已破 → 往更早 K 再找一檔
-_DEEP_LOOKBACK = 180  # 連破多層（急殺遠低於主撐）→ 再往更早次大量區串聯
+_DEEP_LOOKBACK = 180  # allow_earlier 決選窗（含近／早；連破／同距更大區一次比完）
 # 次大量候選：量 ≥ 窗內最大量×此比例才進決選；再依距現價遠近滾動取近層
 # （仍要大量，不准拿無量近柱冒充下一層）
 _NEXT_VOL_FLOOR_FRAC = 0.40
@@ -348,7 +347,8 @@ def find_secondary_vol_zone(
     """次大量區間（高低一對）；跟現價滾動取近層。
 
     below（破撐後）：低 < 已破撐且收尚未再破該撐；量達窗內最大×floor 的候選裡，
-    取距現價最近者（重疊優先；同距取量較大）。連破則往更早串聯。
+    取距現價最近者（重疊優先；同距取量較大）。
+    allow_earlier 時一次用深窗決選（近窗有命中仍要比深窗同距更大區；連破也靠同一池）。
     above（過壓後）：對稱往上。
     不准回填主區同一爆大量日；不是買訊。
     """
@@ -427,13 +427,11 @@ def find_secondary_vol_zone(
             "vol_floor": float(floor),
         }
 
-    hit = _pick(int(lookback or _DEFAULT_LOOKBACK))
-    if hit is None and allow_earlier and int(lookback or 0) < _EARLIER_LOOKBACK:
-        hit = _pick(_EARLIER_LOOKBACK)
-    # 近／早窗次層全被收盤連破 → 深窗再串一檔（破撐≠換主區；只補下一層）
-    if hit is None and allow_earlier and int(lookback or 0) < _DEEP_LOOKBACK:
-        hit = _pick(_DEEP_LOOKBACK)
-    return hit
+    lb = int(lookback or _DEFAULT_LOOKBACK)
+    # 准往更早：一次深窗決選（含近／早）；近窗命中不再擋住深窗同距更大區
+    if allow_earlier:
+        lb = max(lb, int(_DEEP_LOOKBACK))
+    return _pick(lb)
 
 
 def find_secondary_vol_zone_support(
