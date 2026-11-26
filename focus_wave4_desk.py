@@ -398,12 +398,13 @@ def format_wave4_hub_html() -> str:
             "<b>次級四浪</b>（觀察非買訊）",
             "① 打代號／股名：辨識後請你確認，",
             "再出這檔結構位。",
-            "② 實質十檔：有實質獲利最優先出10檔，",
-            "可翻下一頁。",
+            "② 實質十檔：有實質獲利，",
+            "最優先出10檔，可翻下一頁。",
             "盤中距離用現價；結構用已收日K。",
             "買訊仍只認獲利剛離零／已過閘紅箭頭。",
         ]
     )
+
 
 
 def get_wave4_desk_cached(
@@ -586,22 +587,31 @@ def format_wave4_page_html(
     ]
     if not rows:
         lines.append("（本頁尚無）")
+
+    def _pad_name(name: str, width: int = 4) -> str:
+        """股名補全形空白到固定寬，讓「距％」上下對齊。"""
+        s = str(name or "")
+        pad = max(0, int(width) - len(s))
+        return s + ("　" * pad)
+
     for r in rows:
         tags = "/".join(r.get("taught_tags") or []) or "—"
         live_tag = "・現" if r.get("live_px") else ""
         low_tag = "" if r.get("above_w4_low", True) else "・未過低"
         eps = r.get("eps_last")
         eps_s = f"{eps:.2f}" if isinstance(eps, (int, float)) else "—"
-        # 兩行：代號名距％｜EPS／鏈，避免孤字蓋數字
+        room_i = int(round(float(r.get("room_to_w4_pct") or 0)))
+        # 兩行：代號名距％｜EPS／鏈；％右對齊兩位數格
         lines.append(
-            f"<code>{r.get('stock_id')}</code> {r.get('stock_name')} "
-            f"距{float(r.get('room_to_w4_pct') or 0):.0f}%{live_tag}{low_tag}"
+            f"<code>{r.get('stock_id')}</code> {_pad_name(str(r.get('stock_name') or ''))}"
+            f"　距{room_i:2d}%{live_tag}{low_tag}"
         )
         lines.append(f"EPS{eps_s} {tags}")
     lines.append("")
     lines.append("點代號看出結構。")
     lines.append("買訊仍只認獲利剛離零／已過閘紅箭頭。")
     return "\n".join(lines)
+
 
 
 def find_wave4_row(payload: Dict[str, Any], stock_id: str) -> Optional[Dict[str, Any]]:
@@ -648,36 +658,45 @@ def format_wave4_one_html(row: Dict[str, Any], *, live: bool = False) -> str:
         low_line,
         f"分級：{bucket_zh}",
     ]
+
+    def _disp(s: str) -> int:
+        return sum(2 if ord(c) > 127 else 1 for c in s)
+
     def _wrap_bits(text: str) -> None:
+        """以 ；→： 切段後併到 ≤36 disp；括註不拆孤行。"""
         raw = (
             str(text or "")
-            .replace("；", "；|")
-            .replace("→", "|→")
-            .replace("（", "|（")
+            .replace("；", "；\0")
+            .replace("→", "\0→")
+            .replace("：", "：\0")
         )
+        parts = [x.strip() for x in raw.split("\0") if x.strip()]
         chunk = ""
-        for part in raw.split("|"):
-            part = part.strip().lstrip("；").strip()
-            if not part:
-                continue
+        for part in parts:
             trial = f"{chunk}{part}" if chunk else part
-            w = sum(2 if ord(c) > 127 else 1 for c in trial)
-            if chunk and w > 36:
+            if chunk and _disp(trial) > 36:
                 lines.append(chunk)
                 chunk = part
             else:
                 chunk = trial
-            # 單段仍過長就硬切
-            while sum(2 if ord(c) > 127 else 1 for c in chunk) > 36:
+            while _disp(chunk) > 36:
+                cut = False
                 acc = ""
-                for ch in chunk:
-                    tw = sum(2 if ord(c) > 127 else 1 for c in acc + ch)
-                    if acc and tw > 36:
-                        lines.append(acc)
-                        acc = ch
-                    else:
-                        acc += ch
-                chunk = acc.lstrip("；").strip()
+                for i, ch in enumerate(chunk):
+                    acc2 = acc + ch
+                    if _disp(acc2) > 36 and acc:
+                        brk = max((acc.rfind(c) for c in "、／。，"), default=-1)
+                        if brk >= 4:
+                            lines.append(acc[: brk + 1])
+                            chunk = acc[brk + 1 :] + chunk[i:]
+                        else:
+                            lines.append(acc)
+                            chunk = chunk[i:]
+                        cut = True
+                        break
+                    acc = acc2
+                if not cut:
+                    break
         if chunk:
             lines.append(chunk)
 
