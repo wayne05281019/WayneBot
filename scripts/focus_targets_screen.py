@@ -669,10 +669,6 @@ def classify_chip_label(
     if abs_sum <= 1e-9 and float(vol_mean or 0) <= 0:
         return "缺資料", False, "近窗無法人淨額"
     flat_cut = max(50.0, float(vol_mean or 0) * CHIP_FLAT_FRAC_OF_VOL * CHIP_WINDOW_N)
-    # 買超側（淨額>0）為主；全賣則看賣壓最輕／偏散戶
-    buyers = sorted(trips, key=lambda x: x[1], reverse=True)
-    top_k, top_v = buyers[0]
-    second_v = buyers[1][1]
     retail_hot = bool(
         vol_median_prior > 0
         and vol_mean >= float(vol_median_prior) * RETAIL_VOL_VS_MEDIAN
@@ -687,28 +683,24 @@ def classify_chip_label(
         return "籌碼平淡", False, (
             f"法人近乎平(|F|+|T|+|D|={abs_sum:.0f}張)，量未顯熱"
         )
-    clear = top_v > 0 and top_v >= max(second_v, 0) * float(lead_ratio) and top_v >= flat_cut * 0.25
+    # 只在「買超>0」的機構之間比 clear lead；全賣不准標成外資／投信／自營愛
+    buyers = sorted([(k, v) for k, v in trips if v > 0], key=lambda x: x[1], reverse=True)
+    if not buyers:
+        return "偏散戶", False, (
+            f"無機構買超 F={foreign_sum:.0f}/T={trust_sum:.0f}/D={dealer_sum:.0f}張"
+            + ("，量熱" if retail_hot else "，法人偏賣")
+        )
+    top_k, top_v = buyers[0]
+    second_v = buyers[1][1] if len(buyers) > 1 else 0.0
+    clear = top_v >= float(second_v) * float(lead_ratio) and top_v >= flat_cut * 0.25
     if clear:
         return top_k, True, (
             f"{top_k}買超主導 F={foreign_sum:.0f}/T={trust_sum:.0f}/D={dealer_sum:.0f}張 "
             f"(lead≥{lead_ratio}×)"
         )
-    # 無明確買超主導：高量＋法人弱 → 偏散戶；否則標相對最大者（含賣超）
-    if retail_hot or (top_v <= 0 and abs_sum < flat_cut * 3):
-        return "偏散戶", False, (
-            f"無明確機構買超 F={foreign_sum:.0f}/T={trust_sum:.0f}/D={dealer_sum:.0f}張"
-            + ("，量熱偏散戶" if retail_hot else "")
-        )
-    if top_v > 0:
-        return top_k, True, (
-            f"{top_k}相對買超 F={foreign_sum:.0f}/T={trust_sum:.0f}/D={dealer_sum:.0f}張"
-            "（未達 clear lead）"
-        )
-    # 全賣：標賣最多的機構，不算建設性
-    sellers = sorted(trips, key=lambda x: x[1])  # most negative first
-    sk, sv = sellers[0]
-    return sk, False, (
-        f"機構偏賣（最重{sk} {sv:.0f}張）F={foreign_sum:.0f}/T={trust_sum:.0f}/D={dealer_sum:.0f}張"
+    return top_k, False, (
+        f"{top_k}相對買超 F={foreign_sum:.0f}/T={trust_sum:.0f}/D={dealer_sum:.0f}張"
+        "（未達 clear lead）"
     )
 
 

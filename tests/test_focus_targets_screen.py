@@ -139,6 +139,11 @@ def test_chip_label_dominant_and_retail():
         5, -3, 2, vol_mean=8000, vol_median_prior=2000
     )
     assert lab == "偏散戶" and not ok
+    # 三者全賣 → 不准標外資愛
+    lab, ok, _ = classify_chip_label(
+        -36075, -3805, -780, vol_mean=20000, vol_median_prior=15000
+    )
+    assert lab == "偏散戶" and not ok
 
 
 def test_character_bucket_eps_and_ai():
