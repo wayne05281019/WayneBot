@@ -3502,11 +3502,13 @@ def render_lookup_structure_result(
     card: Optional[dict] = None,
     pack: Optional[dict] = None,
     live_quote: Optional[dict] = None,
+    force_vol_zone: Optional[dict] = None,
 ) -> Tuple[str, str]:
     """查股第 3 張：結構圖＝橫式原版，跟大量撐壓同一套官方日K。買訊只認藍▲紅框。
 
     pack：查股可先給官方柱（prepare_lookup_structure_bars）。有柱就不再 ensure／
     不再選大量區，現價用決策卡或已抓到的 live_quote，不准在畫布裡再打一輪網路。
+    force_vol_zone：次級四浪 pair 強制同一路上大量區日／高低（反彈壓／下降撐壓）。
     LAB-ONLY 記號掛在 biaoke_chart.render_biaoke_structure_png 尾端（旗標預設關）。
     """
     sid = str(stock_id or "").strip()
@@ -3549,10 +3551,31 @@ def render_lookup_structure_result(
             press_band=None,
             quote=spot,
             card=card if isinstance(card, dict) else None,
+            force_vol_zone=force_vol_zone if isinstance(force_vol_zone, dict) else None,
         )
         if not path or not os.path.isfile(path) or os.path.getsize(path) < 20000:
             return "", ""
         cap = LOOKUP_STRUCTURE_CAPTION
+        if isinstance(force_vol_zone, dict) and force_vol_zone:
+            # 次級四浪 pair：結構圖與四浪圖同一路上大量來源日（非買訊）
+            try:
+                from scripts.paint_focus_target_sample import (
+                    zone_band_label,
+                    zone_source_day_label,
+                )
+
+                _bl = zone_band_label(force_vol_zone) or "路上大量區"
+                _sl = zone_source_day_label(force_vol_zone) or "來源日"
+                _zd = str(force_vol_zone.get("date") or "").replace("-", "")[:8]
+                _md = f"{_zd[4:6]}/{_zd[6:8]}" if len(_zd) == 8 else _zd
+                cap = (
+                    f"結構圖（非買訊）　與次級四浪同{_bl}"
+                    f"（{_sl}{_md}）　買點只認藍▲紅框"
+                )
+            except Exception:
+                cap = (
+                    "結構圖（非買訊）　與次級四浪同路上大量區　買點只認藍▲紅框"
+                )
         try:
             from sanchi_clocks import append_sanchi_to_caption
 
@@ -3568,14 +3591,21 @@ def render_lookup_structure_result(
             )
 
             _press = _hold = 0.0
-            try:
-                from biaoke_brain import volume_first_price
+            if isinstance(force_vol_zone, dict) and force_vol_zone:
+                try:
+                    _press = float(force_vol_zone.get("high") or 0)
+                    _hold = float(force_vol_zone.get("low") or 0)
+                except (TypeError, ValueError):
+                    _press = _hold = 0.0
+            if _press <= 0 or _hold <= 0:
+                try:
+                    from biaoke_brain import volume_first_price
 
-                st = volume_first_price(bars, lookback=min(40, len(bars))) or {}
-                _press = float(st.get("spike_high") or 0)
-                _hold = float(st.get("spike_low") or 0)
-            except Exception:
-                pass
+                    st = volume_first_price(bars, lookback=min(40, len(bars))) or {}
+                    _press = float(st.get("spike_high") or 0)
+                    _hold = float(st.get("spike_low") or 0)
+                except Exception:
+                    pass
             _notes = detect_struct_vol_notes(
                 bars,
                 press=_press,

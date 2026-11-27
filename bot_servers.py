@@ -852,7 +852,7 @@ MENU_FULL_ALIASES = ("完整選單", "完整鍵盤")
 # v43：撤「啾哈觀盤」；第三排只留綜合篩選＋空白；上七下七＋三排七。
 # v44：第三排第 2 格「次級四浪」（五波可畫母體→EPS／股性／AI鏈分級；觀察非買訊）。
 # v45：次級四浪按後兩路＝打代號確認／實質十檔翻頁；盤中距離用現價（B）。
-# v46：次級四浪實質十檔／單檔附結構圖（相簿）；觀察非買訊。
+# v46：次級四浪實質十檔附次級四浪圖；單檔一次兩張（次級四浪圖＋結構圖同路上大量區）；觀察非買訊。
 MENU_LAYOUT_VERSION = "46"
 MAX_PICK_INLINE_ROWS = 8
 
@@ -9106,7 +9106,7 @@ class WayneTelegramBot:
     async def _wave4_send_media_group(
         self, message, charts: list, *, caption0: str = ""
     ) -> bool:
-        """實質十檔／單檔結構圖；1 張 reply_photo，2–10 張相簿，失敗改逐張。"""
+        """實質十檔／單檔附圖；1 張 reply_photo，2–10 張相簿，失敗改逐張。"""
         paths = [
             str(c.get("path") or "")
             for c in (charts or [])
@@ -9316,9 +9316,9 @@ class WayneTelegramBot:
             text_fn=lambda s: self._wait_bubble(
                 "次級四浪進行中",
                 s,
-                now="查這檔＋出圖",
-                rest="推結構位",
-                fill_sec=28.0,
+                now="查這檔＋兩張圖",
+                rest="次級四浪圖＋結構圖",
+                fill_sec=36.0,
             ),
         )
         delivered = False
@@ -9330,21 +9330,21 @@ class WayneTelegramBot:
                     find_wave4_row,
                     format_wave4_one_html,
                     get_wave4_desk_cached,
-                    paint_wave4_chart,
+                    paint_wave4_one_pair,
                 )
                 from live_quote import fetch_lookup_quote, is_live_merge_window
 
                 payload = get_wave4_desk_cached(self.db_path)
                 row = find_wave4_row(payload, stock_id)
                 live = False
-                chart_path = ""
+                charts: list = []
                 if row is None:
                     return (
                         f"<b>次級四浪・{stock_id}</b>\n"
                         "這檔目前不在可畫五波母體（或基準日異常）。"
                         "觀察非買訊；可改打別檔或看實質十檔。",
                         False,
-                        "",
+                        [],
                     )
                 if is_live_merge_window():
                     try:
@@ -9365,25 +9365,25 @@ class WayneTelegramBot:
                     "wave4",
                     str(uid or "x"),
                 )
-                p = paint_wave4_chart(
+                charts = paint_wave4_one_pair(
                     stock_id,
                     db_path=self.db_path,
                     out_dir=chart_dir,
+                    stock_name=str(row.get("stock_name") or stock_id),
                     tag="one",
+                    header_style="B",
                 )
-                if p is not None:
-                    chart_path = str(p)
-                return format_wave4_one_html(row, live=live), True, chart_path
+                return format_wave4_one_html(row, live=live), True, charts
 
             try:
-                html, ok, chart_path = await asyncio.wait_for(
-                    asyncio.to_thread(_build), timeout=90.0
+                html, ok, charts = await asyncio.wait_for(
+                    asyncio.to_thread(_build), timeout=120.0
                 )
             except asyncio.TimeoutError:
-                html, ok, chart_path = "次級四浪查這檔逾時。稍後再試。", False, ""
+                html, ok, charts = "次級四浪查這檔逾時。稍後再試。", False, []
             except Exception:
                 logger.exception("次級四浪單檔失敗")
-                html, ok, chart_path = "次級四浪查這檔失敗。", False, ""
+                html, ok, charts = "次級四浪查這檔失敗。", False, []
             await self._stop_plain_wait(*wait_h)
             kb = InlineKeyboardMarkup(
                 [
@@ -9400,21 +9400,19 @@ class WayneTelegramBot:
                 html, reply_markup=kb, disable_web_page_preview=True
             )
             chart_ok = False
-            if chart_path and os.path.isfile(chart_path):
+            if charts:
+                cap0 = str((charts[0] or {}).get("caption") or "") or (
+                    f"{stock_id} 次級四浪＋結構（觀察非買訊）"
+                )
                 chart_ok = await self._wave4_send_media_group(
                     message,
-                    [
-                        {
-                            "path": chart_path,
-                            "caption": f"{stock_id} 次級四浪結構（觀察非買訊）",
-                        }
-                    ],
-                    caption0=f"{stock_id} 次級四浪結構（觀察非買訊）",
+                    charts,
+                    caption0=cap0,
                 )
             if ok and not chart_ok:
                 try:
                     await message.reply_text(
-                        f"{stock_id} 結構圖沒送出，稍後再打一次代號。"
+                        f"{stock_id} 附圖沒送出，稍後再打一次代號。"
                     )
                 except Exception:
                     pass

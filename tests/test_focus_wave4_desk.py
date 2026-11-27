@@ -197,6 +197,21 @@ def test_paint_wave4_chart_uses_mpl_paint_worker():
     assert "run_mpl_paint" in src
     page_src = inspect.getsource(m.paint_wave4_page_charts)
     assert "ThreadPoolExecutor" not in page_src
+    pair_src = inspect.getsource(m.paint_wave4_one_pair)
+    assert "run_mpl_paint" in pair_src
+    assert "render_lookup_structure_result" in pair_src
+    assert "wave4" in pair_src and "struct" in pair_src
+    assert "force_vol_zone" in pair_src
+    assert 'meta.get("zone")' in pair_src or 'meta or {}).get("zone")' in pair_src
+
+
+def test_wave4_hub_mentions_two_charts():
+    from focus_wave4_desk import format_wave4_hub_html
+
+    html = format_wave4_hub_html()
+    assert "一次兩張" in html
+    assert "結構圖" in html
+    assert "同路上大量區" in html
 
 
 def test_wave4_send_media_group_single_uses_reply_photo():
@@ -208,6 +223,17 @@ def test_wave4_send_media_group_single_uses_reply_photo():
     src = inspect.getsource(WayneTelegramBot._wave4_send_media_group)
     assert "len(send_paths) == 1" in src
     assert "reply_photo" in src
+
+
+def test_wave4_send_one_uses_pair_two_charts():
+    """單檔呼叫＝次級四浪圖＋結構圖一次送。"""
+    import inspect
+
+    from bot_servers import WayneTelegramBot
+
+    src = inspect.getsource(WayneTelegramBot._wave4_send_one)
+    assert "paint_wave4_one_pair" in src
+    assert "次級四浪圖＋結構圖" in src
 
 
 def test_guangsheng_horizon_sid_is_6442_not_1815():

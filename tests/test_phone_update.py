@@ -80,7 +80,7 @@ def test_file_note_matches_this_change():
     ):
         assert junk not in raw
     assert pu._clean_note(raw) == (
-        "次級四浪結構圖改走單線出圖，單檔改單張送，沒圖會說"
+        "次級四浪：單檔一次兩張（四浪圖＋結構圖同路上大量區）"
     )
 
 
