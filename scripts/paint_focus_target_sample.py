@@ -16,7 +16,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.font_manager as fm
 import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle
+from matplotlib.patches import FancyBboxPatch, Rectangle
 
 from biaoke_next_support import find_secondary_vol_zone
 from scripts.biaoke_tail_back_five_wave import analyze_bars
@@ -1056,44 +1056,72 @@ def paint(
     # 依字級估表頭帶高 → 抬主圖；右塊自頂往下排
     _band = _nh + _name_gap + _ph + _chg_pad + _ch + 0.018
     _top = max(0.88, min(0.93, 1.0 - _band))
-    # 價量夾縫加寬：左格 EPS／月營收，右格線段圖例（附圖雙紅框）
-    fig.subplots_adjust(top=_top, hspace=0.44)
+    # 價量夾縫：左右兩格同寬同高（附圖雙紅框比例）
+    fig.subplots_adjust(top=_top, hspace=0.46)
     fig.canvas.draw()
     ax_pos = ax.get_position()
     axv_pos = axv.get_position()
-    _gap_y = (float(ax_pos.y0) + float(axv_pos.y1)) * 0.5
-    fig.text(
-        0.30,
-        _gap_y,
+    _gap_bot = float(axv_pos.y1) + 0.010
+    _gap_top = float(ax_pos.y0) - 0.010
+    _box_h = max(0.062, _gap_top - _gap_bot)
+    _box_y = (_gap_bot + _gap_top) * 0.5 - _box_h * 0.5
+    _pair_l, _pair_r, _pair_gap = 0.075, 0.925, 0.022
+    _box_w = (_pair_r - _pair_l - _pair_gap) * 0.5
+    _x_fund = _pair_l
+    _x_leg = _pair_l + _box_w + _pair_gap
+    for _bx, _fc, _ec in (
+        (_x_fund, "#fff7ed", "#fdba74"),
+        (_x_leg, "#ffffff", "#94a3b8"),
+    ):
+        fig.patches.append(
+            FancyBboxPatch(
+                (_bx, _box_y),
+                _box_w,
+                _box_h,
+                boxstyle="round,pad=0.006,rounding_size=0.012",
+                facecolor=_fc,
+                edgecolor=_ec,
+                linewidth=1.2,
+                transform=fig.transFigure,
+                zorder=21,
+            )
+        )
+    _ax_fund = fig.add_axes(
+        [_x_fund + 0.010, _box_y + 0.008, _box_w - 0.020, _box_h - 0.016]
+    )
+    _ax_fund.set_axis_off()
+    _ax_fund.patch.set_alpha(0.0)
+    _ax_fund.text(
+        0.5,
+        0.5,
         fund,
         ha="center",
         va="center",
-        fontsize=7.4,
+        fontsize=7.2,
         fontproperties=prop,
         color="#1f2937",
+        transform=_ax_fund.transAxes,
         zorder=22,
-        bbox=dict(
-            boxstyle="round,pad=0.45",
-            facecolor="#fff7ed",
-            edgecolor="#fdba74",
-            linewidth=1.15,
-            alpha=0.97,
-        ),
     )
     _handles, _labels = ax.get_legend_handles_labels()
     if _handles:
-        fig.legend(
+        _ax_leg = fig.add_axes(
+            [_x_leg + 0.010, _box_y + 0.008, _box_w - 0.020, _box_h - 0.016]
+        )
+        _ax_leg.set_axis_off()
+        _ax_leg.patch.set_alpha(0.0)
+        _ax_leg.legend(
             _handles,
             _labels,
             loc="center",
-            bbox_to_anchor=(0.72, _gap_y),
             ncol=2,
-            fontsize=6.4,
-            framealpha=0.97,
-            borderpad=0.45,
+            fontsize=6.2,
+            frameon=False,
+            borderpad=0.2,
+            labelspacing=0.35,
+            columnspacing=0.8,
+            handlelength=1.6,
             prop=prop,
-            fancybox=True,
-            edgecolor="#94a3b8",
         )
 
     _y_name = 0.992
