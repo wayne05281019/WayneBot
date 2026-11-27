@@ -68,7 +68,7 @@ def test_paint_wave4_layout_guards():
     # 收價無框黑體；壓力來源量柱琥珀黃＋柱頂張數
     assert "bbox=" not in src[src.find("# 收／即時價") : src.find("right_tags")]
     assert 'f"{close:.0f}"' in src
-    assert '"#f9a825"' in src
+    assert '"#ffeb3b"' in src
     assert "張" in src[src.find("壓力來源日量柱") :]
 
 

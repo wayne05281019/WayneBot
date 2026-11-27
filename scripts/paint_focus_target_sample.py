@@ -702,11 +702,11 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
             axv.bar(
                 i,
                 v,
-                width=0.78,
-                color="#f9a825",
-                edgecolor="#ffffff",
-                linewidth=0.9,
-                alpha=0.98,
+                width=0.82,
+                color="#ffeb3b",
+                edgecolor="#f59e0b",
+                linewidth=1.15,
+                alpha=1.0,
                 zorder=3,
             )
         else:
