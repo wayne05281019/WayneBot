@@ -367,7 +367,7 @@ HEADER_STYLES: Dict[str, Dict[str, float]] = {
     "D": {"name": 18.0, "price": 24.0, "chg": 14.0, "k": 9.0, "name_gap": 0.003, "chg_pad": 0.006},
     "E": {"name": 14.0, "price": 22.0, "chg": 13.0, "k": 8.0, "name_gap": 0.002, "chg_pad": 0.005},
 }
-HEADER_STYLE_DEFAULT = "A"
+HEADER_STYLE_DEFAULT = "B"  # 2026-11-27 話筒選第二款
 
 
 def paint(
@@ -835,9 +835,10 @@ def paint(
 
     asof_face = f"{asof[0:4]}/{asof[4:6]}/{asof[6:8]} 盤後"
     ohlc_line = f"開 {open_:.0f}　高 {high:.0f}　低 {low:.0f}　收 {close:.0f}　量 {vol:.0f} 張"
-    # 左上只留盤後日 OHLC；股號／股名／收價改右上大字卡（附件二紅框）
-    sub1 = f"{asof_face}｜{ohlc_line}｜觀察非買訊"
-    sub2 = (
+    # 左上瘦帶：日期／觀察＋OHLC；長說明改貼主圖頂，股名價在右上
+    sub1 = f"{asof_face}｜觀察非買訊"
+    sub2 = ohlc_line
+    sub3 = (
         f"紫細線＝五波下跌　最底＋反彈0.382/0.5/0.618（觀察）　黃線＝新起漲｜"
         f"滾動近{WIN}根（新日進、左邊掉；右留空給價標）"
     )
@@ -982,32 +983,7 @@ def paint(
         [dates[i][4:6] + "/" + dates[i][6:8] for i in ticks], fontsize=8
     )
 
-    fig.subplots_adjust(top=0.84, hspace=0.28)
-    # 副標放在圖上方左側；右上留給股名價大字卡
-    fig.canvas.draw()
-    ax_pos = ax.get_position()
-    fig.text(
-        ax_pos.x0,
-        min(ax_pos.y1 + 0.032, 0.93),
-        sub1,
-        color="#374151",
-        fontsize=7.8,
-        fontproperties=prop,
-        ha="left",
-        va="bottom",
-    )
-    fig.text(
-        ax_pos.x0,
-        min(ax_pos.y1 + 0.010, 0.91),
-        sub2,
-        color="#6b7280",
-        fontsize=7.2,
-        fontproperties=prop,
-        ha="left",
-        va="bottom",
-    )
-
-    # —— 右上約略位置（紅框僅示意）：緊湊右對齊，今K細長跟大價同高（高低卡味）——
+    # 表頭瘦帶：抬高主圖，左副標與右上三行同帶，不准左上留大片空白
     prev_close: Optional[float] = None
     if len(bars) >= 2:
         try:
@@ -1023,7 +999,6 @@ def paint(
         sign = "＋" if dlt >= 0 else "－"
         chg_line = f"較昨日　{sign}{abs(dlt):.0f}（{sign}{abs(pct):.2f}%）"
 
-    # 右上三行：字級走 HEADER_STYLES（A–E 對照樣張）
     _hx = 0.972
     _hs = HEADER_STYLES.get(str(header_style or HEADER_STYLE_DEFAULT).upper()) or HEADER_STYLES[HEADER_STYLE_DEFAULT]
     _fs_name = float(_hs["name"])
@@ -1059,12 +1034,52 @@ def paint(
     _nw, _nh = _fig_extent(_name_s, _fs_name)
     _pw, _ph = _fig_extent(_price_s, _fs_price)
     _cw, _ch = _fig_extent(_chg_s, _fs_chg)
-    del _nw, _cw  # 寬只用於大價對齊縮圖
+    del _nw, _cw
 
-    # 垂直節奏：名→價緊、價→較昨日中心距依樣式 pad
-    _y_name = 0.975
+    # 依字級估表頭帶高 → 抬主圖；右塊自頂往下排
+    _band = _nh + _name_gap + _ph + _chg_pad + _ch + 0.018
+    _top = max(0.88, min(0.93, 1.0 - _band))
+    fig.subplots_adjust(top=_top, hspace=0.26)
+    fig.canvas.draw()
+    ax_pos = ax.get_position()
+
+    _y_name = 0.992
     _y_price = _y_name - _nh - _name_gap - _ph * 0.50
     _y_chg = _y_price - (_ph * 0.50 + _ch * 0.50 + _chg_pad)
+    # 左副標與右上同帶（日期對股名、OHLC 對價）；長說明貼主圖頂不占空白
+    fig.text(
+        ax_pos.x0,
+        _y_name,
+        sub1,
+        color="#374151",
+        fontsize=8.2,
+        fontproperties=prop,
+        ha="left",
+        va="top",
+        zorder=20,
+    )
+    fig.text(
+        ax_pos.x0,
+        _y_price,
+        sub2,
+        color="#4b5563",
+        fontsize=7.6,
+        fontproperties=prop,
+        ha="left",
+        va="center",
+        zorder=20,
+    )
+    fig.text(
+        ax_pos.x0,
+        ax_pos.y1 + 0.003,
+        sub3,
+        color="#6b7280",
+        fontsize=6.6,
+        fontproperties=prop,
+        ha="left",
+        va="bottom",
+        zorder=20,
+    )
     fig.text(
         _hx,
         _y_name,

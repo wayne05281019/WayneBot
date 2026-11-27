@@ -65,11 +65,12 @@ def test_paint_wave4_layout_guards():
     assert 'f"收 {close:.0f}"' not in right_block
     assert "末根K旁不再寫收價" in src
     assert "ZONE_NEAR_PAD" in src
-    # 右上 A–E 字級樣式＋今K；壓力來源黃柱標張數
+    # 右上預設 B＋表頭瘦帶；壓力來源黃柱標張數
     assert "FancyBboxPatch" not in src
     assert "較昨日" in src
     assert "HEADER_STYLES" in src
-    assert "get_window_extent" in src
+    assert 'HEADER_STYLE_DEFAULT = "B"' in src
+    assert "1.0 - _band" in src
     assert '"今K"' in src
     assert '"#ffeb3b"' in src
     assert "張" in src[src.find("壓力來源日量柱") :]
