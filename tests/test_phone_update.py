@@ -80,7 +80,7 @@ def test_file_note_matches_this_change():
     ):
         assert junk not in raw
     assert pu._clean_note(raw) == (
-        "次級四浪：價標空gutter＋近價雙欄、線停標籤前、⑤不裁量圖"
+        "次級四浪：壓帶標掛左、收貼末根K、浪圈縮小貼頂底"
     )
 
 

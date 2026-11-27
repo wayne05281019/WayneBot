@@ -42,16 +42,24 @@ def test_paint_wave4_layout_guards():
     assert "LINE_END_PAD" in src
     assert "TAG_COL_GAP" in tag_src or "TAG_COL_GAP" in inspect.getsource(m)
     assert "短截" in tag_src or "stub" in tag_src
-    assert 'boxstyle="circle,pad=0.28"' in src
+    assert 'boxstyle="circle,pad=0.12"' in src
     assert "rebound_fib_from_wave_bottom" in src
     assert "最底" in src
     assert 'marker="D"' not in src
     # 圖內不准再貼「146 →」這類終點價
     assert 'f"{price:.0f} →"' not in src
     assert "起→③＝" not in src
-    # 水平線停在標籤前；⑤改左上
+    # 水平線停在標籤前；壓帶上下緣掛左；浪圈貼近頂底
     assert "hlines" in src
-    assert "(-26, 22)" in src
+    assert "壓上緣" in src
+    assert 'va="bottom"' in src
+    assert "(0, 7)" in src
+    # 右欄不准再塞壓上緣／壓下緣／收（收貼末根K）
+    right_block = src[src.find("right_tags"): src.find("_paint_right_price_tags")]
+    assert "壓上緣" not in right_block
+    assert "壓下緣" not in right_block
+    assert 'f"收 {close:.0f}"' not in right_block
+    assert 'xy=(float(n - 1), float(close))' in src
 
 
 def test_rev_yi_thousand_to_yi():

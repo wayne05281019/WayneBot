@@ -467,6 +467,45 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
         )
         ax.hlines(hi, _x_left, _x_line_end, color="#475569", ls="-", lw=1.45, alpha=0.95)
         ax.hlines(lo, _x_left, _x_line_end, color="#475569", ls="-", lw=1.45, alpha=0.95)
+        # 壓帶上下緣標籤掛左邊，不准跟右欄價標擠
+        ax.text(
+            _x_left + 0.35,
+            hi,
+            f"壓上緣 {hi:.0f}",
+            ha="left",
+            va="bottom",
+            fontsize=8.2,
+            fontweight="bold",
+            fontproperties=prop,
+            color="#1e293b",
+            zorder=12,
+            clip_on=False,
+            bbox=dict(
+                boxstyle="round,pad=0.18",
+                facecolor="#f8fafc",
+                edgecolor="#64748b",
+                alpha=0.96,
+            ),
+        )
+        ax.text(
+            _x_left + 0.35,
+            lo,
+            f"壓下緣 {lo:.0f}",
+            ha="left",
+            va="top",
+            fontsize=8.2,
+            fontweight="bold",
+            fontproperties=prop,
+            color="#1e293b",
+            zorder=12,
+            clip_on=False,
+            bbox=dict(
+                boxstyle="round,pad=0.18",
+                facecolor="#f8fafc",
+                edgecolor="#64748b",
+                alpha=0.96,
+            ),
+        )
 
     yr = max(highs) - min(lows)
     for i, (o, h, l, c) in enumerate(zip(opens, highs, lows, closes)):
@@ -556,25 +595,25 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
             ax.scatter(
                 [j],
                 [price],
-                s=28,
+                s=16,
                 c="#7c3aed",
                 zorder=9,
                 edgecolors="#fff",
-                lw=0.55,
+                lw=0.4,
             )
             wave_no = {"起": None, "終": "5"}.get(lab, lab)
             if wave_no is None:
                 continue
-            near_bot = float(price) <= ylim_lo + _span_y * 0.14
-            near_top = float(price) >= ylim_hi - _span_y * 0.10
+            # 小圈貼近頂／底：高點略上、低點略下；貼底⑤改微左上防裁量圖
+            near_bot = float(price) <= ylim_lo + _span_y * 0.12
             if lab in ("2", "4") or kind == "H":
-                xytext = (0, 28) if not near_top else (18, -22)
-            elif lab == "終" or near_bot:
-                xytext = (-26, 22)  # 左上，禁止往量圖裁
-            elif lab == "3":
-                xytext = (0, -26) if not near_bot else (-20, 24)
+                xytext = (0, 7)
+            elif lab == "終" and near_bot:
+                xytext = (-6, 8)
+            elif kind == "L" or lab in ("1", "3", "終"):
+                xytext = (0, -7)
             else:
-                xytext = (0, -24) if not near_bot else (16, 20)
+                xytext = (0, -6)
             ax.annotate(
                 str(wave_no if lab != "終" else "5"),
                 xy=(j, price),
@@ -583,16 +622,16 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
                 ha="center",
                 va="center",
                 color="#5b21b6",
-                fontsize=9.5,
+                fontsize=7.2,
                 fontweight="bold",
                 fontproperties=prop,
                 zorder=10,
                 clip_on=False,
                 bbox=dict(
-                    boxstyle="circle,pad=0.28",
+                    boxstyle="circle,pad=0.12",
                     facecolor="#f5f3ff",
                     edgecolor="#7c3aed",
-                    linewidth=1.15,
+                    linewidth=0.9,
                     alpha=0.97,
                 ),
             )
@@ -789,7 +828,29 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
     ax.set_ylabel("價（元）", fontproperties=prop)
     axv.set_ylabel("成交量（張）", fontproperties=prop)
 
-    # 右側價位角標：最底／反彈切割／四浪高／壓帶／收 —— 空 gutter＋近價雙欄
+    # 收／即時價貼近末根K右側，不准丟進最右欄去擠
+    ax.annotate(
+        f"收 {close:.0f}",
+        xy=(float(n - 1), float(close)),
+        xytext=(9, 0),
+        textcoords="offset points",
+        ha="left",
+        va="center",
+        fontsize=9.2,
+        fontweight="bold",
+        fontproperties=prop,
+        color="#115e59",
+        zorder=16,
+        clip_on=False,
+        bbox=dict(
+            boxstyle="round,pad=0.2",
+            facecolor="#ccfbf1",
+            edgecolor="#14b8a6",
+            alpha=0.97,
+        ),
+    )
+
+    # 右側價位角標：最底／反彈切割／四浪高（壓帶掛左；收貼末根K）
     right_tags: List[Dict[str, Any]] = [
         {
             "price": float(w4.price),
@@ -798,14 +859,6 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
             "facecolor": "#fee2e2",
             "edge": "#f87171",
             "fontsize": 9.5,
-        },
-        {
-            "price": float(close),
-            "text": f"收 {close:.0f}",
-            "color": "#115e59",
-            "facecolor": "#ccfbf1",
-            "edge": "#14b8a6",
-            "fontsize": 10.0,
         },
         {
             "price": float(wave_lo),
@@ -826,27 +879,6 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
                 "edge": "#10b981",
                 "fontsize": 8.4,
             }
-        )
-    if zone:
-        right_tags.extend(
-            [
-                {
-                    "price": float(zone["high"]),
-                    "text": f"壓上緣 {float(zone['high']):.0f}",
-                    "color": "#1e293b",
-                    "facecolor": "#f8fafc",
-                    "edge": "#64748b",
-                    "fontsize": 9.2,
-                },
-                {
-                    "price": float(zone["low"]),
-                    "text": f"壓下緣 {float(zone['low']):.0f}",
-                    "color": "#1e293b",
-                    "facecolor": "#f8fafc",
-                    "edge": "#64748b",
-                    "fontsize": 9.2,
-                },
-            ]
         )
     _x_text = float(n - 1 + FUTURE_PAD + 4.0)
     _xlim_right = _x_text + LABEL_RIGHT_EXTRA
