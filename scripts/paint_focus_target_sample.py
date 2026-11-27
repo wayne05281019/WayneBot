@@ -1038,10 +1038,10 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
     _cw, _ch = _fig_extent(_chg_s, _fs_chg)
     del _nw, _cw  # 寬只用於大價對齊縮圖
 
-    # 垂直節奏（對齊高低卡 close@0.70／chg@0.24）：名→價小空、價→較昨日約 0.46 格
+    # 垂直節奏：名→價緊、價→較昨日中心距≈高低卡 0.46 格
     _y_name = 0.975
-    _y_price = _y_name - _nh - 0.008 - _ph * 0.50
-    _y_chg = _y_price - max(_ph, _ch) * 0.72
+    _y_price = _y_name - _nh - 0.003 - _ph * 0.50
+    _y_chg = _y_price - (_ph * 0.50 + _ch * 0.50 + 0.007)
     fig.text(
         _hx,
         _y_name,
