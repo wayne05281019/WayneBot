@@ -101,7 +101,9 @@ def test_paint_wave4_layout_guards():
     assert 'set_ylabel("價（元）"' in src
     assert "毛利率" in src
     assert "長借／權益" in src
-    assert "fontsize=7.6" in src
+    assert "_fund_fs" in src
+    assert "四浪高／" in src
+    assert "反彈{ratio:g}／" in src
     assert "基本面盒改中帶左格" in src
     assert '"#ffeb3b"' in src
     assert "張" in src[src.find("壓力來源日量柱") :]

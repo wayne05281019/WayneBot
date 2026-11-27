@@ -961,7 +961,7 @@ def paint(
         ax.text(
             _x_zone_lab,
             _zhi,
-            f"壓上緣 {_zhi:.0f}",
+            f"壓上緣／{_zhi:.0f}",
             ha="left",
             va="bottom",
             fontsize=8.4,
@@ -981,7 +981,7 @@ def paint(
         ax.text(
             _x_zone_lab,
             _zlo,
-            f"壓下緣 {_zlo:.0f}",
+            f"壓下緣／{_zlo:.0f}",
             ha="left",
             va="top",
             fontsize=8.4,
@@ -1005,7 +1005,7 @@ def paint(
     right_tags: List[Dict[str, Any]] = [
         {
             "price": float(w4.price),
-            "text": f"四浪高 {w4.price:.0f}",
+            "text": f"四浪高／{w4.price:.0f}",
             "color": "#991b1b",
             "facecolor": "#fee2e2",
             "edge": "#f87171",
@@ -1013,7 +1013,7 @@ def paint(
         },
         {
             "price": float(wave_lo),
-            "text": f"最底 {wave_lo:.0f}",
+            "text": f"最底／{wave_lo:.0f}",
             "color": "#064e3b",
             "facecolor": "#ecfdf5",
             "edge": "#34d399",
@@ -1024,7 +1024,7 @@ def paint(
         right_tags.append(
             {
                 "price": float(px),
-                "text": f"反彈{ratio:g} {px:.0f}",
+                "text": f"反彈{ratio:g}／{px:.0f}",
                 "color": "#065f46",
                 "facecolor": "#d1fae5",
                 "edge": "#10b981",
@@ -1110,14 +1110,18 @@ def paint(
     fig.canvas.draw()
     ax_pos = ax.get_position()
     _mid = ax_mid.get_position()
-    # 中帶內左右同寬同高瘦格（EPS／線段圖例）
-    _box_h = float(_mid.height) * 0.90
-    _box_w = float(_mid.width) * 0.485
-    _pair_gap = float(_mid.width) * 0.02
-    _box_y = float(_mid.y0) + float(_mid.height) * 0.05
+    # EPS 格：字要大、寬度跟字走（不准半空大框）；圖例格另算
+    _fund_fs = 8.2
+    _longest = max(fund.split("\n"), key=len)
+    _fw, _ = _fig_extent(_longest, _fund_fs)
+    _box_h = float(_mid.height) * 0.92
+    _pair_gap = 0.012
+    _box_w_fund = float(min(float(_mid.width) * 0.52, max(0.26, _fw + 0.030)))
+    _box_w_leg = float(min(float(_mid.width) * 0.40, max(0.24, float(_mid.width) - _box_w_fund - _pair_gap)))
+    _box_y = float(_mid.y0) + float(_mid.height) * 0.04
     _x_fund = float(_mid.x0)
-    _x_leg = _x_fund + _box_w + _pair_gap
-    _ax_fund = fig.add_axes([_x_fund, _box_y, _box_w, _box_h])
+    _x_leg = _x_fund + _box_w_fund + _pair_gap
+    _ax_fund = fig.add_axes([_x_fund, _box_y, _box_w_fund, _box_h])
     _ax_fund.set_xticks([])
     _ax_fund.set_yticks([])
     _ax_fund.set_facecolor("#fff7ed")
@@ -1125,20 +1129,20 @@ def paint(
         _sp.set_color("#fdba74")
         _sp.set_linewidth(1.0)
     _ax_fund.text(
-        0.03,
-        0.52,
+        0.035,
+        0.50,
         fund,
         ha="left",
         va="center",
-        fontsize=7.6,
+        fontsize=_fund_fs,
         fontproperties=prop,
         color="#1f2937",
         transform=_ax_fund.transAxes,
-        linespacing=1.22,
+        linespacing=1.20,
         clip_on=False,
     )
     _handles, _labels = ax.get_legend_handles_labels()
-    _ax_leg = fig.add_axes([_x_leg, _box_y, _box_w, _box_h])
+    _ax_leg = fig.add_axes([_x_leg, _box_y, _box_w_leg, _box_h])
     _ax_leg.set_xticks([])
     _ax_leg.set_yticks([])
     _ax_leg.set_facecolor("#ffffff")

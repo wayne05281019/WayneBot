@@ -80,7 +80,7 @@ def test_file_note_matches_this_change():
     ):
         assert junk not in raw
     assert pu._clean_note(raw) == (
-        "次級四浪：左格字級拉齊並補轟天雷官方欄"
+        "次級四浪：右標加分隔號，EPS格收窄放大字"
     )
 
 
