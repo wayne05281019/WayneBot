@@ -69,11 +69,37 @@ def test_file_note_matches_this_change():
     raw = Path(pu._NOTE_FILE).read_text(encoding="utf-8").splitlines()[0]
     assert "舊海選早報" not in raw
     assert "依時段" not in raw
-    assert "綜合篩選" in raw
-    assert "模擬倉" in raw or "AI倉" in raw
+    # 不准再把每版都一樣的狀態句塞進話筒
+    for junk in (
+        "觀察非買訊",
+        "上七下七",
+        "AI倉只回已關閉",
+        "第三排第1綜合篩選",
+        "打代號確認",
+        "盤中現價",
+    ):
+        assert junk not in raw
     assert pu._clean_note(raw) == (
-        "v46：第三排第1綜合篩選、第2次級四浪（十檔／單檔附結構圖；打代號確認；盤中現價）；觀察非買訊；上七下七＋三排七；AI倉只回已關閉。"
+        "更新通知只講這次真改動，不重複舊功能狀態"
     )
+
+
+def test_boilerplate_status_clauses_stripped():
+    """舊菜單／觀察非買訊／鍵盤排法＝沒變就不用再秀。"""
+    import phone_update as pu
+
+    fat = (
+        "v46：第三排第1綜合篩選、第2次級四浪（十檔／單檔附結構圖；打代號確認；盤中現價）；"
+        "觀察非買訊；上七下七＋三排七；AI倉只回已關閉。"
+    )
+    cleaned = pu._clean_note(fat)
+    assert "觀察非買訊" not in cleaned
+    assert "上七下七" not in cleaned
+    assert "AI倉只回已關閉" not in cleaned
+    assert "打代號確認" not in cleaned
+    assert "盤中現價" not in cleaned
+    assert "綜合篩選" not in cleaned
+    assert "十檔／單檔附結構圖" in cleaned
 
 
 def test_schedule_wait_note_at_fuse_window():

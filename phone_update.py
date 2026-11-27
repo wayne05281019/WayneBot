@@ -94,6 +94,40 @@ def _is_meta_update_note(text: str) -> bool:
     return False
 
 
+# 每版重複貼的狀態＝話筒沒意義（長的先刪）
+_BOILERPLATE_PHRASES: tuple[str, ...] = (
+    "上七下七＋三排七",
+    "AI倉只回已關閉",
+    "觀察非買訊",
+    "第三排第1綜合篩選、",
+    "第三排第1綜合篩選",
+    "打代號確認；",
+    "打代號確認／",
+    "打代號確認",
+    "盤中現價；",
+    "盤中現價",
+    "實質十檔翻頁；",
+    "實質十檔翻頁／",
+    "實質十檔翻頁",
+    "上七下七",
+)
+
+
+def _strip_boilerplate_status(text: str) -> str:
+    """拿掉重複狀態句，只留這次真改動。"""
+    t = str(text or "")
+    for phrase in _BOILERPLATE_PHRASES:
+        t = t.replace(phrase, "")
+    # 括號裡只剩標點 → 整段拿掉；否則清掉括號內尾端多餘分號
+    t = re.sub(r"[（(][^）)\w\u4e00-\u9fff]*[）)]", "", t)
+    t = re.sub(r"([（(][^）)]*?)\s*[；;，,]+\s*([）)])", r"\1\2", t)
+    t = re.sub(r"[；;]{2,}", "；", t)
+    t = re.sub(r"[，,]{2,}", "，", t)
+    t = re.sub(r"[：:]\s*[；;，,]", "：", t)
+    t = re.sub(r"\s+", " ", t).strip(" ，,；;：:。.")
+    return t
+
+
 def _strip_meta_clauses(text: str) -> str:
     """逗號句裡若夾「更新通知會依時段…」這類機制句，只留產品口語。"""
     parts = [p.strip() for p in re.split(r"[，,]", str(text or "")) if p.strip()]
@@ -111,6 +145,7 @@ def _clean_note(raw: str) -> str:
     t = _HEX.sub("", t)
     t = re.sub(r"\s+", " ", t).strip(" ，,")
     t = _strip_meta_clauses(t)
+    t = _strip_boilerplate_status(t)
     t = t[:80]
     if _is_meta_update_note(t):
         return ""
