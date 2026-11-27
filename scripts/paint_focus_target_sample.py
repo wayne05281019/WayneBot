@@ -16,7 +16,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.font_manager as fm
 import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle
+from matplotlib.patches import FancyBboxPatch, Rectangle
 
 from biaoke_next_support import find_secondary_vol_zone
 from scripts.biaoke_tail_back_five_wave import analyze_bars
@@ -794,20 +794,20 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
         zorder=10,
     )
 
-    # 距四浪高％掛價圖內偏右上，但避開右欄價標 gutter
+    # 距四浪高％掛價圖內右上（表頭股名價改到 figure 右上紅框，這裡避開）
     ax.text(
-        0.78,
         0.995,
+        0.92,
         f"距四浪高還有 {room:.1f}%",
         transform=ax.transAxes,
         ha="right",
         va="top",
-        fontsize=9.5,
+        fontsize=9.0,
         fontweight="bold",
         fontproperties=prop,
         color="#b91c1c",
         bbox=dict(
-            boxstyle="round,pad=0.28",
+            boxstyle="round,pad=0.24",
             facecolor="#fee2e2",
             edgecolor="#f87171",
             alpha=0.95,
@@ -817,17 +817,14 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
     )
 
     asof_face = f"{asof[0:4]}/{asof[4:6]}/{asof[6:8]} 盤後"
-    title = f"{sid}　{name}　收盤 {close:.0f} 元"
     ohlc_line = f"開 {open_:.0f}　高 {high:.0f}　低 {low:.0f}　收 {close:.0f}　量 {vol:.0f} 張"
-    # 表頭兩行：標題單獨；副標拆兩行，不准壓進圖內文字
+    # 左上只留盤後日 OHLC；股號／股名／收價改右上大字卡（附件二紅框）
     sub1 = f"{asof_face}｜{ohlc_line}｜觀察非買訊"
     sub2 = (
         f"紫細線＝五波下跌　最底＋反彈0.382/0.5/0.618（觀察）　黃線＝新起漲｜"
         f"滾動近{WIN}根（新日進、左邊掉；右留空給價標）"
     )
-    ax.set_title(
-        title, color="#111", fontsize=15.5, pad=30, fontweight="bold", fontproperties=prop
-    )
+    ax.set_title("")  # 股名價改 figure 右上，不准再置中標題搶位
     ax.legend(
         loc="upper left",
         fontsize=6.8,
@@ -917,23 +914,9 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
             ),
         )
 
-    # 收／即時價：無框，末根K旁黑體數字即可
-    ax.annotate(
-        f"{close:.0f}",
-        xy=(float(n - 1), float(close)),
-        xytext=(6, 0),
-        textcoords="offset points",
-        ha="left",
-        va="center",
-        fontsize=10.5,
-        fontweight="bold",
-        fontproperties=prop,
-        color="#111111",
-        zorder=16,
-        clip_on=False,
-    )
+    # 末根K旁不再寫收價（會卡壓帶標）；收／即時價改右上大字卡
 
-    # 右側價位角標：最底／反彈切割／四浪高（壓帶在中欄紅框；收貼末根K）
+    # 右側價位角標：最底／反彈切割／四浪高（壓帶紅框位；收價在表頭卡）
     right_tags: List[Dict[str, Any]] = [
         {
             "price": float(w4.price),
@@ -982,29 +965,139 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
         [dates[i][4:6] + "/" + dates[i][6:8] for i in ticks], fontsize=8
     )
 
-    fig.subplots_adjust(top=0.86, hspace=0.28)
-    # 副標放在標題與圖之間（figure 座標），不准壓進圖內
+    fig.subplots_adjust(top=0.78, hspace=0.28)
+    # 副標放在圖上方左側；右上留給股名價大字卡
     fig.canvas.draw()
     ax_pos = ax.get_position()
     fig.text(
         ax_pos.x0,
-        min(ax_pos.y1 + 0.034, 0.955),
+        min(ax_pos.y1 + 0.028, 0.86),
         sub1,
         color="#374151",
-        fontsize=8.0,
+        fontsize=7.8,
         fontproperties=prop,
         ha="left",
         va="bottom",
     )
     fig.text(
         ax_pos.x0,
-        min(ax_pos.y1 + 0.012, 0.935),
+        min(ax_pos.y1 + 0.008, 0.84),
         sub2,
         color="#6b7280",
-        fontsize=7.6,
+        fontsize=7.2,
         fontproperties=prop,
         ha="left",
         va="bottom",
+    )
+
+    # —— 右上紅框位：股號／股名／收價放大＋今K縮圖＋較昨日漲跌（高低卡味）——
+    prev_close: Optional[float] = None
+    if len(bars) >= 2:
+        try:
+            prev_close = float(bars[-2]["close"])
+        except (TypeError, ValueError, KeyError):
+            prev_close = None
+    chg_c = "#111111"
+    chg_line = ""
+    if prev_close and prev_close > 0:
+        dlt = float(close) - float(prev_close)
+        pct = dlt / float(prev_close) * 100.0
+        chg_c = "#dc2626" if dlt >= 0 else "#059669"
+        sign = "＋" if dlt >= 0 else "－"
+        chg_line = f"較昨日　{sign}{abs(dlt):.0f}（{sign}{abs(pct):.2f}%）"
+
+    # 卡片底：figure 右上
+    chip = FancyBboxPatch(
+        (0.58, 0.848),
+        0.40,
+        0.138,
+        transform=fig.transFigure,
+        boxstyle="round,pad=0.012,rounding_size=0.012",
+        facecolor="#ffffff",
+        edgecolor="#94a3b8",
+        linewidth=1.35,
+        alpha=0.99,
+        zorder=20,
+        clip_on=False,
+    )
+    fig.patches.append(chip)
+    # 今K縮圖（漲紅跌綠＝較昨收）；加大加粗，不准洗成淡影
+    ax_k = fig.add_axes([0.595, 0.862, 0.072, 0.108])
+    ax_k.set_axis_off()
+    ax_k.set_facecolor("#f8fafc")
+    _o, _h, _l, _c = float(open_), float(high), float(low), float(close)
+    _rng = max(_h - _l, abs(_c) * 0.012, 1e-6)
+    _kcol = "#e53935"
+    if prev_close is not None:
+        _kcol = "#e53935" if _c >= float(prev_close) else "#00897b"
+
+    def _ky(p: float) -> float:
+        return 0.08 + (float(p) - _l) / _rng * 0.84
+
+    ax_k.plot([0.5, 0.5], [_ky(_l), _ky(_h)], color=_kcol, lw=3.4, solid_capstyle="round", zorder=2)
+    _blo, _bhi = _ky(min(_o, _c)), _ky(max(_o, _c))
+    ax_k.add_patch(
+        Rectangle(
+            (0.22, _blo),
+            0.56,
+            max(_bhi - _blo, 0.10),
+            facecolor=_kcol,
+            edgecolor=_kcol,
+            lw=0.5,
+            zorder=3,
+        )
+    )
+    ax_k.set_xlim(0, 1)
+    ax_k.set_ylim(0, 1)
+    ax_k.text(
+        0.5,
+        0.02,
+        "今K",
+        transform=ax_k.transAxes,
+        ha="center",
+        va="bottom",
+        fontsize=7.5,
+        fontweight="bold",
+        fontproperties=prop,
+        color="#475569",
+        zorder=4,
+    )
+    # 股號股名＋大收價＋較昨日（右對齊、字級加大）
+    fig.text(
+        0.965,
+        0.962,
+        f"{sid}　{name}",
+        ha="right",
+        va="top",
+        fontsize=22.0,
+        fontweight="bold",
+        fontproperties=prop,
+        color="#0f172a",
+        zorder=21,
+    )
+    fig.text(
+        0.965,
+        0.915,
+        f"{close:.0f}",
+        ha="right",
+        va="top",
+        fontsize=32.0,
+        fontweight="bold",
+        fontproperties=prop,
+        color=chg_c,
+        zorder=21,
+    )
+    fig.text(
+        0.965,
+        0.862,
+        chg_line or "較昨日　—",
+        ha="right",
+        va="top",
+        fontsize=13.5,
+        fontweight="bold",
+        fontproperties=prop,
+        color=chg_c,
+        zorder=21,
     )
     out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out, dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())

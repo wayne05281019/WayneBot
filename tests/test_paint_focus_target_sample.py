@@ -57,17 +57,19 @@ def test_paint_wave4_layout_guards():
     assert "ZONE_NEAR_PAD" in src
     assert "FIB_NEAR_PAD" in src
     assert "(0, 7)" in src
-    # right_tags 不准塞壓上緣／壓下緣／收（收貼末根K；壓帶紅框位單獨）
+    # right_tags 不准塞壓上緣／壓下緣／收（收價改右上大字卡；壓帶紅框位單獨）
     right_block = src[src.find("right_tags"):]
     right_block = right_block[: right_block.find("_paint_right_price_tags")]
     assert "壓上緣" not in right_block
     assert "壓下緣" not in right_block
     assert 'f"收 {close:.0f}"' not in right_block
-    assert 'xy=(float(n - 1), float(close))' in src
+    assert "末根K旁不再寫收價" in src
     assert "ZONE_NEAR_PAD" in src
-    # 收價無框黑體；壓力來源量柱琥珀黃＋柱頂張數
-    assert "bbox=" not in src[src.find("# 收／即時價") : src.find("right_tags")]
-    assert 'f"{close:.0f}"' in src
+    # 右上大字卡＋今K縮圖＋較昨日；壓力來源量柱亮黃＋柱頂張數
+    assert "FancyBboxPatch" in src
+    assert "較昨日" in src
+    assert "今K" in src
+    assert "fontsize=32.0" in src or "fontsize=32" in src
     assert '"#ffeb3b"' in src
     assert "張" in src[src.find("壓力來源日量柱") :]
 
