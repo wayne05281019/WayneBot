@@ -472,22 +472,37 @@ def paint(
     room = (w4.price - close) / close * 100.0
 
     qi = con.execute(
-        "SELECT year,season,eps FROM quarterly_income WHERE stock_id=? "
+        "SELECT year,season,eps,gross_margin_pct,revenue,net_income "
+        "FROM quarterly_income WHERE stock_id=? "
         "ORDER BY year DESC, season DESC LIMIT 12",
         (sid,),
     ).fetchall()
-    years = sorted({int(y) for y, s, e in qi}, reverse=True)
+    years = sorted({int(y) for y, s, *_rest in qi}, reverse=True)
     year = years[0] if years else int(asof[:4])
     singles, cum = _eps_singles_cum(
-        [(int(y), int(s), float(e)) for y, s, e in qi if e is not None], year
+        [(int(y), int(s), float(e)) for y, s, e, *_r in qi if e is not None], year
     )
+    # 最新一季毛利／稅後（官方季報；轟天雷總覽同款欄）
+    gm_s = ""
+    ni_s = ""
+    for y, s, e, gm, rev, ni in qi:
+        if int(y) != int(year):
+            continue
+        if gm is not None and not gm_s:
+            gm_s = f"Q{int(s)}毛利率 {float(gm):.1f}%"
+        if ni is not None and not ni_s:
+            # 庫內千元 → 億
+            ni_s = f"Q{int(s)}稅後 {_rev_yi(float(ni))}億"
+        if gm_s and ni_s:
+            break
 
     mr = con.execute(
-        "SELECT yyyymm, revenue FROM monthly_revenue WHERE stock_id=? "
+        "SELECT yyyymm, revenue, mom_pct, yoy_pct, ytd_yoy_pct "
+        "FROM monthly_revenue WHERE stock_id=? "
         "ORDER BY yyyymm DESC LIMIT 6",
         (sid,),
     ).fetchall()
-    mr_y = [(m, r) for m, r in mr if str(m).startswith(str(year))]
+    mr_y = [r for r in mr if str(r[0]).startswith(str(year))]
     mr_show = mr_y[:1] if mr_y else []
 
     fine = con.execute(
@@ -499,6 +514,23 @@ def paint(
         (sid,),
     ).fetchone()
     ind_main = (ind_main_row[0] if ind_main_row else "") or ""
+    # 轟天雷有、庫內已凍的長借／權益（公開資訊觀測站；無就不寫）
+    lt_loan_s = ""
+    try:
+        import json as _json
+
+        _mx = con.execute(
+            "SELECT payload FROM mops_fund_extra_cache WHERE stock_id=? "
+            "ORDER BY fetched_ymd DESC LIMIT 1",
+            (sid,),
+        ).fetchone()
+        if _mx and _mx[0]:
+            _pay = _json.loads(str(_mx[0]))
+            _lt = _pay.get("lt_loan_equity_pct")
+            if _lt is not None:
+                lt_loan_s = f"長借／權益 {float(_lt):.1f}%"
+    except Exception:
+        lt_loan_s = ""
 
     zone = pick_forward_pressure_zone(bars, close)
 
@@ -521,7 +553,7 @@ def paint(
     fig = plt.figure(figsize=(13.4, 9.55))
     fig.patch.set_facecolor(bg)
     _gs = fig.add_gridspec(
-        3, 1, height_ratios=[3.4, 0.58, 1.25], hspace=0.10
+        3, 1, height_ratios=[3.4, 0.78, 1.25], hspace=0.10
     )
     ax = fig.add_subplot(_gs[0, 0])
     ax_mid = fig.add_subplot(_gs[1, 0])
@@ -849,25 +881,41 @@ def paint(
     eps_bits = [f"Q{s} {singles[s]:.2f}" for s in (1, 2, 3) if s in singles]
     eps_line = "　".join(eps_bits) if eps_bits else "—"
     cum_s = f"{cum:.2f}" if cum is not None else "—"
-    # 月營收：只寫已公告月；11／12 尚未＝明講，不跟季EPS混
+    # 月營收＋月增／年增／累計年增（官方；對齊轟天雷單月營收可讀欄）
     if mr_show:
-        ym, rev = mr_show[0]
+        ym, rev, mom, yoy, ytd = mr_show[0]
         ym = str(ym)
         mon = int(ym[4:6])
-        have = {int(str(m)[4:6]) for m, _ in mr_y}
+        have = {int(str(r[0])[4:6]) for r in mr_y}
         miss = [m for m in (11, 12) if m not in have]
         miss_s = "、".join(f"{m}月" for m in miss) + "尚未" if miss else "已公告至最新月"
         mr_line = f"月營收 {year}年{mon}月 {_rev_yi(float(rev))}億（{miss_s}）"
+        _bits = []
+        if mom is not None:
+            _bits.append(f"月增 {float(mom):+.1f}%")
+        if yoy is not None:
+            _bits.append(f"年增 {float(yoy):+.1f}%")
+        if ytd is not None:
+            _bits.append(f"累計年增 {float(ytd):+.1f}%")
+        mr_chg_line = "｜".join(_bits) if _bits else ""
     else:
         mr_line = f"月營收 {year}年 —（11、12月尚未）"
+        mr_chg_line = ""
 
-    fund = (
-        f"產業 {ind_main or '—'}｜{ind_fine or '—'}\n"
-        f"前三季單季EPS　{eps_line}\n"
-        f"前三季累計　{cum_s} 元（無月EPS官方）\n"
-        f"{mr_line}"
-    )
-    # 基本面盒改價量夾縫左格（與線段圖例並排）；這裡不壓日K
+    _fund_lines = [
+        f"產業 {ind_main or '—'}｜{ind_fine or '—'}",
+        f"前三季單季EPS　{eps_line}",
+        f"前三季累計　{cum_s} 元（無月EPS官方）",
+    ]
+    if gm_s or ni_s:
+        _fund_lines.append("　".join(x for x in (gm_s, ni_s) if x))
+    _fund_lines.append(mr_line)
+    if mr_chg_line:
+        _fund_lines.append(mr_chg_line)
+    if lt_loan_s:
+        _fund_lines.append(lt_loan_s)
+    fund = "\n".join(_fund_lines)
+    # 基本面盒改中帶左格（轟天雷同款官方欄）；這裡不壓日K
 
     # 距四浪高％掛價圖內右上（表頭股名價改到 figure 右上紅框，這裡避開）
     ax.text(
@@ -1077,16 +1125,16 @@ def paint(
         _sp.set_color("#fdba74")
         _sp.set_linewidth(1.0)
     _ax_fund.text(
-        0.04,
+        0.035,
         0.5,
         fund,
         ha="left",
         va="center",
-        fontsize=6.4,
+        fontsize=7.0,
         fontproperties=prop,
         color="#1f2937",
         transform=_ax_fund.transAxes,
-        linespacing=1.15,
+        linespacing=1.28,
     )
     _handles, _labels = ax.get_legend_handles_labels()
     _ax_leg = fig.add_axes([_x_leg, _box_y, _box_w, _box_h])
@@ -1102,12 +1150,12 @@ def paint(
             _labels,
             loc="center left",
             ncol=2,
-            fontsize=5.4,
+            fontsize=7.0,
             frameon=False,
-            borderpad=0.1,
-            labelspacing=0.22,
-            columnspacing=0.55,
-            handlelength=1.2,
+            borderpad=0.12,
+            labelspacing=0.28,
+            columnspacing=0.65,
+            handlelength=1.35,
             prop=prop,
         )
 
