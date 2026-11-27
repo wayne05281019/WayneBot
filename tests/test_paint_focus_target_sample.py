@@ -72,20 +72,20 @@ def test_paint_wave4_layout_guards():
     # 圖內不准再貼「146 →」這類終點價
     assert 'f"{price:.0f} →"' not in src
     assert "起→③＝" not in src
-    # 水平線；壓帶上下緣掛中欄紅框位；浪圈貼近頂底
+    # 水平線；壓帶上下緣掛左側；浪圈貼近頂底
     assert "hlines" in src
     assert "壓上緣" in src
-    assert "ZONE_NEAR_PAD" in src
+    assert "_x_zone_lab" in src
     assert "FIB_NEAR_PAD" in src
     assert "(0, 7)" in src
-    # right_tags 不准塞壓上緣／壓下緣／收（收價改右上大字卡；壓帶紅框位單獨）
+    # right_tags 不准塞壓上緣／壓下緣／收（收價改右上大字卡；壓帶標在左側）
     right_block = src[src.find("right_tags"):]
     right_block = right_block[: right_block.find("_paint_right_price_tags")]
     assert "壓上緣" not in right_block
     assert "壓下緣" not in right_block
     assert 'f"收 {close:.0f}"' not in right_block
     assert "末根K旁不再寫收價" in src
-    assert "ZONE_NEAR_PAD" in src
+    assert "_x_left" in src
     # 右上預設 B＋表頭瘦帶；壓力來源黃柱標張數
     assert "FancyBboxPatch" not in src
     assert "較昨日" in src

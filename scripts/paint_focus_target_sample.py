@@ -559,7 +559,7 @@ def paint(
         )
         ax.hlines(hi, _x_left, _x_line_end, color="#475569", ls="-", lw=1.45, alpha=0.95)
         ax.hlines(lo, _x_left, _x_line_end, color="#475569", ls="-", lw=1.45, alpha=0.95)
-        # 壓帶上下緣稍後畫在「末根K→右標」中間欄（紅框位）；這裡只留帶與線
+        # 壓帶上下緣標稍後掛左側；這裡只留帶與線
 
     yr = max(highs) - min(lows)
     for i, (o, h, l, c) in enumerate(zip(opens, highs, lows, closes)):
@@ -924,45 +924,17 @@ def paint(
     ax.set_ylabel("價（元）", fontproperties=prop)
     axv.set_ylabel("成交量（張）", fontproperties=prop)
 
-    # 幾何：末根K → 壓帶紅框（近）→ 空 → 反彈／四浪高兩欄（遠）
-    _x_zone = float(n - 1 + ZONE_NEAR_PAD)
+    # 幾何：末根K → 空 → 反彈／四浪高（壓帶標改左側）
+    _x_zone = float(n - 1 + ZONE_NEAR_PAD)  # 保留常數相容；標籤已改左側
     _x_text = float(n - 1 + FIB_NEAR_PAD)
     _xlim_right = _x_text + TAG_COL_GAP * 1.0 + float(LABEL_RIGHT_EXTRA)
     ax.set_xlim(_x_left, _xlim_right)
     if zone:
         _zlo, _zhi = float(zone["low"]), float(zone["high"])
-        # 灰帶延伸過紅框位，線停在壓帶標旁
-        ax.fill_between(
-            [_x_line_end, min(_x_zone + 11.0, _x_text - 1.0)],
-            _zlo,
-            _zhi,
-            facecolor="#cbd5e1",
-            alpha=0.32,
-            zorder=1,
-        )
-        ax.hlines(
-            _zhi,
-            _x_line_end,
-            _x_zone + 0.3,
-            color="#475569",
-            ls="-",
-            lw=1.25,
-            alpha=0.92,
-            zorder=5,
-        )
-        ax.hlines(
-            _zlo,
-            _x_line_end,
-            _x_zone + 0.3,
-            color="#475569",
-            ls="-",
-            lw=1.25,
-            alpha=0.92,
-            zorder=5,
-        )
-        # 壓上緣／壓下緣 → 末根K右側紅框位（與反彈欄明顯分開）
+        # 壓上緣／壓下緣掛灰帶左側（不准跟右邊反彈欄擠）
+        _x_zone_lab = float(_x_left) + 0.35
         ax.text(
-            _x_zone,
+            _x_zone_lab,
             _zhi,
             f"壓上緣 {_zhi:.0f}",
             ha="left",
@@ -982,7 +954,7 @@ def paint(
             ),
         )
         ax.text(
-            _x_zone,
+            _x_zone_lab,
             _zlo,
             f"壓下緣 {_zlo:.0f}",
             ha="left",
@@ -1002,9 +974,9 @@ def paint(
             ),
         )
 
-    # 末根K旁不再寫收價（會卡壓帶標）；收／即時價改右上大字卡
+    # 末根K旁不再寫收價；收／即時價改右上大字卡
 
-    # 右側價位角標：最底／反彈切割／四浪高（壓帶紅框位；收價在表頭卡）
+    # 右側價位角標：最底／反彈切割／四浪高（收價在表頭卡）
     right_tags: List[Dict[str, Any]] = [
         {
             "price": float(w4.price),
