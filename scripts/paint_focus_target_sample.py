@@ -433,7 +433,7 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
                 edgecolors="#fff",
                 lw=0.55,
             )
-            # 起／終側標（仿籌碼K線）；中間轉折錯開上下，避免互壓
+            # 起／終只標價；1～5 用圓圈標浪序，價不准跟浪號擠成「3 174」那種亂
             if lab == "起":
                 ax.annotate(
                     f"← {price:.0f}",
@@ -447,35 +447,63 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
                     zorder=10,
                 )
             elif lab == "終":
+                # 第五浪終點也用圓圈⑤，價另側標，不准「2560」跟浪序糊成一坨
+                ax.annotate(
+                    "5",
+                    xy=(j, price),
+                    xytext=(0, -22),
+                    textcoords="offset points",
+                    ha="center",
+                    va="center",
+                    color="#5b21b6",
+                    fontsize=9.5,
+                    fontweight="bold",
+                    fontproperties=prop,
+                    zorder=10,
+                    bbox=dict(
+                        boxstyle="circle,pad=0.28",
+                        facecolor="#f5f3ff",
+                        edgecolor="#7c3aed",
+                        linewidth=1.15,
+                        alpha=0.97,
+                    ),
+                )
                 ax.annotate(
                     f"{price:.0f} →",
                     xy=(j, price),
-                    xytext=(-48, -16),
+                    xytext=(-52, 10),
                     textcoords="offset points",
                     color="#16a34a",
-                    fontsize=9.5,
+                    fontsize=8.5,
                     fontweight="bold",
                     fontproperties=prop,
                     zorder=10,
                 )
             else:
-                dy = 14 if kind == "H" else -20
-                # 點 2／3 再微偏，減與鄰標重疊
+                dy = 16 if kind == "H" else -22
                 if lab == "2":
-                    dy = 16
+                    dy = 18
                 elif lab == "3":
-                    dy = -22
+                    dy = -24
                 ax.annotate(
-                    f"{lab} {price:.0f}",
+                    str(lab),
                     xy=(j, price),
                     xytext=(0, dy),
                     textcoords="offset points",
                     ha="center",
+                    va="center",
                     color="#5b21b6",
-                    fontsize=8,
+                    fontsize=9.5,
                     fontweight="bold",
                     fontproperties=prop,
                     zorder=10,
+                    bbox=dict(
+                        boxstyle="circle,pad=0.28",
+                        facecolor="#f5f3ff",
+                        edgecolor="#7c3aed",
+                        linewidth=1.15,
+                        alpha=0.97,
+                    ),
                 )
 
     ax.axhline(
@@ -543,36 +571,51 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
             alpha = 0.72
         axv.bar(i, v, width=0.72, color=col, alpha=alpha, zorder=2)
 
+    # 量標只放角落文字盒；橘虛線已對日，不准再拉箭頭橫蓋量柱
+    vmax = max(vols) if vols else 1.0
+    axv.set_ylim(0, vmax * 1.22)
     if zone_i is not None:
         md = f"{dates[zone_i][4:6]}/{dates[zone_i][6:8]}"
-        axv.annotate(
-            f"壓力來源量（橘）\n{md}　{vols[zone_i]:.0f}張",
-            xy=(zone_i, vols[zone_i]),
-            xytext=(14, 14),
-            textcoords="offset points",
+        axv.text(
+            0.01,
+            0.97,
+            f"壓力來源量（橘）{md} {vols[zone_i]:.0f}張",
+            transform=axv.transAxes,
+            ha="left",
+            va="top",
             color="#9a3412",
-            fontsize=8.5,
+            fontsize=7.6,
             fontweight="bold",
             fontproperties=prop,
-            arrowprops=dict(arrowstyle="->", color="#ea580c", lw=1.3),
             bbox=dict(
-                boxstyle="round,pad=0.25",
+                boxstyle="round,pad=0.18",
                 facecolor="#ffedd5",
                 edgecolor="#fb923c",
-                alpha=0.96,
+                alpha=0.95,
             ),
+            zorder=6,
+            clip_on=False,
         )
 
-    axv.annotate(
+    axv.text(
+        0.99,
+        0.97,
         f"今日 {vol:.0f} 張",
-        xy=(n - 1, vol),
-        xytext=(-62, 12),
-        textcoords="offset points",
+        transform=axv.transAxes,
+        ha="right",
+        va="top",
         color="#111",
-        fontsize=9,
+        fontsize=7.8,
         fontweight="bold",
         fontproperties=prop,
-        arrowprops=dict(arrowstyle="->", color="#333", lw=0.8),
+        bbox=dict(
+            boxstyle="round,pad=0.18",
+            facecolor="#f8fafc",
+            edgecolor="#94a3b8",
+            alpha=0.95,
+        ),
+        zorder=6,
+        clip_on=False,
     )
 
     eps_bits = [f"Q{s} {singles[s]:.2f}" for s in (1, 2, 3) if s in singles]
