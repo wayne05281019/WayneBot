@@ -53,7 +53,7 @@ DB = ROOT / "data" / "wayne_market.db"
 # LABEL_RIGHT_EXTRA＝價標專用再加寬，字貼最右，不准貼末根K
 WIN = 130
 FUTURE_PAD = 18
-LABEL_RIGHT_EXTRA = 22
+LABEL_RIGHT_EXTRA = 28
 # 五波最底往上反彈參考（觀察非買訊）；對齊本庫／林口播常用回撤率
 REBOUND_FIB_RATIOS = (0.382, 0.5, 0.618)
 
@@ -160,18 +160,43 @@ def _paint_right_price_tags(
     prop,
     x_text: float | None = None,
 ) -> None:
-    """右側價位角標：字貼右留白，細線連回真價；不准貼末根K旁擋縮圖。"""
+    """右側價位角標：字只貼最右空白；短截線對齊真價。
+
+    不准從末根K拉長線過來（看起來像標籤貼在K旁）。
+    x_anchor 保留相容，實際不用來當文字錨。
+    """
     if not tags:
         return
+    _ = x_anchor  # 相容舊呼叫
     prices = [float(t["price"]) for t in tags]
-    dys = _dodge_right_ys(prices, y_lo=y_lo, y_hi=y_hi)
-    xt = float(x_anchor + 1.2 if x_text is None else x_text)
-    for t, dy in zip(tags, dys):
-        ax.annotate(
+    dys = _dodge_right_ys(prices, y_lo=y_lo, y_hi=y_hi, min_gap_frac=0.048)
+    xt = float(x_text if x_text is not None else 0.0)
+    stub = 5.5  # 最右短截，對齊價位
+    for t, dy, true_y in zip(tags, dys, prices):
+        # 短截在真價高度（水平），字在錯開後的 dy
+        ax.plot(
+            [xt - stub, xt - 0.8],
+            [true_y, true_y],
+            color=t.get("edge", "#94a3b8"),
+            lw=1.0,
+            solid_capstyle="butt",
+            zorder=13,
+            clip_on=False,
+        )
+        if abs(dy - true_y) > (y_hi - y_lo) * 0.008:
+            ax.plot(
+                [xt - 0.8, xt - 0.8],
+                [true_y, dy],
+                color=t.get("edge", "#94a3b8"),
+                lw=0.7,
+                alpha=0.7,
+                zorder=13,
+                clip_on=False,
+            )
+        ax.text(
+            xt,
+            dy,
             str(t["text"]),
-            xy=(x_anchor, float(t["price"])),
-            xytext=(xt, dy),
-            textcoords="data",
             color=t.get("color", "#111"),
             fontsize=float(t.get("fontsize", 9.5)),
             fontweight="bold",
@@ -180,13 +205,6 @@ def _paint_right_price_tags(
             ha="left",
             clip_on=False,
             zorder=14,
-            arrowprops=dict(
-                arrowstyle="-",
-                color=t.get("edge", "#94a3b8"),
-                lw=0.85,
-                shrinkA=0,
-                shrinkB=3,
-            ),
             bbox=dict(
                 boxstyle="round,pad=0.22",
                 facecolor=t.get("facecolor", "#fff"),
@@ -473,78 +491,40 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
                 edgecolors="#fff",
                 lw=0.55,
             )
-            # 起／終只標價；1～5 用圓圈標浪序，價不准跟浪號擠成「3 174」那種亂
-            if lab == "起":
-                ax.annotate(
-                    f"← {price:.0f}",
-                    xy=(j, price),
-                    xytext=(10, 8),
-                    textcoords="offset points",
-                    color="#dc2626",
-                    fontsize=9.5,
-                    fontweight="bold",
-                    fontproperties=prop,
-                    zorder=10,
-                )
+            # 圖內只留①～⑤圓圈（推離K）；起／終價只在最右標籤，不准「146→」貼在柱上
+            wave_no = {"起": None, "終": "5"}.get(lab, lab)
+            if wave_no is None:
+                continue
+            # 高點圈往上、低點往左下空位，避開影線；clip_on=False 防裁進量圖
+            if lab in ("2", "4") or kind == "H":
+                xytext = (0, 30)
             elif lab == "終":
-                # 第五浪終點也用圓圈⑤，價另側標，不准「2560」跟浪序糊成一坨
-                ax.annotate(
-                    "5",
-                    xy=(j, price),
-                    xytext=(0, -22),
-                    textcoords="offset points",
-                    ha="center",
-                    va="center",
-                    color="#5b21b6",
-                    fontsize=9.5,
-                    fontweight="bold",
-                    fontproperties=prop,
-                    zorder=10,
-                    bbox=dict(
-                        boxstyle="circle,pad=0.28",
-                        facecolor="#f5f3ff",
-                        edgecolor="#7c3aed",
-                        linewidth=1.15,
-                        alpha=0.97,
-                    ),
-                )
-                ax.annotate(
-                    f"{price:.0f} →",
-                    xy=(j, price),
-                    xytext=(-52, 10),
-                    textcoords="offset points",
-                    color="#16a34a",
-                    fontsize=8.5,
-                    fontweight="bold",
-                    fontproperties=prop,
-                    zorder=10,
-                )
+                xytext = (-22, -18)  # 左下，不垂直栽出圖底
+            elif lab == "3":
+                xytext = (0, -28)
             else:
-                dy = 16 if kind == "H" else -22
-                if lab == "2":
-                    dy = 18
-                elif lab == "3":
-                    dy = -24
-                ax.annotate(
-                    str(lab),
-                    xy=(j, price),
-                    xytext=(0, dy),
-                    textcoords="offset points",
-                    ha="center",
-                    va="center",
-                    color="#5b21b6",
-                    fontsize=9.5,
-                    fontweight="bold",
-                    fontproperties=prop,
-                    zorder=10,
-                    bbox=dict(
-                        boxstyle="circle,pad=0.28",
-                        facecolor="#f5f3ff",
-                        edgecolor="#7c3aed",
-                        linewidth=1.15,
-                        alpha=0.97,
-                    ),
-                )
+                xytext = (0, -26)
+            ax.annotate(
+                str(wave_no if lab != "終" else "5"),
+                xy=(j, price),
+                xytext=xytext,
+                textcoords="offset points",
+                ha="center",
+                va="center",
+                color="#5b21b6",
+                fontsize=9.5,
+                fontweight="bold",
+                fontproperties=prop,
+                zorder=10,
+                clip_on=False,
+                bbox=dict(
+                    boxstyle="circle,pad=0.28",
+                    facecolor="#f5f3ff",
+                    edgecolor="#7c3aed",
+                    linewidth=1.15,
+                    alpha=0.97,
+                ),
+            )
 
     ax.axhline(
         w4.price,
@@ -682,24 +662,26 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
     )
 
     # 空間％放圖內右上、但離開右緣角標欄
+    # 距四浪高％改掛右上留白，不准壓在K／切割線上
     ax.text(
-        0.78,
-        0.97,
+        0.995,
+        0.995,
         f"距四浪高還有 {room:.1f}%",
         transform=ax.transAxes,
         ha="right",
         va="top",
-        fontsize=10.5,
+        fontsize=9.5,
         fontweight="bold",
         fontproperties=prop,
         color="#b91c1c",
         bbox=dict(
-            boxstyle="round,pad=0.32",
+            boxstyle="round,pad=0.28",
             facecolor="#fee2e2",
             edgecolor="#f87171",
             alpha=0.95,
         ),
-        zorder=10,
+        zorder=15,
+        clip_on=False,
     )
 
     asof_face = f"{asof[0:4]}/{asof[4:6]}/{asof[6:8]} 盤後"
@@ -724,16 +706,15 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
     )
     ax.set_ylabel("價（元）", fontproperties=prop)
     axv.set_ylabel("成交量（張）", fontproperties=prop)
-    # 右留空：明天＋價標專用加寬；左＝滾動掉舊根
-    ax.set_xlim(-1.2, n - 1 + FUTURE_PAD + LABEL_RIGHT_EXTRA)
-    # 上方多留一點給轉折標，避免貼齊表頭
+    # 上方多留一點給轉折標，避免貼齊表頭（xlim 等右標 x 算完再設）
     _extra_ys = [w4.price, wave_lo] + [p for _, p in fib_lvls]
     if zone:
         _extra_ys.extend([float(zone["high"]), float(zone["low"])])
     y_hi = max(highs + _extra_ys)
     y_lo = min(lows + [wave_lo])
     pad = (y_hi - y_lo) * 0.06
-    ylim_lo = y_lo - pad * 0.4
+    # 下方多留：⑤圓圈／最底三角不准被裁進量圖
+    ylim_lo = y_lo - pad * 1.35
     ylim_hi = y_hi + pad * 1.15
     ax.set_ylim(ylim_lo, ylim_hi)
 
@@ -796,8 +777,9 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
                 },
             ]
         )
-    # 字貼圖面最右側空白帶，細線連回末根；不准貼K旁
-    _x_right = float(n - 1 + FUTURE_PAD + LABEL_RIGHT_EXTRA - 2.5)
+    # 字貼K右側大留白起點；xlim 再留字寬，短截對齊價、不從末根拉長線
+    _x_right = float(n - 1 + FUTURE_PAD + 2.0)
+    ax.set_xlim(-1.2, _x_right + LABEL_RIGHT_EXTRA)
     _paint_right_price_tags(
         ax,
         x_anchor=float(n - 1),

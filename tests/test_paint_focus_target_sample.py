@@ -31,19 +31,21 @@ def test_rebound_fib_from_wave_bottom():
 
 
 def test_paint_wave4_layout_guards():
-    """右標最右、浪序圓圈、量標上移；畫最底＋反彈切割。"""
+    """右標最右短截、浪序只留圓圈、最底＋反彈切割。"""
     import inspect
 
     from scripts import paint_focus_target_sample as m
 
     src = inspect.getsource(m.paint)
+    tag_src = inspect.getsource(m._paint_right_price_tags)
     assert "LABEL_RIGHT_EXTRA" in src
+    assert "短截" in tag_src or "stub" in tag_src
     assert 'boxstyle="circle,pad=0.28"' in src
-    assert "transform=axv.transAxes" in src
     assert "rebound_fib_from_wave_bottom" in src
-    assert "反彈參考帶" in src
     assert "最底" in src
     assert 'marker="D"' not in src
+    # 圖內不准再貼「146 →」這類終點價
+    assert 'f"{price:.0f} →"' not in src
     assert "起→③＝" not in src
 
 
