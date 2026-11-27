@@ -69,7 +69,7 @@ def test_paint_wave4_layout_guards():
     assert "FancyBboxPatch" not in src
     assert "較昨日" in src
     assert "細長" in src or "0.32" in src
-    assert "fontsize=26.0" in src or "fontsize=26" in src
+    assert "fontsize=24.0" in src or "fontsize=24" in src
     assert '"#ffeb3b"' in src
     assert "張" in src[src.find("壓力來源日量柱") :]
 

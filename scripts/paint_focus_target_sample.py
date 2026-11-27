@@ -1006,39 +1006,39 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
         sign = "＋" if dlt >= 0 else "－"
         chg_line = f"較昨日　{sign}{abs(dlt):.0f}（{sign}{abs(pct):.2f}%）"
 
-    # 排版（figure）：股名 → 今K＋大價同列 → 較昨日；無白底
-    _hx = 0.975  # 右緣
+    # 排版（figure）：股名 → 今K＋大價同列 → 較昨日；行距拉開不准互壓
+    _hx = 0.975
+    _y_name, _y_price, _y_chg = 0.972, 0.928, 0.878
     fig.text(
         _hx,
-        0.965,
+        _y_name,
         f"{sid}　{name}",
         ha="right",
         va="top",
-        fontsize=16.5,
+        fontsize=15.5,
         fontweight="bold",
         fontproperties=prop,
         color="#0f172a",
         zorder=21,
     )
-    # 大價（右對齊）；今K細長縮圖貼在價左側同高
     _price_s = f"{close:.0f}"
     fig.text(
         _hx,
-        0.932,
+        _y_price,
         _price_s,
         ha="right",
         va="center",
-        fontsize=26.0,
+        fontsize=24.0,
         fontweight="bold",
         fontproperties=prop,
         color=chg_c,
         zorder=21,
     )
-    # 估價字寬 → 今K放價左側（細長：寬≈高×0.45）
-    _pw = max(0.055, 0.011 * len(_price_s) + 0.02)
-    _k_w, _k_h = 0.022, 0.048
-    _k_x = _hx - _pw - _k_w - 0.012
-    _k_y = 0.932 - _k_h * 0.5
+    # 今K：細長（寬:高≈1:2.4），跟大價垂直置中；左側留「今K」字
+    _pw = max(0.048, 0.010 * len(_price_s) + 0.018)
+    _k_w, _k_h = 0.020, 0.048
+    _k_x = _hx - _pw - _k_w - 0.018
+    _k_y = _y_price - _k_h * 0.5
     ax_k = fig.add_axes([_k_x, _k_y, _k_w, _k_h])
     ax_k.set_axis_off()
     ax_k.patch.set_alpha(0.0)
@@ -1049,37 +1049,37 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
         _kcol = "#e53935" if _c >= float(prev_close) else "#00897b"
 
     def _ky(p: float) -> float:
-        return 0.06 + (float(p) - _l) / _rng * 0.88
+        return 0.08 + (float(p) - _l) / _rng * 0.84
 
     ax_k.plot(
         [0.5, 0.5],
         [_ky(_l), _ky(_h)],
         color=_kcol,
-        lw=1.55,
+        lw=1.35,
         solid_capstyle="round",
         zorder=2,
     )
     _blo, _bhi = _ky(min(_o, _c)), _ky(max(_o, _c))
     ax_k.add_patch(
         Rectangle(
-            (0.34, _blo),
-            0.32,  # 細實體，不准胖成方塊
-            max(_bhi - _blo, 0.05),
+            (0.36, _blo),
+            0.28,
+            max(_bhi - _blo, 0.045),
             facecolor=_kcol,
             edgecolor=_kcol,
-            lw=0.35,
+            lw=0.3,
             zorder=3,
         )
     )
     ax_k.set_xlim(0, 1)
     ax_k.set_ylim(0, 1)
     fig.text(
-        _k_x - 0.004,
-        0.932,
+        _k_x - 0.006,
+        _y_price,
         "今K",
         ha="right",
         va="center",
-        fontsize=8.0,
+        fontsize=8.5,
         fontweight="bold",
         fontproperties=prop,
         color="#64748b",
@@ -1087,11 +1087,11 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
     )
     fig.text(
         _hx,
-        0.888,
+        _y_chg,
         chg_line or "較昨日　—",
         ha="right",
         va="top",
-        fontsize=11.5,
+        fontsize=11.0,
         fontweight="bold",
         fontproperties=prop,
         color=chg_c,
