@@ -712,11 +712,11 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
                 },
             ]
         )
-    # 字貼右留白中段～偏右，細線連回末根；不准 +1.2 貼在K旁
+    # 字貼右留白盡頭（FUTURE_PAD 右側），細線連回末根；不准貼K旁
     _paint_right_price_tags(
         ax,
         x_anchor=float(n - 1),
-        x_text=float(n - 1 + FUTURE_PAD * 0.72),
+        x_text=float(n - 1 + FUTURE_PAD + 1.5),
         tags=right_tags,
         y_lo=ylim_lo + (ylim_hi - ylim_lo) * 0.04,
         y_hi=ylim_hi - (ylim_hi - ylim_lo) * 0.06,
