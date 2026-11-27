@@ -696,27 +696,46 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
             ax.axvline(zone_i, color="#ea580c", ls="--", lw=1.1, alpha=0.75, zorder=4)
             axv.axvline(zone_i, color="#ea580c", ls="--", lw=1.1, alpha=0.75, zorder=4)
 
+    # 壓力來源日量柱：趨勢圖同款琥珀黃＋白邊，柱頂寫當日成交張數
     for i, (v, o, c) in enumerate(zip(vols, opens, closes)):
         if zone_i is not None and i == zone_i:
-            col = "#ea580c"
-            alpha = 1.0
+            axv.bar(
+                i,
+                v,
+                width=0.78,
+                color="#f9a825",
+                edgecolor="#ffffff",
+                linewidth=0.9,
+                alpha=0.98,
+                zorder=3,
+            )
         else:
             col = "#d64545" if c >= o else "#2f9e6b"
-            alpha = 0.72
-        axv.bar(i, v, width=0.72, color=col, alpha=alpha, zorder=2)
+            axv.bar(i, v, width=0.72, color=col, alpha=0.72, zorder=2)
 
-    # 量標掛在量圖「上方縫隙」（axes y>1），完全不進量柱區
     vmax = max(vols) if vols else 1.0
-    axv.set_ylim(0, vmax * 1.08)
-    _vol_note_bits = []
-    if zone_i is not None:
+    axv.set_ylim(0, vmax * 1.22)  # 柱頂張數標留空
+    if zone_i is not None and float(vols[zone_i] or 0) > 0:
         md = f"{dates[zone_i][4:6]}/{dates[zone_i][6:8]}"
-        _vol_note_bits.append(f"壓力來源量（橘）{md} {vols[zone_i]:.0f}張")
-    _vol_note_bits.append(f"今日 {vol:.0f} 張")
+        axv.annotate(
+            f"{vols[zone_i]:.0f}張\n{md}",
+            xy=(float(zone_i), float(vols[zone_i])),
+            xytext=(0, 5),
+            textcoords="offset points",
+            ha="center",
+            va="bottom",
+            fontsize=7.4,
+            fontweight="bold",
+            fontproperties=prop,
+            color="#7c2d12",
+            zorder=9,
+            clip_on=False,
+        )
+    # 量圖上方只留今日量（來源日張數已寫在琥珀柱頂）
     axv.text(
         0.0,
         1.16,
-        "　｜　".join(_vol_note_bits),
+        f"今日 {vol:.0f} 張" + ("　｜　黃柱＝壓力來源日" if zone_i is not None else ""),
         transform=axv.transAxes,
         ha="left",
         va="bottom",
@@ -726,8 +745,8 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
         fontproperties=prop,
         bbox=dict(
             boxstyle="round,pad=0.2",
-            facecolor="#fff7ed",
-            edgecolor="#fdba74",
+            facecolor="#fffbeb",
+            edgecolor="#fbbf24",
             alpha=0.96,
         ),
         zorder=8,
@@ -898,26 +917,20 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
             ),
         )
 
-    # 收／即時價貼近末根K右側
+    # 收／即時價：無框，末根K旁黑體數字即可
     ax.annotate(
-        f"收 {close:.0f}",
+        f"{close:.0f}",
         xy=(float(n - 1), float(close)),
-        xytext=(7, 0),
+        xytext=(6, 0),
         textcoords="offset points",
         ha="left",
         va="center",
-        fontsize=9.0,
+        fontsize=10.5,
         fontweight="bold",
         fontproperties=prop,
-        color="#115e59",
+        color="#111111",
         zorder=16,
         clip_on=False,
-        bbox=dict(
-            boxstyle="round,pad=0.18",
-            facecolor="#ccfbf1",
-            edgecolor="#14b8a6",
-            alpha=0.97,
-        ),
     )
 
     # 右側價位角標：最底／反彈切割／四浪高（壓帶在中欄紅框；收貼末根K）

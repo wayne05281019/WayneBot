@@ -65,6 +65,11 @@ def test_paint_wave4_layout_guards():
     assert 'f"收 {close:.0f}"' not in right_block
     assert 'xy=(float(n - 1), float(close))' in src
     assert "ZONE_NEAR_PAD" in src
+    # 收價無框黑體；壓力來源量柱琥珀黃＋柱頂張數
+    assert "bbox=" not in src[src.find("# 收／即時價") : src.find("right_tags")]
+    assert 'f"{close:.0f}"' in src
+    assert '"#f9a825"' in src
+    assert "張" in src[src.find("壓力來源日量柱") :]
 
 
 def test_rev_yi_thousand_to_yi():
