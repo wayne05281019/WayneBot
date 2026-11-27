@@ -49,15 +49,16 @@ def drop_measure_points(y_hi: float, y_lo: float) -> Optional[float]:
 
 ROOT = Path(__file__).resolve().parents[1]
 DB = ROOT / "data" / "wayne_market.db"
-# 固定右錨滾動窗；右側再留 FUTURE_PAD 根空位（明天起時間往右長）
-# LABEL_RIGHT_EXTRA＝價標專用再加寬，字貼最右 gutter，不准貼末根K
-# LINE_END_PAD＝水平線／色帶右端停點（標籤欄前必須空）
+# 固定右錨滾動窗；右側略留 FUTURE_PAD（明天進日＋價標左中右三欄）
+# 價標貼近末根K：TAG_NEAR_PAD 起算，左／中／右錯開，不准整排遠掛最右
+# LINE_END_PAD＝水平線停在末根K旁（標籤接在線外）
 WIN = 130
-FUTURE_PAD = 22
-LABEL_RIGHT_EXTRA = 52
-LINE_END_PAD = 1.5
-TAG_COL_GAP = 24.0  # 雙欄字寬約一盒，欄距不夠會看起來像互壓
-NEAR_PRICE_FRAC = 0.022  # 2449：201／199 也要進同簇雙欄
+FUTURE_PAD = 8
+LABEL_RIGHT_EXTRA = 14  # 只留一欄字寬，不准右側大片空白把標籤看起來「掛很遠」
+LINE_END_PAD = 1.2
+TAG_NEAR_PAD = 1.8  # 末根K → 第一欄（貼近）
+TAG_COL_GAP = 16.0  # 左／中／右必須拉開到肉眼看得出不是一直線
+NEAR_PRICE_FRAC = 0.022  # 2449：201／199 也要進同簇錯開
 # 五波最底往上反彈參考（觀察非買訊）；對齊本庫／林口播常用回撤率
 REBOUND_FIB_RATIOS = (0.382, 0.5, 0.618)
 
@@ -118,12 +119,12 @@ def _dodge_right_ys(
     *,
     y_lo: float,
     y_hi: float,
-    min_gap_frac: float = 0.072,
+    min_gap_frac: float = 0.055,
     near_frac: float = NEAR_PRICE_FRAC,
 ) -> Tuple[List[float], List[int]]:
-    """右側角標顯示 Y＋欄位：近價改雙欄，跨簇再強制最小間距，不准互壓。
+    """價標顯示 Y＋左中右欄：高→低輪流 0/1/2，近價同簇也三欄錯開，不准互壓。
 
-    回傳 (placed_ys, cols)；cols[i]∈{0,1}，1＝往右一欄。
+    回傳 (placed_ys, cols)；cols[i]∈{0,1,2}＝左／中／右。
     """
     if not prices:
         return [], []
@@ -131,7 +132,11 @@ def _dodge_right_ys(
     near = max(span * float(near_frac), span * 0.004)
     gap = span * float(min_gap_frac)
     order = sorted(range(len(prices)), key=lambda i: prices[i], reverse=True)
-    # 近價分簇（高→低）
+    # 全域左中右輪流（垂直相鄰不在同一條直線）
+    cols = [0] * len(prices)
+    for rank, i in enumerate(order):
+        cols[i] = rank % 3
+    # 近價分簇：同簇再強制不同欄
     clusters: List[List[int]] = []
     for i in order:
         if not clusters:
@@ -142,50 +147,45 @@ def _dodge_right_ys(
             clusters[-1].append(i)
         else:
             clusters.append([i])
-    cols = [0] * len(prices)
+    # 只有近價多顆簇才重派欄；單顆簇保留全域輪流（否則全被蓋回 0）
     for cl in clusters:
-        for k, i in enumerate(cl):
-            cols[i] = 1 if (k % 2 == 1) else 0
-    # 跨簇 dodge：同簇用真價中位當代表，再映回各員（雙欄員可留真價）
-    placed = [float(p) for p in prices]
-    # 先對「每簇代表」做間距；代表＝簇內最高價（視覺上靠真價）
-    reps: List[Tuple[int, float]] = []  # (cluster_idx, rep_y)
-    for ci, cl in enumerate(clusters):
-        rep = max(float(prices[i]) for i in cl)
-        reps.append((ci, rep))
-    last = y_hi + gap
-    rep_placed: Dict[int, float] = {}
-    for ci, rep in reps:
-        y = min(rep, last - gap)
-        rep_placed[ci] = y
-        last = y
-    # 邊界推回
-    vals = list(rep_placed.values())
-    mn, mx = min(vals), max(vals)
-    if mn < y_lo:
-        sh = y_lo - mn
-        rep_placed = {k: v + sh for k, v in rep_placed.items()}
-        mx = max(rep_placed.values())
-    if mx > y_hi:
-        sh = mx - y_hi
-        rep_placed = {k: v - sh for k, v in rep_placed.items()}
-        order_c = sorted(rep_placed.keys(), key=lambda c: rep_placed[c], reverse=True)
-        last = y_hi + gap
-        for ci in order_c:
-            y = min(rep_placed[ci], last - gap)
-            rep_placed[ci] = max(y, y_lo)
-            last = rep_placed[ci]
-    for ci, cl in enumerate(clusters):
-        base = rep_placed[ci]
-        if len(cl) == 1:
-            placed[cl[0]] = base
+        if len(cl) < 2:
             continue
-        # 雙欄＋同欄微錯開：3 顆近價時不准兩顆同欄同 Y 互蓋
-        col_n = [0, 0]
+        used: set[int] = set()
         for k, i in enumerate(cl):
-            c = cols[i]
-            placed[i] = base - col_n[c] * gap * 0.85
-            col_n[c] += 1
+            c = k % 3
+            while c in used and len(used) < 3:
+                c = (c + 1) % 3
+            cols[i] = c
+            used.add(c)
+    placed = [float(p) for p in prices]
+    # 同欄才做 Y dodge（不同欄可同高）
+    for c in (0, 1, 2):
+        idxs = [i for i in order if cols[i] == c]
+        last = y_hi + gap
+        for i in idxs:
+            y = min(float(prices[i]), last - gap)
+            placed[i] = y
+            last = y
+        # 邊界推回
+        if not idxs:
+            continue
+        vals = [placed[i] for i in idxs]
+        mn, mx = min(vals), max(vals)
+        if mn < y_lo:
+            sh = y_lo - mn
+            for i in idxs:
+                placed[i] += sh
+            mx = max(placed[i] for i in idxs)
+        if mx > y_hi:
+            sh = mx - y_hi
+            for i in idxs:
+                placed[i] -= sh
+            last = y_hi + gap
+            for i in idxs:
+                y = min(placed[i], last - gap)
+                placed[i] = max(y, y_lo)
+                last = placed[i]
     return placed, cols
 
 
@@ -199,33 +199,44 @@ def _paint_right_price_tags(
     prop,
     x_text: float | None = None,
 ) -> None:
-    """右側價位角標：字只貼最右 gutter；短截對齊真價；近價雙欄。
+    """價標貼近末根K：左／中／右三欄錯開，短截對齊真價。
 
-    不准從末根K拉長線過來（看起來像標籤貼在K旁）。
-    x_anchor 保留相容，實際不用來當文字錨。
+    x_anchor＝末根K；x_text＝第一欄起點（預設 anchor+TAG_NEAR_PAD）。
     """
     if not tags:
         return
-    _ = x_anchor  # 相容舊呼叫
     prices = [float(t["price"]) for t in tags]
-    dys, cols = _dodge_right_ys(prices, y_lo=y_lo, y_hi=y_hi, min_gap_frac=0.072)
-    base_xt = float(x_text if x_text is not None else 0.0)
-    stub = 4.0  # 短截只在標籤欄內
+    dys, cols = _dodge_right_ys(prices, y_lo=y_lo, y_hi=y_hi, min_gap_frac=0.055)
+    base_xt = float(
+        x_text if x_text is not None else (float(x_anchor) + TAG_NEAR_PAD)
+    )
+    stub = 2.2
     span = max(y_hi - y_lo, 1.0)
     for t, dy, true_y, col in zip(tags, dys, prices, cols):
-        xt = base_xt + (TAG_COL_GAP if col else 0.0)
+        xt = base_xt + TAG_COL_GAP * float(col)
+        # 從末根K旁拉到該欄短截，線短可讀、不飛到圖外
         ax.plot(
-            [xt - stub, xt - 0.6],
+            [float(x_anchor) + 0.35, xt - 0.4],
             [true_y, true_y],
             color=t.get("edge", "#94a3b8"),
-            lw=1.0,
+            lw=0.85,
+            alpha=0.65,
+            solid_capstyle="butt",
+            zorder=12,
+            clip_on=False,
+        )
+        ax.plot(
+            [xt - stub, xt - 0.35],
+            [true_y, true_y],
+            color=t.get("edge", "#94a3b8"),
+            lw=1.15,
             solid_capstyle="butt",
             zorder=13,
             clip_on=False,
         )
         if abs(dy - true_y) > span * 0.008:
             ax.plot(
-                [xt - 0.6, xt - 0.6],
+                [xt - 0.35, xt - 0.35],
                 [true_y, dy],
                 color=t.get("edge", "#94a3b8"),
                 lw=0.7,
@@ -246,7 +257,7 @@ def _paint_right_price_tags(
             clip_on=False,
             zorder=14,
             bbox=dict(
-                boxstyle="round,pad=0.22",
+                boxstyle="round,pad=0.18",
                 facecolor=t.get("facecolor", "#fff"),
                 edgecolor=t.get("edge", "#94a3b8"),
                 alpha=0.97,
@@ -880,8 +891,9 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
                 "fontsize": 8.4,
             }
         )
-    _x_text = float(n - 1 + FUTURE_PAD + 4.0)
-    _xlim_right = _x_text + LABEL_RIGHT_EXTRA
+    # 價標貼近末根K，左中右三欄；右緣貼第三欄字尾，不准再留大片空把標籤推遠
+    _x_text = float(n - 1 + TAG_NEAR_PAD)
+    _xlim_right = _x_text + TAG_COL_GAP * 2.0 + float(LABEL_RIGHT_EXTRA)
     ax.set_xlim(_x_left, _xlim_right)
     _paint_right_price_tags(
         ax,
