@@ -553,7 +553,7 @@ def paint(
     fig = plt.figure(figsize=(13.4, 9.55))
     fig.patch.set_facecolor(bg)
     _gs = fig.add_gridspec(
-        3, 1, height_ratios=[3.4, 0.78, 1.25], hspace=0.10
+        3, 1, height_ratios=[3.4, 0.95, 1.25], hspace=0.10
     )
     ax = fig.add_subplot(_gs[0, 0])
     ax_mid = fig.add_subplot(_gs[1, 0])
@@ -1125,16 +1125,17 @@ def paint(
         _sp.set_color("#fdba74")
         _sp.set_linewidth(1.0)
     _ax_fund.text(
-        0.035,
-        0.5,
+        0.03,
+        0.52,
         fund,
         ha="left",
         va="center",
-        fontsize=7.0,
+        fontsize=7.6,
         fontproperties=prop,
         color="#1f2937",
         transform=_ax_fund.transAxes,
-        linespacing=1.28,
+        linespacing=1.22,
+        clip_on=False,
     )
     _handles, _labels = ax.get_legend_handles_labels()
     _ax_leg = fig.add_axes([_x_leg, _box_y, _box_w, _box_h])
@@ -1153,7 +1154,7 @@ def paint(
             fontsize=7.0,
             frameon=False,
             borderpad=0.12,
-            labelspacing=0.28,
+            labelspacing=0.30,
             columnspacing=0.65,
             handlelength=1.35,
             prop=prop,

@@ -95,13 +95,13 @@ def test_paint_wave4_layout_guards():
     assert "wave24_descend_line" in src
     assert "WAVE24_LINE_COLOR" in src
     assert "set_dashes" in src
-    assert "height_ratios=[3.4, 0.78, 1.25]" in src
+    assert "height_ratios=[3.4, 0.95, 1.25]" in src
     assert "K 線／量圖塊比例鎖死" in src
     assert "_x_fund" in src and "_x_leg" in src
     assert 'set_ylabel("價（元）"' in src
     assert "毛利率" in src
     assert "長借／權益" in src
-    assert "fontsize=7.0" in src
+    assert "fontsize=7.6" in src
     assert "基本面盒改中帶左格" in src
     assert '"#ffeb3b"' in src
     assert "張" in src[src.find("壓力來源日量柱") :]
