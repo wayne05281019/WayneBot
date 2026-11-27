@@ -6,8 +6,30 @@ from scripts.paint_focus_target_sample import (
     _dodge_right_ys,
     _eps_singles_cum,
     _rev_yi,
+    drop_measure_points,
+    drop_measure_triangle_verts,
     pick_forward_pressure_zone,
 )
+
+
+def test_drop_measure_triangle_lin_style():
+    """林款倒三角：左高→右同高→右低；點差＝高−低。"""
+    verts = drop_measure_triangle_verts(10.0, 284.0, 40.0, 146.0)
+    assert verts == [(10.0, 284.0), (40.0, 284.0), (40.0, 146.0)]
+    assert drop_measure_points(284.0, 146.0) == 138.0
+    assert drop_measure_triangle_verts(40.0, 284.0, 10.0, 146.0) is None
+    assert drop_measure_points(100.0, 100.0) is None
+
+
+def test_paint_source_has_lin_green_drop_measure():
+    import inspect
+
+    from scripts import paint_focus_target_sample as m
+
+    src = inspect.getsource(m.paint)
+    assert "淺綠＝跌幅量測" in src
+    assert "drop_measure_triangle_verts" in src
+    assert "起→③" in src or "pts[3]" in src
 
 
 def test_rev_yi_thousand_to_yi():

@@ -16,10 +16,36 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.font_manager as fm
 import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle
+from matplotlib.patches import Polygon, Rectangle
 
 from biaoke_next_support import find_secondary_vol_zone
 from scripts.biaoke_tail_back_five_wave import analyze_bars
+
+
+def drop_measure_triangle_verts(
+    j_hi: float, y_hi: float, j_lo: float, y_lo: float
+) -> Optional[List[Tuple[float, float]]]:
+    """林友銘款跌幅量測：左高峰 → 右同高 → 右低谷（淺綠倒三角）。
+
+    觀察用，非買訊。j_lo 須在 j_hi 右側且 y_hi > y_lo。
+    """
+    try:
+        x0, y0 = float(j_hi), float(y_hi)
+        x1, y1 = float(j_lo), float(y_lo)
+    except (TypeError, ValueError):
+        return None
+    if not (x1 > x0 and y0 > y1):
+        return None
+    return [(x0, y0), (x1, y0), (x1, y1)]
+
+
+def drop_measure_points(y_hi: float, y_lo: float) -> Optional[float]:
+    """跌幅點差（寫進三角內）。"""
+    try:
+        d = float(y_hi) - float(y_lo)
+    except (TypeError, ValueError):
+        return None
+    return d if d > 0 else None
 
 ROOT = Path(__file__).resolve().parents[1]
 DB = ROOT / "data" / "wayne_market.db"
@@ -351,6 +377,67 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
             )
         )
 
+    # 林友銘款：淺綠倒三角＝「起→③低」跌幅量測（點差寫塊內）；觀察非買訊
+    # 量的是進次級四浪前那一段跌，不是買訊、不改四浪高紅線
+    if len(pts) >= 4:
+        hi_p, lo_p = pts[0], pts[3]  # 起、③（四浪低）
+        j_hi_raw, j_lo_raw = vi(hi_p.i), vi(lo_p.i)
+        y_hi_m, y_lo_m = float(hi_p.price), float(lo_p.price)
+        # 窗左裁掉「起」仍用真價畫量測；x 從 0 起，避免假點
+        j_hi_m = float(j_hi_raw) if j_hi_raw >= 0 else 0.0
+        j_lo_m = float(j_lo_raw)
+        verts = drop_measure_triangle_verts(j_hi_m, y_hi_m, j_lo_m, y_lo_m)
+        pts_drop = drop_measure_points(y_hi_m, y_lo_m)
+        if verts is not None and pts_drop is not None and 0 <= j_lo_raw < n:
+            ax.add_patch(
+                Polygon(
+                    verts,
+                    closed=True,
+                    facecolor="#86efac",
+                    edgecolor="#16a34a",
+                    alpha=0.38,
+                    lw=1.15,
+                    zorder=1.4,
+                    label="淺綠＝跌幅量測",
+                )
+            )
+            # 斜邊＝量測段，對齊「一目瞭然」
+            ax.plot(
+                [verts[0][0], verts[2][0]],
+                [verts[0][1], verts[2][1]],
+                color="#15803d",
+                lw=1.35,
+                alpha=0.85,
+                zorder=1.5,
+            )
+            # 數字貼右豎邊內側（林圖點差一眼位），避斜邊／K棒互壓
+            span_x = max(verts[1][0] - verts[0][0], 1.0)
+            span_y = max(verts[0][1] - verts[2][1], 1.0)
+            cx = verts[1][0] - span_x * 0.16
+            cy = verts[2][1] + span_y * 0.55
+            drop_txt = (
+                f"{pts_drop:.0f}" if pts_drop >= 10 else f"{pts_drop:g}"
+            )
+            ax.text(
+                cx,
+                cy,
+                drop_txt,
+                ha="center",
+                va="center",
+                fontsize=13.5,
+                fontweight="bold",
+                color="#14532d",
+                fontproperties=prop,
+                zorder=12,
+                bbox=dict(
+                    boxstyle="round,pad=0.28",
+                    facecolor="#dcfce7",
+                    edgecolor="#22c55e",
+                    alpha=0.96,
+                    linewidth=1.2,
+                ),
+            )
+
     # 教法：紫細線＝五波下跌（淺底比白線黑邊清楚）；黃線＝新一波起漲
     labels = ["起", "1", "2", "3", "4", "終"]
     vis_pts = []
@@ -609,7 +696,10 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
     ohlc_line = f"開 {open_:.0f}　高 {high:.0f}　低 {low:.0f}　收 {close:.0f}　量 {vol:.0f} 張"
     # 表頭兩行：標題單獨；副標拆兩行，不准壓進圖內文字
     sub1 = f"{asof_face}｜{ohlc_line}｜觀察非買訊"
-    sub2 = f"紫細線＝五波下跌　黃線＝新起漲｜滾動近{WIN}根（新日進、左邊掉；右留{FUTURE_PAD}根空位）"
+    sub2 = (
+        f"紫細線＝五波下跌　淺綠＝起→③跌幅量測　黃線＝新起漲｜"
+        f"滾動近{WIN}根（新日進、左邊掉；右留{FUTURE_PAD}根空位）"
+    )
     ax.set_title(
         title, color="#111", fontsize=15.5, pad=30, fontweight="bold", fontproperties=prop
     )
