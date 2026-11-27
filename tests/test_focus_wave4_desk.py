@@ -248,6 +248,20 @@ def test_wave4_send_one_uses_pair_two_charts():
     assert "次級四浪圖＋結構圖" in src
 
 
+def test_wave4_send_page_list_first_then_wave4_not_struct():
+    """實質十檔：先名單再逐張次級四浪圖；文案不准再叫結構圖。"""
+    import inspect
+
+    from bot_servers import WayneTelegramBot
+
+    src = inspect.getsource(WayneTelegramBot._wave4_send_page)
+    assert "先推名單再逐張出圖" in src
+    assert "paint_wave4_chart" in src
+    assert "不是結構圖" in src
+    assert "頁結構圖" not in src
+    assert "這頁次級四浪圖沒送出" in src
+
+
 def test_guangsheng_horizon_sid_is_6442_not_1815():
     """資料正確性：光聖＝6442；1815是富喬，不准掛錯遠距。"""
     from focus_wave4_desk import QUALITY_HORIZON_ZH

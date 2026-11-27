@@ -56,6 +56,21 @@ def test_wave24_descend_line_extends_to_last_day():
     assert wave24_descend_line(40.0, 240.0, 10.0, 300.0, 80.0) is None
 
 
+def test_cjk_prop_prefers_bundled_noto_tc():
+    """Render 無系統 Noto 時仍吃 repo fonts/，不准中文變方框。"""
+    import inspect
+
+    from scripts.paint_focus_target_sample import _cjk_prop
+
+    src = inspect.getsource(_cjk_prop)
+    assert "NotoSansTC-w560.ttf" in src
+    assert "fonts" in src
+    prop = _cjk_prop()
+    assert prop is not None
+    fname = str(prop.get_file() or "")
+    assert "NotoSansTC" in fname or "NotoSansCJK" in fname or "wqy" in fname.lower()
+
+
 def test_paint_wave4_layout_guards():
     """右標最右短截、浪序只留圓圈、最底＋反彈切割、線停 gutter 前。"""
     import inspect
