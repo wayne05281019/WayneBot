@@ -919,27 +919,7 @@ def paint(
     fund = "\n".join(_fund_lines)
     # 基本面盒改中帶左格（轟天雷同款官方欄）；這裡不壓日K
 
-    # 距四浪高％掛價圖內右上（表頭股名價改到 figure 右上紅框，這裡避開）
-    ax.text(
-        0.995,
-        0.92,
-        f"距四浪高還有 {room:.1f}%",
-        transform=ax.transAxes,
-        ha="right",
-        va="top",
-        fontsize=9.0,
-        fontweight="bold",
-        fontproperties=prop,
-        color="#b91c1c",
-        bbox=dict(
-            boxstyle="round,pad=0.24",
-            facecolor="#fee2e2",
-            edgecolor="#f87171",
-            alpha=0.95,
-        ),
-        zorder=15,
-        clip_on=False,
-    )
+    # 距四浪高％併進右側「四浪高／價」標，不准再另掛右上漂浮盒
 
     asof_face = f"{asof[0:4]}/{asof[4:6]}/{asof[6:8]} 盤後"
     ohlc_line = f"開 {open_:.0f}　高 {high:.0f}　低 {low:.0f}　收 {close:.0f}　量 {vol:.0f} 張"
@@ -1008,11 +988,11 @@ def paint(
     w4_tags: List[Dict[str, Any]] = [
         {
             "price": float(w4.price),
-            "text": f"四浪高／{w4.price:.0f}",
+            "text": f"四浪高／{w4.price:.0f}｜還有{room:.1f}%",
             "color": "#991b1b",
             "facecolor": "#fee2e2",
             "edge": "#f87171",
-            "fontsize": 9.5,
+            "fontsize": 9.2,
         },
     ]
     green_tags: List[Dict[str, Any]] = [

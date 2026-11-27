@@ -80,7 +80,7 @@ def test_file_note_matches_this_change():
     ):
         assert junk not in raw
     assert pu._clean_note(raw) == (
-        "次級四浪：綠反彈標籤移到中近紅框欄"
+        "次級四浪：距四浪高％併進四浪高標籤"
     )
 
 

@@ -104,6 +104,8 @@ def test_paint_wave4_layout_guards():
     assert "長借／權益" in src
     assert "_fund_fs" in src
     assert "四浪高／" in src
+    assert "還有{room:.1f}%" in src
+    assert "距四浪高還有" not in src  # 已併進四浪高標，不准另掛漂浮盒
     assert "反彈{ratio:g}／" in src
     assert "基本面盒改中帶左格" in src
     assert '"#ffeb3b"' in src
