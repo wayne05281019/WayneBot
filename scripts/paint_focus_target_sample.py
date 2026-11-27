@@ -54,6 +54,31 @@ DB = ROOT / "data" / "wayne_market.db"
 WIN = 130
 FUTURE_PAD = 18
 LABEL_RIGHT_EXTRA = 22
+# 五波最底往上反彈參考（觀察非買訊）；對齊本庫／林口播常用回撤率
+REBOUND_FIB_RATIOS = (0.382, 0.5, 0.618)
+
+
+def rebound_fib_from_wave_bottom(
+    high: float, low: float, *, ratios: tuple[float, ...] = REBOUND_FIB_RATIOS
+) -> list[tuple[float, float]]:
+    """自這一波最底往上：低＋(高−低)×比率。回 [(比率, 價), ...]。"""
+    try:
+        hi, lo = float(high), float(low)
+    except (TypeError, ValueError):
+        return []
+    span = hi - lo
+    if span <= 0:
+        return []
+    out: list[tuple[float, float]] = []
+    for r in ratios:
+        try:
+            rr = float(r)
+        except (TypeError, ValueError):
+            continue
+        if rr <= 0:
+            continue
+        out.append((rr, lo + span * rr))
+    return out
 
 
 def _cjk_prop():
@@ -380,9 +405,44 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
             )
         )
 
-    # 林友銘「跌幅量尺」點差（起→③）對「距四浪高」當下觀察沒有即時意義：
-    # 要用來自樞紐做延伸投影才有用。未畫投影前不准在次級四浪圖上秀 111／1795／綠底，免假裝有用。
-    drop_legend = ""
+    # 真用處：抓五波「最底」，用起→底段長×黃金切割標「反彈可能到哪」（觀察非買訊）
+    # 不是秀 111／1795 點差裝飾；四浪高紅線仍保留對照
+    wave_hi = float(pts[0].price)
+    wave_lo = float(pts[-1].price)
+    fib_lvls = rebound_fib_from_wave_bottom(wave_hi, wave_lo)
+    j_bottom = vi(pts[-1].i)
+    if fib_lvls:
+        top618 = max(p for _, p in fib_lvls)
+        if top618 > wave_lo:
+            ax.axhspan(
+                wave_lo,
+                top618,
+                facecolor="#bbf7d0",
+                alpha=0.14,
+                zorder=0.8,
+                label="淺綠＝反彈參考帶（至0.618）",
+            )
+        for _ratio, px in fib_lvls:
+            ax.axhline(
+                px,
+                color="#059669",
+                ls="--",
+                lw=1.05,
+                alpha=0.75,
+                zorder=4,
+            )
+        if 0 <= j_bottom < n:
+            ax.plot(
+                [j_bottom],
+                [wave_lo],
+                marker="v",
+                markersize=5.5,
+                color="#047857",
+                markeredgecolor="#064e3b",
+                markeredgewidth=0.5,
+                zorder=8,
+                label=f"這一波最底 {wave_lo:g}",
+            )
 
     # 教法：紫細線＝五波下跌（淺底比白線黑邊清楚）；黃線＝新一波起漲
     labels = ["起", "1", "2", "3", "4", "終"]
@@ -648,8 +708,8 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
     # 表頭兩行：標題單獨；副標拆兩行，不准壓進圖內文字
     sub1 = f"{asof_face}｜{ohlc_line}｜觀察非買訊"
     sub2 = (
-        f"紫細線＝五波下跌　黃線＝新起漲｜"
-        f"滾動近{WIN}根（新日進、左邊掉；右留{FUTURE_PAD}根空位）"
+        f"紫細線＝五波下跌　最底＋反彈0.382/0.5/0.618（觀察）　黃線＝新起漲｜"
+        f"滾動近{WIN}根（新日進、左邊掉；右留空給價標）"
     )
     ax.set_title(
         title, color="#111", fontsize=15.5, pad=30, fontweight="bold", fontproperties=prop
@@ -667,14 +727,17 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
     # 右留空：明天＋價標專用加寬；左＝滾動掉舊根
     ax.set_xlim(-1.2, n - 1 + FUTURE_PAD + LABEL_RIGHT_EXTRA)
     # 上方多留一點給轉折標，避免貼齊表頭
-    y_hi = max(highs + [w4.price, float(zone["high"]) if zone else 0])
-    y_lo = min(lows)
+    _extra_ys = [w4.price, wave_lo] + [p for _, p in fib_lvls]
+    if zone:
+        _extra_ys.extend([float(zone["high"]), float(zone["low"])])
+    y_hi = max(highs + _extra_ys)
+    y_lo = min(lows + [wave_lo])
     pad = (y_hi - y_lo) * 0.06
     ylim_lo = y_lo - pad * 0.4
     ylim_hi = y_hi + pad * 1.15
     ax.set_ylim(ylim_lo, ylim_hi)
 
-    # 右側價位角標統一錯開：四浪高／壓上／壓下／收 —— 不准互壓
+    # 右側價位角標統一錯開：最底／反彈切割／四浪高／壓帶／收 —— 貼最右不准互壓
     right_tags: List[Dict[str, Any]] = [
         {
             "price": float(w4.price),
@@ -692,7 +755,26 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
             "edge": "#14b8a6",
             "fontsize": 10.0,
         },
+        {
+            "price": float(wave_lo),
+            "text": f"最底 {wave_lo:.0f}",
+            "color": "#064e3b",
+            "facecolor": "#ecfdf5",
+            "edge": "#34d399",
+            "fontsize": 8.8,
+        },
     ]
+    for ratio, px in fib_lvls:
+        right_tags.append(
+            {
+                "price": float(px),
+                "text": f"反彈{ratio:g} {px:.0f}",
+                "color": "#065f46",
+                "facecolor": "#d1fae5",
+                "edge": "#10b981",
+                "fontsize": 8.4,
+            }
+        )
     if zone:
         right_tags.extend(
             [

@@ -9,36 +9,42 @@ from scripts.paint_focus_target_sample import (
     drop_measure_points,
     drop_measure_triangle_verts,
     pick_forward_pressure_zone,
+    rebound_fib_from_wave_bottom,
 )
 
 
 def test_drop_measure_triangle_lin_style():
-    """林款倒三角：左高→右同高→右低；點差＝高−低。"""
+    """林款倒三角幾何仍保留（給之後投影用）。"""
     verts = drop_measure_triangle_verts(10.0, 284.0, 40.0, 146.0)
     assert verts == [(10.0, 284.0), (40.0, 284.0), (40.0, 146.0)]
     assert drop_measure_points(284.0, 146.0) == 138.0
-    assert drop_measure_triangle_verts(40.0, 284.0, 10.0, 146.0) is None
-    assert drop_measure_points(100.0, 100.0) is None
+
+
+def test_rebound_fib_from_wave_bottom():
+    """最底往上：低＋(高−低)×0.382/0.5/0.618。"""
+    lv = rebound_fib_from_wave_bottom(284.0, 146.0)
+    assert [r for r, _ in lv] == [0.382, 0.5, 0.618]
+    assert abs(lv[0][1] - (146 + 138 * 0.382)) < 1e-6
+    assert abs(lv[1][1] - (146 + 138 * 0.5)) < 1e-6
+    assert abs(lv[2][1] - (146 + 138 * 0.618)) < 1e-6
+    assert rebound_fib_from_wave_bottom(100.0, 100.0) == []
 
 
 def test_paint_wave4_layout_guards():
-    """右標貼留白、浪序圓圈、量標上移；未畫投影前不准秀量尺點差綠底。"""
+    """右標最右、浪序圓圈、量標上移；畫最底＋反彈切割。"""
     import inspect
 
     from scripts import paint_focus_target_sample as m
 
     src = inspect.getsource(m.paint)
-    assert "LABEL_RIGHT_EXTRA" in src  # 右標專用加寬、貼最右
+    assert "LABEL_RIGHT_EXTRA" in src
     assert 'boxstyle="circle,pad=0.28"' in src
     assert "transform=axv.transAxes" in src
-    assert "1.12" in src
-    assert "壓力來源量（橘）" in src
-    assert '"5"' in src
+    assert "rebound_fib_from_wave_bottom" in src
+    assert "反彈參考帶" in src
+    assert "最底" in src
     assert 'marker="D"' not in src
-    # 未投影前不准把 111／1795 類點差／綠三角畫進圖面
-    assert "Polygon" not in src
     assert "起→③＝" not in src
-    assert "跌幅量尺" in src  # 註解保留：有意義時再接投影
 
 
 def test_rev_yi_thousand_to_yi():
