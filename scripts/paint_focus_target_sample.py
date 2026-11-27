@@ -50,10 +50,14 @@ def drop_measure_points(y_hi: float, y_lo: float) -> Optional[float]:
 ROOT = Path(__file__).resolve().parents[1]
 DB = ROOT / "data" / "wayne_market.db"
 # 固定右錨滾動窗；右側再留 FUTURE_PAD 根空位（明天起時間往右長）
-# LABEL_RIGHT_EXTRA＝價標專用再加寬，字貼最右，不准貼末根K
+# LABEL_RIGHT_EXTRA＝價標專用再加寬，字貼最右 gutter，不准貼末根K
+# LINE_END_PAD＝水平線／色帶右端停點（標籤欄前必須空）
 WIN = 130
-FUTURE_PAD = 18
-LABEL_RIGHT_EXTRA = 28
+FUTURE_PAD = 22
+LABEL_RIGHT_EXTRA = 52
+LINE_END_PAD = 1.5
+TAG_COL_GAP = 24.0  # 雙欄字寬約一盒，欄距不夠會看起來像互壓
+NEAR_PRICE_FRAC = 0.022  # 2449：201／199 也要進同簇雙欄
 # 五波最底往上反彈參考（觀察非買訊）；對齊本庫／林口播常用回撤率
 REBOUND_FIB_RATIOS = (0.382, 0.5, 0.618)
 
@@ -114,40 +118,75 @@ def _dodge_right_ys(
     *,
     y_lo: float,
     y_hi: float,
-    min_gap_frac: float = 0.055,
-) -> List[float]:
-    """右側角標顯示 Y：依價由高到低排，強制最小間距，不准互壓。"""
+    min_gap_frac: float = 0.072,
+    near_frac: float = NEAR_PRICE_FRAC,
+) -> Tuple[List[float], List[int]]:
+    """右側角標顯示 Y＋欄位：近價改雙欄，跨簇再強制最小間距，不准互壓。
+
+    回傳 (placed_ys, cols)；cols[i]∈{0,1}，1＝往右一欄。
+    """
     if not prices:
-        return []
+        return [], []
     span = max(y_hi - y_lo, 1.0)
+    near = max(span * float(near_frac), span * 0.004)
     gap = span * float(min_gap_frac)
-    # 高→低處理，再映回原序
     order = sorted(range(len(prices)), key=lambda i: prices[i], reverse=True)
-    placed = [0.0] * len(prices)
-    last = y_hi + gap
+    # 近價分簇（高→低）
+    clusters: List[List[int]] = []
     for i in order:
-        y = float(prices[i])
-        # 不可高過上一標太多擠；至少距上一標 gap
-        y = min(y, last - gap)
-        placed[i] = y
+        if not clusters:
+            clusters.append([i])
+            continue
+        prev = clusters[-1][-1]
+        if abs(float(prices[i]) - float(prices[prev])) < near:
+            clusters[-1].append(i)
+        else:
+            clusters.append([i])
+    cols = [0] * len(prices)
+    for cl in clusters:
+        for k, i in enumerate(cl):
+            cols[i] = 1 if (k % 2 == 1) else 0
+    # 跨簇 dodge：同簇用真價中位當代表，再映回各員（雙欄員可留真價）
+    placed = [float(p) for p in prices]
+    # 先對「每簇代表」做間距；代表＝簇內最高價（視覺上靠真價）
+    reps: List[Tuple[int, float]] = []  # (cluster_idx, rep_y)
+    for ci, cl in enumerate(clusters):
+        rep = max(float(prices[i]) for i in cl)
+        reps.append((ci, rep))
+    last = y_hi + gap
+    rep_placed: Dict[int, float] = {}
+    for ci, rep in reps:
+        y = min(rep, last - gap)
+        rep_placed[ci] = y
         last = y
-    # 若整體太低，整組上推；太高則下壓
-    mn, mx = min(placed), max(placed)
+    # 邊界推回
+    vals = list(rep_placed.values())
+    mn, mx = min(vals), max(vals)
     if mn < y_lo:
-        shift = y_lo - mn
-        placed = [y + shift for y in placed]
-        mx = max(placed)
+        sh = y_lo - mn
+        rep_placed = {k: v + sh for k, v in rep_placed.items()}
+        mx = max(rep_placed.values())
     if mx > y_hi:
-        shift = mx - y_hi
-        placed = [y - shift for y in placed]
-        # 再保間距（由高到低掃一次）
-        order = sorted(range(len(placed)), key=lambda i: placed[i], reverse=True)
+        sh = mx - y_hi
+        rep_placed = {k: v - sh for k, v in rep_placed.items()}
+        order_c = sorted(rep_placed.keys(), key=lambda c: rep_placed[c], reverse=True)
         last = y_hi + gap
-        for i in order:
-            y = min(placed[i], last - gap)
-            placed[i] = max(y, y_lo)
-            last = placed[i]
-    return placed
+        for ci in order_c:
+            y = min(rep_placed[ci], last - gap)
+            rep_placed[ci] = max(y, y_lo)
+            last = rep_placed[ci]
+    for ci, cl in enumerate(clusters):
+        base = rep_placed[ci]
+        if len(cl) == 1:
+            placed[cl[0]] = base
+            continue
+        # 雙欄＋同欄微錯開：3 顆近價時不准兩顆同欄同 Y 互蓋
+        col_n = [0, 0]
+        for k, i in enumerate(cl):
+            c = cols[i]
+            placed[i] = base - col_n[c] * gap * 0.85
+            col_n[c] += 1
+    return placed, cols
 
 
 def _paint_right_price_tags(
@@ -160,7 +199,7 @@ def _paint_right_price_tags(
     prop,
     x_text: float | None = None,
 ) -> None:
-    """右側價位角標：字只貼最右空白；短截線對齊真價。
+    """右側價位角標：字只貼最右 gutter；短截對齊真價；近價雙欄。
 
     不准從末根K拉長線過來（看起來像標籤貼在K旁）。
     x_anchor 保留相容，實際不用來當文字錨。
@@ -169,13 +208,14 @@ def _paint_right_price_tags(
         return
     _ = x_anchor  # 相容舊呼叫
     prices = [float(t["price"]) for t in tags]
-    dys = _dodge_right_ys(prices, y_lo=y_lo, y_hi=y_hi, min_gap_frac=0.048)
-    xt = float(x_text if x_text is not None else 0.0)
-    stub = 5.5  # 最右短截，對齊價位
-    for t, dy, true_y in zip(tags, dys, prices):
-        # 短截在真價高度（水平），字在錯開後的 dy
+    dys, cols = _dodge_right_ys(prices, y_lo=y_lo, y_hi=y_hi, min_gap_frac=0.072)
+    base_xt = float(x_text if x_text is not None else 0.0)
+    stub = 4.0  # 短截只在標籤欄內
+    span = max(y_hi - y_lo, 1.0)
+    for t, dy, true_y, col in zip(tags, dys, prices, cols):
+        xt = base_xt + (TAG_COL_GAP if col else 0.0)
         ax.plot(
-            [xt - stub, xt - 0.8],
+            [xt - stub, xt - 0.6],
             [true_y, true_y],
             color=t.get("edge", "#94a3b8"),
             lw=1.0,
@@ -183,9 +223,9 @@ def _paint_right_price_tags(
             zorder=13,
             clip_on=False,
         )
-        if abs(dy - true_y) > (y_hi - y_lo) * 0.008:
+        if abs(dy - true_y) > span * 0.008:
             ax.plot(
-                [xt - 0.8, xt - 0.8],
+                [xt - 0.6, xt - 0.6],
                 [true_y, dy],
                 color=t.get("edge", "#94a3b8"),
                 lw=0.7,
@@ -385,7 +425,11 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
     dates = [_ymd(b["date"]) for b in view]
 
     fig, (ax, axv) = plt.subplots(
-        2, 1, figsize=(12.6, 9.0), gridspec_kw={"height_ratios": [3.4, 1.25]}, sharex=True
+        2,
+        1,
+        figsize=(13.4, 9.2),
+        gridspec_kw={"height_ratios": [3.4, 1.25]},
+        sharex=True,
     )
     bg = "#f7f5f0"
     fig.patch.set_facecolor(bg)
@@ -395,6 +439,10 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
         for sp in a.spines.values():
             sp.set_color("#bbb")
         a.grid(True, color="#e6e2da", lw=0.6, zorder=0)
+
+    # 水平線／色帶右端停在標籤 gutter 前，右側必須空
+    _x_line_end = float(n - 1 + LINE_END_PAD)
+    _x_left = -1.2
 
     zone_date = ""
     zone_vol = 0.0
@@ -408,9 +456,17 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
             "前方大量壓力區" if zone_role == "forward" else "大量區（現價落區內）"
         )
         # 壓力帶用灰藍，黃色留給「新起漲」；右緣數字稍後統一錯開
-        ax.axhspan(lo, hi, facecolor="#cbd5e1", alpha=0.45, zorder=1, label=band_lab)
-        ax.axhline(hi, color="#475569", ls="-", lw=1.45, alpha=0.95)
-        ax.axhline(lo, color="#475569", ls="-", lw=1.45, alpha=0.95)
+        ax.fill_between(
+            [_x_left, _x_line_end],
+            lo,
+            hi,
+            facecolor="#cbd5e1",
+            alpha=0.45,
+            zorder=1,
+            label=band_lab,
+        )
+        ax.hlines(hi, _x_left, _x_line_end, color="#475569", ls="-", lw=1.45, alpha=0.95)
+        ax.hlines(lo, _x_left, _x_line_end, color="#475569", ls="-", lw=1.45, alpha=0.95)
 
     yr = max(highs) - min(lows)
     for i, (o, h, l, c) in enumerate(zip(opens, highs, lows, closes)):
@@ -432,7 +488,8 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
     if fib_lvls:
         top618 = max(p for _, p in fib_lvls)
         if top618 > wave_lo:
-            ax.axhspan(
+            ax.fill_between(
+                [_x_left, _x_line_end],
                 wave_lo,
                 top618,
                 facecolor="#bbf7d0",
@@ -441,8 +498,10 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
                 label="淺綠＝反彈參考帶（至0.618）",
             )
         for _ratio, px in fib_lvls:
-            ax.axhline(
+            ax.hlines(
                 px,
+                _x_left,
+                _x_line_end,
                 color="#059669",
                 ls="--",
                 lw=1.05,
@@ -462,7 +521,19 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
                 label=f"這一波最底 {wave_lo:g}",
             )
 
-    # 教法：紫細線＝五波下跌（淺底比白線黑邊清楚）；黃線＝新一波起漲
+    # 先定 ylim，浪圈才能判斷貼底／貼頂，不准裁進量圖
+    _extra_ys = [w4.price, wave_lo] + [p for _, p in fib_lvls]
+    if zone:
+        _extra_ys.extend([float(zone["high"]), float(zone["low"])])
+    y_hi = max(highs + _extra_ys)
+    y_lo = min(lows + [wave_lo])
+    pad = (y_hi - y_lo) * 0.06
+    ylim_lo = y_lo - pad * 1.85
+    ylim_hi = y_hi + pad * 1.15
+    ax.set_ylim(ylim_lo, ylim_hi)
+    _span_y = max(ylim_hi - ylim_lo, 1.0)
+
+    # 教法：紫細線＝五波下跌；圖內只留①～⑤圓圈（價只在最右）
     labels = ["起", "1", "2", "3", "4", "終"]
     vis_pts = []
     for k, p in enumerate(pts):
@@ -491,19 +562,19 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
                 edgecolors="#fff",
                 lw=0.55,
             )
-            # 圖內只留①～⑤圓圈（推離K）；起／終價只在最右標籤，不准「146→」貼在柱上
             wave_no = {"起": None, "終": "5"}.get(lab, lab)
             if wave_no is None:
                 continue
-            # 高點圈往上、低點往左下空位，避開影線；clip_on=False 防裁進量圖
+            near_bot = float(price) <= ylim_lo + _span_y * 0.14
+            near_top = float(price) >= ylim_hi - _span_y * 0.10
             if lab in ("2", "4") or kind == "H":
-                xytext = (0, 30)
-            elif lab == "終":
-                xytext = (-22, -18)  # 左下，不垂直栽出圖底
+                xytext = (0, 28) if not near_top else (18, -22)
+            elif lab == "終" or near_bot:
+                xytext = (-26, 22)  # 左上，禁止往量圖裁
             elif lab == "3":
-                xytext = (0, -28)
+                xytext = (0, -26) if not near_bot else (-20, 24)
             else:
-                xytext = (0, -26)
+                xytext = (0, -24) if not near_bot else (16, 20)
             ax.annotate(
                 str(wave_no if lab != "終" else "5"),
                 xy=(j, price),
@@ -526,13 +597,16 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
                 ),
             )
 
-    ax.axhline(
+    ax.hlines(
         w4.price,
+        _x_left,
+        _x_line_end,
         color="#dc2626",
         ls="-",
         lw=1.7,
         alpha=0.92,
         label=f"次級四浪高 {w4.price:.0f}",
+        zorder=5,
     )
 
     # 黃線＝五波走完後新起漲軌跡；字／大菱形一律不准蓋日K（字只進圖例）
@@ -569,7 +643,16 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
                 zorder=7,
             )
 
-    ax.axhline(close, color="#0f766e", ls=":", lw=1.15, alpha=0.75)
+    ax.hlines(
+        close,
+        _x_left,
+        _x_line_end,
+        color="#0f766e",
+        ls=":",
+        lw=1.15,
+        alpha=0.75,
+        zorder=5,
+    )
 
     zone_i = None
     if zone_date:
@@ -601,7 +684,7 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
     _vol_note_bits.append(f"今日 {vol:.0f} 張")
     axv.text(
         0.0,
-        1.12,
+        1.16,
         "　｜　".join(_vol_note_bits),
         transform=axv.transAxes,
         ha="left",
@@ -661,10 +744,9 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
         zorder=10,
     )
 
-    # 空間％放圖內右上、但離開右緣角標欄
-    # 距四浪高％改掛右上留白，不准壓在K／切割線上
+    # 距四浪高％掛價圖內偏右上，但避開右欄價標 gutter
     ax.text(
-        0.995,
+        0.78,
         0.995,
         f"距四浪高還有 {room:.1f}%",
         transform=ax.transAxes,
@@ -706,19 +788,8 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
     )
     ax.set_ylabel("價（元）", fontproperties=prop)
     axv.set_ylabel("成交量（張）", fontproperties=prop)
-    # 上方多留一點給轉折標，避免貼齊表頭（xlim 等右標 x 算完再設）
-    _extra_ys = [w4.price, wave_lo] + [p for _, p in fib_lvls]
-    if zone:
-        _extra_ys.extend([float(zone["high"]), float(zone["low"])])
-    y_hi = max(highs + _extra_ys)
-    y_lo = min(lows + [wave_lo])
-    pad = (y_hi - y_lo) * 0.06
-    # 下方多留：⑤圓圈／最底三角不准被裁進量圖
-    ylim_lo = y_lo - pad * 1.35
-    ylim_hi = y_hi + pad * 1.15
-    ax.set_ylim(ylim_lo, ylim_hi)
 
-    # 右側價位角標統一錯開：最底／反彈切割／四浪高／壓帶／收 —— 貼最右不准互壓
+    # 右側價位角標：最底／反彈切割／四浪高／壓帶／收 —— 空 gutter＋近價雙欄
     right_tags: List[Dict[str, Any]] = [
         {
             "price": float(w4.price),
@@ -777,16 +848,16 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
                 },
             ]
         )
-    # 字貼K右側大留白起點；xlim 再留字寬，短截對齊價、不從末根拉長線
-    _x_right = float(n - 1 + FUTURE_PAD + 2.0)
-    ax.set_xlim(-1.2, _x_right + LABEL_RIGHT_EXTRA)
+    _x_text = float(n - 1 + FUTURE_PAD + 4.0)
+    _xlim_right = _x_text + LABEL_RIGHT_EXTRA
+    ax.set_xlim(_x_left, _xlim_right)
     _paint_right_price_tags(
         ax,
         x_anchor=float(n - 1),
-        x_text=_x_right,
+        x_text=_x_text,
         tags=right_tags,
-        y_lo=ylim_lo + (ylim_hi - ylim_lo) * 0.04,
-        y_hi=ylim_hi - (ylim_hi - ylim_lo) * 0.06,
+        y_lo=ylim_lo + _span_y * 0.06,
+        y_hi=ylim_hi - _span_y * 0.08,
         prop=prop,
     )
 
@@ -797,7 +868,7 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
         [dates[i][4:6] + "/" + dates[i][6:8] for i in ticks], fontsize=8
     )
 
-    fig.subplots_adjust(top=0.86, hspace=0.22)
+    fig.subplots_adjust(top=0.86, hspace=0.28)
     # 副標放在標題與圖之間（figure 座標），不准壓進圖內
     fig.canvas.draw()
     ax_pos = ax.get_position()

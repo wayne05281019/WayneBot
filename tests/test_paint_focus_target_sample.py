@@ -31,7 +31,7 @@ def test_rebound_fib_from_wave_bottom():
 
 
 def test_paint_wave4_layout_guards():
-    """右標最右短截、浪序只留圓圈、最底＋反彈切割。"""
+    """右標最右短截、浪序只留圓圈、最底＋反彈切割、線停 gutter 前。"""
     import inspect
 
     from scripts import paint_focus_target_sample as m
@@ -39,6 +39,8 @@ def test_paint_wave4_layout_guards():
     src = inspect.getsource(m.paint)
     tag_src = inspect.getsource(m._paint_right_price_tags)
     assert "LABEL_RIGHT_EXTRA" in src
+    assert "LINE_END_PAD" in src
+    assert "TAG_COL_GAP" in tag_src or "TAG_COL_GAP" in inspect.getsource(m)
     assert "短截" in tag_src or "stub" in tag_src
     assert 'boxstyle="circle,pad=0.28"' in src
     assert "rebound_fib_from_wave_bottom" in src
@@ -47,6 +49,9 @@ def test_paint_wave4_layout_guards():
     # 圖內不准再貼「146 →」這類終點價
     assert 'f"{price:.0f} →"' not in src
     assert "起→③＝" not in src
+    # 水平線停在標籤前；⑤改左上
+    assert "hlines" in src
+    assert "(-26, 22)" in src
 
 
 def test_rev_yi_thousand_to_yi():
@@ -56,14 +61,30 @@ def test_rev_yi_thousand_to_yi():
 
 
 def test_right_tags_dodge_close_vs_zone_edge():
-    # 收 3660 貼壓下緣 3690 → 顯示 Y 必須拉開
-    ys = _dodge_right_ys([4565.0, 3920.0, 3690.0, 3660.0], y_lo=2500.0, y_hi=6500.0)
+    # 收 3660 貼壓下緣 3690 → 近價雙欄或 Y 拉開
+    ys, cols = _dodge_right_ys(
+        [4565.0, 3920.0, 3690.0, 3660.0], y_lo=2500.0, y_hi=6500.0
+    )
     assert len(ys) == 4
-    # 高→低顯示序仍對應原 index 價序；相鄰顯示間距夠
-    ordered = sorted(ys, reverse=True)
-    gaps = [ordered[i] - ordered[i + 1] for i in range(3)]
-    assert min(gaps) >= (6500.0 - 2500.0) * 0.055 - 1e-6
-    assert abs(ys[3] - ys[2]) >= (6500.0 - 2500.0) * 0.055 - 1e-6
+    assert len(cols) == 4
+    # 近價簇（3690／3660）至少一顆進右欄
+    assert cols[2] != cols[3] or abs(ys[3] - ys[2]) >= (6500.0 - 2500.0) * 0.05
+    # 跨簇代表仍拉開
+    assert abs(ys[0] - ys[1]) >= (6500.0 - 2500.0) * 0.05
+
+
+def test_right_tags_near_price_two_col_2449_style():
+    # 壓上緣216／反彈0.5≈215、壓下緣201／反彈0.382≈199 → 雙欄
+    ys, cols = _dodge_right_ys(
+        [232.0, 216.0, 215.0, 201.0, 199.0, 194.0, 188.0, 146.0],
+        y_lo=140.0,
+        y_hi=280.0,
+    )
+    assert len(ys) == 8
+    assert 1 in cols  # 至少一對進雙欄
+    assert "LINE_END_PAD" in open(
+        "scripts/paint_focus_target_sample.py", encoding="utf-8"
+    ).read()
 
 
 def test_eps_singles_from_cumulative():
