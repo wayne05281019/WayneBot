@@ -1046,24 +1046,39 @@ def paint(
     _y_name = 0.992
     _y_price = _y_name - _nh - _name_gap - _ph * 0.50
     _y_chg = _y_price - (_ph * 0.50 + _ch * 0.50 + _chg_pad)
-    # 左副標與右上同帶（日期對股名、OHLC 對價）；長說明貼主圖頂不占空白
+    # 左帶加重：日期／OHLC 與右上同高，吃掉中左空白；長說明貼主圖頂
+    _lx = 0.035
     fig.text(
-        ax_pos.x0,
+        _lx,
         _y_name,
         sub1,
-        color="#374151",
-        fontsize=8.2,
+        color="#0f172a",
+        fontsize=11.0,
+        fontweight="bold",
         fontproperties=prop,
         ha="left",
         va="top",
         zorder=20,
     )
     fig.text(
-        ax_pos.x0,
+        _lx,
         _y_price,
         sub2,
-        color="#4b5563",
-        fontsize=7.6,
+        color="#334155",
+        fontsize=10.0,
+        fontweight="bold",
+        fontproperties=prop,
+        ha="left",
+        va="center",
+        zorder=20,
+    )
+    fig.text(
+        _lx,
+        _y_chg,
+        "觀察用｜非買訊",
+        color="#64748b",
+        fontsize=9.0,
+        fontweight="bold",
         fontproperties=prop,
         ha="left",
         va="center",

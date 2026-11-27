@@ -68,8 +68,8 @@ def test_paint_wave4_layout_guards():
     # 右上預設 B＋表頭瘦帶；壓力來源黃柱標張數
     assert "FancyBboxPatch" not in src
     assert "較昨日" in src
-    assert "HEADER_STYLES" in src
-    assert 'HEADER_STYLE_DEFAULT = "B"' in src
+    assert "HEADER_STYLES" in inspect.getsource(m)
+    assert 'HEADER_STYLE_DEFAULT = "B"' in inspect.getsource(m)
     assert "1.0 - _band" in src
     assert '"今K"' in src
     assert '"#ffeb3b"' in src
