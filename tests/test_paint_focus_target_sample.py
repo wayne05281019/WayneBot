@@ -65,10 +65,51 @@ def test_cjk_prop_prefers_bundled_noto_tc():
     src = inspect.getsource(_cjk_prop)
     assert "NotoSansTC-w560.ttf" in src
     assert "fonts" in src
+    assert "_CJK_PROP_CACHE" in src or "_CJK_PROP_TRIED" in src
     prop = _cjk_prop()
     assert prop is not None
     fname = str(prop.get_file() or "")
     assert "NotoSansTC" in fname or "NotoSansCJK" in fname or "wqy" in fname.lower()
+    # 第二次走快取，仍同一物件
+    assert _cjk_prop() is prop
+
+
+def test_wave4_png_dpi_and_refresh_skips_fresh(tmp_path, monkeypatch):
+    """話筒 dpi120；庫內已有 fuse_end 柱不准再打網路。"""
+    import inspect
+    import sqlite3
+
+    from scripts import paint_focus_target_sample as m
+
+    assert int(m.WAVE4_PNG_DPI) == 120
+    assert "WAVE4_PNG_DPI" in inspect.getsource(m.paint)
+    db = tmp_path / "fresh.db"
+    con = sqlite3.connect(str(db))
+    con.execute(
+        "CREATE TABLE daily_quotes ("
+        "date TEXT, stock_id TEXT, stock_name TEXT, market TEXT,"
+        "open REAL, high REAL, low REAL, close REAL, volume REAL,"
+        "PRIMARY KEY (date, stock_id))"
+    )
+    con.execute(
+        "INSERT INTO daily_quotes VALUES (?,?,?,?,?,?,?,?,?)",
+        ("20261127", "2383", "台光電", "TW", 1, 1, 1, 1, 1),
+    )
+    con.commit()
+    con.close()
+    monkeypatch.setattr(
+        "config.fuse_end_date", lambda: "20261127", raising=False
+    )
+    called = {"n": 0}
+
+    def _boom(*_a, **_k):
+        called["n"] += 1
+        raise AssertionError("fresh bar must skip fetch")
+
+    monkeypatch.setattr("biaoke_walk.fetch_stock_month", _boom, raising=False)
+    end = m.refresh_latest_official_bars("2383", db)
+    assert end == "20261127"
+    assert called["n"] == 0
 
 
 def test_paint_wave4_layout_guards():

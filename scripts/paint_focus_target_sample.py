@@ -139,8 +139,18 @@ def wave24_descend_line(
     return (x0, y0, x1, y1)
 
 
+_CJK_PROP_CACHE = None
+_CJK_PROP_TRIED = False
+# 話筒次級四浪：150→120 仍可讀中文，savefig 明顯較快（十檔逐張更關鍵）
+WAVE4_PNG_DPI = 120
+
+
 def _cjk_prop():
     """話筒次級四浪圖中文：優先 repo fonts/（Render 無系統 Noto 時也不准方框）。"""
+    global _CJK_PROP_CACHE, _CJK_PROP_TRIED
+    if _CJK_PROP_TRIED:
+        return _CJK_PROP_CACHE
+    _CJK_PROP_TRIED = True
     root = Path(__file__).resolve().parent.parent
     candidates = (
         root / "fonts" / "NotoSansTC-w560.ttf",
@@ -157,9 +167,11 @@ def _cjk_prop():
             prop = fm.FontProperties(fname=str(p))
             plt.rcParams["font.family"] = prop.get_name()
             plt.rcParams["axes.unicode_minus"] = False
+            _CJK_PROP_CACHE = prop
             return prop
         except Exception:
             continue
+    _CJK_PROP_CACHE = None
     return None
 
 
@@ -538,6 +550,7 @@ def refresh_latest_official_bars(sid: str, db_path: Path | str) -> str:
     """畫圖前補齊 fuse_end 當月官方 STOCK_DAY；回最新可畫日（台北）。
 
     不准吃舊 max(date)；開市日盤後必須對到最新一根 K／量。
+    庫內已有 ≥ fuse_end 官方柱 → 跳過網路重抓（十檔逐張省秒）。
     """
     sid = str(sid or "").strip()
     path = str(db_path or "")
@@ -550,6 +563,19 @@ def refresh_latest_official_bars(sid: str, db_path: Path | str) -> str:
         end = ""
     if len(end) != 8 or not sid or not path:
         return end
+    try:
+        con_chk = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        try:
+            mx = con_chk.execute(
+                "SELECT MAX(date) FROM daily_quotes WHERE stock_id=?", (sid,)
+            ).fetchone()
+        finally:
+            con_chk.close()
+        mx_s = str((mx or (None,))[0] or "").replace("-", "")[:8]
+        if len(mx_s) == 8 and mx_s >= end:
+            return end
+    except Exception:
+        pass
     try:
         from biaoke_walk import _market_of, fetch_stock_month, upsert_fetched_quotes
 
@@ -1581,7 +1607,12 @@ def paint(
     ax_k.set_xlim(0, 1)
     ax_k.set_ylim(0, 1)
     out.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out, dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
+    fig.savefig(
+        out,
+        dpi=int(WAVE4_PNG_DPI),
+        bbox_inches="tight",
+        facecolor=fig.get_facecolor(),
+    )
     plt.close()
     con.close()
     meta = {

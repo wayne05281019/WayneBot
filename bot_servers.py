@@ -9316,14 +9316,34 @@ class WayneTelegramBot:
                     )
 
                 path = ""
-                try:
-                    path = await asyncio.wait_for(
-                        asyncio.to_thread(_paint_one), timeout=45.0
-                    )
-                except Exception:
-                    logger.exception("次級四浪十檔出圖失敗 sid=%s", sid)
-                    path = ""
+                for attempt in range(2):
+                    try:
+                        path = await asyncio.wait_for(
+                            asyncio.to_thread(_paint_one), timeout=45.0
+                        )
+                    except Exception:
+                        logger.exception(
+                            "次級四浪十檔出圖失敗 sid=%s attempt=%s",
+                            sid,
+                            attempt + 1,
+                        )
+                        path = ""
+                    if path and os.path.isfile(str(path)):
+                        break
+                    if attempt == 0:
+                        try:
+                            await message.reply_text(
+                                f"{sid} {name} 出圖失敗，重試一次…"
+                            )
+                        except Exception:
+                            pass
                 if not path or not os.path.isfile(str(path)):
+                    try:
+                        await message.reply_text(
+                            f"{sid} {name} 兩次都畫不出，略過這檔；可稍後再按或改打單檔。"
+                        )
+                    except Exception:
+                        pass
                     continue
                 ok = await self._wave4_send_media_group(
                     message,
@@ -9349,7 +9369,7 @@ class WayneTelegramBot:
             elif sent < n:
                 try:
                     await message.reply_text(
-                        f"這頁出了 {sent}/{n} 張次級四浪圖，其餘略過。"
+                        f"這頁出了 {sent}/{n} 張次級四浪圖，其餘略過；失敗檔可再按或改打單檔。"
                     )
                 except Exception:
                     pass
@@ -9460,12 +9480,53 @@ class WayneTelegramBot:
                     caption0=cap0,
                 )
             if ok and not chart_ok:
+                # 附圖空／送失敗：重渲一輪再送；仍失敗才請使用者再打
                 try:
                     await message.reply_text(
-                        f"{stock_id} 附圖沒送出，稍後再打一次代號。"
+                        f"{stock_id} 附圖沒送出，正在重試一次…"
                     )
                 except Exception:
                     pass
+                try:
+
+                    def _retry_pair():
+                        from focus_wave4_desk import paint_wave4_one_pair
+
+                        return paint_wave4_one_pair(
+                            stock_id,
+                            db_path=self.db_path,
+                            out_dir=os.path.join(
+                                getattr(self, "charts_dir", "data/charts")
+                                or "data/charts",
+                                "wave4",
+                                str(uid or "x"),
+                            ),
+                            stock_name=stock_id,
+                            tag="one_retry",
+                            header_style="B",
+                        )
+
+                    charts2 = await asyncio.wait_for(
+                        asyncio.to_thread(_retry_pair), timeout=120.0
+                    )
+                    if charts2:
+                        cap0 = str((charts2[0] or {}).get("caption") or "") or (
+                            f"{stock_id} 次級四浪＋結構（觀察非買訊）"
+                        )
+                        chart_ok = await self._wave4_send_media_group(
+                            message,
+                            charts2,
+                            caption0=cap0,
+                        )
+                except Exception:
+                    logger.exception("次級四浪單檔附圖重試失敗")
+                if not chart_ok:
+                    try:
+                        await message.reply_text(
+                            f"{stock_id} 附圖兩次都沒送出，請稍後再打一次代號。"
+                        )
+                    except Exception:
+                        pass
             delivered = True
         finally:
             if not delivered:
