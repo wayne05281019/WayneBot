@@ -1034,9 +1034,10 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
     _ph = float(_p1[1] - _p0[1])
     _t_price.remove()
 
+    # 三行貼齊：較昨日緊接大價下緣，不准留大空
     _y_name = 0.968
-    _y_price = 0.922
-    _y_chg = 0.878
+    _y_price = 0.924
+    _y_chg = _y_price - _ph * 0.52 - 0.004
     fig.text(
         _hx,
         _y_name,
