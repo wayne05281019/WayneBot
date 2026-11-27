@@ -33,11 +33,12 @@ SPEC_PATH = LAB / "biaoke_vol_tracks_spec_20261127.json"
 
 # 風向／龍頭面板（他點名＋taught 對照；光學＝待驗證獨立軌）
 PANELS: List[Dict[str, Any]] = [
-    {"industry": "晶圓代工", "leaders": ["2330"], "role": "anchor"},
+    # 2330＝市場沉澱錨，不併入產業同相票（單檔永不 vane_on）
+    {"industry": "晶圓代工", "leaders": ["2330"], "role": "market_anchor"},
     {"industry": "PCB", "leaders": ["2383"], "role": "problem_vol"},
     {"industry": "光通訊", "leaders": ["6442", "2345", "3081"], "role": "vane"},
-    {"industry": "ASIC", "leaders": ["3443", "3661"], "role": "vane"},
-    {"industry": "散熱", "leaders": ["3017", "3653"], "role": "vane"},
+    {"industry": "ASIC", "leaders": ["3443", "5274", "3661"], "role": "vane"},
+    {"industry": "散熱", "leaders": ["3017", "2059", "3653"], "role": "vane"},
     {"industry": "ABF", "leaders": ["3037"], "role": "contrast"},
     {"industry": "被動元件", "leaders": ["2327"], "role": "rebound_contrast"},
     {"industry": "光學", "leaders": ["3008"], "role": "pending_verify"},
@@ -241,15 +242,21 @@ def snap_leader(
 
 
 def industry_vane(snaps: Sequence[PhaseSnap]) -> Dict[str, Any]:
-    """同產業 ≥一半 或 ≥2 檔 在 low_explode／sediment → vane_on。"""
+    """產業量轉：有效指標≥2 且同相（low_explode／sediment）≥2。
+
+    單檔面板（台積／台光電等）只標 anchor_active，永不 vane_on——
+    避免把個股事件誤當產業風向。
+    """
     active = [s for s in snaps if s.phase in ("low_explode", "sediment")]
     n = len(snaps)
-    need = 2 if n >= 3 else max(1, (n + 1) // 2)
-    on = len(active) >= need
+    need = 2
+    on = n >= 2 and len(active) >= need
+    anchor_active = n < 2 and len(active) >= 1
     return {
         "vane_on": on,
+        "anchor_active": anchor_active,
         "active_n": len(active),
-        "need_n": need,
+        "need_n": need if n >= 2 else None,
         "phases": {s.stock_id: s.phase for s in snaps},
         "active_ids": [s.stock_id for s in active],
     }
@@ -343,6 +350,9 @@ def screen(db_path: str, *, as_of: str = "") -> Dict[str, Any]:
             "leaders": leaders,
             "industry_vanes": vanes,
             "vane_on_industries": [v["industry"] for v in vanes if v.get("vane_on")],
+            "anchor_active_industries": [
+                v["industry"] for v in vanes if v.get("anchor_active")
+            ],
             "written_at": datetime.now(TAIPEI).strftime("%Y-%m-%dT%H:%M:%S%z"),
             "spec": str(SPEC_PATH.relative_to(ROOT)),
         }

@@ -50,7 +50,7 @@ def test_classify_high_explode():
     assert "high_year_grade" in flags
 
 
-def test_industry_vane_needs_majority_or_two():
+def test_industry_vane_needs_two_never_single():
     def snap(sid: str, phase: str) -> PhaseSnap:
         return PhaseSnap(
             stock_id=sid,
@@ -70,6 +70,12 @@ def test_industry_vane_needs_majority_or_two():
             rs_5_vs_twii_pct=None,
             note_zh="",
         )
+
+    # 單檔＝錨點事件，不算產業風向
+    one = [snap("2330", "sediment")]
+    v1 = industry_vane(one)
+    assert v1["vane_on"] is False
+    assert v1["anchor_active"] is True
 
     three = [
         snap("6442", "sediment"),

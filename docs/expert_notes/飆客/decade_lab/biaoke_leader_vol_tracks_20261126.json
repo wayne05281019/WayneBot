@@ -20,15 +20,15 @@
   "phase_counts": {
     "sediment": 2,
     "low_explode": 3,
-    "quiet": 7
+    "quiet": 9
   },
-  "n_leaders": 12,
+  "n_leaders": 14,
   "leaders": [
     {
       "stock_id": "2330",
       "stock_name": "台積電",
       "industry": "晶圓代工",
-      "role": "anchor",
+      "role": "market_anchor",
       "as_of": "20261126",
       "close": 2145.0,
       "phase": "sediment",
@@ -172,6 +172,29 @@
       }
     },
     {
+      "stock_id": "5274",
+      "stock_name": "信驊",
+      "industry": "ASIC",
+      "role": "vane",
+      "as_of": "20261126",
+      "close": 9380.0,
+      "phase": "quiet",
+      "flags": [],
+      "year_grade_floor": 2205.7,
+      "vol_today": 481.0,
+      "vol_year_max": 3151.0,
+      "consec_year_grade": 0,
+      "dist_to_low60_pct": 28.58,
+      "dist_to_high120_pct": 56.97,
+      "rs_5_vs_twii_pct": 5.559,
+      "note_zh": "相=quiet；距60低28.6%；距120高剩餘57.0%；一年級門檻=2206（年最大3151）；近5連=0；flags=—",
+      "forward": {
+        "fwd_5": null,
+        "fwd_10": null,
+        "fwd_20": null
+      }
+    },
+    {
       "stock_id": "3661",
       "stock_name": "世芯-KY",
       "industry": "ASIC",
@@ -211,6 +234,29 @@
       "dist_to_high120_pct": 24.46,
       "rs_5_vs_twii_pct": 12.428,
       "note_zh": "相=quiet；距60低39.4%；距120高剩餘24.5%；一年級門檻=10233（年最大14618）；近5連=0；flags=—",
+      "forward": {
+        "fwd_5": null,
+        "fwd_10": null,
+        "fwd_20": null
+      }
+    },
+    {
+      "stock_id": "2059",
+      "stock_name": "川湖",
+      "industry": "散熱",
+      "role": "vane",
+      "as_of": "20261126",
+      "close": 7155.0,
+      "phase": "quiet",
+      "flags": [],
+      "year_grade_floor": 1575.0,
+      "vol_today": 559.0,
+      "vol_year_max": 2207.0,
+      "consec_year_grade": 1,
+      "dist_to_low60_pct": 43.67,
+      "dist_to_high120_pct": 52.57,
+      "rs_5_vs_twii_pct": 18.568,
+      "note_zh": "相=quiet；距60低43.7%；距120高剩餘52.6%；一年級門檻=1575（年最大2207）；近5連=1；flags=—",
       "forward": {
         "fwd_5": null,
         "fwd_10": null,
@@ -319,9 +365,10 @@
   "industry_vanes": [
     {
       "industry": "晶圓代工",
-      "vane_on": true,
+      "vane_on": false,
+      "anchor_active": true,
       "active_n": 1,
-      "need_n": 1,
+      "need_n": null,
       "phases": {
         "2330": "sediment"
       },
@@ -331,9 +378,10 @@
     },
     {
       "industry": "PCB",
-      "vane_on": true,
+      "vane_on": false,
+      "anchor_active": true,
       "active_n": 1,
-      "need_n": 1,
+      "need_n": null,
       "phases": {
         "2383": "low_explode"
       },
@@ -344,6 +392,7 @@
     {
       "industry": "光通訊",
       "vane_on": false,
+      "anchor_active": false,
       "active_n": 0,
       "need_n": 2,
       "phases": {
@@ -355,11 +404,13 @@
     },
     {
       "industry": "ASIC",
-      "vane_on": true,
+      "vane_on": false,
+      "anchor_active": false,
       "active_n": 1,
-      "need_n": 1,
+      "need_n": 2,
       "phases": {
         "3443": "sediment",
+        "5274": "quiet",
         "3661": "quiet"
       },
       "active_ids": [
@@ -368,11 +419,13 @@
     },
     {
       "industry": "散熱",
-      "vane_on": true,
+      "vane_on": false,
+      "anchor_active": false,
       "active_n": 1,
-      "need_n": 1,
+      "need_n": 2,
       "phases": {
         "3017": "quiet",
+        "2059": "quiet",
         "3653": "low_explode"
       },
       "active_ids": [
@@ -382,8 +435,9 @@
     {
       "industry": "ABF",
       "vane_on": false,
+      "anchor_active": false,
       "active_n": 0,
-      "need_n": 1,
+      "need_n": null,
       "phases": {
         "3037": "quiet"
       },
@@ -392,8 +446,9 @@
     {
       "industry": "被動元件",
       "vane_on": false,
+      "anchor_active": false,
       "active_n": 0,
-      "need_n": 1,
+      "need_n": null,
       "phases": {
         "2327": "quiet"
       },
@@ -401,9 +456,10 @@
     },
     {
       "industry": "光學",
-      "vane_on": true,
+      "vane_on": false,
+      "anchor_active": true,
       "active_n": 1,
-      "need_n": 1,
+      "need_n": null,
       "phases": {
         "3008": "low_explode"
       },
@@ -412,21 +468,20 @@
       ]
     }
   ],
-  "vane_on_industries": [
+  "vane_on_industries": [],
+  "anchor_active_industries": [
     "晶圓代工",
     "PCB",
-    "ASIC",
-    "散熱",
     "光學"
   ],
-  "written_at": "2026-11-27T10:28:31+0800",
+  "written_at": "2026-11-27T10:29:50+0800",
   "spec": "docs/expert_notes/飆客/decade_lab/biaoke_vol_tracks_spec_20261127.json",
   "t3_hi_lo_split": {
-    "n_low": 8,
-    "n_high": 10,
+    "n_low": 9,
+    "n_high": 11,
     "n_both": 0,
-    "n_mid_or_other": 27,
-    "n_events": 45,
+    "n_mid_or_other": 29,
+    "n_events": 49,
     "lookback_days": 120,
     "note_zh": "只計事件分區樣本；fwd 對質另開長窗回掃。空事件不算有記。"
   }
