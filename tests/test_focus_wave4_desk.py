@@ -205,6 +205,18 @@ def test_paint_wave4_chart_uses_mpl_paint_worker():
     assert 'meta.get("zone")' in pair_src or 'meta or {}).get("zone")' in pair_src
 
 
+def test_force_vol_zone_skips_next_layer_attach():
+    """次級四浪強制路上區時，結構圖不准再掛舊爆大量下一層灰帶。"""
+    import inspect
+
+    from biaoke_chart import render_biaoke_structure_png
+
+    src = inspect.getsource(render_biaoke_structure_png)
+    assert "force_vol_zone" in src
+    assert 'info["next_support"] = {}' in src
+    assert "if sid and not force_vol_zone:" in src
+
+
 def test_wave4_hub_mentions_two_charts():
     from focus_wave4_desk import format_wave4_hub_html
 
