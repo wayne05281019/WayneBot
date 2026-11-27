@@ -10,6 +10,7 @@ from scripts.paint_focus_target_sample import (
     drop_measure_triangle_verts,
     pick_forward_pressure_zone,
     rebound_fib_from_wave_bottom,
+    wave24_descend_line,
 )
 
 
@@ -28,6 +29,21 @@ def test_rebound_fib_from_wave_bottom():
     assert abs(lv[1][1] - (146 + 138 * 0.5)) < 1e-6
     assert abs(lv[2][1] - (146 + 138 * 0.618)) < 1e-6
     assert rebound_fib_from_wave_bottom(100.0, 100.0) == []
+
+
+def test_wave24_descend_line_extends_to_last_day():
+    """②–④ 連線延伸到末日；斜率＝(y4−y2)/(j4−j2)。"""
+    line = wave24_descend_line(10.0, 300.0, 40.0, 240.0, 80.0)
+    assert line is not None
+    x0, y0, x1, y1 = line
+    assert x0 == 10.0 and y0 == 300.0
+    assert x1 == 80.0
+    assert abs(y1 - (300.0 + (240.0 - 300.0) / 30.0 * 70.0)) < 1e-9
+    clipped = wave24_descend_line(10.0, 300.0, 40.0, 240.0, 80.0, x_clip_left=20.0)
+    assert clipped is not None
+    assert clipped[0] == 20.0
+    assert abs(clipped[1] - (300.0 + (240.0 - 300.0) / 30.0 * 10.0)) < 1e-9
+    assert wave24_descend_line(40.0, 240.0, 10.0, 300.0, 80.0) is None
 
 
 def test_paint_wave4_layout_guards():
@@ -72,6 +88,8 @@ def test_paint_wave4_layout_guards():
     assert 'HEADER_STYLE_DEFAULT = "B"' in inspect.getsource(m)
     assert "1.0 - _band" in src
     assert '"今K"' in src
+    assert "wave24_descend_line" in src
+    assert "(0, (2.4, 1.5))" in src
     assert '"#ffeb3b"' in src
     assert "張" in src[src.find("壓力來源日量柱") :]
 

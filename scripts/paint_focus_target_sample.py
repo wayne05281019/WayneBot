@@ -91,6 +91,35 @@ def rebound_fib_from_wave_bottom(
     return out
 
 
+def wave24_descend_line(
+    j2: float,
+    y2: float,
+    j4: float,
+    y4: float,
+    j_end: float,
+    *,
+    x_clip_left: float = 0.0,
+) -> Optional[Tuple[float, float, float, float]]:
+    """②–④ 下降趨勢線延伸到末日。回 (x0, y0, x1, y1)；x 無前進則 None。
+
+    觀察用，非買訊。極短實線＋小空格由呼叫端 linestyle 負責。
+    """
+    try:
+        x2, p2 = float(j2), float(y2)
+        x4, p4 = float(j4), float(y4)
+        xe = float(j_end)
+        xl = float(x_clip_left)
+    except (TypeError, ValueError):
+        return None
+    if x4 <= x2 or xe < x4:
+        return None
+    slope = (p4 - p2) / (x4 - x2)
+    x0 = max(x2, xl)
+    y0 = p2 + slope * (x0 - x2)
+    y1 = p2 + slope * (xe - x2)
+    return (x0, y0, xe, y1)
+
+
 def _cjk_prop():
     for p in (
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
@@ -657,6 +686,29 @@ def paint(
         zorder=5,
     )
 
+    # ②–④ 下降趨勢線：極短實線＋小空格，延伸到最後一天（觀察有無站上）
+    if len(pts) >= 5:
+        _w24 = wave24_descend_line(
+            vi(pts[2].i),
+            float(pts[2].price),
+            vi(pts[4].i),
+            float(pts[4].price),
+            float(n - 1),
+            x_clip_left=float(_x_left),
+        )
+        if _w24 is not None:
+            _x0, _y0, _x1, _y1 = _w24
+            ax.plot(
+                [_x0, _x1],
+                [_y0, _y1],
+                color="#a21caf",
+                lw=1.55,
+                ls=(0, (2.4, 1.5)),
+                solid_capstyle="butt",
+                zorder=6,
+                label="②–④下降趨勢線（延伸至末日）",
+            )
+
     # 黃線＝五波走完後新起漲軌跡；字／大菱形一律不准蓋日K（字只進圖例）
     bounce_from = ns if ns is not None else (pts[-1] if pts else None)
     if bounce_from is not None:
@@ -839,7 +891,7 @@ def paint(
     sub1 = f"{asof_face}｜觀察非買訊"
     sub2 = ohlc_line
     sub3 = (
-        f"紫細線＝五波下跌　最底＋反彈0.382/0.5/0.618（觀察）　黃線＝新起漲｜"
+        f"紫細線＝五波下跌　②–④下降趨勢線延伸至末日　最底＋反彈0.382/0.5/0.618（觀察）　黃線＝新起漲｜"
         f"滾動近{WIN}根（新日進、左邊掉；右留空給價標）"
     )
     ax.set_title("")  # 股名價改 figure 右上，不准再置中標題搶位
