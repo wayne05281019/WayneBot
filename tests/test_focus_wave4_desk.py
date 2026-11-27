@@ -210,6 +210,21 @@ def test_wave4_send_media_group_single_uses_reply_photo():
     assert "reply_photo" in src
 
 
+def test_wave4_send_one_embeds_missing_chart_in_html():
+    """有文無圖不准沉默：缺檔寫進主文；送圖失敗才另補第二則並記 log。"""
+    import inspect
+
+    from bot_servers import WayneTelegramBot
+
+    one = inspect.getsource(WayneTelegramBot._wave4_send_one)
+    assert "結構圖這次沒出" in one
+    assert "chart_file_ok" in one
+    assert "logger.exception" in one
+    page = inspect.getsource(WayneTelegramBot._wave4_send_page)
+    assert "結構圖這次沒出" in page
+    assert "logger.exception" in page
+
+
 def test_guangsheng_horizon_sid_is_6442_not_1815():
     """資料正確性：光聖＝6442；1815是富喬，不准掛錯遠距。"""
     from focus_wave4_desk import QUALITY_HORIZON_ZH
