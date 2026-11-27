@@ -21,27 +21,24 @@ def test_drop_measure_triangle_lin_style():
     assert drop_measure_points(100.0, 100.0) is None
 
 
-def test_paint_source_has_lin_green_drop_measure():
+def test_paint_wave4_layout_guards():
+    """右標貼留白、浪序圓圈、量標上移；未畫投影前不准秀量尺點差綠底。"""
     import inspect
 
     from scripts import paint_focus_target_sample as m
 
     src = inspect.getsource(m.paint)
-    assert "跌幅量尺" in src
-    assert "drop_measure_triangle_verts" in src
-    assert 'edgecolor="none"' in src or "edgecolor='none'" in src
-    # 點差不准寫進三角蓋K；只准進圖例字串
-    assert "drop_legend" in src
-    # 不准再畫大菱形／圖內「新起漲」浮字蓋K
-    assert 'marker="D"' not in src
-    assert 'annotate(\n                "新起漲"' not in src
-    assert '"新起漲"' not in src or "黃線＝新起漲" in src
-    # 浪序圓圈；量標掛量圖上方縫隙，不准進柱區
+    assert "FUTURE_PAD * 0.72" in src  # 右標進右留白
     assert 'boxstyle="circle,pad=0.28"' in src
     assert "transform=axv.transAxes" in src
     assert "1.12" in src
     assert "壓力來源量（橘）" in src
-    assert '"5"' in src  # 終點也標⑤圈
+    assert '"5"' in src
+    assert 'marker="D"' not in src
+    # 未投影前不准把 111／1795 類點差／綠三角畫進圖面
+    assert "Polygon" not in src
+    assert "起→③＝" not in src
+    assert "跌幅量尺" in src  # 註解保留：有意義時再接投影
 
 
 def test_rev_yi_thousand_to_yi():

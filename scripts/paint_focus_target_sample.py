@@ -16,7 +16,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.font_manager as fm
 import matplotlib.pyplot as plt
-from matplotlib.patches import Polygon, Rectangle
+from matplotlib.patches import Rectangle
 
 from biaoke_next_support import find_secondary_vol_zone
 from scripts.biaoke_tail_back_five_wave import analyze_bars
@@ -131,18 +131,19 @@ def _paint_right_price_tags(
     y_lo: float,
     y_hi: float,
     prop,
+    x_text: float | None = None,
 ) -> None:
-    """右側價位角標：真價連虛線到錯開後的顯示位。"""
+    """右側價位角標：字貼右留白，細線連回真價；不准貼末根K旁擋縮圖。"""
     if not tags:
         return
     prices = [float(t["price"]) for t in tags]
     dys = _dodge_right_ys(prices, y_lo=y_lo, y_hi=y_hi)
-    x_text = x_anchor + 1.2
+    xt = float(x_anchor + 1.2 if x_text is None else x_text)
     for t, dy in zip(tags, dys):
         ax.annotate(
             str(t["text"]),
             xy=(x_anchor, float(t["price"])),
-            xytext=(x_text, dy),
+            xytext=(xt, dy),
             textcoords="data",
             color=t.get("color", "#111"),
             fontsize=float(t.get("fontsize", 9.5)),
@@ -155,9 +156,9 @@ def _paint_right_price_tags(
             arrowprops=dict(
                 arrowstyle="-",
                 color=t.get("edge", "#94a3b8"),
-                lw=0.9,
+                lw=0.85,
                 shrinkA=0,
-                shrinkB=2,
+                shrinkB=3,
             ),
             bbox=dict(
                 boxstyle="round,pad=0.22",
@@ -377,32 +378,9 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
             )
         )
 
-    # 林友銘款視覺：淺綠倒三角＝「起→③」跌幅量尺底色（無綠邊、數字不准壓K）
-    # 真意＝這段跌幅當量尺；點差只寫進圖例，不准寫進三角蓋住縮圖K。觀察非買訊。
-    drop_legend = "淺綠＝跌幅量尺（起→③）"
-    if len(pts) >= 4:
-        hi_p, lo_p = pts[0], pts[3]  # 起、③（四浪低）
-        j_hi_raw, j_lo_raw = vi(hi_p.i), vi(lo_p.i)
-        y_hi_m, y_lo_m = float(hi_p.price), float(lo_p.price)
-        j_hi_m = float(j_hi_raw) if j_hi_raw >= 0 else 0.0
-        j_lo_m = float(j_lo_raw)
-        verts = drop_measure_triangle_verts(j_hi_m, y_hi_m, j_lo_m, y_lo_m)
-        pts_drop = drop_measure_points(y_hi_m, y_lo_m)
-        if verts is not None and pts_drop is not None and 0 <= j_lo_raw < n:
-            drop_txt = f"{pts_drop:.0f}" if pts_drop >= 10 else f"{pts_drop:g}"
-            drop_legend = f"淺綠＝跌幅量尺 起→③＝{drop_txt}"
-            ax.add_patch(
-                Polygon(
-                    verts,
-                    closed=True,
-                    facecolor="#86efac",
-                    edgecolor="none",
-                    alpha=0.28,
-                    lw=0,
-                    zorder=1.2,
-                    label=drop_legend,
-                )
-            )
+    # 林友銘「跌幅量尺」點差（起→③）對「距四浪高」當下觀察沒有即時意義：
+    # 要用來自樞紐做延伸投影才有用。未畫投影前不准在次級四浪圖上秀 111／1795／綠底，免假裝有用。
+    drop_legend = ""
 
     # 教法：紫細線＝五波下跌（淺底比白線黑邊清楚）；黃線＝新一波起漲
     labels = ["起", "1", "2", "3", "4", "終"]
@@ -668,7 +646,7 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
     # 表頭兩行：標題單獨；副標拆兩行，不准壓進圖內文字
     sub1 = f"{asof_face}｜{ohlc_line}｜觀察非買訊"
     sub2 = (
-        f"紫細線＝五波下跌　{drop_legend}　黃線＝新起漲｜"
+        f"紫細線＝五波下跌　黃線＝新起漲｜"
         f"滾動近{WIN}根（新日進、左邊掉；右留{FUTURE_PAD}根空位）"
     )
     ax.set_title(
@@ -734,9 +712,11 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
                 },
             ]
         )
+    # 字貼右留白中段～偏右，細線連回末根；不准 +1.2 貼在K旁
     _paint_right_price_tags(
         ax,
         x_anchor=float(n - 1),
+        x_text=float(n - 1 + FUTURE_PAD * 0.72),
         tags=right_tags,
         y_lo=ylim_lo + (ylim_hi - ylim_lo) * 0.04,
         y_hi=ylim_hi - (ylim_hi - ylim_lo) * 0.06,
