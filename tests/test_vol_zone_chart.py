@@ -886,6 +886,65 @@ def test_load_official_ohlc_drops_incomplete_after_as_of(tmp_path, monkeypatch):
     assert "20261028" not in dates
 
 
+def test_extend_structure_bars_to_face_asof(tmp_path):
+    """次級四浪 pair：結構圖可接到四浪 asof（查股預設不傳 face_asof 仍吃市場完整日）。"""
+    from three_in_one_chart import _extend_structure_bars_to_face_asof
+
+    db = str(tmp_path / "face_asof.db")
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """
+        CREATE TABLE daily_quotes (
+            date TEXT, stock_id TEXT, stock_name TEXT, market TEXT,
+            open REAL, high REAL, low REAL, close REAL, volume REAL,
+            PRIMARY KEY (date, stock_id)
+        )
+        """
+    )
+    for d, c in (("20261125", 100.0), ("20261126", 101.0), ("20261127", 102.0)):
+        conn.execute(
+            "INSERT INTO daily_quotes VALUES (?,?,?,?,?,?,?,?,?)",
+            (d, "2383", "台光電", "TW", c, c + 1, c - 1, c, 1000),
+        )
+    conn.commit()
+    conn.close()
+    bars = [
+        {
+            "date": "20261125",
+            "open": 100.0,
+            "high": 101.0,
+            "low": 99.0,
+            "close": 100.0,
+            "volume": 1000.0,
+            "stock_id": "2383",
+            "name": "台光電",
+        },
+        {
+            "date": "20261126",
+            "open": 101.0,
+            "high": 102.0,
+            "low": 100.0,
+            "close": 101.0,
+            "volume": 1000.0,
+            "stock_id": "2383",
+            "name": "台光電",
+        },
+    ]
+    out = _extend_structure_bars_to_face_asof(
+        bars, sid="2383", name="台光電", db_path=db, face_asof="20261127"
+    )
+    assert [b["date"] for b in out] == ["20261125", "20261126", "20261127"]
+    assert float(out[-1]["close"]) == 102.0
+    same = _extend_structure_bars_to_face_asof(
+        bars, sid="2383", name="台光電", db_path=db, face_asof="20261126"
+    )
+    assert [b["date"] for b in same] == ["20261125", "20261126"]
+    noop = _extend_structure_bars_to_face_asof(
+        bars, sid="2383", name="台光電", db_path=db, face_asof=""
+    )
+    assert [b["date"] for b in noop] == ["20261125", "20261126"]
+
+
 def test_vol_zone_no_prev_close_right_tag():
     """大量區右軸不准再畫「昨收」白底標（與今收／壓撐重複干擾）。"""
     src = open("vol_zone_chart.py", encoding="utf-8").read()

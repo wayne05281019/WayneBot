@@ -779,6 +779,7 @@ def paint_wave4_one_pair(
     def _do() -> List[Dict[str, str]]:
         charts: List[Dict[str, str]] = []
         force_zone: Dict[str, Any] | None = None
+        face_asof = ""
         try:
             from scripts.paint_focus_target_sample import paint
 
@@ -786,6 +787,8 @@ def paint_wave4_one_pair(
             z = (meta or {}).get("zone") if isinstance(meta, dict) else None
             if isinstance(z, dict) and z.get("date") and z.get("high") and z.get("low"):
                 force_zone = dict(z)
+            if isinstance(meta, dict):
+                face_asof = str(meta.get("asof") or "").replace("-", "")[:8]
             if wave_out.is_file() and wave_out.stat().st_size > 12_000:
                 charts.append(
                     {
@@ -807,6 +810,7 @@ def paint_wave4_one_pair(
                 str(db_path),
                 str(struct_out),
                 force_vol_zone=force_zone,
+                face_asof=face_asof,
             )
             if path and Path(path).is_file() and Path(path).stat().st_size > 8_000:
                 charts.append(

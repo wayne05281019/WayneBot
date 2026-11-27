@@ -203,6 +203,7 @@ def test_paint_wave4_chart_uses_mpl_paint_worker():
     assert "wave4" in pair_src and "struct" in pair_src
     assert "force_vol_zone" in pair_src
     assert 'meta.get("zone")' in pair_src or 'meta or {}).get("zone")' in pair_src
+    assert "face_asof" in pair_src
 
 
 def test_force_vol_zone_skips_next_layer_attach():
