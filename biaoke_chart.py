@@ -4797,9 +4797,13 @@ def render_biaoke_structure_png(
     # 次級四浪 pair：強制同一路上大量區日／高低（反彈壓或下降撐壓）
     if force_vol_zone:
         apply_force_vol_zone(info, work, force_vol_zone)
+        # 強制路上區時不准再掛「下一層」舊爆大量灰帶（11/18 等），
+        # 否則話筒兩張看起來壓力區又不一樣。查股預設結構圖仍走下一層。
+        info["next_support"] = {}
+        info["next_support_chart"] = {}
     # 查股／飆大出圖帶明確 sid：原文目標檔別隔離（聯亞／奇鋐…）
     # 下一層用長窗歷史（深窗串聯）；可視 work 只負責畫 K，不准裁掉次大量源
-    if sid:
+    if sid and not force_vol_zone:
         try:
             from biaoke_next_support import (
                 attach_next_support,
