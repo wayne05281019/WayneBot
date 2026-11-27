@@ -16,7 +16,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.font_manager as fm
 import matplotlib.pyplot as plt
-from matplotlib.patches import FancyBboxPatch, Rectangle
+from matplotlib.patches import Rectangle
 
 from biaoke_next_support import find_secondary_vol_zone
 from scripts.biaoke_tail_back_five_wave import analyze_bars
@@ -965,13 +965,13 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
         [dates[i][4:6] + "/" + dates[i][6:8] for i in ticks], fontsize=8
     )
 
-    fig.subplots_adjust(top=0.78, hspace=0.28)
+    fig.subplots_adjust(top=0.84, hspace=0.28)
     # 副標放在圖上方左側；右上留給股名價大字卡
     fig.canvas.draw()
     ax_pos = ax.get_position()
     fig.text(
         ax_pos.x0,
-        min(ax_pos.y1 + 0.028, 0.86),
+        min(ax_pos.y1 + 0.032, 0.93),
         sub1,
         color="#374151",
         fontsize=7.8,
@@ -981,7 +981,7 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
     )
     fig.text(
         ax_pos.x0,
-        min(ax_pos.y1 + 0.008, 0.84),
+        min(ax_pos.y1 + 0.010, 0.91),
         sub2,
         color="#6b7280",
         fontsize=7.2,
@@ -990,7 +990,7 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
         va="bottom",
     )
 
-    # —— 右上紅框位：股號／股名／收價放大＋今K縮圖＋較昨日漲跌（高低卡味）——
+    # —— 右上約略位置（紅框僅示意）：浮字放大，不准白底卡蓋掉原底圖 ——
     prev_close: Optional[float] = None
     if len(bars) >= 2:
         try:
@@ -1006,25 +1006,10 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
         sign = "＋" if dlt >= 0 else "－"
         chg_line = f"較昨日　{sign}{abs(dlt):.0f}（{sign}{abs(pct):.2f}%）"
 
-    # 卡片底：figure 右上
-    chip = FancyBboxPatch(
-        (0.58, 0.848),
-        0.40,
-        0.138,
-        transform=fig.transFigure,
-        boxstyle="round,pad=0.012,rounding_size=0.012",
-        facecolor="#ffffff",
-        edgecolor="#94a3b8",
-        linewidth=1.35,
-        alpha=0.99,
-        zorder=20,
-        clip_on=False,
-    )
-    fig.patches.append(chip)
-    # 今K縮圖（漲紅跌綠＝較昨收）；加大加粗，不准洗成淡影
-    ax_k = fig.add_axes([0.595, 0.862, 0.072, 0.108])
+    # 今K縮圖：透明底，浮在原圖色上
+    ax_k = fig.add_axes([0.72, 0.875, 0.055, 0.09])
     ax_k.set_axis_off()
-    ax_k.set_facecolor("#f8fafc")
+    ax_k.patch.set_alpha(0.0)
     _o, _h, _l, _c = float(open_), float(high), float(low), float(close)
     _rng = max(_h - _l, abs(_c) * 0.012, 1e-6)
     _kcol = "#e53935"
@@ -1034,7 +1019,7 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
     def _ky(p: float) -> float:
         return 0.08 + (float(p) - _l) / _rng * 0.84
 
-    ax_k.plot([0.5, 0.5], [_ky(_l), _ky(_h)], color=_kcol, lw=3.4, solid_capstyle="round", zorder=2)
+    ax_k.plot([0.5, 0.5], [_ky(_l), _ky(_h)], color=_kcol, lw=3.2, solid_capstyle="round", zorder=2)
     _blo, _bhi = _ky(min(_o, _c)), _ky(max(_o, _c))
     ax_k.add_patch(
         Rectangle(
@@ -1049,51 +1034,38 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
     )
     ax_k.set_xlim(0, 1)
     ax_k.set_ylim(0, 1)
-    ax_k.text(
-        0.5,
-        0.02,
-        "今K",
-        transform=ax_k.transAxes,
-        ha="center",
-        va="bottom",
-        fontsize=7.5,
-        fontweight="bold",
-        fontproperties=prop,
-        color="#475569",
-        zorder=4,
-    )
-    # 股號股名＋大收價＋較昨日（右對齊、字級加大）
+    # 股號股名＋大收價＋較昨日（右上浮字，無白底）
     fig.text(
-        0.965,
-        0.962,
+        0.97,
+        0.968,
         f"{sid}　{name}",
         ha="right",
         va="top",
-        fontsize=22.0,
+        fontsize=20.0,
         fontweight="bold",
         fontproperties=prop,
         color="#0f172a",
         zorder=21,
     )
     fig.text(
-        0.965,
-        0.915,
+        0.97,
+        0.925,
         f"{close:.0f}",
         ha="right",
         va="top",
-        fontsize=32.0,
+        fontsize=30.0,
         fontweight="bold",
         fontproperties=prop,
         color=chg_c,
         zorder=21,
     )
     fig.text(
-        0.965,
-        0.862,
+        0.97,
+        0.878,
         chg_line or "較昨日　—",
         ha="right",
         va="top",
-        fontsize=13.5,
+        fontsize=12.5,
         fontweight="bold",
         fontproperties=prop,
         color=chg_c,

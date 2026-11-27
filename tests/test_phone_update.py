@@ -80,7 +80,7 @@ def test_file_note_matches_this_change():
     ):
         assert junk not in raw
     assert pu._clean_note(raw) == (
-        "次級四浪：收價改右上大字卡＋今K縮圖較昨日，末根K旁不再寫價"
+        "次級四浪：右上浮字放大股名價，拿掉白底卡（紅框僅示意位置）"
     )
 
 
