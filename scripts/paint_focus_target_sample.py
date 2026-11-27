@@ -571,50 +571,32 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
             alpha = 0.72
         axv.bar(i, v, width=0.72, color=col, alpha=alpha, zorder=2)
 
-    # 量標只放角落文字盒；橘虛線已對日，不准再拉箭頭橫蓋量柱
+    # 量標掛在量圖「上方縫隙」（axes y>1），完全不進量柱區
     vmax = max(vols) if vols else 1.0
-    axv.set_ylim(0, vmax * 1.22)
+    axv.set_ylim(0, vmax * 1.08)
+    _vol_note_bits = []
     if zone_i is not None:
         md = f"{dates[zone_i][4:6]}/{dates[zone_i][6:8]}"
-        axv.text(
-            0.01,
-            0.97,
-            f"壓力來源量（橘）{md} {vols[zone_i]:.0f}張",
-            transform=axv.transAxes,
-            ha="left",
-            va="top",
-            color="#9a3412",
-            fontsize=7.6,
-            fontweight="bold",
-            fontproperties=prop,
-            bbox=dict(
-                boxstyle="round,pad=0.18",
-                facecolor="#ffedd5",
-                edgecolor="#fb923c",
-                alpha=0.95,
-            ),
-            zorder=6,
-            clip_on=False,
-        )
-
+        _vol_note_bits.append(f"壓力來源量（橘）{md} {vols[zone_i]:.0f}張")
+    _vol_note_bits.append(f"今日 {vol:.0f} 張")
     axv.text(
-        0.99,
-        0.97,
-        f"今日 {vol:.0f} 張",
+        0.0,
+        1.12,
+        "　｜　".join(_vol_note_bits),
         transform=axv.transAxes,
-        ha="right",
-        va="top",
-        color="#111",
-        fontsize=7.8,
+        ha="left",
+        va="bottom",
+        color="#374151",
+        fontsize=7.6,
         fontweight="bold",
         fontproperties=prop,
         bbox=dict(
-            boxstyle="round,pad=0.18",
-            facecolor="#f8fafc",
-            edgecolor="#94a3b8",
-            alpha=0.95,
+            boxstyle="round,pad=0.2",
+            facecolor="#fff7ed",
+            edgecolor="#fdba74",
+            alpha=0.96,
         ),
-        zorder=6,
+        zorder=8,
         clip_on=False,
     )
 
@@ -768,7 +750,7 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
         [dates[i][4:6] + "/" + dates[i][6:8] for i in ticks], fontsize=8
     )
 
-    fig.subplots_adjust(top=0.86, hspace=0.10)
+    fig.subplots_adjust(top=0.86, hspace=0.22)
     # 副標放在標題與圖之間（figure 座標），不准壓進圖內
     fig.canvas.draw()
     ax_pos = ax.get_position()

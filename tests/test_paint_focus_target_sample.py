@@ -36,9 +36,10 @@ def test_paint_source_has_lin_green_drop_measure():
     assert 'marker="D"' not in src
     assert 'annotate(\n                "新起漲"' not in src
     assert '"新起漲"' not in src or "黃線＝新起漲" in src
-    # 浪序圓圈；量標角落文字、不准箭頭橫蓋柱
+    # 浪序圓圈；量標掛量圖上方縫隙，不准進柱區
     assert 'boxstyle="circle,pad=0.28"' in src
     assert "transform=axv.transAxes" in src
+    assert "1.12" in src
     assert "壓力來源量（橘）" in src
     assert '"5"' in src  # 終點也標⑤圈
 
