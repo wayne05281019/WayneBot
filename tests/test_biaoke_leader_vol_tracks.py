@@ -28,12 +28,12 @@ def test_classify_low_explode_consec():
     phase, flags, m = classify_phase(bars)
     assert phase == "low_explode"
     assert m["consec"] >= 2
-    assert "consec_low_explode" in flags or "low_year_grade" in flags
+    assert "consec_low_explode" in flags or "low_near_year_vol" in flags
 
 
 def test_classify_sediment_after_low_yg():
     bars = _base_bars()
-    # 低位一年級後量縮
+    # 低位近一年前巨量後量縮
     bars[-5] = _bar(245, close=102.0, low=100.0, high=150.0, vol=9000.0)
     bars[-1] = _bar(249, close=104.0, low=101.0, high=150.0, vol=4000.0)
     phase, flags, _ = classify_phase(bars)
@@ -43,11 +43,11 @@ def test_classify_sediment_after_low_yg():
 
 def test_classify_high_explode():
     bars = _base_bars(close=148.0, low=100.0, high=150.0, vol=1000.0)
-    # 貼近120高爆一年級
+    # 貼近120高爆近一年前巨量
     bars[-1] = _bar(249, close=148.0, low=145.0, high=150.0, vol=9000.0)
     phase, flags, _ = classify_phase(bars)
     assert phase == "high_explode"
-    assert "high_year_grade" in flags
+    assert "high_near_year_vol" in flags
 
 
 def test_industry_vane_needs_two_never_single():
@@ -61,10 +61,10 @@ def test_industry_vane_needs_two_never_single():
             close=1.0,
             phase=phase,
             flags=[],
-            year_grade_floor=1.0,
+            near_year_vol_floor=1.0,
             vol_today=1.0,
             vol_year_max=1.0,
-            consec_year_grade=0,
+            consec_near_year_vol=0,
             dist_to_low60_pct=1.0,
             dist_to_high120_pct=1.0,
             rs_5_vs_twii_pct=None,

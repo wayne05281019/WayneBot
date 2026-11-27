@@ -22,7 +22,7 @@ from scripts.biaoke_bottom_vol_observe_screen import (
     YEAR_LOOKBACK,
     latest_full_asof,
     load_bars,
-    year_grade_floor,
+    year_grade_floor as near_year_vol_floor,  # 程式鍵名；中文禁稱「一年級」→近一年前巨量
 )
 
 TAIPEI = ZoneInfo("Asia/Taipei")
@@ -60,10 +60,10 @@ class PhaseSnap:
     close: float
     phase: str  # quiet|low_explode|high_explode|sediment
     flags: List[str]
-    year_grade_floor: float
+    near_year_vol_floor: float
     vol_today: float
     vol_year_max: float
-    consec_year_grade: int
+    consec_near_year_vol: int
     dist_to_low60_pct: float
     dist_to_high120_pct: float
     rs_5_vs_twii_pct: Optional[float]
@@ -117,7 +117,7 @@ def classify_phase(bars: Sequence[Dict[str, float]]) -> Tuple[str, List[str], Di
     win60 = list(bars[-60:])
     win120 = list(bars[-120:])
     last = bars[-1]
-    floor, ymax = year_grade_floor([b["volume"] for b in year])
+    floor, ymax = near_year_vol_floor([b["volume"] for b in year])
     if floor <= 0:
         return "quiet", flags, empty
     low60 = min(b["low"] for b in win60 if b["low"] > 0)
@@ -139,7 +139,7 @@ def classify_phase(bars: Sequence[Dict[str, float]]) -> Tuple[str, List[str], Di
         else:
             run = 0
 
-    # 近窗一年級根的高低位歸類
+    # 近窗近一年前巨量根的高低位歸類
     look = list(bars[-SEDIMENT_LOOKBACK:])
     low_yg = False
     high_yg = False
@@ -150,10 +150,10 @@ def classify_phase(bars: Sequence[Dict[str, float]]) -> Tuple[str, List[str], Di
         peak_yg = max(peak_yg, b["volume"])
         if b["low"] > 0 and (b["low"] - low60) / low60 * 100.0 <= LOW_ZONE_PCT:
             low_yg = True
-            flags.append("low_year_grade")
+            flags.append("low_near_year_vol")
         if b["high"] > 0 and (high120 - b["high"]) / high120 * 100.0 <= HIGH_ZONE_PCT:
             high_yg = True
-            flags.append("high_year_grade")
+            flags.append("high_near_year_vol")
 
     med60_vols = sorted(b["volume"] for b in win60 if b["volume"] > 0)
     med60 = med60_vols[len(med60_vols) // 2] if med60_vols else 0.0
@@ -218,7 +218,7 @@ def snap_leader(
     phase, flags, m = classify_phase(bars)
     note = (
         f"相={phase}；距60低{m['dist_lo']:.1f}%；距120高剩餘{m['dist_hi']:.1f}%；"
-        f"一年級門檻={m['floor']:.0f}（年最大{m['ymax']:.0f}）；"
+        f"近一年前巨量門檻={m['floor']:.0f}（年最大{m['ymax']:.0f}）；"
         f"近{CONSEC_WINDOW}連={int(m['consec'])}；flags={','.join(flags) or '—'}"
     )
     return PhaseSnap(
@@ -230,10 +230,10 @@ def snap_leader(
         close=bars[-1]["close"],
         phase=phase,
         flags=flags,
-        year_grade_floor=round(m["floor"], 1),
+        near_year_vol_floor=round(m["floor"], 1),
         vol_today=m["vol"],
         vol_year_max=m["ymax"],
-        consec_year_grade=int(m["consec"]),
+        consec_near_year_vol=int(m["consec"]),
         dist_to_low60_pct=round(m["dist_lo"], 2),
         dist_to_high120_pct=round(m["dist_hi"], 2),
         rs_5_vs_twii_pct=rs_vs_twii(bars, twii, days=5),
@@ -367,7 +367,7 @@ def backfill_hi_lo_split(
     lookback_days: int = 120,
     sample_sids: Optional[Sequence[str]] = None,
 ) -> Dict[str, Any]:
-    """T3 高低位爆量異義：掃面板股近窗一年級日，分 low/high 區統計（觀察）。"""
+    """T3 高低位爆量異義：掃面板股近窗近一年前巨量日，分 low/high 區統計（觀察）。"""
     con = sqlite3.connect(db_path)
     try:
         asof = _ymd(as_of) or latest_full_asof(con)
@@ -388,7 +388,7 @@ def backfill_hi_lo_split(
             if len(bars) < 120:
                 continue
             year = bars[-YEAR_LOOKBACK:]
-            floor, ymax = year_grade_floor([b["volume"] for b in year])
+            floor, ymax = near_year_vol_floor([b["volume"] for b in year])
             if floor <= 0:
                 continue
             win = bars[-lookback_days:] if len(bars) >= lookback_days else bars

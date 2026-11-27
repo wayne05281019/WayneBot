@@ -70,10 +70,10 @@ def load_bars(con: sqlite3.Connection, sid: str, n: int = 280) -> List[dict]:
 
 
 STYLE_ZH = {
-    "year_grade_consec": "連續一年級巨量（2383型）",
+    "year_grade_consec": "連續近一年前巨量（2383型）",
     "sediment": "籌碼沉澱（2330型）",
-    "both": "連續一年級＋沉澱",
-    "year_grade_near_low": "近低一年級巨量",
+    "both": "連續近一年前巨量＋沉澱",
+    "year_grade_near_low": "近低近一年前巨量",
 }
 
 
@@ -173,7 +173,7 @@ def paint(hit: Dict[str, Any], bars: List[dict], prop, out_path: Path) -> Dict[s
                 fontproperties=prop,
             )
 
-    # 量：一年級
+    # 量：近一年前巨量
     for i, (v, o, c) in enumerate(zip(vols, opens, closes)):
         col = "#d64545" if c >= o else "#2f9e6b"
         yg = v >= floor - 1e-9
@@ -181,7 +181,7 @@ def paint(hit: Dict[str, Any], bars: List[dict], prop, out_path: Path) -> Dict[s
         if yg:
             axv.plot(i, v, "o", ms=9, mfc="none", mec="#2563eb", mew=1.8, zorder=6)
             axv.annotate(
-                "一年級",
+                "近一年前巨量",
                 xy=(i, v),
                 xytext=(0, 7),
                 textcoords="offset points",
@@ -194,7 +194,7 @@ def paint(hit: Dict[str, Any], bars: List[dict], prop, out_path: Path) -> Dict[s
     axv.text(
         0.01,
         0.92,
-        f"一年級門檻 {floor:.0f}（年最大 {ymax:.0f}）",
+        f"近一年前巨量門檻 {floor:.0f}（年最大 {ymax:.0f}）",
         transform=axv.transAxes,
         color="#c2410c",
         fontsize=8,
@@ -280,7 +280,7 @@ def main() -> int:
         print("teach", sid, "five", tb.get("ok_five"), out)
 
     payload["tail_back_method_zh"] = (
-        "先一年級大量；今日上漲則連回前幾日低點＝新開始；"
+        "先近一年前巨量大量；今日上漲則連回前幾日低點＝新開始；"
         "由該低往回試畫五波（起-1-2-3-4-終）。觀察定義用，非買訊／非話筒浪認證。"
     )
     payload["tail_back_enrich"] = enrich
