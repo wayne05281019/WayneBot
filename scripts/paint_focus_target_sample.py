@@ -861,25 +861,7 @@ def paint(
         f"前三季累計　{cum_s} 元（無月EPS官方）\n"
         f"{mr_line}"
     )
-    # 基本面盒靠左下，避開黃線終段
-    ax.text(
-        0.01,
-        0.015,
-        fund,
-        transform=ax.transAxes,
-        ha="left",
-        va="bottom",
-        fontsize=8.2,
-        fontproperties=prop,
-        color="#1f2937",
-        bbox=dict(
-            boxstyle="round,pad=0.4",
-            facecolor="#fff7ed",
-            edgecolor="#fdba74",
-            alpha=0.96,
-        ),
-        zorder=10,
-    )
+    # 基本面盒改價量夾縫左格（與線段圖例並排）；這裡不壓日K
 
     # 距四浪高％掛價圖內右上（表頭股名價改到 figure 右上紅框，這裡避開）
     ax.text(
@@ -1074,23 +1056,41 @@ def paint(
     # 依字級估表頭帶高 → 抬主圖；右塊自頂往下排
     _band = _nh + _name_gap + _ph + _chg_pad + _ch + 0.018
     _top = max(0.88, min(0.93, 1.0 - _band))
-    # 價量夾縫加寬，圖例落紅框帶（右中）
-    fig.subplots_adjust(top=_top, hspace=0.38)
+    # 價量夾縫加寬：左格 EPS／月營收，右格線段圖例（附圖雙紅框）
+    fig.subplots_adjust(top=_top, hspace=0.44)
     fig.canvas.draw()
     ax_pos = ax.get_position()
     axv_pos = axv.get_position()
+    _gap_y = (float(ax_pos.y0) + float(axv_pos.y1)) * 0.5
+    fig.text(
+        0.30,
+        _gap_y,
+        fund,
+        ha="center",
+        va="center",
+        fontsize=7.4,
+        fontproperties=prop,
+        color="#1f2937",
+        zorder=22,
+        bbox=dict(
+            boxstyle="round,pad=0.45",
+            facecolor="#fff7ed",
+            edgecolor="#fdba74",
+            linewidth=1.15,
+            alpha=0.97,
+        ),
+    )
     _handles, _labels = ax.get_legend_handles_labels()
     if _handles:
-        _gap_y = (float(ax_pos.y0) + float(axv_pos.y1)) * 0.5
         fig.legend(
             _handles,
             _labels,
             loc="center",
-            bbox_to_anchor=(0.62, _gap_y),
+            bbox_to_anchor=(0.72, _gap_y),
             ncol=2,
-            fontsize=6.6,
-            framealpha=0.95,
-            borderpad=0.4,
+            fontsize=6.4,
+            framealpha=0.97,
+            borderpad=0.45,
             prop=prop,
             fancybox=True,
             edgecolor="#94a3b8",

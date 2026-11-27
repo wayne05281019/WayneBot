@@ -97,7 +97,9 @@ def test_paint_wave4_layout_guards():
     assert "WAVE24_LINE_COLOR" in src
     assert "set_dashes" in src
     assert "fig.legend" in src
-    assert "0.62" in src  # 圖例落價量夾縫右中
+    assert "0.72" in src  # 右格線段圖例
+    assert "0.30" in src  # 左格 EPS／月營收
+    assert "基本面盒改價量夾縫左格" in src
     assert '"#ffeb3b"' in src
     assert "張" in src[src.find("壓力來源日量柱") :]
 
