@@ -990,7 +990,7 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
         va="bottom",
     )
 
-    # —— 右上約略位置（紅框僅示意）：浮字放大，不准白底卡蓋掉原底圖 ——
+    # —— 右上約略位置（紅框僅示意）：緊湊右對齊，今K細長跟大價同高（高低卡味）——
     prev_close: Optional[float] = None
     if len(bars) >= 2:
         try:
@@ -1006,8 +1006,40 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
         sign = "＋" if dlt >= 0 else "－"
         chg_line = f"較昨日　{sign}{abs(dlt):.0f}（{sign}{abs(pct):.2f}%）"
 
-    # 今K縮圖：透明底，浮在原圖色上
-    ax_k = fig.add_axes([0.72, 0.875, 0.055, 0.09])
+    # 排版（figure）：股名 → 今K＋大價同列 → 較昨日；無白底
+    _hx = 0.975  # 右緣
+    fig.text(
+        _hx,
+        0.965,
+        f"{sid}　{name}",
+        ha="right",
+        va="top",
+        fontsize=16.5,
+        fontweight="bold",
+        fontproperties=prop,
+        color="#0f172a",
+        zorder=21,
+    )
+    # 大價（右對齊）；今K細長縮圖貼在價左側同高
+    _price_s = f"{close:.0f}"
+    fig.text(
+        _hx,
+        0.932,
+        _price_s,
+        ha="right",
+        va="center",
+        fontsize=26.0,
+        fontweight="bold",
+        fontproperties=prop,
+        color=chg_c,
+        zorder=21,
+    )
+    # 估價字寬 → 今K放價左側（細長：寬≈高×0.45）
+    _pw = max(0.055, 0.011 * len(_price_s) + 0.02)
+    _k_w, _k_h = 0.022, 0.048
+    _k_x = _hx - _pw - _k_w - 0.012
+    _k_y = 0.932 - _k_h * 0.5
+    ax_k = fig.add_axes([_k_x, _k_y, _k_w, _k_h])
     ax_k.set_axis_off()
     ax_k.patch.set_alpha(0.0)
     _o, _h, _l, _c = float(open_), float(high), float(low), float(close)
@@ -1017,55 +1049,49 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
         _kcol = "#e53935" if _c >= float(prev_close) else "#00897b"
 
     def _ky(p: float) -> float:
-        return 0.08 + (float(p) - _l) / _rng * 0.84
+        return 0.06 + (float(p) - _l) / _rng * 0.88
 
-    ax_k.plot([0.5, 0.5], [_ky(_l), _ky(_h)], color=_kcol, lw=3.2, solid_capstyle="round", zorder=2)
+    ax_k.plot(
+        [0.5, 0.5],
+        [_ky(_l), _ky(_h)],
+        color=_kcol,
+        lw=1.55,
+        solid_capstyle="round",
+        zorder=2,
+    )
     _blo, _bhi = _ky(min(_o, _c)), _ky(max(_o, _c))
     ax_k.add_patch(
         Rectangle(
-            (0.22, _blo),
-            0.56,
-            max(_bhi - _blo, 0.10),
+            (0.34, _blo),
+            0.32,  # 細實體，不准胖成方塊
+            max(_bhi - _blo, 0.05),
             facecolor=_kcol,
             edgecolor=_kcol,
-            lw=0.5,
+            lw=0.35,
             zorder=3,
         )
     )
     ax_k.set_xlim(0, 1)
     ax_k.set_ylim(0, 1)
-    # 股號股名＋大收價＋較昨日（右上浮字，無白底）
     fig.text(
-        0.97,
-        0.968,
-        f"{sid}　{name}",
+        _k_x - 0.004,
+        0.932,
+        "今K",
         ha="right",
-        va="top",
-        fontsize=20.0,
+        va="center",
+        fontsize=8.0,
         fontweight="bold",
         fontproperties=prop,
-        color="#0f172a",
+        color="#64748b",
         zorder=21,
     )
     fig.text(
-        0.97,
-        0.925,
-        f"{close:.0f}",
-        ha="right",
-        va="top",
-        fontsize=30.0,
-        fontweight="bold",
-        fontproperties=prop,
-        color=chg_c,
-        zorder=21,
-    )
-    fig.text(
-        0.97,
-        0.878,
+        _hx,
+        0.888,
         chg_line or "較昨日　—",
         ha="right",
         va="top",
-        fontsize=12.5,
+        fontsize=11.5,
         fontweight="bold",
         fontproperties=prop,
         color=chg_c,
