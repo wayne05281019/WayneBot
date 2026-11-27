@@ -54,11 +54,13 @@ DB = ROOT / "data" / "wayne_market.db"
 # LINE_END_PAD＝水平線停在末根K旁（標籤接在線外）
 WIN = 130
 FUTURE_PAD = 8
-LABEL_RIGHT_EXTRA = 14  # 只留一欄字寬，不准右側大片空白把標籤看起來「掛很遠」
-LINE_END_PAD = 1.2
-TAG_NEAR_PAD = 1.8  # 末根K → 第一欄（貼近）
-TAG_COL_GAP = 16.0  # 左／中／右必須拉開到肉眼看得出不是一直線
+LABEL_RIGHT_EXTRA = 13  # 第三欄字寬；右緣貼齊，不准大片空白
+LINE_END_PAD = 0.8
+TAG_NEAR_PAD = 0.9  # 末根K → 左欄（貼緊）
+TAG_COL_GAP = 12.5  # 左／中／右均勻吃滿末根K→右緣空位
 NEAR_PRICE_FRAC = 0.022  # 2449：201／199 也要進同簇錯開
+# 壓帶上下緣：掛在末根K與右標「中間欄」＝使用者紅框位
+ZONE_TAG_COL = 1
 # 五波最底往上反彈參考（觀察非買訊）；對齊本庫／林口播常用回撤率
 REBOUND_FIB_RATIOS = (0.382, 0.5, 0.618)
 
@@ -121,21 +123,25 @@ def _dodge_right_ys(
     y_hi: float,
     min_gap_frac: float = 0.055,
     near_frac: float = NEAR_PRICE_FRAC,
+    forbid_cols: Optional[set[int]] = None,
 ) -> Tuple[List[float], List[int]]:
-    """價標顯示 Y＋左中右欄：高→低輪流 0/1/2，近價同簇也三欄錯開，不准互壓。
+    """價標顯示 Y＋左中右欄：高→低輪流可用欄，近價同簇也錯開，不准互壓。
 
-    回傳 (placed_ys, cols)；cols[i]∈{0,1,2}＝左／中／右。
+    回傳 (placed_ys, cols)；cols[i]∈可用欄＝左／中／右。
+    forbid_cols：例如壓帶佔中欄時，反彈標不准再踩中欄。
     """
     if not prices:
         return [], []
     span = max(y_hi - y_lo, 1.0)
     near = max(span * float(near_frac), span * 0.004)
     gap = span * float(min_gap_frac)
+    blocked = set(forbid_cols or ())
+    allowed = [c for c in (0, 1, 2) if c not in blocked] or [0, 1, 2]
     order = sorted(range(len(prices)), key=lambda i: prices[i], reverse=True)
-    # 全域左中右輪流（垂直相鄰不在同一條直線）
+    # 全域在可用欄輪流（垂直相鄰不在同一條直線）
     cols = [0] * len(prices)
     for rank, i in enumerate(order):
-        cols[i] = rank % 3
+        cols[i] = allowed[rank % len(allowed)]
     # 近價分簇：同簇再強制不同欄
     clusters: List[List[int]] = []
     for i in order:
@@ -153,9 +159,11 @@ def _dodge_right_ys(
             continue
         used: set[int] = set()
         for k, i in enumerate(cl):
-            c = k % 3
-            while c in used and len(used) < 3:
-                c = (c + 1) % 3
+            c = allowed[k % len(allowed)]
+            spins = 0
+            while c in used and spins < len(allowed):
+                c = allowed[(allowed.index(c) + 1) % len(allowed)]
+                spins += 1
             cols[i] = c
             used.add(c)
     placed = [float(p) for p in prices]
@@ -198,15 +206,23 @@ def _paint_right_price_tags(
     y_hi: float,
     prop,
     x_text: float | None = None,
+    forbid_cols: Optional[set[int]] = None,
 ) -> None:
-    """價標貼近末根K：左／中／右三欄錯開，短截對齊真價。
+    """價標貼近末根K：左／中／右錯開吃滿空位，短截對齊真價。
 
     x_anchor＝末根K；x_text＝第一欄起點（預設 anchor+TAG_NEAR_PAD）。
+    forbid_cols：壓帶中欄紅框保留時傳入。
     """
     if not tags:
         return
     prices = [float(t["price"]) for t in tags]
-    dys, cols = _dodge_right_ys(prices, y_lo=y_lo, y_hi=y_hi, min_gap_frac=0.055)
+    dys, cols = _dodge_right_ys(
+        prices,
+        y_lo=y_lo,
+        y_hi=y_hi,
+        min_gap_frac=0.055,
+        forbid_cols=forbid_cols,
+    )
     base_xt = float(
         x_text if x_text is not None else (float(x_anchor) + TAG_NEAR_PAD)
     )
@@ -478,45 +494,7 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
         )
         ax.hlines(hi, _x_left, _x_line_end, color="#475569", ls="-", lw=1.45, alpha=0.95)
         ax.hlines(lo, _x_left, _x_line_end, color="#475569", ls="-", lw=1.45, alpha=0.95)
-        # 壓帶上下緣標籤掛左邊，不准跟右欄價標擠
-        ax.text(
-            _x_left + 0.35,
-            hi,
-            f"壓上緣 {hi:.0f}",
-            ha="left",
-            va="bottom",
-            fontsize=8.2,
-            fontweight="bold",
-            fontproperties=prop,
-            color="#1e293b",
-            zorder=12,
-            clip_on=False,
-            bbox=dict(
-                boxstyle="round,pad=0.18",
-                facecolor="#f8fafc",
-                edgecolor="#64748b",
-                alpha=0.96,
-            ),
-        )
-        ax.text(
-            _x_left + 0.35,
-            lo,
-            f"壓下緣 {lo:.0f}",
-            ha="left",
-            va="top",
-            fontsize=8.2,
-            fontweight="bold",
-            fontproperties=prop,
-            color="#1e293b",
-            zorder=12,
-            clip_on=False,
-            bbox=dict(
-                boxstyle="round,pad=0.18",
-                facecolor="#f8fafc",
-                edgecolor="#64748b",
-                alpha=0.96,
-            ),
-        )
+        # 壓帶上下緣稍後畫在「末根K→右標」中間欄（紅框位）；這裡只留帶與線
 
     yr = max(highs) - min(lows)
     for i, (o, h, l, c) in enumerate(zip(opens, highs, lows, closes)):
@@ -839,29 +817,105 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
     ax.set_ylabel("價（元）", fontproperties=prop)
     axv.set_ylabel("成交量（張）", fontproperties=prop)
 
-    # 收／即時價貼近末根K右側，不准丟進最右欄去擠
+    # 價標幾何：末根K旁起左中右三欄，吃滿空位（中欄＝壓帶紅框位）
+    _x_text = float(n - 1 + TAG_NEAR_PAD)
+    _x_zone = _x_text + TAG_COL_GAP * float(ZONE_TAG_COL)
+    _xlim_right = _x_text + TAG_COL_GAP * 2.0 + float(LABEL_RIGHT_EXTRA)
+    ax.set_xlim(_x_left, _xlim_right)
+    # 壓帶／切割水平線延伸到標籤區，中間空位才畫得上紅框位標籤
+    if zone:
+        _zlo, _zhi = float(zone["low"]), float(zone["high"])
+        ax.fill_between(
+            [_x_line_end, _xlim_right - 0.5],
+            _zlo,
+            _zhi,
+            facecolor="#cbd5e1",
+            alpha=0.28,
+            zorder=1,
+        )
+        ax.hlines(
+            _zhi,
+            _x_line_end,
+            _x_zone + 0.5,
+            color="#475569",
+            ls="-",
+            lw=1.2,
+            alpha=0.9,
+            zorder=5,
+        )
+        ax.hlines(
+            _zlo,
+            _x_line_end,
+            _x_zone + 0.5,
+            color="#475569",
+            ls="-",
+            lw=1.2,
+            alpha=0.9,
+            zorder=5,
+        )
+        # 壓上緣／壓下緣 → 中間欄（使用者紅框）
+        ax.text(
+            _x_zone,
+            _zhi,
+            f"壓上緣 {_zhi:.0f}",
+            ha="left",
+            va="bottom",
+            fontsize=8.2,
+            fontweight="bold",
+            fontproperties=prop,
+            color="#1e293b",
+            zorder=15,
+            clip_on=False,
+            bbox=dict(
+                boxstyle="round,pad=0.18",
+                facecolor="#f8fafc",
+                edgecolor="#64748b",
+                alpha=0.97,
+            ),
+        )
+        ax.text(
+            _x_zone,
+            _zlo,
+            f"壓下緣 {_zlo:.0f}",
+            ha="left",
+            va="top",
+            fontsize=8.2,
+            fontweight="bold",
+            fontproperties=prop,
+            color="#1e293b",
+            zorder=15,
+            clip_on=False,
+            bbox=dict(
+                boxstyle="round,pad=0.18",
+                facecolor="#f8fafc",
+                edgecolor="#64748b",
+                alpha=0.97,
+            ),
+        )
+
+    # 收／即時價貼近末根K右側
     ax.annotate(
         f"收 {close:.0f}",
         xy=(float(n - 1), float(close)),
-        xytext=(9, 0),
+        xytext=(7, 0),
         textcoords="offset points",
         ha="left",
         va="center",
-        fontsize=9.2,
+        fontsize=9.0,
         fontweight="bold",
         fontproperties=prop,
         color="#115e59",
         zorder=16,
         clip_on=False,
         bbox=dict(
-            boxstyle="round,pad=0.2",
+            boxstyle="round,pad=0.18",
             facecolor="#ccfbf1",
             edgecolor="#14b8a6",
             alpha=0.97,
         ),
     )
 
-    # 右側價位角標：最底／反彈切割／四浪高（壓帶掛左；收貼末根K）
+    # 右側價位角標：最底／反彈切割／四浪高（壓帶在中欄紅框；收貼末根K）
     right_tags: List[Dict[str, Any]] = [
         {
             "price": float(w4.price),
@@ -891,10 +945,6 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
                 "fontsize": 8.4,
             }
         )
-    # 價標貼近末根K，左中右三欄；右緣貼第三欄字尾，不准再留大片空把標籤推遠
-    _x_text = float(n - 1 + TAG_NEAR_PAD)
-    _xlim_right = _x_text + TAG_COL_GAP * 2.0 + float(LABEL_RIGHT_EXTRA)
-    ax.set_xlim(_x_left, _xlim_right)
     _paint_right_price_tags(
         ax,
         x_anchor=float(n - 1),
@@ -903,6 +953,8 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
         y_lo=ylim_lo + _span_y * 0.06,
         y_hi=ylim_hi - _span_y * 0.08,
         prop=prop,
+        # 有壓帶：中欄留給壓上緣／壓下緣紅框位
+        forbid_cols={ZONE_TAG_COL} if zone else None,
     )
 
     step = max(1, n // 10)
