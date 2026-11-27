@@ -86,7 +86,7 @@ def test_paint_wave4_layout_guards():
     assert 'f"收 {close:.0f}"' not in right_block
     assert "末根K旁不再寫收價" in src
     assert "_x_left" in src
-    # 右上預設 B＋表頭瘦帶（無白底卡）；夾縫雙格同寬同高；黃柱標張數
+    # 右上預設 B；夾縫瘦雙格同寬同高有字；軸標直立；黃柱標張數
     assert "較昨日" in src
     assert "HEADER_STYLES" in inspect.getsource(m)
     assert 'HEADER_STYLE_DEFAULT = "B"' in inspect.getsource(m)
@@ -95,9 +95,10 @@ def test_paint_wave4_layout_guards():
     assert "wave24_descend_line" in src
     assert "WAVE24_LINE_COLOR" in src
     assert "set_dashes" in src
-    assert "FancyBboxPatch" in src
-    assert "_box_w" in src and "_box_h" in src
+    assert "_box_w, _box_h" in src
     assert "_x_fund" in src and "_x_leg" in src
+    assert "價\\n（\\n元\\n）" in src
+    assert "不准旋轉成橫躺字" in src
     assert "基本面盒改價量夾縫左格" in src
     assert '"#ffeb3b"' in src
     assert "張" in src[src.find("壓力來源日量柱") :]

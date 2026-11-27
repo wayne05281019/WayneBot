@@ -16,7 +16,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.font_manager as fm
 import matplotlib.pyplot as plt
-from matplotlib.patches import FancyBboxPatch, Rectangle
+from matplotlib.patches import Rectangle
 
 from biaoke_next_support import find_secondary_vol_zone
 from scripts.biaoke_tail_back_five_wave import analyze_bars
@@ -54,7 +54,7 @@ DB = ROOT / "data" / "wayne_market.db"
 # LINE_END_PAD＝水平線停在末根K旁（標籤接在線外）
 WIN = 130
 FUTURE_PAD = 8
-LABEL_RIGHT_EXTRA = 14
+LABEL_RIGHT_EXTRA = 11
 LINE_END_PAD = 0.8
 # 壓帶上下緣：緊貼末根K右側（使用者紅框）；反彈／四浪高再往右兩欄，中間空位留給壓帶
 ZONE_NEAR_PAD = 3.0
@@ -890,14 +890,36 @@ def paint(
     # 左上瘦帶：日期／觀察＋OHLC；長說明改貼主圖頂，股名價在右上
     sub1 = f"{asof_face}｜觀察非買訊"
     sub2 = ohlc_line
-    sub3 = (
-        f"紫細線＝五波下跌　②–④下降趨勢線延伸至末日　最底＋反彈0.382/0.5/0.618（觀察）　黃線＝新起漲｜"
-        f"滾動近{WIN}根（新日進、左邊掉；右留空給價標）"
-    )
     ax.set_title("")  # 股名價改 figure 右上，不准再置中標題搶位
-    # 圖例改放到價／量夾縫（附圖紅框），不准壓左上日K
-    ax.set_ylabel("價（元）", fontproperties=prop)
-    axv.set_ylabel("成交量（張）", fontproperties=prop)
+    # 軸標直立換行，不准旋轉成橫躺字
+    ax.set_ylabel("")
+    axv.set_ylabel("")
+    ax.text(
+        -0.06,
+        0.5,
+        "價\n（\n元\n）",
+        transform=ax.transAxes,
+        rotation=0,
+        ha="center",
+        va="center",
+        fontsize=8.0,
+        fontproperties=prop,
+        color="#374151",
+        clip_on=False,
+    )
+    axv.text(
+        -0.06,
+        0.5,
+        "量\n（\n張\n）",
+        transform=axv.transAxes,
+        rotation=0,
+        ha="center",
+        va="center",
+        fontsize=8.0,
+        fontproperties=prop,
+        color="#374151",
+        clip_on=False,
+    )
 
     # 幾何：末根K → 空 → 反彈／四浪高（壓帶標改左側）
     _x_zone = float(n - 1 + ZONE_NEAR_PAD)  # 保留常數相容；標籤已改左側
@@ -1053,88 +1075,72 @@ def paint(
     _cw, _ch = _fig_extent(_chg_s, _fs_chg)
     del _nw, _cw
 
-    # 依字級估表頭帶高 → 抬主圖；右塊自頂往下排
-    _band = _nh + _name_gap + _ph + _chg_pad + _ch + 0.018
+    # 依字級估表頭帶高 → 抬主圖；夾縫只留瘦雙格
+    _band = _nh + _name_gap + _ph + _chg_pad + _ch + 0.016
     _top = max(0.88, min(0.93, 1.0 - _band))
-    # 價量夾縫：左右兩格同寬同高（附圖雙紅框比例）
-    fig.subplots_adjust(top=_top, hspace=0.46)
+    fig.subplots_adjust(left=0.07, right=0.995, top=_top, bottom=0.055, hspace=0.24)
     fig.canvas.draw()
     ax_pos = ax.get_position()
     axv_pos = axv.get_position()
-    _gap_bot = float(axv_pos.y1) + 0.010
-    _gap_top = float(ax_pos.y0) - 0.010
-    _box_h = max(0.062, _gap_top - _gap_bot)
-    _box_y = (_gap_bot + _gap_top) * 0.5 - _box_h * 0.5
-    _pair_l, _pair_r, _pair_gap = 0.075, 0.925, 0.022
-    _box_w = (_pair_r - _pair_l - _pair_gap) * 0.5
-    _x_fund = _pair_l
-    _x_leg = _pair_l + _box_w + _pair_gap
-    for _bx, _fc, _ec in (
-        (_x_fund, "#fff7ed", "#fdba74"),
-        (_x_leg, "#ffffff", "#94a3b8"),
-    ):
-        fig.patches.append(
-            FancyBboxPatch(
-                (_bx, _box_y),
-                _box_w,
-                _box_h,
-                boxstyle="round,pad=0.006,rounding_size=0.012",
-                facecolor=_fc,
-                edgecolor=_ec,
-                linewidth=1.2,
-                transform=fig.transFigure,
-                zorder=21,
-            )
-        )
-    _ax_fund = fig.add_axes(
-        [_x_fund + 0.010, _box_y + 0.008, _box_w - 0.020, _box_h - 0.016]
-    )
-    _ax_fund.set_axis_off()
-    _ax_fund.patch.set_alpha(0.0)
+    # 雙格：同寬同高、內容自繪、不准空大框；置中偏上貼價圖底
+    _box_w, _box_h, _pair_gap = 0.34, 0.070, 0.018
+    _pair_w = _box_w * 2 + _pair_gap
+    _x_fund = 0.5 - _pair_w * 0.5
+    _x_leg = _x_fund + _box_w + _pair_gap
+    _box_y = float(ax_pos.y0) - _box_h - 0.006
+    _ax_fund = fig.add_axes([_x_fund, _box_y, _box_w, _box_h])
+    _ax_fund.set_xticks([])
+    _ax_fund.set_yticks([])
+    _ax_fund.set_facecolor("#fff7ed")
+    for _sp in _ax_fund.spines.values():
+        _sp.set_color("#fdba74")
+        _sp.set_linewidth(1.1)
     _ax_fund.text(
         0.5,
         0.5,
         fund,
         ha="center",
         va="center",
-        fontsize=7.2,
+        fontsize=6.6,
         fontproperties=prop,
         color="#1f2937",
         transform=_ax_fund.transAxes,
-        zorder=22,
+        linespacing=1.25,
     )
     _handles, _labels = ax.get_legend_handles_labels()
+    _ax_leg = fig.add_axes([_x_leg, _box_y, _box_w, _box_h])
+    _ax_leg.set_xticks([])
+    _ax_leg.set_yticks([])
+    _ax_leg.set_facecolor("#ffffff")
+    for _sp in _ax_leg.spines.values():
+        _sp.set_color("#94a3b8")
+        _sp.set_linewidth(1.1)
     if _handles:
-        _ax_leg = fig.add_axes(
-            [_x_leg + 0.010, _box_y + 0.008, _box_w - 0.020, _box_h - 0.016]
-        )
-        _ax_leg.set_axis_off()
-        _ax_leg.patch.set_alpha(0.0)
         _ax_leg.legend(
             _handles,
             _labels,
             loc="center",
             ncol=2,
-            fontsize=6.2,
+            fontsize=5.6,
             frameon=False,
-            borderpad=0.2,
-            labelspacing=0.35,
-            columnspacing=0.8,
-            handlelength=1.6,
+            borderpad=0.15,
+            labelspacing=0.28,
+            columnspacing=0.7,
+            handlelength=1.35,
             prop=prop,
         )
 
     _y_name = 0.992
     _y_price = _y_name - _nh - _name_gap - _ph * 0.50
     _y_chg = _y_price - (_ph * 0.50 + _ch * 0.50 + _chg_pad)
-    # 左帶加重：日期／OHLC 與右上同高，吃掉中左空白；長說明貼主圖頂
-    _lx = 0.035
+    # 左表頭兩行即可（日期／OHLC），不准再拉一條長橫說明
+    _lx = 0.07
     fig.text(
         _lx,
         _y_name,
         sub1,
         color="#0f172a",
-        fontsize=11.0,
+        fontsize=10.5,
         fontweight="bold",
         fontproperties=prop,
         ha="left",
@@ -1146,34 +1152,11 @@ def paint(
         _y_price,
         sub2,
         color="#334155",
-        fontsize=10.0,
+        fontsize=9.5,
         fontweight="bold",
         fontproperties=prop,
         ha="left",
         va="center",
-        zorder=20,
-    )
-    fig.text(
-        _lx,
-        _y_chg,
-        "觀察用｜非買訊",
-        color="#64748b",
-        fontsize=9.0,
-        fontweight="bold",
-        fontproperties=prop,
-        ha="left",
-        va="center",
-        zorder=20,
-    )
-    fig.text(
-        ax_pos.x0,
-        ax_pos.y1 + 0.003,
-        sub3,
-        color="#6b7280",
-        fontsize=6.6,
-        fontproperties=prop,
-        ha="left",
-        va="bottom",
         zorder=20,
     )
     fig.text(
