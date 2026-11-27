@@ -91,6 +91,13 @@ def rebound_fib_from_wave_bottom(
     return out
 
 
+# ②–④ 趨勢線：色／粗度與紫浪線分開；左右各多伸一截
+WAVE24_LINE_COLOR = "#0f766e"  # 青石綠，避開紫浪／紅四浪／綠反彈
+WAVE24_LINE_LW = 0.85
+WAVE24_EXTEND_LEFT = 4.0
+WAVE24_EXTEND_RIGHT = 5.0
+
+
 def wave24_descend_line(
     j2: float,
     y2: float,
@@ -99,25 +106,34 @@ def wave24_descend_line(
     j_end: float,
     *,
     x_clip_left: float = 0.0,
+    x_clip_right: Optional[float] = None,
+    extend_left: float = WAVE24_EXTEND_LEFT,
+    extend_right: float = WAVE24_EXTEND_RIGHT,
 ) -> Optional[Tuple[float, float, float, float]]:
-    """②–④ 下降趨勢線延伸到末日。回 (x0, y0, x1, y1)；x 無前進則 None。
+    """②–④ 下降趨勢線：自②左側多伸、過末日再多伸。回 (x0, y0, x1, y1)。
 
-    觀察用，非買訊。極短實線＋小空格由呼叫端 linestyle 負責。
+    觀察用，非買訊。極短實線＋小空格由呼叫端負責。
     """
     try:
         x2, p2 = float(j2), float(y2)
         x4, p4 = float(j4), float(y4)
         xe = float(j_end)
         xl = float(x_clip_left)
+        xr = float(x_clip_right) if x_clip_right is not None else xe + float(extend_right)
+        el = float(extend_left)
+        er = float(extend_right)
     except (TypeError, ValueError):
         return None
-    if x4 <= x2 or xe < x4:
+    if x4 <= x2:
         return None
     slope = (p4 - p2) / (x4 - x2)
-    x0 = max(x2, xl)
+    x0 = max(x2 - el, xl)
+    x1 = min(xe + er, xr)
+    if x1 <= x0:
+        return None
     y0 = p2 + slope * (x0 - x2)
-    y1 = p2 + slope * (xe - x2)
-    return (x0, y0, xe, y1)
+    y1 = p2 + slope * (x1 - x2)
+    return (x0, y0, x1, y1)
 
 
 def _cjk_prop():
@@ -686,7 +702,7 @@ def paint(
         zorder=5,
     )
 
-    # ②–④ 下降趨勢線：極短實線＋小空格，延伸到最後一天（觀察有無站上）
+    # ②–④ 下降趨勢線：細青石綠＋極短實線小空格；左右各多伸一截（觀察）
     if len(pts) >= 5:
         _w24 = wave24_descend_line(
             vi(pts[2].i),
@@ -695,31 +711,21 @@ def paint(
             float(pts[4].price),
             float(n - 1),
             x_clip_left=float(_x_left),
+            x_clip_right=float(_x_line_end),
         )
         if _w24 is not None:
             _x0, _y0, _x1, _y1 = _w24
             (_ln24,) = ax.plot(
                 [_x0, _x1],
                 [_y0, _y1],
-                color="#c026d3",
-                lw=1.85,
+                color=WAVE24_LINE_COLOR,
+                lw=WAVE24_LINE_LW,
                 solid_capstyle="butt",
                 solid_joinstyle="miter",
                 zorder=8,
-                label="②–④下降趨勢線（延伸至末日）",
+                label="②–④下降趨勢線（左右延伸）",
             )
-            # 極短實線＋小空格（不用 ls 字串，避免被樣式表吃掉）
-            _ln24.set_dashes((2.6, 1.4))
-            ax.plot(
-                [_x1],
-                [_y1],
-                marker="o",
-                markersize=4.2,
-                color="#c026d3",
-                markeredgecolor="#fdf4ff",
-                markeredgewidth=0.6,
-                zorder=9,
-            )
+            _ln24.set_dashes((2.2, 1.6))
 
     # 黃線＝五波走完後新起漲軌跡；字／大菱形一律不准蓋日K（字只進圖例）
     bounce_from = ns if ns is not None else (pts[-1] if pts else None)

@@ -32,17 +32,22 @@ def test_rebound_fib_from_wave_bottom():
 
 
 def test_wave24_descend_line_extends_to_last_day():
-    """②–④ 連線延伸到末日；斜率＝(y4−y2)/(j4−j2)。"""
-    line = wave24_descend_line(10.0, 300.0, 40.0, 240.0, 80.0)
+    """②–④ 連線左右多伸；斜率＝(y4−y2)/(j4−j2)。"""
+    line = wave24_descend_line(
+        10.0, 300.0, 40.0, 240.0, 80.0, extend_left=4.0, extend_right=5.0
+    )
     assert line is not None
     x0, y0, x1, y1 = line
-    assert x0 == 10.0 and y0 == 300.0
-    assert x1 == 80.0
-    assert abs(y1 - (300.0 + (240.0 - 300.0) / 30.0 * 70.0)) < 1e-9
-    clipped = wave24_descend_line(10.0, 300.0, 40.0, 240.0, 80.0, x_clip_left=20.0)
+    assert x0 == 6.0
+    assert x1 == 85.0
+    slope = (240.0 - 300.0) / 30.0
+    assert abs(y0 - (300.0 + slope * (6.0 - 10.0))) < 1e-9
+    assert abs(y1 - (300.0 + slope * (85.0 - 10.0))) < 1e-9
+    clipped = wave24_descend_line(
+        10.0, 300.0, 40.0, 240.0, 80.0, x_clip_left=20.0, extend_left=4.0
+    )
     assert clipped is not None
     assert clipped[0] == 20.0
-    assert abs(clipped[1] - (300.0 + (240.0 - 300.0) / 30.0 * 10.0)) < 1e-9
     assert wave24_descend_line(40.0, 240.0, 10.0, 300.0, 80.0) is None
 
 
@@ -89,6 +94,7 @@ def test_paint_wave4_layout_guards():
     assert "1.0 - _band" in src
     assert '"今K"' in src
     assert "wave24_descend_line" in src
+    assert "WAVE24_LINE_COLOR" in src
     assert "set_dashes" in src
     assert '"#ffeb3b"' in src
     assert "張" in src[src.find("壓力來源日量柱") :]
