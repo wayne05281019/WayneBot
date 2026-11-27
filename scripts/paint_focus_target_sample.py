@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""最近重點標的樣張：由尾回推五波＋前方大量壓力區＋季EPS／月營收。
+"""最近重點標的樣張：由尾回推五波＋路上大量區（反彈壓／下跌撐壓）＋季EPS／月營收。
 
 觀察用，非買訊。滾動近 WIN 根：新日進、左邊掉；右側預留空位給往後日子。
+股價往上＝前方大量壓力；往下＝下降路撐壓；兩向同一選核出口。
 """
 from __future__ import annotations
 
@@ -366,11 +367,7 @@ def _eps_singles_cum(
 def pick_forward_pressure_zone(
     bars: List[dict], close: float
 ) -> Optional[Dict[str, Any]]:
-    """前方大量壓力：優先整帶在收盤上方（下緣＞收）；沒有再退回現價落區內的次大量。
-
-    ``find_secondary_vol_zone`` 會優先回 prox_gap=0（現價落區內）；這裡把已看過的
-    重疊日從序列拿掉再重算，直到出現下緣＞收的前方帶（API 只支援單日 exclude）。
-    """
+    """反彈路：前方大量壓力。優先整帶在收盤上方（下緣＞收）；否則現價落區內次大量。"""
     inside_fallback: Optional[Dict[str, Any]] = None
     seen: set[str] = set()
     work = list(bars)
@@ -394,16 +391,126 @@ def pick_forward_pressure_zone(
         if lo > close + 1e-9:
             out = dict(z)
             out["zone_role"] = "forward"
+            out["path"] = "rebound"
             return out
         if inside_fallback is None and hi >= close - 1e-9:
             fb = dict(z)
             fb["zone_role"] = "inside"
+            fb["path"] = "rebound"
             inside_fallback = fb
         if not d:
             break
-        # 拿掉整日（含重疊帶），下一輪才能滾到真正前方
         work = [b for b in work if _ymd(b.get("date")) != d]
     return inside_fallback
+
+
+def pick_downward_support_zone(
+    bars: List[dict], close: float
+) -> Optional[Dict[str, Any]]:
+    """下跌路：下方撐壓區。優先整帶在收盤下方（上緣＜收）；否則現價落區內次大量。"""
+    inside_fallback: Optional[Dict[str, Any]] = None
+    seen: set[str] = set()
+    work = list(bars)
+    for _ in range(16):
+        z = find_secondary_vol_zone(
+            work,
+            direction="below",
+            ref_lo=max(close * 1.001, 1e-9),
+            close=close,
+            lookback=180,
+        )
+        if not z:
+            break
+        d = _ymd(z.get("date"))
+        if d and d in seen:
+            break
+        if d:
+            seen.add(d)
+        lo = float(z.get("low") or 0)
+        hi = float(z.get("high") or 0)
+        if hi < close - 1e-9:
+            out = dict(z)
+            out["zone_role"] = "downward"
+            out["path"] = "decline"
+            return out
+        if inside_fallback is None and lo <= close + 1e-9:
+            fb = dict(z)
+            fb["zone_role"] = "inside"
+            fb["path"] = "decline"
+            inside_fallback = fb
+        if not d:
+            break
+        work = [b for b in work if _ymd(b.get("date")) != d]
+    return inside_fallback
+
+
+def infer_price_path(bars: List[dict], close: float) -> str:
+    """推路徑：rebound＝往上看前方壓；decline＝往下看下方撐壓。"""
+    rows = list(bars or [])
+    if len(rows) < 6:
+        return "rebound"
+    win = rows[-20:] if len(rows) >= 20 else rows
+    try:
+        lo = min(float(b.get("low") or 0) for b in win)
+        hi = max(float(b.get("high") or 0) for b in win)
+        c0 = float(rows[-6].get("close") or close)
+    except (TypeError, ValueError):
+        return "rebound"
+    if hi <= lo + 1e-9:
+        return "rebound"
+    pos = (float(close) - lo) / (hi - lo)
+    chg = float(close) - c0
+    # 偏下方且止跌／反彈 → 反彈路；偏上方且續跌 → 下跌路
+    if chg >= 0 or pos <= 0.48:
+        return "rebound"
+    if chg < 0 and pos >= 0.55:
+        return "decline"
+    return "rebound" if chg >= 0 else "decline"
+
+
+def pick_path_vol_zone(
+    bars: List[dict],
+    close: float,
+    *,
+    path: str = "",
+) -> Optional[Dict[str, Any]]:
+    """路上會碰到的大量區：反彈→前方壓；下跌→下方撐壓。兩向同一出口。"""
+    p = str(path or "").strip().lower()
+    if p not in ("rebound", "decline", "up", "down", "forward", "below"):
+        p = infer_price_path(bars, close)
+    if p in ("decline", "down", "below"):
+        z = pick_downward_support_zone(bars, close)
+    else:
+        z = pick_forward_pressure_zone(bars, close)
+    if z and not z.get("path"):
+        z = dict(z)
+        z["path"] = "decline" if p in ("decline", "down", "below") else "rebound"
+    return z
+
+
+def zone_band_label(zone: Optional[Dict[str, Any]]) -> str:
+    """壓力帶圖例／敘述（兩向分語）。"""
+    if not zone:
+        return ""
+    role = str(zone.get("zone_role") or "")
+    path = str(zone.get("path") or "")
+    if role == "forward" or (path == "rebound" and role != "inside"):
+        return "前方大量壓力區"
+    if role == "downward" or (path == "decline" and role != "inside"):
+        return "下降路撐壓區"
+    if path == "decline":
+        return "撐壓區（現價落區內）"
+    return "大量區（現價落區內）"
+
+
+def zone_source_day_label(zone: Optional[Dict[str, Any]]) -> str:
+    """來源日柱／豎線敘述：反彈＝壓力來源；下跌＝撐壓來源。"""
+    if not zone:
+        return "來源日"
+    path = str(zone.get("path") or "")
+    if path == "decline" or str(zone.get("zone_role") or "") == "downward":
+        return "撐壓來源日"
+    return "壓力來源日"
 
 
 # 右上三行字級樣式（figure pt）；話筒選定前可並渲對照
@@ -600,7 +707,9 @@ def paint(
     except Exception:
         lt_loan_s = ""
 
-    zone = pick_forward_pressure_zone(bars, close)
+    zone = pick_path_vol_zone(bars, close)
+    band_lab = zone_band_label(zone) or "路上大量區"
+    src_day_lab = zone_source_day_label(zone)
 
     x0 = max(0, len(bars) - WIN)
     view = bars[x0:]
@@ -645,14 +754,13 @@ def paint(
     zone_date = ""
     zone_vol = 0.0
     zone_role = ""
+    zone_path = ""
     if zone:
         lo, hi = float(zone["low"]), float(zone["high"])
         zone_date = str(zone.get("date") or "")
         zone_vol = float(zone.get("volume") or 0)
         zone_role = str(zone.get("zone_role") or "")
-        band_lab = (
-            "前方大量壓力區" if zone_role == "forward" else "大量區（現價落區內）"
-        )
+        zone_path = str(zone.get("path") or "")
         # 壓力帶用灰藍，黃色留給「新起漲」；右緣數字稍後統一錯開
         ax.fill_between(
             [_x_left, _x_line_end],
@@ -927,7 +1035,7 @@ def paint(
             ax.axvline(zone_i, color="#ea580c", ls="--", lw=1.1, alpha=0.75, zorder=4)
             axv.axvline(zone_i, color="#ea580c", ls="--", lw=1.1, alpha=0.75, zorder=4)
 
-    # 壓力來源日量柱：趨勢圖同款琥珀黃＋白邊，柱頂寫當日成交張數
+    # 來源日量柱：趨勢圖同款琥珀黃＋白邊，柱頂寫當日成交張數（反彈＝壓力／下跌＝撐壓）
     for i, (v, o, c) in enumerate(zip(vols, opens, closes)):
         if zone_i is not None and i == zone_i:
             axv.bar(
@@ -966,7 +1074,8 @@ def paint(
     axv.text(
         0.995,
         0.96,
-        f"今日 {vol:.0f} 張" + ("｜黃柱＝壓力來源日" if zone_i is not None else ""),
+        f"今日 {vol:.0f} 張"
+        + (f"｜黃柱＝{src_day_lab}" if zone_i is not None else ""),
         transform=axv.transAxes,
         ha="right",
         va="top",
@@ -1481,6 +1590,9 @@ def paint(
         "zone_date": zone_date,
         "zone_vol": zone_vol,
         "zone_role": zone_role,
+        "zone_path": zone_path,
+        "zone_band_label": band_lab,
+        "zone_source_day_label": src_day_lab,
         "zone": zone,
         "eps": eps_line,
         "cum": cum_s,

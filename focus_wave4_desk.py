@@ -399,7 +399,7 @@ def format_wave4_hub_html() -> str:
         [
             "<b>次級四浪</b>（觀察非買訊）",
             "① 打代號／股名：辨識後請你確認，",
-            "一次兩張：次級四浪圖＋結構圖。",
+            "一次兩張：次級四浪圖＋結構圖（同路上大量區日）。",
             "② 實質十檔：有實質獲利，",
             "最優先出10檔＋次級四浪圖，可翻頁。",
             "盤中距離用現價；圖用已收日K。",
@@ -761,9 +761,10 @@ def paint_wave4_one_pair(
     tag: str = "one",
     header_style: str = "B",
 ) -> List[Dict[str, str]]:
-    """單檔一次兩張：①次級四浪圖 ②查股同款結構圖。缺哪張略過哪張。
+    """單檔一次兩張：①次級四浪圖 ②查股同款結構圖（同路上大量區日／高低）。
 
     同一 mpl worker 內依序渲，不准並行踩 FreeType。
+    結構圖 force_vol_zone＝四浪圖 pick_path_vol_zone 結果（反彈壓／下降撐壓）。
     """
     sid = str(stock_id or "").strip()
     if not sid:
@@ -777,10 +778,14 @@ def paint_wave4_one_pair(
 
     def _do() -> List[Dict[str, str]]:
         charts: List[Dict[str, str]] = []
+        force_zone: Dict[str, Any] | None = None
         try:
             from scripts.paint_focus_target_sample import paint
 
-            paint(sid, wave_out, db_path=Path(db_path), header_style=style)
+            meta = paint(sid, wave_out, db_path=Path(db_path), header_style=style)
+            z = (meta or {}).get("zone") if isinstance(meta, dict) else None
+            if isinstance(z, dict) and z.get("date") and z.get("high") and z.get("low"):
+                force_zone = dict(z)
             if wave_out.is_file() and wave_out.stat().st_size > 12_000:
                 charts.append(
                     {
@@ -801,6 +806,7 @@ def paint_wave4_one_pair(
                 name,
                 str(db_path),
                 str(struct_out),
+                force_vol_zone=force_zone,
             )
             if path and Path(path).is_file() and Path(path).stat().st_size > 8_000:
                 charts.append(

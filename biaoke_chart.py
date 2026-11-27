@@ -4510,6 +4510,115 @@ def _structure_face_rows(
     return cleaned
 
 
+def apply_force_vol_zone(
+    info: Dict[str, Any],
+    work: Sequence[Dict[str, Any]],
+    force_vol_zone: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """次級四浪同一路上大量區：覆寫結構圖 spike 日／高低／量，敘述跟路徑走。
+
+    force_vol_zone 欄位對齊 pick_path_vol_zone：date／high／low／volume／path／zone_role。
+    沒給就原樣回傳。不是買訊。
+    """
+    if not isinstance(info, dict) or not force_vol_zone:
+        return info
+    z = dict(force_vol_zone)
+    try:
+        hi = float(z.get("high") or 0)
+        lo = float(z.get("low") or 0)
+    except (TypeError, ValueError):
+        return info
+    if hi <= 0 or lo <= 0 or hi < lo:
+        return info
+    d = str(z.get("date") or "").replace("-", "")[:8]
+    if not d:
+        return info
+    try:
+        vol = float(z.get("volume") or 0)
+    except (TypeError, ValueError):
+        vol = 0.0
+    path = str(z.get("path") or "").strip().lower()
+    role = str(z.get("zone_role") or "").strip().lower()
+    if role == "downward" or path == "decline":
+        band_lab = "下降路撐壓區" if role != "inside" else "撐壓區（現價落區內）"
+        src_lab = "撐壓來源日"
+        short_lab = "撐壓來源"
+    elif role == "forward" or path == "rebound":
+        band_lab = "前方大量壓力區" if role != "inside" else "大量區（現價落區內）"
+        src_lab = "壓力來源日"
+        short_lab = "壓力來源"
+    else:
+        band_lab = "路上大量區"
+        src_lab = "壓力來源日"
+        short_lab = "壓力來源"
+    rows = list(work or [])
+    spike_i = 0
+    for i, r in enumerate(rows):
+        if str(r.get("date") or "").replace("-", "")[:8] == d:
+            spike_i = i
+            break
+    spike_bar = _bar_ohlc(rows[spike_i]) if 0 <= spike_i < len(rows) else {}
+    if vol <= 0 and spike_bar:
+        try:
+            vol = float(spike_bar.get("volume") or 0)
+        except (TypeError, ValueError):
+            vol = 0.0
+    st = dict(info.get("struct") or {})
+    st["spike_date"] = d
+    st["spike_high"] = hi
+    st["spike_low"] = lo
+    st["spike_vol"] = vol
+    st["spike_volume"] = vol
+    st["force_path"] = path or role
+    st["force_band_label"] = band_lab
+    st["force_source_day_label"] = src_lab
+    st["force_source_short"] = short_lab
+    info["struct"] = st
+    info["spike_i"] = int(spike_i)
+    info["spike_bar"] = spike_bar
+    info["force_vol_zone"] = True
+    info["vol_band_label"] = band_lab
+    info["vol_source_day_label"] = src_lab
+    info["vol_source_short"] = short_lab
+    # 覆寫後重算破撐／過壓旗（跟 analyze_structure 同口徑）
+    try:
+        closes = [float(r.get("close") or 0) for r in rows]
+        lows = [float(r.get("low") or 0) for r in rows]
+        last = closes[-1] if closes else 0.0
+        broke = False
+        reclaim = False
+        saw_over = False
+        for i in range(spike_i + 1, len(rows)):
+            if lo and lows[i] < lo:
+                broke = True
+            if broke and closes[i] >= lo:
+                reclaim = True
+            if hi and closes[i] >= hi:
+                saw_over = True
+        info["wash"] = bool(broke and reclaim and last >= lo)
+        info["under_support"] = bool(lo and last < lo)
+        info["over_press"] = bool(hi and last >= hi)
+        info["distribution"] = bool(saw_over and last < lo and not info["wash"])
+    except Exception:
+        pass
+    notes = list(info.get("notes") or [])
+    patched: List[str] = []
+    for n in notes:
+        s = str(n or "")
+        if "爆大量那一天" in s or "量先價行：爆大量" in s:
+            patched.append(
+                f"官方日K（不是15分）路上大量區：{src_lab} {_ymd_full(d) or d} "
+                f"開 {_px_quote(spike_bar.get('open'))} 高 {_px_quote(hi)} 當壓、"
+                f"低 {_px_quote(lo)} 當撐、收 {_px_quote(spike_bar.get('close'))} "
+                f"量 {_vol(vol)}；與次級四浪同一來源日。"
+            )
+        else:
+            patched.append(s)
+    if patched:
+        info["notes"] = patched
+    return info
+
+
 def _structure_render_memo_key(
     rows: Sequence[Dict[str, Any]],
     work: Sequence[Dict[str, Any]],
@@ -4595,6 +4704,11 @@ def _structure_render_memo_key(
             ),
             2,
         ),
+        # 次級四浪強制路上大量區進鍵：有／無／不同日高低不准互蓋
+        str((info.get("struct") or {}).get("spike_date") or "")[:8],
+        round(float((info.get("struct") or {}).get("spike_low") or 0), 2),
+        int(bool(info.get("force_vol_zone"))),
+        str(info.get("vol_source_day_label") or ""),
         # SYNC-STRUCT-VOL 圖註開關／他位進鍵，不准互蓋
         _sv_fp,
     )
@@ -4672,6 +4786,7 @@ def render_biaoke_structure_png(
     press_band: Optional[Tuple[float, float]] = None,
     card: Optional[Dict[str, Any]] = None,
     live_quote: Optional[Dict[str, Any]] = None,
+    force_vol_zone: Optional[Dict[str, Any]] = None,
 ) -> str:
     rows = _structure_face_rows(bars, sid=sid, card=card)
     if len(rows) < 8 or not save_path:
@@ -4679,6 +4794,9 @@ def render_biaoke_structure_png(
     # 固定窗滾動：只畫近 _BARS 根；新交易日進則最左日出（不准越畫越擠）
     work = structure_visible_bars(rows)
     info = analyze_structure(work)
+    # 次級四浪 pair：強制同一路上大量區日／高低（反彈壓或下降撐壓）
+    if force_vol_zone:
+        apply_force_vol_zone(info, work, force_vol_zone)
     # 查股／飆大出圖帶明確 sid：原文目標檔別隔離（聯亞／奇鋐…）
     # 下一層用長窗歷史（深窗串聯）；可視 work 只負責畫 K，不准裁掉次大量源
     if sid:
@@ -5481,7 +5599,8 @@ def render_biaoke_structure_png(
                 color=_TEXT, size=ohlc_fs,
             )
         spike_cols = _col_starts(header_x, [spike_cells])
-    spike_1 = f"爆大量日 {_ymd_full(spike_date)}"
+    _src_day = str(info.get("vol_source_day_label") or "").strip() or "爆大量日"
+    spike_1 = f"{_src_day} {_ymd_full(spike_date)}"
     if fullbleed:
         # C：整列一次畫完，日期與「高」之間硬空白（02 高）
         spike_bits = "　".join(
@@ -5858,8 +5977,9 @@ def render_biaoke_structure_png(
                 shrinkB=3,
             ),
         )
+        _spike_short = str(info.get("vol_source_short") or "").strip() or "爆大量"
         ax2.annotate(
-            f"這根＝爆大量　{_vol(vols[spike_i])}",
+            f"這根＝{_spike_short}　{_vol(vols[spike_i])}",
             xy=(float(spike_i), float(spike_disp)),
             xytext=(float(spike_tx), float(spike_ty)),
             color=_TEXT,
@@ -5901,11 +6021,12 @@ def render_biaoke_structure_png(
         vol_tx, vol_ha = _pick_vol_anchor(int(spike_i))
         _bump_vol_lab_y_for(vol_tx, vol_ha)
         ax2.set_ylim(0, float(_vol_y_top))
+        _spike_short = str(info.get("vol_source_short") or "").strip() or "爆大量"
         _leader_note(
             ax2,
             float(spike_i),
             spike_disp,
-            f"這根＝爆大量　{_vol(vols[spike_i])}",
+            f"這根＝{_spike_short}　{_vol(vols[spike_i])}",
             _TEXT,
             tx=vol_tx,
             ty=vol_lab_y,
@@ -6213,8 +6334,13 @@ def chart_caption(
     spike_hi = st.get("spike_high")
     spike_lo = st.get("spike_low")
     if spike_hi and spike_lo:
+        _src = str(info.get("vol_source_day_label") or "").strip() or "爆大量那一天"
+        if _src.endswith("日") and "那一天" not in _src:
+            _src_phrase = _src  # 壓力來源日／撐壓來源日
+        else:
+            _src_phrase = _src
         tape = (
-            f"這檔收 {_px_quote(last_bar.get('close'))}，爆大量那一天 "
+            f"這檔收 {_px_quote(last_bar.get('close'))}，{_src_phrase} "
             f"{_ymd_full(st.get('spike_date'))} 高 {_px_quote(spike_hi)}＝壓、"
             f"低 {_px_quote(spike_lo)}＝撐、量 {_vol(st.get('spike_volume') or (info.get('spike_bar') or {}).get('volume'))}。"
         )

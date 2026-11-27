@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""最近重點標的樣張：營收單位／季EPS拆累計／前方壓力優先。"""
+"""最近重點標的樣張：營收單位／季EPS拆累計／路上大量區（反彈壓／下跌撐壓）。"""
 from __future__ import annotations
 
 from scripts.paint_focus_target_sample import (
@@ -8,9 +8,14 @@ from scripts.paint_focus_target_sample import (
     _rev_yi,
     drop_measure_points,
     drop_measure_triangle_verts,
+    infer_price_path,
+    pick_downward_support_zone,
     pick_forward_pressure_zone,
+    pick_path_vol_zone,
     rebound_fib_from_wave_bottom,
     wave24_descend_line,
+    zone_band_label,
+    zone_source_day_label,
 )
 
 
@@ -121,7 +126,10 @@ def test_paint_wave4_layout_guards():
     assert '"#bbf7d0"' not in src  # 不准大面積淺綠底蓋住K
     assert "1.16" not in src  # 今日量不准掛中帶壓基本面
     assert '"#ffeb3b"' in src
-    assert "張" in src[src.find("壓力來源日量柱") :]
+    assert "張" in src[src.find("來源日量柱") :]
+    assert "pick_path_vol_zone" in src
+    assert "zone_source_day_label" in src
+    assert "zone_band_label" in src
 
 
 def test_rev_yi_thousand_to_yi():
@@ -208,3 +216,60 @@ def test_forward_zone_prefers_above_close():
     assert z.get("zone_role") == "forward"
     assert float(z["low"]) > 100.0
     assert str(z.get("date")) == "20260221"
+    z2 = pick_path_vol_zone(bars, close=100.0, path="rebound")
+    assert z2 is not None
+    assert str(z2.get("date")) == "20260221"
+    assert zone_band_label(z2) == "前方大量壓力區"
+    assert zone_source_day_label(z2) == "壓力來源日"
+
+
+def test_downward_zone_prefers_below_close():
+    # 現價 100；區內大量 overlapping；真正下方次大量 high=90
+    bars = []
+    for i in range(40):
+        ymd = f"202602{i + 1:02d}" if i < 28 else f"202603{i - 27:02d}"
+        bars.append(
+            {
+                "date": ymd,
+                "open": 100.0,
+                "high": 105.0,
+                "low": 95.0,
+                "close": 100.0,
+                "volume": 1000.0,
+            }
+        )
+    bars[10] = {
+        "date": "20260211",
+        "open": 98.0,
+        "high": 108.0,
+        "low": 92.0,
+        "close": 100.0,
+        "volume": 9000.0,
+    }
+    bars[20] = {
+        "date": "20260221",
+        "open": 88.0,
+        "high": 90.0,
+        "low": 80.0,
+        "close": 85.0,
+        "volume": 8000.0,
+    }
+    # 近窗偏高位續跌 → decline
+    for j in range(30, 40):
+        bars[j]["close"] = 100.0 - (j - 30) * 0.2
+        bars[j]["high"] = 110.0
+        bars[j]["low"] = 98.0
+    bars[-1]["close"] = 100.0
+    bars[-1]["high"] = 101.0
+    bars[-1]["low"] = 99.0
+    z = pick_downward_support_zone(bars, close=100.0)
+    assert z is not None
+    assert z.get("zone_role") == "downward"
+    assert float(z["high"]) < 100.0
+    assert str(z.get("date")) == "20260221"
+    z2 = pick_path_vol_zone(bars, close=100.0, path="decline")
+    assert z2 is not None
+    assert str(z2.get("date")) == "20260221"
+    assert zone_band_label(z2) == "下降路撐壓區"
+    assert zone_source_day_label(z2) == "撐壓來源日"
+    assert infer_price_path(bars, 100.0) in ("rebound", "decline")
