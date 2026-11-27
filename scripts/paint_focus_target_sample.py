@@ -698,15 +698,27 @@ def paint(
         )
         if _w24 is not None:
             _x0, _y0, _x1, _y1 = _w24
-            ax.plot(
+            (_ln24,) = ax.plot(
                 [_x0, _x1],
                 [_y0, _y1],
-                color="#a21caf",
-                lw=1.55,
-                ls=(0, (2.4, 1.5)),
+                color="#c026d3",
+                lw=1.85,
                 solid_capstyle="butt",
-                zorder=6,
+                solid_joinstyle="miter",
+                zorder=8,
                 label="②–④下降趨勢線（延伸至末日）",
+            )
+            # 極短實線＋小空格（不用 ls 字串，避免被樣式表吃掉）
+            _ln24.set_dashes((2.6, 1.4))
+            ax.plot(
+                [_x1],
+                [_y1],
+                marker="o",
+                markersize=4.2,
+                color="#c026d3",
+                markeredgecolor="#fdf4ff",
+                markeredgewidth=0.6,
+                zorder=9,
             )
 
     # 黃線＝五波走完後新起漲軌跡；字／大菱形一律不准蓋日K（字只進圖例）

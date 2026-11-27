@@ -89,7 +89,7 @@ def test_paint_wave4_layout_guards():
     assert "1.0 - _band" in src
     assert '"今K"' in src
     assert "wave24_descend_line" in src
-    assert "(0, (2.4, 1.5))" in src
+    assert "set_dashes" in src
     assert '"#ffeb3b"' in src
     assert "張" in src[src.find("壓力來源日量柱") :]
 
