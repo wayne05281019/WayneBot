@@ -60,7 +60,7 @@ LINE_END_PAD = 0.8
 ZONE_NEAR_PAD = 3.0
 FIB_NEAR_PAD = 18.0  # 四浪高遠欄
 # 綠反彈／最底：貼近末根K右側（附圖紅框中近欄），不准跟四浪高擠最右
-REBOUND_NEAR_PAD = 6.0
+REBOUND_NEAR_PAD = 3.8
 TAG_COL_GAP = 14.0
 NEAR_PRICE_FRAC = 0.022
 # 相容舊測試名
