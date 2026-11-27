@@ -3372,6 +3372,61 @@ def _pending_nav_window_compare(nav_pane: Image.Image, first_k: str, out_dir: st
     return path
 
 
+def _extend_structure_bars_to_face_asof(
+    bars: list,
+    *,
+    sid: str,
+    name: str,
+    db_path: str,
+    face_asof: str,
+) -> list:
+    """次級四浪 pair：結構圖末日對齊四浪圖 asof（個股已補官方柱時）。
+
+    查股預設仍吃市場完整日 cap；只有明確給 face_asof 才往後接。
+    """
+    want = str(face_asof or "").replace("-", "")[:8]
+    if len(want) != 8 or not want.isdigit() or not bars:
+        return list(bars or [])
+    last = str((bars[-1] or {}).get("date") or "").replace("-", "")[:8]
+    if len(last) == 8 and last >= want:
+        return list(bars)
+    try:
+        import sqlite3
+
+        con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        rows = con.execute(
+            "SELECT date,open,high,low,close,volume,stock_name FROM daily_quotes "
+            "WHERE stock_id=? AND date>? AND date<=? ORDER BY date ASC",
+            (sid, last or "00000000", want),
+        ).fetchall()
+        con.close()
+    except Exception:
+        return list(bars)
+    out = list(bars)
+    seen = {str(b.get("date") or "").replace("-", "")[:8] for b in out}
+    for d, o, h, l, c, v, n in rows:
+        ymd = str(d or "").replace("-", "")[:8]
+        if len(ymd) != 8 or ymd in seen:
+            continue
+        try:
+            out.append(
+                {
+                    "date": ymd,
+                    "open": float(o),
+                    "high": float(h),
+                    "low": float(l),
+                    "close": float(c),
+                    "volume": float(v or 0),
+                    "stock_id": sid,
+                    "name": str(n or name or sid),
+                }
+            )
+            seen.add(ymd)
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
 def _lookup_structure_bars_and_spot(
     stock_id: str,
     stock_name: str,
@@ -3381,6 +3436,7 @@ def _lookup_structure_bars_and_spot(
     card: Optional[dict] = None,
     live_quote: Optional[dict] = None,
     save_path: str = "",
+    face_asof: str = "",
 ) -> Tuple[list, Optional[dict], Optional[dict]]:
     """查股結構圖：官方柱＋表頭 spot。回 (bars, spot, pack)；失敗 bars=[]。"""
     sid = str(stock_id or "").strip()
@@ -3410,6 +3466,10 @@ def _lookup_structure_bars_and_spot(
             bars = _bars_from_official(long_df, sid, name)
         else:
             bars = _bars_from_official(pack["view"], sid, name)
+    if face_asof:
+        bars = _extend_structure_bars_to_face_asof(
+            bars, sid=sid, name=name, db_path=db_path, face_asof=str(face_asof)
+        )
     if len(bars) < 8:
         return [], None, pack
     spot = None
@@ -3503,12 +3563,14 @@ def render_lookup_structure_result(
     pack: Optional[dict] = None,
     live_quote: Optional[dict] = None,
     force_vol_zone: Optional[dict] = None,
+    face_asof: str = "",
 ) -> Tuple[str, str]:
     """查股第 3 張：結構圖＝橫式原版，跟大量撐壓同一套官方日K。買訊只認藍▲紅框。
 
     pack：查股可先給官方柱（prepare_lookup_structure_bars）。有柱就不再 ensure／
     不再選大量區，現價用決策卡或已抓到的 live_quote，不准在畫布裡再打一輪網路。
     force_vol_zone：次級四浪 pair 強制同一路上大量區日／高低（反彈壓／下降撐壓）。
+    face_asof：次級四浪 pair 對齊四浪圖末日（個股已補官方柱）；查股預設勿傳。
     LAB-ONLY 記號掛在 biaoke_chart.render_biaoke_structure_png 尾端（旗標預設關）。
     """
     sid = str(stock_id or "").strip()
@@ -3534,6 +3596,7 @@ def render_lookup_structure_result(
             card=card,
             live_quote=live_quote,
             save_path=save_path,
+            face_asof=str(face_asof or ""),
         )
         if len(bars) < 8:
             return "", ""
