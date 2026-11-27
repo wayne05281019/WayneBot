@@ -102,7 +102,10 @@ def test_paint_wave4_layout_guards():
     assert 'set_ylabel("價（元）"' in src
     assert "毛利率" in src
     assert "長借／權益" in src
-    assert "_fund_fs" in src
+    assert "_mid_fs" in src
+    assert "fontsize=_mid_fs" in src
+    assert "refresh_latest_official_bars" in src
+    assert "最近上漲日" in src
     assert "四浪高／" in src
     assert "還有{room:.1f}%" in src
     assert "距四浪高還有" not in src  # 已併進四浪高標，不准另掛漂浮盒

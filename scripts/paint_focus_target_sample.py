@@ -417,6 +417,54 @@ HEADER_STYLES: Dict[str, Dict[str, float]] = {
 HEADER_STYLE_DEFAULT = "B"  # 2026-11-27 話筒選第二款
 
 
+def refresh_latest_official_bars(sid: str, db_path: Path | str) -> str:
+    """畫圖前補齊 fuse_end 當月官方 STOCK_DAY；回最新可畫日（台北）。
+
+    不准吃舊 max(date)；開市日盤後必須對到最新一根 K／量。
+    """
+    sid = str(sid or "").strip()
+    path = str(db_path or "")
+    end = ""
+    try:
+        from config import fuse_end_date
+
+        end = str(fuse_end_date() or "").replace("-", "")[:8]
+    except Exception:
+        end = ""
+    if len(end) != 8 or not sid or not path:
+        return end
+    try:
+        from biaoke_walk import _market_of, fetch_stock_month, upsert_fetched_quotes
+
+        ym = end[:6]
+        market = _market_of(path, sid)
+        name = sid
+        con_n = sqlite3.connect(path, timeout=20.0)
+        try:
+            row = con_n.execute(
+                "SELECT stock_name FROM daily_quotes WHERE stock_id=? "
+                "AND stock_name IS NOT NULL AND stock_name!='' "
+                "ORDER BY date DESC LIMIT 1",
+                (sid,),
+            ).fetchone()
+            if row and row[0]:
+                name = str(row[0])
+        finally:
+            con_n.close()
+        rows = fetch_stock_month(sid, ym, market=market, name=name, tries=2) or []
+        if rows:
+            upsert_fetched_quotes(path, rows)
+            try:
+                from wayne_navigator import clear_align_ohlc_cache
+
+                clear_align_ohlc_cache()
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return end
+
+
 def paint(
     sid: str,
     out: Path,
@@ -425,6 +473,8 @@ def paint(
     header_style: str = HEADER_STYLE_DEFAULT,
 ) -> Dict[str, Any]:
     prop = _cjk_prop()
+    # 先補官方最新日，再開讀；asof／末根K／量必須同日
+    refresh_latest_official_bars(sid, db_path)
     con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     rows = list(
         reversed(
@@ -465,6 +515,16 @@ def paint(
 
     tb = analyze_bars(bars)
     pts = tb.five_points or []
+    # 最新日未漲時五波規則不定義新開始：結構改用「最近上漲日」回推，
+    # 但 K／量／asof 仍固定畫到最新官方日（不准停在舊日）。
+    if not (tb.ok_five and len(pts) >= 6):
+        for k in range(len(bars) - 2, max(40, len(bars) - 12), -1):
+            tb2 = analyze_bars(bars[: k + 1])
+            pts2 = tb2.five_points or []
+            if tb2.ok_five and len(pts2) >= 6:
+                tb = tb2
+                pts = pts2
+                break
     if not (tb.ok_five and len(pts) >= 6):
         con.close()
         raise SystemExit(f"{sid}: five-wave not ok — {tb.fail_reason_zh or tb.note_zh}")
@@ -1096,15 +1156,24 @@ def paint(
     fig.canvas.draw()
     ax_pos = ax.get_position()
     _mid = ax_mid.get_position()
-    # EPS 格：字要大、寬度跟字走（不准半空大框）；圖例格另算
-    _fund_fs = 8.2
+    # 中帶雙格同字級；圖例框略加大，不准字溢出白框
+    _mid_fs = 8.2
     _longest = max(fund.split("\n"), key=len)
-    _fw, _ = _fig_extent(_longest, _fund_fs)
-    _box_h = float(_mid.height) * 0.92
-    _pair_gap = 0.012
-    _box_w_fund = float(min(float(_mid.width) * 0.52, max(0.26, _fw + 0.030)))
-    _box_w_leg = float(min(float(_mid.width) * 0.40, max(0.24, float(_mid.width) - _box_w_fund - _pair_gap)))
-    _box_y = float(_mid.y0) + float(_mid.height) * 0.04
+    _fw, _ = _fig_extent(_longest, _mid_fs)
+    _box_h = float(_mid.height) * 0.96
+    _pair_gap = 0.010
+    _box_w_fund = float(min(float(_mid.width) * 0.48, max(0.24, _fw + 0.028)))
+    _box_w_leg = float(
+        max(
+            0.30,
+            min(float(_mid.width) * 0.50, float(_mid.width) - _box_w_fund - _pair_gap),
+        )
+    )
+    # 剩餘寬度全給圖例，避免白框字超出
+    _remain = float(_mid.width) - _box_w_fund - _pair_gap
+    if _remain > _box_w_leg:
+        _box_w_leg = _remain
+    _box_y = float(_mid.y0) + float(_mid.height) * 0.02
     _x_fund = float(_mid.x0)
     _x_leg = _x_fund + _box_w_fund + _pair_gap
     _ax_fund = fig.add_axes([_x_fund, _box_y, _box_w_fund, _box_h])
@@ -1120,11 +1189,11 @@ def paint(
         fund,
         ha="left",
         va="center",
-        fontsize=_fund_fs,
+        fontsize=_mid_fs,
         fontproperties=prop,
         color="#1f2937",
         transform=_ax_fund.transAxes,
-        linespacing=1.20,
+        linespacing=1.18,
         clip_on=False,
     )
     _handles, _labels = ax.get_legend_handles_labels()
@@ -1141,12 +1210,12 @@ def paint(
             _labels,
             loc="center left",
             ncol=2,
-            fontsize=7.0,
+            fontsize=_mid_fs,
             frameon=False,
-            borderpad=0.12,
-            labelspacing=0.30,
-            columnspacing=0.65,
-            handlelength=1.35,
+            borderpad=0.18,
+            labelspacing=0.34,
+            columnspacing=0.70,
+            handlelength=1.40,
             prop=prop,
         )
 

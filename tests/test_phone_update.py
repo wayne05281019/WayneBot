@@ -80,7 +80,7 @@ def test_file_note_matches_this_change():
     ):
         assert junk not in raw
     assert pu._clean_note(raw) == (
-        "次級四浪：拿掉大面積淺綠底＋今日量改量圖內"
+        "次級四浪：中帶同字級＋白框加大＋對齊最新K量"
     )
 
 
