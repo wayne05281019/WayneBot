@@ -9106,7 +9106,7 @@ class WayneTelegramBot:
     async def _wave4_send_media_group(
         self, message, charts: list, *, caption0: str = ""
     ) -> bool:
-        """實質十檔／單檔結構圖相簿；缺圖不擋文字。"""
+        """實質十檔／單檔結構圖；1 張 reply_photo，2–10 張相簿，失敗改逐張。"""
         paths = [
             str(c.get("path") or "")
             for c in (charts or [])
@@ -9120,7 +9120,6 @@ class WayneTelegramBot:
             async def _cell(path: str) -> str:
                 low = str(path).lower()
                 if low.endswith((".jpg", ".jpeg", ".album.jpg", ".png")):
-                    # PNG 先轉查股送圖慣例 JPEG，Telegram 較穩
                     return await asyncio.to_thread(
                         self._prepare_lookup_album_photo, path
                     )
@@ -9136,35 +9135,77 @@ class WayneTelegramBot:
             cap0 = (caption0 or (charts[0].get("caption") if charts else "") or "")[
                 :1024
             ]
-            handles = []
-            try:
-                media = []
-                for i, send_path in enumerate(send_paths):
-                    fh = open(send_path, "rb")
-                    handles.append(fh)
-                    fname = os.path.basename(send_path)
-                    if not fname.lower().endswith((".jpg", ".jpeg", ".png")):
-                        fname = (os.path.splitext(fname)[0] or "wave4") + ".jpg"
-                    file_obj = InputFile(fh, filename=fname)
-                    if i == 0 and cap0:
-                        media.append(
-                            InputMediaPhoto(media=file_obj, caption=cap0)
+
+            async def _one_photo(path: str, cap: str) -> bool:
+                try:
+                    with open(path, "rb") as fh:
+                        fname = os.path.basename(path)
+                        if not fname.lower().endswith((".jpg", ".jpeg", ".png")):
+                            fname = (os.path.splitext(fname)[0] or "wave4") + ".jpg"
+                        await message.reply_photo(
+                            photo=InputFile(fh, filename=fname),
+                            caption=(cap or "")[:1024] or None,
+                            read_timeout=60,
+                            write_timeout=90,
+                            connect_timeout=20,
                         )
-                    else:
-                        media.append(InputMediaPhoto(media=file_obj))
-                await message.reply_media_group(
-                    media=media,
-                    read_timeout=60,
-                    write_timeout=90,
-                    connect_timeout=20,
-                )
-                return True
-            finally:
-                for fh in handles:
-                    try:
-                        fh.close()
-                    except Exception:
-                        pass
+                    return True
+                except Exception:
+                    logger.exception("次級四浪單張結構圖失敗 path=%s", path)
+                    return False
+
+            # Telegram 相簿硬限制 2–10；單檔必須走 reply_photo
+            if len(send_paths) == 1:
+                return await _one_photo(send_paths[0], cap0)
+
+            async def _album(caption: str) -> bool:
+                handles = []
+                try:
+                    media = []
+                    for i, send_path in enumerate(send_paths):
+                        fh = open(send_path, "rb")
+                        handles.append(fh)
+                        fname = os.path.basename(send_path)
+                        if not fname.lower().endswith((".jpg", ".jpeg", ".png")):
+                            fname = (os.path.splitext(fname)[0] or "wave4") + ".jpg"
+                        file_obj = InputFile(fh, filename=fname)
+                        if i == 0 and caption:
+                            media.append(
+                                InputMediaPhoto(media=file_obj, caption=caption)
+                            )
+                        else:
+                            media.append(InputMediaPhoto(media=file_obj))
+                    await message.reply_media_group(
+                        media=media,
+                        read_timeout=60,
+                        write_timeout=90,
+                        connect_timeout=20,
+                    )
+                    return True
+                finally:
+                    for fh in handles:
+                        try:
+                            fh.close()
+                        except Exception:
+                            pass
+
+            try:
+                if await _album(cap0):
+                    return True
+            except Exception:
+                logger.exception("次級四浪附圖相簿失敗，改無說明再試")
+            if cap0:
+                try:
+                    if await _album(""):
+                        return True
+                except Exception:
+                    logger.exception("次級四浪附圖相簿無說明仍失敗，改逐張")
+            sent = 0
+            for i, sp in enumerate(send_paths):
+                cap = cap0 if i == 0 else ""
+                if await _one_photo(sp, cap):
+                    sent += 1
+            return sent > 0
         except Exception:
             logger.exception("次級四浪附圖相簿失敗")
             return False
@@ -9244,15 +9285,23 @@ class WayneTelegramBot:
                 ),
                 disable_web_page_preview=True,
             )
-            # 附結構圖相簿（最多10張）；失敗只留文字，不准擋名單
+            # 附結構圖（最多10張）；失敗要講，不准假裝有圖
+            chart_ok = False
             if charts:
                 cap = (
                     f"次級四浪・實質十檔第{int(page)+1}頁結構圖"
                     "（觀察非買訊）"
                 )
-                await self._wave4_send_media_group(
+                chart_ok = await self._wave4_send_media_group(
                     message, charts, caption0=cap
                 )
+            if live_rows and not chart_ok:
+                try:
+                    await message.reply_text(
+                        "這頁結構圖沒送出，稍後再按下一頁或改打單檔。"
+                    )
+                except Exception:
+                    pass
             delivered = True
         finally:
             if not delivered:
@@ -9350,8 +9399,9 @@ class WayneTelegramBot:
             await message.reply_html(
                 html, reply_markup=kb, disable_web_page_preview=True
             )
+            chart_ok = False
             if chart_path and os.path.isfile(chart_path):
-                await self._wave4_send_media_group(
+                chart_ok = await self._wave4_send_media_group(
                     message,
                     [
                         {
@@ -9361,8 +9411,14 @@ class WayneTelegramBot:
                     ],
                     caption0=f"{stock_id} 次級四浪結構（觀察非買訊）",
                 )
+            if ok and not chart_ok:
+                try:
+                    await message.reply_text(
+                        f"{stock_id} 結構圖沒送出，稍後再打一次代號。"
+                    )
+                except Exception:
+                    pass
             delivered = True
-            _ = ok
         finally:
             if not delivered:
                 try:

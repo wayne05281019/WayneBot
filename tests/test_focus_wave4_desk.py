@@ -187,6 +187,29 @@ def test_paint_wave4_page_charts_skips_empty(tmp_path):
     assert paint_wave4_page_charts([], out_dir=tmp_path, db_path=tmp_path) == []
 
 
+def test_paint_wave4_chart_uses_mpl_paint_worker():
+    """不准自開 ThreadPool 踩 matplotlib；必須走 run_mpl_paint。"""
+    import inspect
+
+    import focus_wave4_desk as m
+
+    src = inspect.getsource(m.paint_wave4_chart)
+    assert "run_mpl_paint" in src
+    page_src = inspect.getsource(m.paint_wave4_page_charts)
+    assert "ThreadPoolExecutor" not in page_src
+
+
+def test_wave4_send_media_group_single_uses_reply_photo():
+    """單張不准 reply_media_group（Telegram 硬要 2–10）。"""
+    import inspect
+
+    from bot_servers import WayneTelegramBot
+
+    src = inspect.getsource(WayneTelegramBot._wave4_send_media_group)
+    assert "len(send_paths) == 1" in src
+    assert "reply_photo" in src
+
+
 def test_guangsheng_horizon_sid_is_6442_not_1815():
     """資料正確性：光聖＝6442；1815是富喬，不准掛錯遠距。"""
     from focus_wave4_desk import QUALITY_HORIZON_ZH
