@@ -54,7 +54,7 @@ DB = ROOT / "data" / "wayne_market.db"
 # LINE_END_PAD＝水平線停在末根K旁（標籤接在線外）
 WIN = 130
 FUTURE_PAD = 8
-LABEL_RIGHT_EXTRA = 11
+LABEL_RIGHT_EXTRA = 8
 LINE_END_PAD = 0.8
 # 壓帶上下緣：緊貼末根K右側（使用者紅框）；反彈／四浪高再往右兩欄，中間空位留給壓帶
 ZONE_NEAR_PAD = 3.0
@@ -519,8 +519,8 @@ def paint(
     fig, (ax, axv) = plt.subplots(
         2,
         1,
-        figsize=(13.4, 9.2),
-        gridspec_kw={"height_ratios": [3.4, 1.25]},
+        figsize=(12.8, 8.6),
+        gridspec_kw={"height_ratios": [3.6, 1.05]},
         sharex=True,
     )
     bg = "#f7f5f0"
@@ -1078,34 +1078,33 @@ def paint(
     # 依字級估表頭帶高 → 抬主圖；夾縫只留瘦雙格
     _band = _nh + _name_gap + _ph + _chg_pad + _ch + 0.016
     _top = max(0.88, min(0.93, 1.0 - _band))
-    fig.subplots_adjust(left=0.07, right=0.995, top=_top, bottom=0.055, hspace=0.24)
+    fig.subplots_adjust(left=0.06, right=0.995, top=_top, bottom=0.05, hspace=0.18)
     fig.canvas.draw()
     ax_pos = ax.get_position()
-    axv_pos = axv.get_position()
-    # 雙格：同寬同高、內容自繪、不准空大框；置中偏上貼價圖底
-    _box_w, _box_h, _pair_gap = 0.34, 0.070, 0.018
+    # 雙格再瘦：同寬同高、貼價圖底，不准吃掉量圖
+    _box_w, _box_h, _pair_gap = 0.28, 0.048, 0.014
     _pair_w = _box_w * 2 + _pair_gap
-    _x_fund = 0.5 - _pair_w * 0.5
+    _x_fund = float(ax_pos.x0) + 0.01
     _x_leg = _x_fund + _box_w + _pair_gap
-    _box_y = float(ax_pos.y0) - _box_h - 0.006
+    _box_y = float(ax_pos.y0) - _box_h - 0.004
     _ax_fund = fig.add_axes([_x_fund, _box_y, _box_w, _box_h])
     _ax_fund.set_xticks([])
     _ax_fund.set_yticks([])
     _ax_fund.set_facecolor("#fff7ed")
     for _sp in _ax_fund.spines.values():
         _sp.set_color("#fdba74")
-        _sp.set_linewidth(1.1)
+        _sp.set_linewidth(1.0)
     _ax_fund.text(
-        0.5,
+        0.04,
         0.5,
         fund,
-        ha="center",
+        ha="left",
         va="center",
-        fontsize=6.6,
+        fontsize=6.2,
         fontproperties=prop,
         color="#1f2937",
         transform=_ax_fund.transAxes,
-        linespacing=1.25,
+        linespacing=1.15,
     )
     _handles, _labels = ax.get_legend_handles_labels()
     _ax_leg = fig.add_axes([_x_leg, _box_y, _box_w, _box_h])
@@ -1114,19 +1113,19 @@ def paint(
     _ax_leg.set_facecolor("#ffffff")
     for _sp in _ax_leg.spines.values():
         _sp.set_color("#94a3b8")
-        _sp.set_linewidth(1.1)
+        _sp.set_linewidth(1.0)
     if _handles:
         _ax_leg.legend(
             _handles,
             _labels,
-            loc="center",
+            loc="center left",
             ncol=2,
-            fontsize=5.6,
+            fontsize=5.2,
             frameon=False,
-            borderpad=0.15,
-            labelspacing=0.28,
-            columnspacing=0.7,
-            handlelength=1.35,
+            borderpad=0.1,
+            labelspacing=0.22,
+            columnspacing=0.55,
+            handlelength=1.2,
             prop=prop,
         )
 
