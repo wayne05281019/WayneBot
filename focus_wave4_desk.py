@@ -399,10 +399,10 @@ def format_wave4_hub_html() -> str:
         [
             "<b>次級四浪</b>（觀察非買訊）",
             "① 打代號／股名：辨識後請你確認，",
-            "再出這檔結構位。",
+            "一次兩張：次級四浪圖＋結構圖。",
             "② 實質十檔：有實質獲利，",
-            "最優先出10檔＋結構圖，可翻下一頁。",
-            "盤中距離用現價；結構用已收日K。",
+            "最優先出10檔＋次級四浪圖，可翻頁。",
+            "盤中距離用現價；圖用已收日K。",
             "買訊仍只認獲利剛離零／已過閘紅箭頭。",
         ]
     )
@@ -750,6 +750,81 @@ def paint_wave4_chart(
             return _do()
         except Exception:
             return None
+
+
+def paint_wave4_one_pair(
+    stock_id: str,
+    *,
+    db_path: Path | str = DB_DEFAULT,
+    out_dir: Path | str,
+    stock_name: str = "",
+    tag: str = "one",
+    header_style: str = "B",
+) -> List[Dict[str, str]]:
+    """單檔一次兩張：①次級四浪圖 ②查股同款結構圖。缺哪張略過哪張。
+
+    同一 mpl worker 內依序渲，不准並行踩 FreeType。
+    """
+    sid = str(stock_id or "").strip()
+    if not sid:
+        return []
+    name = str(stock_name or "").strip() or sid
+    out_dir_p = Path(out_dir)
+    out_dir_p.mkdir(parents=True, exist_ok=True)
+    style = str(header_style or "B").upper()
+    wave_out = out_dir_p / f"wave4_{sid}_{tag or 'one'}.png"
+    struct_out = out_dir_p / f"struct_{sid}_{tag or 'one'}.png"
+
+    def _do() -> List[Dict[str, str]]:
+        charts: List[Dict[str, str]] = []
+        try:
+            from scripts.paint_focus_target_sample import paint
+
+            paint(sid, wave_out, db_path=Path(db_path), header_style=style)
+            if wave_out.is_file() and wave_out.stat().st_size > 12_000:
+                charts.append(
+                    {
+                        "stock_id": sid,
+                        "stock_name": name,
+                        "path": str(wave_out),
+                        "kind": "wave4",
+                        "caption": f"{sid} {name} 次級四浪（觀察非買訊）",
+                    }
+                )
+        except Exception:
+            pass
+        try:
+            from three_in_one_chart import render_lookup_structure_result
+
+            path, cap = render_lookup_structure_result(
+                sid,
+                name,
+                str(db_path),
+                str(struct_out),
+            )
+            if path and Path(path).is_file() and Path(path).stat().st_size > 8_000:
+                charts.append(
+                    {
+                        "stock_id": sid,
+                        "stock_name": name,
+                        "path": str(path),
+                        "kind": "struct",
+                        "caption": str(cap or f"{sid} {name} 結構圖")[:200],
+                    }
+                )
+        except Exception:
+            pass
+        return charts
+
+    try:
+        from wayne_navigator import run_mpl_paint
+
+        return list(run_mpl_paint(_do) or [])
+    except Exception:
+        try:
+            return _do()
+        except Exception:
+            return []
 
 
 def paint_wave4_page_charts(
