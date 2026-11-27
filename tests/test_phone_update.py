@@ -80,7 +80,7 @@ def test_file_note_matches_this_change():
     ):
         assert junk not in raw
     assert pu._clean_note(raw) == (
-        "次級四浪：雙格再瘦、邊距收緊、整圖去凌亂"
+        "次級四浪：K／量圖塊比例鎖死，雙格只進中間瘦帶"
     )
 
 

@@ -54,7 +54,7 @@ DB = ROOT / "data" / "wayne_market.db"
 # LINE_END_PAD＝水平線停在末根K旁（標籤接在線外）
 WIN = 130
 FUTURE_PAD = 8
-LABEL_RIGHT_EXTRA = 8
+LABEL_RIGHT_EXTRA = 14
 LINE_END_PAD = 0.8
 # 壓帶上下緣：緊貼末根K右側（使用者紅框）；反彈／四浪高再往右兩欄，中間空位留給壓帶
 ZONE_NEAR_PAD = 3.0
@@ -516,15 +516,21 @@ def paint(
     vols = [b["volume"] for b in view]
     dates = [_ymd(b["date"]) for b in view]
 
-    fig, (ax, axv) = plt.subplots(
-        2,
-        1,
-        figsize=(12.8, 8.6),
-        gridspec_kw={"height_ratios": [3.6, 1.05]},
-        sharex=True,
-    )
+    # K 線／量圖塊比例鎖死 3.4:1.25；中間另開瘦帶放雙格，不准擠壓兩圖塊
     bg = "#f7f5f0"
+    fig = plt.figure(figsize=(13.4, 9.55))
     fig.patch.set_facecolor(bg)
+    _gs = fig.add_gridspec(
+        3, 1, height_ratios=[3.4, 0.58, 1.25], hspace=0.10
+    )
+    ax = fig.add_subplot(_gs[0, 0])
+    ax_mid = fig.add_subplot(_gs[1, 0])
+    axv = fig.add_subplot(_gs[2, 0], sharex=ax)
+    ax_mid.set_xticks([])
+    ax_mid.set_yticks([])
+    ax_mid.set_facecolor(bg)
+    for _sp in ax_mid.spines.values():
+        _sp.set_visible(False)
     for a in (ax, axv):
         a.set_facecolor(bg)
         a.tick_params(colors="#333")
@@ -891,35 +897,9 @@ def paint(
     sub1 = f"{asof_face}｜觀察非買訊"
     sub2 = ohlc_line
     ax.set_title("")  # 股名價改 figure 右上，不准再置中標題搶位
-    # 軸標直立換行，不准旋轉成橫躺字
-    ax.set_ylabel("")
-    axv.set_ylabel("")
-    ax.text(
-        -0.06,
-        0.5,
-        "價\n（\n元\n）",
-        transform=ax.transAxes,
-        rotation=0,
-        ha="center",
-        va="center",
-        fontsize=8.0,
-        fontproperties=prop,
-        color="#374151",
-        clip_on=False,
-    )
-    axv.text(
-        -0.06,
-        0.5,
-        "量\n（\n張\n）",
-        transform=axv.transAxes,
-        rotation=0,
-        ha="center",
-        va="center",
-        fontsize=8.0,
-        fontproperties=prop,
-        color="#374151",
-        clip_on=False,
-    )
+    # K／量圖塊內呈現維持原樣（軸標含）
+    ax.set_ylabel("價（元）", fontproperties=prop)
+    axv.set_ylabel("成交量（張）", fontproperties=prop)
 
     # 幾何：末根K → 空 → 反彈／四浪高（壓帶標改左側）
     _x_zone = float(n - 1 + ZONE_NEAR_PAD)  # 保留常數相容；標籤已改左側
@@ -1075,18 +1055,20 @@ def paint(
     _cw, _ch = _fig_extent(_chg_s, _fs_chg)
     del _nw, _cw
 
-    # 依字級估表頭帶高 → 抬主圖；夾縫只留瘦雙格
+    # 表頭帶；K／量圖塊比例不動，雙格只進中間瘦帶
     _band = _nh + _name_gap + _ph + _chg_pad + _ch + 0.016
     _top = max(0.88, min(0.93, 1.0 - _band))
-    fig.subplots_adjust(left=0.06, right=0.995, top=_top, bottom=0.05, hspace=0.18)
+    fig.subplots_adjust(left=0.08, right=0.98, top=_top, bottom=0.06)
     fig.canvas.draw()
     ax_pos = ax.get_position()
-    # 雙格再瘦：同寬同高、貼價圖底，不准吃掉量圖
-    _box_w, _box_h, _pair_gap = 0.28, 0.048, 0.014
-    _pair_w = _box_w * 2 + _pair_gap
-    _x_fund = float(ax_pos.x0) + 0.01
+    _mid = ax_mid.get_position()
+    # 中帶內左右同寬同高瘦格（EPS／線段圖例）
+    _box_h = float(_mid.height) * 0.90
+    _box_w = float(_mid.width) * 0.485
+    _pair_gap = float(_mid.width) * 0.02
+    _box_y = float(_mid.y0) + float(_mid.height) * 0.05
+    _x_fund = float(_mid.x0)
     _x_leg = _x_fund + _box_w + _pair_gap
-    _box_y = float(ax_pos.y0) - _box_h - 0.004
     _ax_fund = fig.add_axes([_x_fund, _box_y, _box_w, _box_h])
     _ax_fund.set_xticks([])
     _ax_fund.set_yticks([])
@@ -1100,7 +1082,7 @@ def paint(
         fund,
         ha="left",
         va="center",
-        fontsize=6.2,
+        fontsize=6.4,
         fontproperties=prop,
         color="#1f2937",
         transform=_ax_fund.transAxes,
@@ -1120,7 +1102,7 @@ def paint(
             _labels,
             loc="center left",
             ncol=2,
-            fontsize=5.2,
+            fontsize=5.4,
             frameon=False,
             borderpad=0.1,
             labelspacing=0.22,
@@ -1132,8 +1114,7 @@ def paint(
     _y_name = 0.992
     _y_price = _y_name - _nh - _name_gap - _ph * 0.50
     _y_chg = _y_price - (_ph * 0.50 + _ch * 0.50 + _chg_pad)
-    # 左表頭兩行即可（日期／OHLC），不准再拉一條長橫說明
-    _lx = 0.07
+    _lx = float(ax_pos.x0)
     fig.text(
         _lx,
         _y_name,
