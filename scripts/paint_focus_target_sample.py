@@ -58,7 +58,9 @@ LABEL_RIGHT_EXTRA = 14
 LINE_END_PAD = 0.8
 # 壓帶上下緣：緊貼末根K右側（使用者紅框）；反彈／四浪高再往右兩欄，中間空位留給壓帶
 ZONE_NEAR_PAD = 3.0
-FIB_NEAR_PAD = 18.0  # 反彈欄起點：末根K→壓帶→空→反彈，肉眼分得清
+FIB_NEAR_PAD = 18.0  # 四浪高遠欄
+# 綠反彈／最底：貼近末根K右側（附圖紅框中近欄），不准跟四浪高擠最右
+REBOUND_NEAR_PAD = 6.0
 TAG_COL_GAP = 14.0
 NEAR_PRICE_FRAC = 0.022
 # 相容舊測試名
@@ -1001,8 +1003,9 @@ def paint(
 
     # 末根K旁不再寫收價；收／即時價改右上大字卡
 
-    # 右側價位角標：最底／反彈切割／四浪高（收價在表頭卡）
-    right_tags: List[Dict[str, Any]] = [
+    # 右側價標：四浪高仍遠欄；綠反彈＋最底改中近欄（附圖紅框）
+    _x_rebound = float(n - 1 + REBOUND_NEAR_PAD)
+    w4_tags: List[Dict[str, Any]] = [
         {
             "price": float(w4.price),
             "text": f"四浪高／{w4.price:.0f}",
@@ -1011,6 +1014,8 @@ def paint(
             "edge": "#f87171",
             "fontsize": 9.5,
         },
+    ]
+    green_tags: List[Dict[str, Any]] = [
         {
             "price": float(wave_lo),
             "text": f"最底／{wave_lo:.0f}",
@@ -1021,7 +1026,7 @@ def paint(
         },
     ]
     for ratio, px in fib_lvls:
-        right_tags.append(
+        green_tags.append(
             {
                 "price": float(px),
                 "text": f"反彈{ratio:g}／{px:.0f}",
@@ -1035,12 +1040,22 @@ def paint(
         ax,
         x_anchor=float(n - 1),
         x_text=_x_text,
-        tags=right_tags,
+        tags=w4_tags,
         y_lo=ylim_lo + _span_y * 0.06,
         y_hi=ylim_hi - _span_y * 0.08,
         prop=prop,
-        # 反彈只走兩欄（0/1），壓帶已單獨佔末根K旁紅框位
-        forbid_cols={2},
+        forbid_cols={1, 2},
+    )
+    _paint_right_price_tags(
+        ax,
+        x_anchor=float(n - 1),
+        x_text=_x_rebound,
+        tags=green_tags,
+        y_lo=ylim_lo + _span_y * 0.06,
+        y_hi=ylim_hi - _span_y * 0.08,
+        prop=prop,
+        # 單一中近欄，對齊附圖紅框直行
+        forbid_cols={1, 2},
     )
 
     step = max(1, n // 10)

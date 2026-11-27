@@ -63,6 +63,7 @@ def test_paint_wave4_layout_guards():
     assert "LINE_END_PAD" in src
     assert "ZONE_NEAR_PAD" in src
     assert "FIB_NEAR_PAD" in src
+    assert "REBOUND_NEAR_PAD" in src
     assert "TAG_COL_GAP" in tag_src or "TAG_COL_GAP" in inspect.getsource(m)
     assert "短截" in tag_src or "stub" in tag_src
     assert 'boxstyle="circle,pad=0.12"' in src
