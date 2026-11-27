@@ -1006,38 +1006,42 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
         sign = "＋" if dlt >= 0 else "－"
         chg_line = f"較昨日　{sign}{abs(dlt):.0f}（{sign}{abs(pct):.2f}%）"
 
-    # 右上一塊右對齊：股名／（縮圖K＋大價）／較昨日；用量測對齊，不准拆成歪兩欄
+    # 右上＝高低卡右欄比例：股名16／大價28／較昨日15.5；今K 3.2×5.6 味
     _hx = 0.972
-    _fs_name, _fs_price, _fs_chg = 15.0, 22.0, 11.0
+    _fs_name, _fs_price, _fs_chg, _fs_k = 16.0, 28.0, 15.5, 8.5
     _name_s = f"{sid}　{name}"
     _price_s = f"{close:.0f}"
     _chg_s = chg_line or "較昨日　—"
-    # 先丟字再量寬（figure 座標），縮圖K緊貼大價左側
-    _t_price = fig.text(
-        _hx,
-        0.5,
-        _price_s,
-        ha="right",
-        va="center",
-        fontsize=_fs_price,
-        fontweight="bold",
-        fontproperties=prop,
-        alpha=0.0,
-    )
-    fig.canvas.draw()
-    _rend = fig.canvas.get_renderer()
-    _inv = fig.transFigure.inverted()
-    _bb = _t_price.get_window_extent(renderer=_rend)
-    _p0 = _inv.transform((_bb.x0, _bb.y0))
-    _p1 = _inv.transform((_bb.x1, _bb.y1))
-    _pw = float(_p1[0] - _p0[0])
-    _ph = float(_p1[1] - _p0[1])
-    _t_price.remove()
 
-    # 三行貼齊：較昨日頂幾乎貼大價下緣（只留字距）
-    _y_name = 0.968
-    _y_price = 0.926
-    _y_chg = _y_price - _ph * 0.48
+    def _fig_extent(txt: str, fs: float):
+        t = fig.text(
+            0.5,
+            0.5,
+            txt,
+            ha="right",
+            va="center",
+            fontsize=fs,
+            fontweight="bold",
+            fontproperties=prop,
+            alpha=0.0,
+        )
+        fig.canvas.draw()
+        bb = t.get_window_extent(renderer=fig.canvas.get_renderer())
+        inv = fig.transFigure.inverted()
+        p0 = inv.transform((bb.x0, bb.y0))
+        p1 = inv.transform((bb.x1, bb.y1))
+        t.remove()
+        return float(p1[0] - p0[0]), float(p1[1] - p0[1])
+
+    _nw, _nh = _fig_extent(_name_s, _fs_name)
+    _pw, _ph = _fig_extent(_price_s, _fs_price)
+    _cw, _ch = _fig_extent(_chg_s, _fs_chg)
+    del _nw, _cw  # 寬只用於大價對齊縮圖
+
+    # 垂直節奏（對齊高低卡 close@0.70／chg@0.24）：名→價小空、價→較昨日約 0.46 格
+    _y_name = 0.975
+    _y_price = _y_name - _nh - 0.008 - _ph * 0.50
+    _y_chg = _y_price - max(_ph, _ch) * 0.72
     fig.text(
         _hx,
         _y_name,
@@ -1067,18 +1071,31 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
         _y_chg,
         _chg_s,
         ha="right",
-        va="top",
+        va="center",
         fontsize=_fs_chg,
         fontweight="bold",
         fontproperties=prop,
         color=chg_c,
         zorder=21,
     )
-    # 縮圖K：高≈大價字高，寬≈高×0.42；右緣貼大價左緣（間距固定）
-    _k_h = max(0.032, min(0.042, _ph * 1.05))
-    _k_w = _k_h * 0.42
-    _k_x = _hx - _pw - 0.006 - _k_w
+    # 縮圖K：高≈大價 0.62、寬高比 3.2:5.6；左標「今K」8.5
+    _k_h = max(0.028, min(0.048, _ph * 0.62))
+    _k_w = _k_h * (3.2 / 5.6)
+    _gap = 0.004
+    _k_x = _hx - _pw - _gap - _k_w
     _k_y = _y_price - _k_h * 0.5
+    fig.text(
+        _k_x - _gap,
+        _y_price,
+        "今K",
+        ha="right",
+        va="center",
+        fontsize=_fs_k,
+        fontweight="bold",
+        fontproperties=prop,
+        color="#64748b",
+        zorder=21,
+    )
     ax_k = fig.add_axes([_k_x, _k_y, _k_w, _k_h])
     ax_k.set_axis_off()
     ax_k.patch.set_alpha(0.0)
@@ -1089,25 +1106,25 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
         _kcol = "#e53935" if _c >= float(prev_close) else "#00897b"
 
     def _ky(p: float) -> float:
-        return 0.10 + (float(p) - _l) / _rng * 0.80
+        return 0.08 + (float(p) - _l) / _rng * 0.84
 
     ax_k.plot(
         [0.5, 0.5],
         [_ky(_l), _ky(_h)],
         color=_kcol,
-        lw=1.2,
+        lw=1.6,
         solid_capstyle="round",
         zorder=2,
     )
     _blo, _bhi = _ky(min(_o, _c)), _ky(max(_o, _c))
     ax_k.add_patch(
         Rectangle(
-            (0.38, _blo),
-            0.24,
+            (0.19, _blo),
+            0.62,
             max(_bhi - _blo, 0.04),
             facecolor=_kcol,
             edgecolor=_kcol,
-            lw=0.25,
+            lw=0.35,
             zorder=3,
         )
     )
