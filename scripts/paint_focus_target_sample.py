@@ -50,8 +50,10 @@ def drop_measure_points(y_hi: float, y_lo: float) -> Optional[float]:
 ROOT = Path(__file__).resolve().parents[1]
 DB = ROOT / "data" / "wayne_market.db"
 # 固定右錨滾動窗；右側再留 FUTURE_PAD 根空位（明天起時間往右長）
+# LABEL_RIGHT_EXTRA＝價標專用再加寬，字貼最右，不准貼末根K
 WIN = 130
 FUTURE_PAD = 18
+LABEL_RIGHT_EXTRA = 22
 
 
 def _cjk_prop():
@@ -662,8 +664,8 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
     )
     ax.set_ylabel("價（元）", fontproperties=prop)
     axv.set_ylabel("成交量（張）", fontproperties=prop)
-    # 右留空：明天起往右長；左＝滾動掉舊根；右緣還要給錯開角標
-    ax.set_xlim(-1.2, n - 1 + FUTURE_PAD + 10)
+    # 右留空：明天＋價標專用加寬；左＝滾動掉舊根
+    ax.set_xlim(-1.2, n - 1 + FUTURE_PAD + LABEL_RIGHT_EXTRA)
     # 上方多留一點給轉折標，避免貼齊表頭
     y_hi = max(highs + [w4.price, float(zone["high"]) if zone else 0])
     y_lo = min(lows)
@@ -712,11 +714,12 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
                 },
             ]
         )
-    # 字貼右留白盡頭（FUTURE_PAD 右側），細線連回末根；不准貼K旁
+    # 字貼圖面最右側空白帶，細線連回末根；不准貼K旁
+    _x_right = float(n - 1 + FUTURE_PAD + LABEL_RIGHT_EXTRA - 2.5)
     _paint_right_price_tags(
         ax,
         x_anchor=float(n - 1),
-        x_text=float(n - 1 + FUTURE_PAD + 1.5),
+        x_text=_x_right,
         tags=right_tags,
         y_lo=ylim_lo + (ylim_hi - ylim_lo) * 0.04,
         y_hi=ylim_hi - (ylim_hi - ylim_lo) * 0.06,

@@ -28,7 +28,7 @@ def test_paint_wave4_layout_guards():
     from scripts import paint_focus_target_sample as m
 
     src = inspect.getsource(m.paint)
-    assert "FUTURE_PAD + 1.5" in src  # 右標貼右留白盡頭
+    assert "LABEL_RIGHT_EXTRA" in src  # 右標專用加寬、貼最右
     assert 'boxstyle="circle,pad=0.28"' in src
     assert "transform=axv.transAxes" in src
     assert "1.12" in src
