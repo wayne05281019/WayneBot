@@ -302,6 +302,9 @@ def test_intervene_page_ten_and_live_room():
     page_html = format_wave4_page_html(payload, rows, page=0, pages=2, live=True)
     assert "實質十檔" in page_html
     assert "現價" in page_html
+    assert "次級四浪圖" in page_html
+    assert "不是結構圖" in page_html
+    assert "結構圖接著送" not in page_html
     live = apply_live_close(rows[0], 110.0)
     assert live["live_px"] is True
     assert abs(live["room_to_w4_pct"] - (120 - 110) / 110 * 100) < 0.05
