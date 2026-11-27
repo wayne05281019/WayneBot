@@ -261,6 +261,11 @@ def test_wave4_send_page_list_first_then_wave4_not_struct():
     assert "不是結構圖" in src
     assert "頁結構圖" not in src
     assert "這頁次級四浪圖沒送出" in src
+    assert "重試一次" in src
+    assert "兩次都畫不出" in src
+    one_src = inspect.getsource(WayneTelegramBot._wave4_send_one)
+    assert "正在重試一次" in one_src
+    assert "兩次都沒送出" in one_src
 
 
 def test_guangsheng_horizon_sid_is_6442_not_1815():
