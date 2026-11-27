@@ -54,13 +54,16 @@ DB = ROOT / "data" / "wayne_market.db"
 # LINE_END_PAD＝水平線停在末根K旁（標籤接在線外）
 WIN = 130
 FUTURE_PAD = 8
-LABEL_RIGHT_EXTRA = 13  # 第三欄字寬；右緣貼齊，不准大片空白
+LABEL_RIGHT_EXTRA = 14
 LINE_END_PAD = 0.8
-TAG_NEAR_PAD = 0.9  # 末根K → 左欄（貼緊）
-TAG_COL_GAP = 12.5  # 左／中／右均勻吃滿末根K→右緣空位
-NEAR_PRICE_FRAC = 0.022  # 2449：201／199 也要進同簇錯開
-# 壓帶上下緣：掛在末根K與右標「中間欄」＝使用者紅框位
-ZONE_TAG_COL = 1
+# 壓帶上下緣：緊貼末根K右側（使用者紅框）；反彈／四浪高再往右兩欄，中間空位留給壓帶
+ZONE_NEAR_PAD = 3.0
+FIB_NEAR_PAD = 18.0  # 反彈欄起點：末根K→壓帶→空→反彈，肉眼分得清
+TAG_COL_GAP = 14.0
+NEAR_PRICE_FRAC = 0.022
+# 相容舊測試名
+TAG_NEAR_PAD = FIB_NEAR_PAD
+ZONE_TAG_COL = 0  # 壓帶單獨座標系，不用與反彈共欄
 # 五波最底往上反彈參考（觀察非買訊）；對齊本庫／林口播常用回撤率
 REBOUND_FIB_RATIOS = (0.382, 0.5, 0.618)
 
@@ -817,60 +820,61 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
     ax.set_ylabel("價（元）", fontproperties=prop)
     axv.set_ylabel("成交量（張）", fontproperties=prop)
 
-    # 價標幾何：末根K旁起左中右三欄，吃滿空位（中欄＝壓帶紅框位）
-    _x_text = float(n - 1 + TAG_NEAR_PAD)
-    _x_zone = _x_text + TAG_COL_GAP * float(ZONE_TAG_COL)
-    _xlim_right = _x_text + TAG_COL_GAP * 2.0 + float(LABEL_RIGHT_EXTRA)
+    # 幾何：末根K → 壓帶紅框（近）→ 空 → 反彈／四浪高兩欄（遠）
+    _x_zone = float(n - 1 + ZONE_NEAR_PAD)
+    _x_text = float(n - 1 + FIB_NEAR_PAD)
+    _xlim_right = _x_text + TAG_COL_GAP * 1.0 + float(LABEL_RIGHT_EXTRA)
     ax.set_xlim(_x_left, _xlim_right)
-    # 壓帶／切割水平線延伸到標籤區，中間空位才畫得上紅框位標籤
     if zone:
         _zlo, _zhi = float(zone["low"]), float(zone["high"])
+        # 灰帶延伸過紅框位，線停在壓帶標旁
         ax.fill_between(
-            [_x_line_end, _xlim_right - 0.5],
+            [_x_line_end, min(_x_zone + 11.0, _x_text - 1.0)],
             _zlo,
             _zhi,
             facecolor="#cbd5e1",
-            alpha=0.28,
+            alpha=0.32,
             zorder=1,
         )
         ax.hlines(
             _zhi,
             _x_line_end,
-            _x_zone + 0.5,
+            _x_zone + 0.3,
             color="#475569",
             ls="-",
-            lw=1.2,
-            alpha=0.9,
+            lw=1.25,
+            alpha=0.92,
             zorder=5,
         )
         ax.hlines(
             _zlo,
             _x_line_end,
-            _x_zone + 0.5,
+            _x_zone + 0.3,
             color="#475569",
             ls="-",
-            lw=1.2,
-            alpha=0.9,
+            lw=1.25,
+            alpha=0.92,
             zorder=5,
         )
-        # 壓上緣／壓下緣 → 中間欄（使用者紅框）
+        # 壓上緣／壓下緣 → 末根K右側紅框位（與反彈欄明顯分開）
         ax.text(
             _x_zone,
             _zhi,
             f"壓上緣 {_zhi:.0f}",
             ha="left",
             va="bottom",
-            fontsize=8.2,
+            fontsize=8.4,
             fontweight="bold",
             fontproperties=prop,
             color="#1e293b",
             zorder=15,
             clip_on=False,
             bbox=dict(
-                boxstyle="round,pad=0.18",
+                boxstyle="round,pad=0.2",
                 facecolor="#f8fafc",
-                edgecolor="#64748b",
-                alpha=0.97,
+                edgecolor="#475569",
+                linewidth=1.1,
+                alpha=0.98,
             ),
         )
         ax.text(
@@ -879,17 +883,18 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
             f"壓下緣 {_zlo:.0f}",
             ha="left",
             va="top",
-            fontsize=8.2,
+            fontsize=8.4,
             fontweight="bold",
             fontproperties=prop,
             color="#1e293b",
             zorder=15,
             clip_on=False,
             bbox=dict(
-                boxstyle="round,pad=0.18",
+                boxstyle="round,pad=0.2",
                 facecolor="#f8fafc",
-                edgecolor="#64748b",
-                alpha=0.97,
+                edgecolor="#475569",
+                linewidth=1.1,
+                alpha=0.98,
             ),
         )
 
@@ -953,8 +958,8 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
         y_lo=ylim_lo + _span_y * 0.06,
         y_hi=ylim_hi - _span_y * 0.08,
         prop=prop,
-        # 有壓帶：中欄留給壓上緣／壓下緣紅框位
-        forbid_cols={ZONE_TAG_COL} if zone else None,
+        # 反彈只走兩欄（0/1），壓帶已單獨佔末根K旁紅框位
+        forbid_cols={2},
     )
 
     step = max(1, n // 10)

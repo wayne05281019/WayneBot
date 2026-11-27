@@ -40,7 +40,8 @@ def test_paint_wave4_layout_guards():
     tag_src = inspect.getsource(m._paint_right_price_tags)
     assert "LABEL_RIGHT_EXTRA" in src
     assert "LINE_END_PAD" in src
-    assert "TAG_NEAR_PAD" in src
+    assert "ZONE_NEAR_PAD" in src
+    assert "FIB_NEAR_PAD" in src
     assert "TAG_COL_GAP" in tag_src or "TAG_COL_GAP" in inspect.getsource(m)
     assert "短截" in tag_src or "stub" in tag_src
     assert 'boxstyle="circle,pad=0.12"' in src
@@ -53,16 +54,17 @@ def test_paint_wave4_layout_guards():
     # 水平線；壓帶上下緣掛中欄紅框位；浪圈貼近頂底
     assert "hlines" in src
     assert "壓上緣" in src
-    assert "ZONE_TAG_COL" in src
+    assert "ZONE_NEAR_PAD" in src
+    assert "FIB_NEAR_PAD" in src
     assert "(0, 7)" in src
-    # right_tags 不准塞壓上緣／壓下緣／收（收貼末根K；壓帶走中欄）
+    # right_tags 不准塞壓上緣／壓下緣／收（收貼末根K；壓帶紅框位單獨）
     right_block = src[src.find("right_tags"):]
     right_block = right_block[: right_block.find("_paint_right_price_tags")]
     assert "壓上緣" not in right_block
     assert "壓下緣" not in right_block
     assert 'f"收 {close:.0f}"' not in right_block
     assert 'xy=(float(n - 1), float(close))' in src
-    assert "forbid_cols" in src
+    assert "ZONE_NEAR_PAD" in src
 
 
 def test_rev_yi_thousand_to_yi():
