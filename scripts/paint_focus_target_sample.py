@@ -619,18 +619,8 @@ def paint(
     fib_lvls = rebound_fib_from_wave_bottom(wave_hi, wave_lo)
     j_bottom = vi(pts[-1].i)
     if fib_lvls:
-        top618 = max(p for _, p in fib_lvls)
-        if top618 > wave_lo:
-            ax.fill_between(
-                [_x_left, _x_line_end],
-                wave_lo,
-                top618,
-                facecolor="#bbf7d0",
-                alpha=0.14,
-                zorder=0.8,
-                label="淺綠＝反彈參考帶（至0.618）",
-            )
-        for _ratio, px in fib_lvls:
+        # 反彈只留綠虛線＋右側標；不准再從最底塗到0.618大面積淺綠底（蓋住K）
+        for _fi, (_ratio, px) in enumerate(fib_lvls):
             ax.hlines(
                 px,
                 _x_left,
@@ -640,6 +630,7 @@ def paint(
                 lw=1.05,
                 alpha=0.75,
                 zorder=4,
+                label=("綠虛線＝反彈參考（0.382／0.5／0.618）" if _fi == 0 else None),
             )
         if 0 <= j_bottom < n:
             ax.plot(
@@ -858,26 +849,26 @@ def paint(
             zorder=9,
             clip_on=False,
         )
-    # 量圖上方只留今日量（來源日張數已寫在琥珀柱頂）
+    # 今日量寫在量圖內右上，不准再掛到中帶去壓基本面格
     axv.text(
-        0.0,
-        1.16,
-        f"今日 {vol:.0f} 張" + ("　｜　黃柱＝壓力來源日" if zone_i is not None else ""),
+        0.995,
+        0.96,
+        f"今日 {vol:.0f} 張" + ("｜黃柱＝壓力來源日" if zone_i is not None else ""),
         transform=axv.transAxes,
-        ha="left",
-        va="bottom",
+        ha="right",
+        va="top",
         color="#374151",
-        fontsize=7.6,
+        fontsize=7.4,
         fontweight="bold",
         fontproperties=prop,
         bbox=dict(
-            boxstyle="round,pad=0.2",
+            boxstyle="round,pad=0.18",
             facecolor="#fffbeb",
             edgecolor="#fbbf24",
             alpha=0.96,
         ),
         zorder=8,
-        clip_on=False,
+        clip_on=True,
     )
 
     eps_bits = [f"Q{s} {singles[s]:.2f}" for s in (1, 2, 3) if s in singles]

@@ -108,6 +108,8 @@ def test_paint_wave4_layout_guards():
     assert "距四浪高還有" not in src  # 已併進四浪高標，不准另掛漂浮盒
     assert "反彈{ratio:g}／" in src
     assert "基本面盒改中帶左格" in src
+    assert '"#bbf7d0"' not in src  # 不准大面積淺綠底蓋住K
+    assert "1.16" not in src  # 今日量不准掛中帶壓基本面
     assert '"#ffeb3b"' in src
     assert "張" in src[src.find("壓力來源日量柱") :]
 
