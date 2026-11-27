@@ -582,7 +582,7 @@ def format_wave4_page_html(
         f"<b>次級四浪・實質十檔</b>",
         f"{head}｜第{int(page)+1}/{int(pages)}頁",
         "觀察非買訊。有實質獲利且最優。",
-        "本頁附結構圖相簿。",
+        "結構圖接著送。",
         "被動元件搶反彈不進這頁。",
         "盤中距離＝現價。" if live else "距離＝母體收盤臉。",
         f"實質可翻共{payload.get('n_intervene') or 0}檔。",
@@ -719,20 +719,35 @@ def paint_wave4_chart(
     out_dir: Path | str,
     tag: str = "",
 ) -> Optional[Path]:
-    """渲一張次級四浪結構樣張；失敗回 None（不准假圖）。"""
+    """渲一張次級四浪結構樣張；失敗回 None（不准假圖）。
+
+    必須走 wayne_navigator.run_mpl_paint（全站單一 paint worker），
+    不准自開 ThreadPool 並行踩 matplotlib／FreeType。
+    """
     sid = str(stock_id or "").strip()
     if not sid:
         return None
-    try:
-        from scripts.paint_focus_target_sample import paint
-    except Exception:
-        return None
     out = Path(out_dir) / f"wave4_{sid}_{tag or 'x'}.png"
-    try:
+    out.parent.mkdir(parents=True, exist_ok=True)
+
+    def _do() -> Optional[Path]:
+        from scripts.paint_focus_target_sample import paint
+
         paint(sid, out, db_path=Path(db_path))
-    except Exception:
+        if out.is_file() and out.stat().st_size > 12_000:
+            return out
         return None
-    return out if out.is_file() and out.stat().st_size > 100 else None
+
+    try:
+        from wayne_navigator import run_mpl_paint
+
+        return run_mpl_paint(_do)
+    except Exception:
+        try:
+            # 備援：已在 paint worker 內或匯入失敗時仍試一次同步
+            return _do()
+        except Exception:
+            return None
 
 
 def paint_wave4_page_charts(
@@ -743,13 +758,12 @@ def paint_wave4_page_charts(
     page: int = 0,
     max_workers: int = CHART_PAINT_WORKERS,
 ) -> List[Dict[str, str]]:
-    """實質十檔附圖：依序／小並行出圖；缺圖略過。回 [{sid,name,path,caption}, ...]。"""
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-
+    """實質十檔附圖：逐檔走單一 mpl worker；缺圖略過。回 [{sid,name,path,caption}, ...]。"""
+    _ = max_workers  # 保留參數相容；不准再平行踩圖
     out_dir_p = Path(out_dir)
     out_dir_p.mkdir(parents=True, exist_ok=True)
     tag = f"p{int(page)}"
-    jobs = []
+    out: List[Dict[str, str]] = []
     for r in rows or []:
         sid = str(r.get("stock_id") or "").strip()
         if not sid:
@@ -758,26 +772,7 @@ def paint_wave4_page_charts(
         room = float(r.get("room_to_w4_pct") or 0)
         live = "・現" if r.get("live_px") else ""
         cap = f"{sid} {name} 距{room:.0f}%{live}（觀察非買訊）"
-        jobs.append((sid, name, cap))
-
-    def _one(sid: str) -> Optional[Path]:
-        return paint_wave4_chart(sid, db_path=db_path, out_dir=out_dir_p, tag=tag)
-
-    paths: Dict[str, Path] = {}
-    workers = max(1, min(int(max_workers), len(jobs) or 1))
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        futs = {pool.submit(_one, sid): sid for sid, _n, _c in jobs}
-        for fut in as_completed(futs):
-            sid = futs[fut]
-            try:
-                p = fut.result()
-            except Exception:
-                p = None
-            if p is not None:
-                paths[sid] = p
-    out: List[Dict[str, str]] = []
-    for sid, name, cap in jobs:
-        p = paths.get(sid)
+        p = paint_wave4_chart(sid, db_path=db_path, out_dir=out_dir_p, tag=tag)
         if not p:
             continue
         out.append(
