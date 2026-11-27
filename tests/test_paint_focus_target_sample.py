@@ -96,6 +96,8 @@ def test_paint_wave4_layout_guards():
     assert "wave24_descend_line" in src
     assert "WAVE24_LINE_COLOR" in src
     assert "set_dashes" in src
+    assert "fig.legend" in src
+    assert "0.62" in src  # 圖例落價量夾縫右中
     assert '"#ffeb3b"' in src
     assert "張" in src[src.find("壓力來源日量柱") :]
 

@@ -913,14 +913,7 @@ def paint(
         f"滾動近{WIN}根（新日進、左邊掉；右留空給價標）"
     )
     ax.set_title("")  # 股名價改 figure 右上，不准再置中標題搶位
-    ax.legend(
-        loc="upper left",
-        fontsize=6.8,
-        framealpha=0.92,
-        ncol=2,
-        bbox_to_anchor=(0.01, 0.99),
-        borderpad=0.35,
-    )
+    # 圖例改放到價／量夾縫（附圖紅框），不准壓左上日K
     ax.set_ylabel("價（元）", fontproperties=prop)
     axv.set_ylabel("成交量（張）", fontproperties=prop)
 
@@ -1081,9 +1074,27 @@ def paint(
     # 依字級估表頭帶高 → 抬主圖；右塊自頂往下排
     _band = _nh + _name_gap + _ph + _chg_pad + _ch + 0.018
     _top = max(0.88, min(0.93, 1.0 - _band))
-    fig.subplots_adjust(top=_top, hspace=0.26)
+    # 價量夾縫加寬，圖例落紅框帶（右中）
+    fig.subplots_adjust(top=_top, hspace=0.38)
     fig.canvas.draw()
     ax_pos = ax.get_position()
+    axv_pos = axv.get_position()
+    _handles, _labels = ax.get_legend_handles_labels()
+    if _handles:
+        _gap_y = (float(ax_pos.y0) + float(axv_pos.y1)) * 0.5
+        fig.legend(
+            _handles,
+            _labels,
+            loc="center",
+            bbox_to_anchor=(0.62, _gap_y),
+            ncol=2,
+            fontsize=6.6,
+            framealpha=0.95,
+            borderpad=0.4,
+            prop=prop,
+            fancybox=True,
+            edgecolor="#94a3b8",
+        )
 
     _y_name = 0.992
     _y_price = _y_name - _nh - _name_gap - _ph * 0.50
