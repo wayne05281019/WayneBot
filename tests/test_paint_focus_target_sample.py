@@ -65,11 +65,11 @@ def test_paint_wave4_layout_guards():
     assert 'f"收 {close:.0f}"' not in right_block
     assert "末根K旁不再寫收價" in src
     assert "ZONE_NEAR_PAD" in src
-    # 右上浮字（無白底）＋細長今K跟大價同高＋較昨日；壓力來源黃柱標張數
+    # 右上一塊右對齊＋縮圖K貼大價左側；壓力來源黃柱標張數
     assert "FancyBboxPatch" not in src
     assert "較昨日" in src
-    assert "細長" in src or "0.32" in src
-    assert "fontsize=24.0" in src or "fontsize=24" in src
+    assert "get_window_extent" in src
+    assert "_fs_price" in src
     assert '"#ffeb3b"' in src
     assert "張" in src[src.find("壓力來源日量柱") :]
 

@@ -1006,38 +1006,77 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
         sign = "＋" if dlt >= 0 else "－"
         chg_line = f"較昨日　{sign}{abs(dlt):.0f}（{sign}{abs(pct):.2f}%）"
 
-    # 排版（figure）：股名 → 今K＋大價同列 → 較昨日；行距拉開不准互壓
-    _hx = 0.975
-    _y_name, _y_price, _y_chg = 0.972, 0.928, 0.878
+    # 右上一塊右對齊：股名／（縮圖K＋大價）／較昨日；用量測對齊，不准拆成歪兩欄
+    _hx = 0.972
+    _fs_name, _fs_price, _fs_chg = 15.0, 22.0, 11.0
+    _name_s = f"{sid}　{name}"
+    _price_s = f"{close:.0f}"
+    _chg_s = chg_line or "較昨日　—"
+    # 先丟字再量寬（figure 座標），縮圖K緊貼大價左側
+    _t_price = fig.text(
+        _hx,
+        0.5,
+        _price_s,
+        ha="right",
+        va="center",
+        fontsize=_fs_price,
+        fontweight="bold",
+        fontproperties=prop,
+        alpha=0.0,
+    )
+    fig.canvas.draw()
+    _rend = fig.canvas.get_renderer()
+    _inv = fig.transFigure.inverted()
+    _bb = _t_price.get_window_extent(renderer=_rend)
+    _p0 = _inv.transform((_bb.x0, _bb.y0))
+    _p1 = _inv.transform((_bb.x1, _bb.y1))
+    _pw = float(_p1[0] - _p0[0])
+    _ph = float(_p1[1] - _p0[1])
+    _t_price.remove()
+
+    _y_name = 0.968
+    _y_price = 0.922
+    _y_chg = 0.878
     fig.text(
         _hx,
         _y_name,
-        f"{sid}　{name}",
+        _name_s,
         ha="right",
         va="top",
-        fontsize=15.5,
+        fontsize=_fs_name,
         fontweight="bold",
         fontproperties=prop,
         color="#0f172a",
         zorder=21,
     )
-    _price_s = f"{close:.0f}"
     fig.text(
         _hx,
         _y_price,
         _price_s,
         ha="right",
         va="center",
-        fontsize=24.0,
+        fontsize=_fs_price,
         fontweight="bold",
         fontproperties=prop,
         color=chg_c,
         zorder=21,
     )
-    # 今K：細長（寬:高≈1:2.4），跟大價垂直置中；左側留「今K」字
-    _pw = max(0.048, 0.010 * len(_price_s) + 0.018)
-    _k_w, _k_h = 0.020, 0.048
-    _k_x = _hx - _pw - _k_w - 0.018
+    fig.text(
+        _hx,
+        _y_chg,
+        _chg_s,
+        ha="right",
+        va="top",
+        fontsize=_fs_chg,
+        fontweight="bold",
+        fontproperties=prop,
+        color=chg_c,
+        zorder=21,
+    )
+    # 縮圖K：高≈大價字高，寬≈高×0.42；右緣貼大價左緣（間距固定）
+    _k_h = max(0.032, min(0.042, _ph * 1.05))
+    _k_w = _k_h * 0.42
+    _k_x = _hx - _pw - 0.006 - _k_w
     _k_y = _y_price - _k_h * 0.5
     ax_k = fig.add_axes([_k_x, _k_y, _k_w, _k_h])
     ax_k.set_axis_off()
@@ -1049,54 +1088,30 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
         _kcol = "#e53935" if _c >= float(prev_close) else "#00897b"
 
     def _ky(p: float) -> float:
-        return 0.08 + (float(p) - _l) / _rng * 0.84
+        return 0.10 + (float(p) - _l) / _rng * 0.80
 
     ax_k.plot(
         [0.5, 0.5],
         [_ky(_l), _ky(_h)],
         color=_kcol,
-        lw=1.35,
+        lw=1.2,
         solid_capstyle="round",
         zorder=2,
     )
     _blo, _bhi = _ky(min(_o, _c)), _ky(max(_o, _c))
     ax_k.add_patch(
         Rectangle(
-            (0.36, _blo),
-            0.28,
-            max(_bhi - _blo, 0.045),
+            (0.38, _blo),
+            0.24,
+            max(_bhi - _blo, 0.04),
             facecolor=_kcol,
             edgecolor=_kcol,
-            lw=0.3,
+            lw=0.25,
             zorder=3,
         )
     )
     ax_k.set_xlim(0, 1)
     ax_k.set_ylim(0, 1)
-    fig.text(
-        _k_x - 0.006,
-        _y_price,
-        "今K",
-        ha="right",
-        va="center",
-        fontsize=8.5,
-        fontweight="bold",
-        fontproperties=prop,
-        color="#64748b",
-        zorder=21,
-    )
-    fig.text(
-        _hx,
-        _y_chg,
-        chg_line or "較昨日　—",
-        ha="right",
-        va="top",
-        fontsize=11.0,
-        fontweight="bold",
-        fontproperties=prop,
-        color=chg_c,
-        zorder=21,
-    )
     out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out, dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
     plt.close()
