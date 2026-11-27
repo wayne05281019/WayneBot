@@ -9278,6 +9278,12 @@ class WayneTelegramBot:
                 )
                 return
             await self._stop_plain_wait(*wait_h)
+            # 有名單無圖：缺檔先寫進主文；有檔但 Telegram 拒收另補第二則
+            if live_rows and not charts:
+                html = (
+                    f"{html or ''}\n\n"
+                    "（這頁結構圖這次沒出，稍後再按或改打單檔。）"
+                )
             await message.reply_html(
                 html or "目前組不出實質十檔。觀察非買訊。",
                 reply_markup=self._wave4_page_keyboard(
@@ -9285,7 +9291,6 @@ class WayneTelegramBot:
                 ),
                 disable_web_page_preview=True,
             )
-            # 附結構圖（最多10張）；失敗要講，不准假裝有圖
             chart_ok = False
             if charts:
                 cap = (
@@ -9295,13 +9300,13 @@ class WayneTelegramBot:
                 chart_ok = await self._wave4_send_media_group(
                     message, charts, caption0=cap
                 )
-            if live_rows and not chart_ok:
+            if live_rows and charts and not chart_ok:
                 try:
                     await message.reply_text(
                         "這頁結構圖沒送出，稍後再按下一頁或改打單檔。"
                     )
                 except Exception:
-                    pass
+                    logger.exception("次級四浪十檔結構圖失敗提示也沒送出")
             delivered = True
         finally:
             if not delivered:
@@ -9396,11 +9401,18 @@ class WayneTelegramBot:
                     [InlineKeyboardButton("回選單", callback_data="w4:hub")],
                 ]
             )
+            # 有文無圖：缺檔先寫進主文（第二則提示若失敗仍看得到）；不准沉默
+            chart_file_ok = bool(chart_path and os.path.isfile(chart_path))
+            if ok and not chart_file_ok:
+                html = (
+                    f"{html}\n\n"
+                    f"（{stock_id} 結構圖這次沒出，稍後再打一次代號。）"
+                )
             await message.reply_html(
                 html, reply_markup=kb, disable_web_page_preview=True
             )
             chart_ok = False
-            if chart_path and os.path.isfile(chart_path):
+            if chart_file_ok:
                 chart_ok = await self._wave4_send_media_group(
                     message,
                     [
@@ -9411,13 +9423,16 @@ class WayneTelegramBot:
                     ],
                     caption0=f"{stock_id} 次級四浪結構（觀察非買訊）",
                 )
-            if ok and not chart_ok:
+            # 有檔但 Telegram 拒收：主文已出，另補一句；失敗要記 log
+            if ok and chart_file_ok and not chart_ok:
                 try:
                     await message.reply_text(
                         f"{stock_id} 結構圖沒送出，稍後再打一次代號。"
                     )
                 except Exception:
-                    pass
+                    logger.exception(
+                        "次級四浪結構圖失敗提示也沒送出 sid=%s", stock_id
+                    )
             delivered = True
         finally:
             if not delivered:
