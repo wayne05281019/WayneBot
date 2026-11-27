@@ -1,0 +1,128 @@
+{
+  "as_of_taipei": "2026-11-27T11:00:00+08:00",
+  "title_zh": "量價觀察方式（回測用）＝量波動 × 相對股價位置 × 後續漲幅",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "not_buy_signal": true,
+  "forbid_zh": [
+    "禁止亂講「一年級」；原文＝將近一年的巨量級距",
+    "不准當 leave_zero／話筒買訊",
+    "產業勝率不准混",
+    "暫定龍面板未點名校準前只觀察、不升話筒"
+  ],
+  "observe_steps_zh": [
+    "1. 相對股價位置：距近60低％、距近120高回撤％ → 低位／中段／高位",
+    "2. 量級距：近窗量是否達「近一年前巨量」可算近似（年窗 max×0.70 與 p92）",
+    "3. 量相：quiet／low_explode／sediment／high_explode",
+    "4. 時間：爆後1～2周有無量縮沉澱、破不破爆量日低",
+    "5. 產業：同業龍≥2同相才 vane_on；單檔＝anchor_active",
+    "6. 對漲幅：事件後5／10／20日報酬、相對加權RS、窗內最大回撤"
+  ],
+  "industries_for_backtest": [
+    {
+      "industry": "台積電／先進製程錨",
+      "role": "market_anchor",
+      "leaders": ["2330"],
+      "source": "他多次用量價沉澱談大盤最差劇本",
+      "vane_rule": "永不併產業 vane 票；只記 anchor"
+    },
+    {
+      "industry": "PCB",
+      "role": "taught+oral",
+      "leaders": ["2383", "2368", "6274"],
+      "peers_pool": "TAUGHT_GROUPS.PCB",
+      "source": "台光電＝底部連續近一年前巨量樣板；taught PCB",
+      "note_zh": "主龍2383；金像／台燿作同業對照"
+    },
+    {
+      "industry": "ABF",
+      "role": "taught+contrast",
+      "leaders": ["3037", "8046", "3189"],
+      "peers_pool": "TAUGHT_GROUPS.ABF",
+      "source": "要等爆量長紅；下跌再爆量可能下殺取量",
+      "note_zh": "反例／對照軌，勝率不與PCB混"
+    },
+    {
+      "industry": "CPo／光通訊",
+      "role": "taught+oral",
+      "leaders": ["6442", "2345", "3081"],
+      "peers_pool": "TAUGHT_GROUPS.光通訊",
+      "source": "光聖／智邦／聯亞；底部出量等量縮",
+      "note_zh": "CPo 先掛光通訊龍；若要再拆純CPo子組另開，不與ABF混"
+    },
+    {
+      "industry": "ASIC",
+      "role": "taught+oral",
+      "leaders": ["3443", "3661", "3035"],
+      "peers_pool": "TAUGHT_GROUPS.ASIC",
+      "source": "創意風向球；世芯／智原 taught"
+    },
+    {
+      "industry": "GPU供應鏈（暫定）",
+      "role": "provisional",
+      "leaders": ["6669", "2382", "3231"],
+      "source": "用戶指定回測域；他未單獨定GPU組→暫定伺服器／組裝龍頭",
+      "note_zh": "緯穎／廣達／緯創＝流動代理解；待點名再換。分軌 provisional"
+    },
+    {
+      "industry": "CPU／應用處理器（暫定）",
+      "role": "provisional",
+      "leaders": ["2454", "2379"],
+      "source": "用戶指定；台股無x86 CPU龍→用聯發科／瑞昱作IC設計大龍對照",
+      "note_zh": "與ASIC分軌；不准把創意算進CPU"
+    },
+    {
+      "industry": "低軌衛星",
+      "role": "taught",
+      "leaders": ["3491", "3105", "6285"],
+      "peers_pool": "TAUGHT_GROUPS.低軌衛星",
+      "source": "taught：昇達科／穩懋／啟碁"
+    },
+    {
+      "industry": "散熱",
+      "role": "taught+oral",
+      "leaders": ["3017", "2059", "3653"],
+      "peers_pool": "TAUGHT_GROUPS.散熱+川湖",
+      "source": "奇鋐／川湖／健策風向球；底部爆量"
+    },
+    {
+      "industry": "被動元件",
+      "role": "taught+rebound_contrast",
+      "leaders": ["2327"],
+      "peers_pool": "TAUGHT_GROUPS.被動元件",
+      "source": "搶反彈短衝臉，不當長線實質臉",
+      "note_zh": "單檔無法 vane≥2；只做個股量×位置×漲幅對照"
+    },
+    {
+      "industry": "功率元件（暫定）",
+      "role": "provisional",
+      "leaders": ["2308", "2455", "3105"],
+      "source": "用戶指定；taught尚無功率組→暫定台達＋化合物相關流動檔",
+      "note_zh": "穩懋／全新跨光通訊；功率軌獨立記。待點名再收斂"
+    },
+    {
+      "industry": "IC設計（廣義）",
+      "role": "provisional_expand",
+      "leaders": ["2454", "2379", "3034", "3443"],
+      "source": "用戶指定廣義IC設計；與ASIC重疊的創意只在ASIC主計一次",
+      "note_zh": "回測時ASIC事件優先歸ASIC軌，避免雙計"
+    },
+    {
+      "industry": "封測",
+      "role": "taught_mix",
+      "leaders": ["3711", "6239", "8150"],
+      "peers_pool": "日月光＋TAUGHT_GROUPS.記憶體封測",
+      "source": "用戶指定封測；力成／南茂在taught記憶體封測",
+      "note_zh": "先進封裝與記憶體封測可再分子軌"
+    }
+  ],
+  "backtest_design_zh": {
+    "unit": "獨立交易日事件（同產業同日一列）",
+    "event": "龍檔進入 low_explode 或 sediment；或產業 vane_on（≥2）",
+    "x_axis": ["相對位置區", "量相", "是否沉澱"],
+    "y_axis": ["fwd_5/10/20 報酬", "RS vs TWII", "窗內MDD"],
+    "null": "同產業隨機日 或 同檔 quiet 日（開跑前鎖定一種）",
+    "gate": "分產業 n≥20 且空名單不算；provisional 軌不上話筒",
+    "order": "先跑 taught+oral（PCB／ABF／CPo光通訊／ASIC／散熱／低軌／台積錨／被動）→ 再跑 provisional（GPU／CPU／功率／廣義IC／封測）"
+  }
+}

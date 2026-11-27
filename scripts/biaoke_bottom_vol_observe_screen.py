@@ -7,10 +7,10 @@
 - 觀察／對照，不是買訊；不准發明個股 5／9（只標轉折高低，不標浪號）
 - 話筒進場仍只認 leave_zero／已過閘 ma60_lower
 
-量門檻（對齊原文「近一年級巨量／問題量」）：
+量門檻（對齊原文「去年12月將近一年的巨量」＝近一年前巨量級距；禁止亂講「一年級」）：
 - 以近 ~250 根官方量為一年窗
-- 一年級＝ max(0.70×年最大量, 年窗 p92)
-- 不准再用「60 日中位×3」冒充一年級（會把金融股事件量誤判）
+- 近一年前巨量門檻＝ max(0.70×年最大量, 年窗 p92)（可算近似，不是原文名相）
+- 不准再用「60 日中位×3」冒充近一年前巨量（會把金融股事件量誤判）
 """
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ DB_DEFAULT = ROOT / "data" / "wayne_market.db"
 TEACH_POST_ID = "190014392"
 TEACH_AS_OF = "20261126"
 
-# 對齊 2330／2383 官方柱：一年級 ≈ 0.70–0.85×年最大
+# 對齊 2330／2383 官方柱：近一年前巨量 ≈ 0.70–0.85×年最大
 YEAR_LOOKBACK = 250
 YEAR_GRADE_MAX_FRAC = 0.70
 YEAR_GRADE_PCTL = 0.92
@@ -159,12 +159,12 @@ def year_grade_floor(vols: Sequence[float]) -> Tuple[float, float]:
 
 
 def score_bottom_vol(bars: Sequence[Dict[str, float]]) -> Optional[Hit]:
-    """量價落底觀察（對齊「近一年級巨量」，非買訊）。
+    """量價落底觀察（對齊「近一年前巨量」，非買訊）。
 
     - 相對近 120 高須有明顯修正
     - 仍在近 60 低洗盤區
-    - 近窗出現一年級巨量（不是 60 中位×3）
-    - 連續一年級＝2383 型問題量；一年級後量縮沉澱＝2330 型
+    - 近窗出現近一年前巨量（不是 60 中位×3）
+    - 連續近一年前巨量＝2383 型問題量；近一年前巨量後量縮沉澱＝2330 型
     """
     if len(bars) < 120:
         return None
@@ -207,13 +207,13 @@ def score_bottom_vol(bars: Sequence[Dict[str, float]]) -> Optional[Hit]:
     yg_dates = [b["date"] for b in look if is_yg(b["volume"])]
     peak_yg = max((b["volume"] for b in look if is_yg(b["volume"])), default=0.0)
 
-    # 沉澱：近窗有一年級，末日量明顯低於該峰但仍不是無量
+    # 沉澱：近窗有近一年前巨量，末日量明顯低於該峰但仍不是無量
     med60_vols = sorted(b["volume"] for b in win60 if b["volume"] > 0)
     med60 = med60_vols[len(med60_vols) // 2] if med60_vols else 0.0
     sediment = False
     if peak_yg > 0 and med60 > 0:
         if med60 * 0.5 <= last["volume"] < peak_yg * 0.65:
-            # 一年級當日須貼近低檔（該日低點距 60 低不太遠）
+            # 近一年前巨量當日須貼近低檔（該日低點距 60 低不太遠）
             near_low_yg = False
             for b in look:
                 if is_yg(b["volume"]) and b["low"] > 0:
@@ -232,7 +232,7 @@ def score_bottom_vol(bars: Sequence[Dict[str, float]]) -> Optional[Hit]:
         style = "both" if style else "sediment"
         score += 40
     if not style:
-        # 單根一年級貼低：仍可觀察，但分數較低
+        # 單根近一年前巨量貼低：仍可觀察，但分數較低
         if sum(yg5) >= 1 and dist <= 10.0:
             style = "year_grade_near_low"
             score += 25
@@ -241,13 +241,13 @@ def score_bottom_vol(bars: Sequence[Dict[str, float]]) -> Optional[Hit]:
 
     score += max(0.0, MAX_DIST_TO_LOW_PCT - dist)
     score += min(20.0, dd / 2.0)
-    # 愈接近年最大愈像原文「一年級」
+    # 愈接近年最大愈像原文「近一年前巨量」（禁稱近一年前巨量）
     score += min(15.0, (last["volume"] / ymax) * 15.0) if ymax else 0.0
 
     note = (
         f"距60低{dist:.1f}%；相對120高回撤{dd:.1f}%；"
-        f"一年級門檻={floor:.0f}（年最大{ymax:.0f}）；"
-        f"近{CONSEC_WINDOW}日一年級×{sum(yg5)}；樣式={style}"
+        f"近一年前巨量門檻={floor:.0f}（年最大{ymax:.0f}）；"
+        f"近{CONSEC_WINDOW}日近一年前巨量×{sum(yg5)}；樣式={style}"
     )
     return Hit(
         stock_id="",
@@ -308,8 +308,8 @@ def screen(
             "buy_signal": False,
             "not_buy_signal": True,
             "vol_rule_zh": (
-                "一年級巨量＝max(0.70×近250根最大量, 年窗p92)；"
-                "不用60日中位×3。連續一年級＝2383型；一年級後量縮沉澱＝2330型。"
+                "近一年前巨量＝max(0.70×近250根最大量, 年窗p92)；"
+                "不用60日中位×3。連續近一年前巨量＝2383型；近一年前巨量後量縮沉澱＝2330型。"
             ),
             "universe": {
                 "TW_top": len(tw),
@@ -319,7 +319,7 @@ def screen(
             "n_hits": len(hits),
             "hits": hits,
             "rule_zh": (
-                "先抓一年級大量；浪由尾回推："
+                "先抓近一年前巨量大量；浪由尾回推："
                 "今日上漲→連回前幾日低點＝新開始；由該低往回試畫五波。"
                 "觀察定義用，非買訊／非話筒浪認證。"
             ),

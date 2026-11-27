@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""量價落底觀察掃（一年級巨量，非買訊）單元測。"""
+"""量價落底觀察掃（近一年前巨量，非買訊）單元測。"""
 from __future__ import annotations
 
 from scripts.biaoke_bottom_vol_observe_screen import score_bottom_vol, year_grade_floor
