@@ -530,8 +530,14 @@ def paint(
         raise SystemExit(f"{sid}: five-wave not ok — {tb.fail_reason_zh or tb.note_zh}")
 
     w4 = pts[4]
+    w3 = pts[3]  # ③低＝四浪低；主判第二軸
     ns = tb.new_start
     room = (w4.price - close) / close * 100.0
+    above_w3 = float(close) + 1e-9 >= float(w3.price)
+    # 全窗末根是否上漲（與結構回推日分離）：未漲＝新起漲規則未觸發
+    _tb_last = analyze_bars(bars)
+    today_up = bool(getattr(_tb_last, "today_up", False))
+    struct_from_prior_up = (not today_up) and bool(tb.ok_five)
 
     qi = con.execute(
         "SELECT year,season,eps,gross_margin_pct,revenue,net_income "
@@ -706,11 +712,11 @@ def paint(
             )
 
     # 先定 ylim，浪圈才能判斷貼底／貼頂，不准裁進量圖
-    _extra_ys = [w4.price, wave_lo] + [p for _, p in fib_lvls]
+    _extra_ys = [w4.price, float(w3.price), wave_lo] + [p for _, p in fib_lvls]
     if zone:
         _extra_ys.extend([float(zone["high"]), float(zone["low"])])
     y_hi = max(highs + _extra_ys)
-    y_lo = min(lows + [wave_lo])
+    y_lo = min(lows + [wave_lo, float(w3.price)])
     pad = (y_hi - y_lo) * 0.06
     ylim_lo = y_lo - pad * 1.85
     ylim_hi = y_hi + pad * 1.15
@@ -792,14 +798,32 @@ def paint(
         label=f"次級四浪高／{w4.price:.0f}",
         zorder=5,
     )
+    # 四浪低（③）：主判第二軸；線色琥珀，狀態標右側
+    ax.hlines(
+        float(w3.price),
+        _x_left,
+        _x_line_end,
+        color="#b45309",
+        ls="-",
+        lw=1.45,
+        alpha=0.88,
+        label=f"四浪低／{float(w3.price):.0f}",
+        zorder=5,
+    )
 
     # ②–④ 下降趨勢線：細青石綠＋極短實線小空格；左右各多伸一截（觀察）
+    _w24_broke: Optional[bool] = None
+    _w24_y_end: Optional[float] = None
     if len(pts) >= 5:
+        _j2 = float(vi(pts[2].i))
+        _y2 = float(pts[2].price)
+        _j4 = float(vi(pts[4].i))
+        _y4 = float(pts[4].price)
         _w24 = wave24_descend_line(
-            vi(pts[2].i),
-            float(pts[2].price),
-            vi(pts[4].i),
-            float(pts[4].price),
+            _j2,
+            _y2,
+            _j4,
+            _y4,
             float(n - 1),
             x_clip_left=float(_x_left),
             x_clip_right=float(_x_line_end),
@@ -817,9 +841,19 @@ def paint(
                 label="②–④下降趨勢線（左右延伸）",
             )
             _ln24.set_dashes((2.2, 1.6))
+            if _j4 > _j2:
+                _slope24 = (_y4 - _y2) / (_j4 - _j2)
+                _w24_y_end = _y2 + _slope24 * (float(n - 1) - _j2)
+                # 下降線：收在線上＝向上突破
+                _w24_broke = float(close) + 1e-9 >= float(_w24_y_end)
 
     # 黃線＝五波走完後新起漲軌跡；字／大菱形一律不准蓋日K（字只進圖例）
     bounce_from = ns if ns is not None else (pts[-1] if pts else None)
+    _yellow_lab = (
+        "黃線＝新起漲（今日未觸發・用近漲日）"
+        if struct_from_prior_up
+        else "黃線＝新起漲"
+    )
     if bounce_from is not None:
         j = vi(bounce_from.i)
         if 0 <= j < n:
@@ -830,7 +864,7 @@ def paint(
                 lw=1.7,
                 zorder=6,
                 solid_capstyle="round",
-                label="黃線＝新起漲",
+                label=_yellow_lab,
             )
             ax.plot(
                 [j, n - 1],
@@ -1034,8 +1068,13 @@ def paint(
 
     # 末根K旁不再寫收價；收／即時價改右上大字卡
 
-    # 右側價標：四浪高仍遠欄；綠反彈＋最底改中近欄（附圖紅框）
+    # 右側價標：四浪高遠欄；四浪低（③）同遠欄；綠反彈＋最底中近欄
     _x_rebound = float(n - 1 + REBOUND_NEAR_PAD)
+    _w3_txt = (
+        f"四浪低／{float(w3.price):.0f}｜已過"
+        if above_w3
+        else f"四浪低／{float(w3.price):.0f}｜未過＝偏沒力"
+    )
     w4_tags: List[Dict[str, Any]] = [
         {
             "price": float(w4.price),
@@ -1044,6 +1083,14 @@ def paint(
             "facecolor": "#fee2e2",
             "edge": "#f87171",
             "fontsize": 9.2,
+        },
+        {
+            "price": float(w3.price),
+            "text": _w3_txt,
+            "color": "#92400e" if not above_w3 else "#0f766e",
+            "facecolor": "#ffedd5" if not above_w3 else "#ccfbf1",
+            "edge": "#f59e0b" if not above_w3 else "#14b8a6",
+            "fontsize": 9.0,
         },
     ]
     green_tags: List[Dict[str, Any]] = [
@@ -1088,6 +1135,34 @@ def paint(
         # 單一中近欄，對齊附圖紅框直行
         forbid_cols={1, 2},
     )
+
+    # ②–④／新起漲狀態：掛價圖內頂列，一眼對狀態（不准另開大盒）
+    _status_bits: List[str] = []
+    if _w24_broke is not None:
+        _status_bits.append("②–④已破" if _w24_broke else "②–④未破")
+    if struct_from_prior_up:
+        _status_bits.append("今日未觸發新起漲")
+    if _status_bits:
+        ax.text(
+            0.01,
+            0.985,
+            "｜".join(_status_bits),
+            transform=ax.transAxes,
+            ha="left",
+            va="top",
+            fontsize=8.2,
+            fontweight="bold",
+            fontproperties=prop,
+            color="#0f766e" if _w24_broke else "#334155",
+            bbox=dict(
+                boxstyle="round,pad=0.22",
+                facecolor="#ecfeff" if _w24_broke else "#f8fafc",
+                edgecolor="#67e8f9" if _w24_broke else "#94a3b8",
+                alpha=0.96,
+            ),
+            zorder=16,
+            clip_on=False,
+        )
 
     step = max(1, n // 10)
     ticks = list(range(0, n, step))
@@ -1346,6 +1421,10 @@ def paint(
         "close": close,
         "room_pct": round(room, 2),
         "w4": w4.price,
+        "w3": float(w3.price),
+        "above_w3": bool(above_w3),
+        "w24_broke": _w24_broke,
+        "today_up": bool(today_up),
         "zone_date": zone_date,
         "zone_vol": zone_vol,
         "zone_role": zone_role,

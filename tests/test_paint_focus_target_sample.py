@@ -109,6 +109,10 @@ def test_paint_wave4_layout_guards():
     assert "四浪高／" in src
     assert "還有{room:.1f}%" in src
     assert "距四浪高還有" not in src  # 已併進四浪高標，不准另掛漂浮盒
+    assert "四浪低／" in src
+    assert "未過＝偏沒力" in src
+    assert "②–④已破" in src
+    assert "今日未觸發新起漲" in src
     assert "反彈{ratio:g}／" in src
     assert "基本面盒改中帶左格" in src
     assert '"#bbf7d0"' not in src  # 不准大面積淺綠底蓋住K
