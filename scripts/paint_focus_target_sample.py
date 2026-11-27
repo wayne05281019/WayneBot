@@ -377,65 +377,31 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
             )
         )
 
-    # 林友銘款：淺綠倒三角＝「起→③低」跌幅量測（點差寫塊內）；觀察非買訊
-    # 量的是進次級四浪前那一段跌，不是買訊、不改四浪高紅線
+    # 林友銘款視覺：淺綠倒三角＝「起→③」跌幅量尺底色（無綠邊、數字不准壓K）
+    # 真意＝這段跌幅當量尺；點差只寫進圖例，不准寫進三角蓋住縮圖K。觀察非買訊。
+    drop_legend = "淺綠＝跌幅量尺（起→③）"
     if len(pts) >= 4:
         hi_p, lo_p = pts[0], pts[3]  # 起、③（四浪低）
         j_hi_raw, j_lo_raw = vi(hi_p.i), vi(lo_p.i)
         y_hi_m, y_lo_m = float(hi_p.price), float(lo_p.price)
-        # 窗左裁掉「起」仍用真價畫量測；x 從 0 起，避免假點
         j_hi_m = float(j_hi_raw) if j_hi_raw >= 0 else 0.0
         j_lo_m = float(j_lo_raw)
         verts = drop_measure_triangle_verts(j_hi_m, y_hi_m, j_lo_m, y_lo_m)
         pts_drop = drop_measure_points(y_hi_m, y_lo_m)
         if verts is not None and pts_drop is not None and 0 <= j_lo_raw < n:
+            drop_txt = f"{pts_drop:.0f}" if pts_drop >= 10 else f"{pts_drop:g}"
+            drop_legend = f"淺綠＝跌幅量尺 起→③＝{drop_txt}"
             ax.add_patch(
                 Polygon(
                     verts,
                     closed=True,
                     facecolor="#86efac",
-                    edgecolor="#16a34a",
-                    alpha=0.38,
-                    lw=1.15,
-                    zorder=1.4,
-                    label="淺綠＝跌幅量測",
+                    edgecolor="none",
+                    alpha=0.28,
+                    lw=0,
+                    zorder=1.2,
+                    label=drop_legend,
                 )
-            )
-            # 斜邊＝量測段，對齊「一目瞭然」
-            ax.plot(
-                [verts[0][0], verts[2][0]],
-                [verts[0][1], verts[2][1]],
-                color="#15803d",
-                lw=1.35,
-                alpha=0.85,
-                zorder=1.5,
-            )
-            # 數字貼右豎邊內側（林圖點差一眼位），避斜邊／K棒互壓
-            span_x = max(verts[1][0] - verts[0][0], 1.0)
-            span_y = max(verts[0][1] - verts[2][1], 1.0)
-            cx = verts[1][0] - span_x * 0.16
-            cy = verts[2][1] + span_y * 0.55
-            drop_txt = (
-                f"{pts_drop:.0f}" if pts_drop >= 10 else f"{pts_drop:g}"
-            )
-            ax.text(
-                cx,
-                cy,
-                drop_txt,
-                ha="center",
-                va="center",
-                fontsize=13.5,
-                fontweight="bold",
-                color="#14532d",
-                fontproperties=prop,
-                zorder=12,
-                bbox=dict(
-                    boxstyle="round,pad=0.28",
-                    facecolor="#dcfce7",
-                    edgecolor="#22c55e",
-                    alpha=0.96,
-                    linewidth=1.2,
-                ),
             )
 
     # 教法：紫細線＝五波下跌（淺底比白線黑邊清楚）；黃線＝新一波起漲
@@ -521,58 +487,38 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
         label=f"次級四浪高 {w4.price:.0f}",
     )
 
-    # 黃線＝五波走完後的新一波起漲（新開始低 → 今日收）
+    # 黃線＝五波走完後新起漲軌跡；字／大菱形一律不准蓋日K（字只進圖例）
     bounce_from = ns if ns is not None else (pts[-1] if pts else None)
     if bounce_from is not None:
         j = vi(bounce_from.i)
         if 0 <= j < n:
-            ax.scatter(
-                [j],
-                [bounce_from.price],
-                s=110,
-                c="#eab308",
-                marker="D",
-                zorder=11,
-                edgecolors="#854d0e",
-                lw=1.2,
+            ax.plot(
+                [j, n - 1],
+                [bounce_from.price, close],
+                color="#ca8a04",
+                lw=1.7,
+                zorder=6,
+                solid_capstyle="round",
                 label="黃線＝新起漲",
             )
             ax.plot(
                 [j, n - 1],
                 [bounce_from.price, close],
-                color="#ca8a04",
-                lw=2.4,
-                zorder=8,
-                solid_capstyle="round",
-            )
-            ax.plot(
-                [j, n - 1],
-                [bounce_from.price, close],
                 color="#facc15",
-                lw=1.9,
-                zorder=9,
+                lw=1.15,
+                zorder=7,
                 solid_capstyle="round",
             )
-            # 「新起漲」只標在黃線中段左側，不准擠右緣（會壓壓下緣／收）
-            mx = j + (n - 1 - j) * 0.38
-            my = bounce_from.price + (close - bounce_from.price) * 0.38
-            ax.annotate(
-                "新起漲",
-                xy=(mx, my),
-                xytext=(-8, 12),
-                textcoords="offset points",
-                ha="right",
-                color="#854d0e",
-                fontsize=8.5,
-                fontweight="bold",
-                fontproperties=prop,
-                zorder=12,
-                bbox=dict(
-                    boxstyle="round,pad=0.18",
-                    facecolor="#fef9c3",
-                    edgecolor="#eab308",
-                    alpha=0.95,
-                ),
+            # 起點只用線端小點（無菱形、無「新起漲」浮字）
+            ax.plot(
+                [j],
+                [bounce_from.price],
+                marker="o",
+                markersize=4.5,
+                color="#ca8a04",
+                markeredgecolor="#a16207",
+                markeredgewidth=0.6,
+                zorder=7,
             )
 
     ax.axhline(close, color="#0f766e", ls=":", lw=1.15, alpha=0.75)
@@ -697,7 +643,7 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
     # 表頭兩行：標題單獨；副標拆兩行，不准壓進圖內文字
     sub1 = f"{asof_face}｜{ohlc_line}｜觀察非買訊"
     sub2 = (
-        f"紫細線＝五波下跌　淺綠＝起→③跌幅量測　黃線＝新起漲｜"
+        f"紫細線＝五波下跌　{drop_legend}　黃線＝新起漲｜"
         f"滾動近{WIN}根（新日進、左邊掉；右留{FUTURE_PAD}根空位）"
     )
     ax.set_title(

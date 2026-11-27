@@ -27,9 +27,15 @@ def test_paint_source_has_lin_green_drop_measure():
     from scripts import paint_focus_target_sample as m
 
     src = inspect.getsource(m.paint)
-    assert "淺綠＝跌幅量測" in src
+    assert "跌幅量尺" in src
     assert "drop_measure_triangle_verts" in src
-    assert "起→③" in src or "pts[3]" in src
+    assert 'edgecolor="none"' in src or "edgecolor='none'" in src
+    # 點差不准寫進三角蓋K；只准進圖例字串
+    assert "drop_legend" in src
+    # 不准再畫大菱形／圖內「新起漲」浮字蓋K
+    assert 'marker="D"' not in src
+    assert 'annotate(\n                "新起漲"' not in src
+    assert '"新起漲"' not in src or "黃線＝新起漲" in src
 
 
 def test_rev_yi_thousand_to_yi():
