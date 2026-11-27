@@ -649,7 +649,7 @@ def paint(
                 markeredgecolor="#064e3b",
                 markeredgewidth=0.5,
                 zorder=8,
-                label=f"這一波最底 {wave_lo:g}",
+                label=f"這一波最底／{wave_lo:g}",
             )
 
     # 先定 ylim，浪圈才能判斷貼底／貼頂，不准裁進量圖
@@ -736,7 +736,7 @@ def paint(
         ls="-",
         lw=1.7,
         alpha=0.92,
-        label=f"次級四浪高 {w4.price:.0f}",
+        label=f"次級四浪高／{w4.price:.0f}",
         zorder=5,
     )
 
