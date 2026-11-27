@@ -812,8 +812,8 @@ def paint(
     )
 
     # ②–④ 下降趨勢線：細青石綠＋極短實線小空格；左右各多伸一截（觀察）
-    _w24_broke: Optional[bool] = None
-    _w24_y_end: Optional[float] = None
+    _w24_attack_md = ""  # 最近攻擊日 mm/dd
+    _w24_passed: Optional[bool] = None  # 該日收有過／沒過線
     if len(pts) >= 5:
         _j2 = float(vi(pts[2].i))
         _y2 = float(pts[2].price)
@@ -843,9 +843,28 @@ def paint(
             _ln24.set_dashes((2.2, 1.6))
             if _j4 > _j2:
                 _slope24 = (_y4 - _y2) / (_j4 - _j2)
-                _w24_y_end = _y2 + _slope24 * (float(n - 1) - _j2)
-                # 下降線：收在線上＝向上突破
-                _w24_broke = float(close) + 1e-9 >= float(_w24_y_end)
+
+                def _w24_y_at(jx: float) -> float:
+                    return _y2 + _slope24 * (float(jx) - _j2)
+
+                # ④之後：高觸及線＝攻擊日；收≥線＝有過（取最近一攻）
+                _atk_i: Optional[int] = None
+                for _i in range(int(_j4) + 1, n):
+                    _yl = _w24_y_at(_i)
+                    if float(highs[_i]) + 1e-9 >= _yl:
+                        _atk_i = _i
+                if _atk_i is None and n > 0:
+                    # 末日也對一下（線已延伸到末日）
+                    _yl_e = _w24_y_at(n - 1)
+                    if float(high) + 1e-9 >= _yl_e:
+                        _atk_i = n - 1
+                if _atk_i is not None:
+                    _d = str(dates[_atk_i] or "")
+                    _w24_attack_md = (
+                        f"{_d[4:6]}/{_d[6:8]}" if len(_d) == 8 else str(_atk_i)
+                    )
+                    _yl_a = _w24_y_at(_atk_i)
+                    _w24_passed = float(closes[_atk_i]) + 1e-9 >= _yl_a
 
     # 黃線＝五波走完後新起漲軌跡；字／大菱形一律不准蓋日K（字只進圖例）
     bounce_from = ns if ns is not None else (pts[-1] if pts else None)
@@ -1070,11 +1089,25 @@ def paint(
 
     # 右側價標：四浪高遠欄；四浪低（③）同遠欄；綠反彈＋最底中近欄
     _x_rebound = float(n - 1 + REBOUND_NEAR_PAD)
-    _w3_txt = (
-        f"四浪低／{float(w3.price):.0f}｜已過"
-        if above_w3
-        else f"四浪低／{float(w3.price):.0f}｜未過＝偏沒力"
-    )
+    # 四浪低：反彈初幾日未過只標「尚早」，不准第一天就打偏沒力
+    _w3_px = float(w3.price)
+    _w3_touch_n = 0
+    _j5 = int(vi(pts[5].i)) if len(pts) >= 6 else 0
+    for _i in range(max(0, _j5 + 1), n):
+        if float(highs[_i]) + 1e-9 >= _w3_px * 0.998:
+            _w3_touch_n += 1
+    if above_w3:
+        _w3_txt = f"四浪低／{_w3_px:.0f}｜已過"
+        _w3_soft = False
+    elif _w3_touch_n <= 1:
+        _w3_txt = f"四浪低／{_w3_px:.0f}｜未過（第1日攻・尚早）"
+        _w3_soft = True
+    elif _w3_touch_n == 2:
+        _w3_txt = f"四浪低／{_w3_px:.0f}｜未過（第2日・續觀察）"
+        _w3_soft = True
+    else:
+        _w3_txt = f"四浪低／{_w3_px:.0f}｜未過＝偏沒力"
+        _w3_soft = False
     w4_tags: List[Dict[str, Any]] = [
         {
             "price": float(w4.price),
@@ -1087,9 +1120,21 @@ def paint(
         {
             "price": float(w3.price),
             "text": _w3_txt,
-            "color": "#92400e" if not above_w3 else "#0f766e",
-            "facecolor": "#ffedd5" if not above_w3 else "#ccfbf1",
-            "edge": "#f59e0b" if not above_w3 else "#14b8a6",
+            "color": (
+                "#0f766e"
+                if above_w3
+                else ("#a16207" if _w3_soft else "#92400e")
+            ),
+            "facecolor": (
+                "#ccfbf1"
+                if above_w3
+                else ("#fef3c7" if _w3_soft else "#ffedd5")
+            ),
+            "edge": (
+                "#14b8a6"
+                if above_w3
+                else ("#fbbf24" if _w3_soft else "#f59e0b")
+            ),
             "fontsize": 9.0,
         },
     ]
@@ -1136,13 +1181,19 @@ def paint(
         forbid_cols={1, 2},
     )
 
-    # ②–④／新起漲狀態：掛價圖內頂列，一眼對狀態（不准另開大盒）
+    # 下降壓線攻擊日＋有過／沒過；未漲日另註新起漲
     _status_bits: List[str] = []
-    if _w24_broke is not None:
-        _status_bits.append("②–④已破" if _w24_broke else "②–④未破")
+    if _w24_attack_md and _w24_passed is not None:
+        _status_bits.append(
+            f"{_w24_attack_md}攻下降壓線・"
+            + ("有過" if _w24_passed else "沒過")
+        )
+    elif _w24_attack_md:
+        _status_bits.append(f"{_w24_attack_md}攻下降壓線")
     if struct_from_prior_up:
         _status_bits.append("今日未觸發新起漲")
     if _status_bits:
+        _ok = bool(_w24_passed)
         ax.text(
             0.01,
             0.985,
@@ -1153,11 +1204,11 @@ def paint(
             fontsize=8.2,
             fontweight="bold",
             fontproperties=prop,
-            color="#0f766e" if _w24_broke else "#334155",
+            color="#0f766e" if _ok else "#334155",
             bbox=dict(
                 boxstyle="round,pad=0.22",
-                facecolor="#ecfeff" if _w24_broke else "#f8fafc",
-                edgecolor="#67e8f9" if _w24_broke else "#94a3b8",
+                facecolor="#ecfeff" if _ok else "#f8fafc",
+                edgecolor="#67e8f9" if _ok else "#94a3b8",
                 alpha=0.96,
             ),
             zorder=16,
@@ -1423,7 +1474,9 @@ def paint(
         "w4": w4.price,
         "w3": float(w3.price),
         "above_w3": bool(above_w3),
-        "w24_broke": _w24_broke,
+        "w24_attack_md": _w24_attack_md,
+        "w24_passed": _w24_passed,
+        "w3_touch_n": int(_w3_touch_n),
         "today_up": bool(today_up),
         "zone_date": zone_date,
         "zone_vol": zone_vol,
