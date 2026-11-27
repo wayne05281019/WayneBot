@@ -718,6 +718,7 @@ def paint_wave4_chart(
     db_path: Path | str = DB_DEFAULT,
     out_dir: Path | str,
     tag: str = "",
+    header_style: str = "A",
 ) -> Optional[Path]:
     """渲一張次級四浪結構樣張；失敗回 None（不准假圖）。
 
@@ -729,11 +730,12 @@ def paint_wave4_chart(
         return None
     out = Path(out_dir) / f"wave4_{sid}_{tag or 'x'}.png"
     out.parent.mkdir(parents=True, exist_ok=True)
+    style = str(header_style or "A").upper()
 
     def _do() -> Optional[Path]:
         from scripts.paint_focus_target_sample import paint
 
-        paint(sid, out, db_path=Path(db_path))
+        paint(sid, out, db_path=Path(db_path), header_style=style)
         if out.is_file() and out.stat().st_size > 12_000:
             return out
         return None

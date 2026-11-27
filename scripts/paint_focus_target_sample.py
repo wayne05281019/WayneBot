@@ -359,7 +359,24 @@ def pick_forward_pressure_zone(
     return inside_fallback
 
 
-def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
+# 右上三行字級樣式（figure pt）；話筒選定前可並渲對照
+HEADER_STYLES: Dict[str, Dict[str, float]] = {
+    "A": {"name": 16.0, "price": 28.0, "chg": 15.5, "k": 8.5, "name_gap": 0.003, "chg_pad": 0.007},
+    "B": {"name": 15.0, "price": 20.0, "chg": 14.0, "k": 8.0, "name_gap": 0.004, "chg_pad": 0.006},
+    "C": {"name": 13.0, "price": 32.0, "chg": 12.0, "k": 8.0, "name_gap": 0.002, "chg_pad": 0.008},
+    "D": {"name": 18.0, "price": 24.0, "chg": 14.0, "k": 9.0, "name_gap": 0.003, "chg_pad": 0.006},
+    "E": {"name": 14.0, "price": 22.0, "chg": 13.0, "k": 8.0, "name_gap": 0.002, "chg_pad": 0.005},
+}
+HEADER_STYLE_DEFAULT = "A"
+
+
+def paint(
+    sid: str,
+    out: Path,
+    *,
+    db_path: Path = DB,
+    header_style: str = HEADER_STYLE_DEFAULT,
+) -> Dict[str, Any]:
     prop = _cjk_prop()
     con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     rows = list(
@@ -1006,9 +1023,15 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
         sign = "＋" if dlt >= 0 else "－"
         chg_line = f"較昨日　{sign}{abs(dlt):.0f}（{sign}{abs(pct):.2f}%）"
 
-    # 右上＝高低卡右欄比例：股名16／大價28／較昨日15.5；今K 3.2×5.6 味
+    # 右上三行：字級走 HEADER_STYLES（A–E 對照樣張）
     _hx = 0.972
-    _fs_name, _fs_price, _fs_chg, _fs_k = 16.0, 28.0, 15.5, 8.5
+    _hs = HEADER_STYLES.get(str(header_style or HEADER_STYLE_DEFAULT).upper()) or HEADER_STYLES[HEADER_STYLE_DEFAULT]
+    _fs_name = float(_hs["name"])
+    _fs_price = float(_hs["price"])
+    _fs_chg = float(_hs["chg"])
+    _fs_k = float(_hs["k"])
+    _name_gap = float(_hs["name_gap"])
+    _chg_pad = float(_hs["chg_pad"])
     _name_s = f"{sid}　{name}"
     _price_s = f"{close:.0f}"
     _chg_s = chg_line or "較昨日　—"
@@ -1038,10 +1061,10 @@ def paint(sid: str, out: Path, *, db_path: Path = DB) -> Dict[str, Any]:
     _cw, _ch = _fig_extent(_chg_s, _fs_chg)
     del _nw, _cw  # 寬只用於大價對齊縮圖
 
-    # 垂直節奏：名→價緊、價→較昨日中心距≈高低卡 0.46 格
+    # 垂直節奏：名→價緊、價→較昨日中心距依樣式 pad
     _y_name = 0.975
-    _y_price = _y_name - _nh - 0.003 - _ph * 0.50
-    _y_chg = _y_price - (_ph * 0.50 + _ch * 0.50 + 0.007)
+    _y_price = _y_name - _nh - _name_gap - _ph * 0.50
+    _y_chg = _y_price - (_ph * 0.50 + _ch * 0.50 + _chg_pad)
     fig.text(
         _hx,
         _y_name,
