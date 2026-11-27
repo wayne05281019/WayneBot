@@ -9211,26 +9211,26 @@ class WayneTelegramBot:
             return False
 
     async def _wave4_send_page(self, message, uid: str, page: int = 0):
+        """實質十檔：先推名單，再逐張出次級四浪圖（不是結構圖；單檔才兩張）。"""
         wait_h = await self._start_plain_wait(
             message,
             text_fn=lambda s: self._wait_bubble(
                 "次級四浪進行中",
                 s,
-                now="掃實質十檔＋出圖",
-                rest="推送名單附圖",
-                fill_sec=40.0,
+                now="掃實質十檔",
+                rest="先推名單再逐張出圖",
+                fill_sec=28.0,
             ),
         )
         delivered = False
         try:
 
-            def _build():
+            def _list_only():
                 from focus_wave4_desk import (
                     format_wave4_page_html,
                     get_wave4_desk_cached,
                     intervene_page,
                     overlay_live_on_rows,
-                    paint_wave4_page_charts,
                 )
 
                 payload = get_wave4_desk_cached(self.db_path)
@@ -9243,22 +9243,11 @@ class WayneTelegramBot:
                     pages=pages,
                     live=live,
                 )
-                chart_dir = os.path.join(
-                    getattr(self, "charts_dir", "data/charts") or "data/charts",
-                    "wave4",
-                    str(uid or "x"),
-                )
-                charts = paint_wave4_page_charts(
-                    live_rows,
-                    db_path=self.db_path,
-                    out_dir=chart_dir,
-                    page=int(page),
-                )
-                return html, live_rows, has_next, charts
+                return html, live_rows, has_next
 
             try:
-                html, live_rows, has_next, charts = await asyncio.wait_for(
-                    asyncio.to_thread(_build), timeout=150.0
+                html, live_rows, has_next = await asyncio.wait_for(
+                    asyncio.to_thread(_list_only), timeout=60.0
                 )
             except asyncio.TimeoutError:
                 await self._stop_plain_wait(*wait_h)
@@ -9269,7 +9258,7 @@ class WayneTelegramBot:
                 )
                 return
             except Exception:
-                logger.exception("次級四浪十檔失敗")
+                logger.exception("次級四浪十檔名單失敗")
                 await self._stop_plain_wait(*wait_h)
                 await message.reply_html(
                     "次級四浪十檔失敗。稍後再試。",
@@ -9285,24 +9274,85 @@ class WayneTelegramBot:
                 ),
                 disable_web_page_preview=True,
             )
-            # 附結構圖（最多10張）；失敗要講，不准假裝有圖
-            chart_ok = False
-            if charts:
+            delivered = True
+            # 名單先到；圖逐張渲＋送，不准整頁十張渲完才一次丟（話筒會以為故障）
+            rows = list(live_rows or [])
+            if not rows:
+                return
+            chart_dir = os.path.join(
+                getattr(self, "charts_dir", "data/charts") or "data/charts",
+                "wave4",
+                str(uid or "x"),
+            )
+            tag = f"p{int(page)}"
+            n = len(rows)
+            try:
+                await message.reply_text(
+                    f"開始出次級四浪圖（共{n}張，不是結構圖；單檔才一次兩張）。"
+                )
+            except Exception:
+                pass
+            sent = 0
+            from focus_wave4_desk import paint_wave4_chart
+
+            for i, r in enumerate(rows):
+                sid = str((r or {}).get("stock_id") or "").strip()
+                if not sid:
+                    continue
+                name = str((r or {}).get("stock_name") or sid)
+                room = float((r or {}).get("room_to_w4_pct") or 0)
+                live = "・現" if (r or {}).get("live_px") else ""
                 cap = (
-                    f"次級四浪・實質十檔第{int(page)+1}頁結構圖"
-                    "（觀察非買訊）"
+                    f"{sid} {name} 距{room:.0f}%{live}"
+                    f"（{i+1}/{n}・觀察非買訊）"
+                )[:200]
+
+                def _paint_one(_sid=sid):
+                    return paint_wave4_chart(
+                        _sid,
+                        db_path=self.db_path,
+                        out_dir=chart_dir,
+                        tag=tag,
+                    )
+
+                path = ""
+                try:
+                    path = await asyncio.wait_for(
+                        asyncio.to_thread(_paint_one), timeout=45.0
+                    )
+                except Exception:
+                    logger.exception("次級四浪十檔出圖失敗 sid=%s", sid)
+                    path = ""
+                if not path or not os.path.isfile(str(path)):
+                    continue
+                ok = await self._wave4_send_media_group(
+                    message,
+                    [
+                        {
+                            "stock_id": sid,
+                            "stock_name": name,
+                            "path": str(path),
+                            "caption": cap,
+                        }
+                    ],
+                    caption0=cap,
                 )
-                chart_ok = await self._wave4_send_media_group(
-                    message, charts, caption0=cap
-                )
-            if live_rows and not chart_ok:
+                if ok:
+                    sent += 1
+            if sent <= 0:
                 try:
                     await message.reply_text(
-                        "這頁結構圖沒送出，稍後再按下一頁或改打單檔。"
+                        "這頁次級四浪圖沒送出，稍後再按下一頁或改打單檔。"
                     )
                 except Exception:
                     pass
-            delivered = True
+            elif sent < n:
+                try:
+                    await message.reply_text(
+                        f"這頁出了 {sent}/{n} 張次級四浪圖，其餘略過。"
+                    )
+                except Exception:
+                    pass
         finally:
             if not delivered:
                 try:

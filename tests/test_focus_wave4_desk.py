@@ -205,6 +205,18 @@ def test_paint_wave4_chart_uses_mpl_paint_worker():
     assert 'meta.get("zone")' in pair_src or 'meta or {}).get("zone")' in pair_src
 
 
+def test_force_vol_zone_skips_next_layer_attach():
+    """次級四浪強制路上區時，結構圖不准再掛舊爆大量下一層灰帶。"""
+    import inspect
+
+    from biaoke_chart import render_biaoke_structure_png
+
+    src = inspect.getsource(render_biaoke_structure_png)
+    assert "force_vol_zone" in src
+    assert 'info["next_support"] = {}' in src
+    assert "if sid and not force_vol_zone:" in src
+
+
 def test_wave4_hub_mentions_two_charts():
     from focus_wave4_desk import format_wave4_hub_html
 
@@ -234,6 +246,20 @@ def test_wave4_send_one_uses_pair_two_charts():
     src = inspect.getsource(WayneTelegramBot._wave4_send_one)
     assert "paint_wave4_one_pair" in src
     assert "次級四浪圖＋結構圖" in src
+
+
+def test_wave4_send_page_list_first_then_wave4_not_struct():
+    """實質十檔：先名單再逐張次級四浪圖；文案不准再叫結構圖。"""
+    import inspect
+
+    from bot_servers import WayneTelegramBot
+
+    src = inspect.getsource(WayneTelegramBot._wave4_send_page)
+    assert "先推名單再逐張出圖" in src
+    assert "paint_wave4_chart" in src
+    assert "不是結構圖" in src
+    assert "頁結構圖" not in src
+    assert "這頁次級四浪圖沒送出" in src
 
 
 def test_guangsheng_horizon_sid_is_6442_not_1815():

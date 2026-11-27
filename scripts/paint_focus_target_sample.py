@@ -140,16 +140,26 @@ def wave24_descend_line(
 
 
 def _cjk_prop():
-    for p in (
-        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-        "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
-    ):
-        if Path(p).exists():
-            fm.fontManager.addfont(p)
-            prop = fm.FontProperties(fname=p)
+    """話筒次級四浪圖中文：優先 repo fonts/（Render 無系統 Noto 時也不准方框）。"""
+    root = Path(__file__).resolve().parent.parent
+    candidates = (
+        root / "fonts" / "NotoSansTC-w560.ttf",
+        root / "fonts" / "NotoSansTC-w860.ttf",
+        Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
+        Path("/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc"),
+        Path("/usr/share/fonts/truetype/wqy/wqy-microhei.ttc"),
+    )
+    for p in candidates:
+        try:
+            if not Path(p).is_file():
+                continue
+            fm.fontManager.addfont(str(p))
+            prop = fm.FontProperties(fname=str(p))
             plt.rcParams["font.family"] = prop.get_name()
+            plt.rcParams["axes.unicode_minus"] = False
             return prop
+        except Exception:
+            continue
     return None
 
 
