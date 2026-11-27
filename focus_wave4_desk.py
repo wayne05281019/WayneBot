@@ -582,7 +582,7 @@ def format_wave4_page_html(
         f"<b>次級四浪・實質十檔</b>",
         f"{head}｜第{int(page)+1}/{int(pages)}頁",
         "觀察非買訊。有實質獲利且最優。",
-        "結構圖接著送。",
+        "名單後逐張出次級四浪圖（不是結構圖）。",
         "被動元件搶反彈不進這頁。",
         "盤中距離＝現價。" if live else "距離＝母體收盤臉。",
         f"實質可翻共{payload.get('n_intervene') or 0}檔。",
