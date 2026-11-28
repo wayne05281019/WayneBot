@@ -1,5 +1,5 @@
 {
-  "as_of_taipei": "2026-11-28T19:46:36+08:00",
+  "as_of_taipei": "2026-11-28T19:50:58+08:00",
   "phone_sync": "blocked",
   "buy_signal": false,
   "recomputable": true,
@@ -89,10 +89,22 @@
         "levels": "hit",
         "fail_codes": [],
         "growth_zh": "記憶體暫休≠大盤結束；幅度帶命中"
+      },
+      {
+        "day": "20260112",
+        "target": "20260113",
+        "path": "hit",
+        "wave": "hit",
+        "amp": "hit",
+        "levels": "skew",
+        "fail_codes": [
+          "TSMC_GATE_NEXTDAY_BREAK"
+        ],
+        "growth_zh": "台積平高閘隔日一過立刻改口"
       }
     ],
-    "n": 6,
-    "path_hit": 6,
-    "amp_hit": 5
+    "n": 7,
+    "path_hit": 7,
+    "amp_hit": 6
   }
 }
