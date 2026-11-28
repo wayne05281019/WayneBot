@@ -133,6 +133,31 @@
     "user_lock": "2026-11-28",
     "rule_zh": "開跑前用 master_consolidate 勾完；每日 no_forget_audit 全 true 才 complete；禁止事後說漏測"
   },
+  "token_efficient_ops": {
+    "user_lock": "2026-11-28",
+    "ref_zh": "huang_master_consolidate.md §15",
+    "layers": ["L0_script_ingest", "L1_short_schema_fill", "L2_script_score_plus_short_anatomy", "L3_script_scoreboard"],
+    "context_per_day_max": [
+      "template_or_day_file",
+      "cursor_summary_le_20_lines",
+      "asr_excerpt_le_80_lines",
+      "sync_ohlcv_table",
+      "prior_forecast_block"
+    ],
+    "forbid": [
+      "full_transcript_in_context",
+      "reload_all_principles_every_day",
+      "rewrite_completed_days",
+      "open_subagent_when_script_suffices"
+    ],
+    "field_caps_zh": {
+      "his_read": 240,
+      "miss_anatomy": 120,
+      "cross_learn": 120,
+      "draw_notes": 160
+    },
+    "max_forecast_confront_days_per_turn": 3
+  },
   "ledger_files": {
     "index": "huang_chrono_index.json",
     "days_dir": "huang_days/",
