@@ -1,8 +1,26 @@
 {
-  "as_of_taipei": "2026-11-28T16:50:00+0800",
+  "as_of_taipei": "2026-11-28T16:55:00+0800",
   "phone_sync": "blocked",
   "buy_signal": false,
-  "purpose_zh": "他點名教具股／蓋牌靜默對質；不准話筒驚喜",
+  "purpose_zh": "他點名教具股／蓋牌靜默／美股→台股龍頭→同族群對照；不准話筒驚喜",
+  "peer_chains": [
+    {
+      "id": "PC-MU-2408-MEMORY",
+      "us_symbol": "MU",
+      "us_name_zh": "美光",
+      "tw_leader": "2408",
+      "tw_leader_name_zh": "南亞科",
+      "group_zh": "記憶體",
+      "peers_named": [],
+      "peers_note_zh": "同族群只收他當日點名者；未點不准自擴",
+      "mp_id_leader": "MP-FLAT-335",
+      "formula_claim": "3-3-5",
+      "phone_ok": false,
+      "source_days": ["20261120", "20261123", "20261124"],
+      "learn_ops_zh": "美光結構錨 → 南亞科同套巢狀／型態刪去畫判 → 再看記憶體同族群相對強弱",
+      "verify": {"status": "collecting", "n_bars_us": 0, "n_bars_tw_leader": 0, "n_peer_days": 0}
+    }
+  ],
   "samples": [
     {
       "id": "HS-6442-SILENT",
@@ -17,16 +35,31 @@
       "verify": {"status": "pending_feb_pack", "n_bars": 0}
     },
     {
+      "id": "HS-MU",
+      "symbol": "MU",
+      "name_zh": "美光",
+      "market": "US",
+      "visibility": "public_named",
+      "phone_ok": false,
+      "peer_chain_id": "PC-MU-2408-MEMORY",
+      "role": "us_teach",
+      "source_days": ["20261120", "20261123", "20261124"],
+      "verify": {"status": "collecting", "n_bars": 0},
+      "notes_zh": "美股教具錨；對照南亞科"
+    },
+    {
       "id": "HS-2408-335",
       "symbol": "2408",
       "name_zh": "南亞科",
       "visibility": "public_named",
       "phone_ok": false,
+      "peer_chain_id": "PC-MU-2408-MEMORY",
+      "role": "tw_leader",
       "source_days": ["20261120", "20261123", "20261124"],
       "mp_id": "MP-FLAT-335",
       "formula_claim": "3-3-5",
       "verify": {"status": "collecting", "n_bars": 0},
-      "notes_zh": "他教具；二月包繼續收樣本，非買訊"
+      "notes_zh": "台股對照龍頭；再用它看記憶體同族群（僅他點名）"
     }
   ]
 }
