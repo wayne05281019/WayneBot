@@ -1,17 +1,17 @@
 {
-  "as_of_taipei": "2026-11-28T14:26:00+0800",
+  "as_of_taipei": "2026-11-28T14:42:00+0800",
   "phone_sync": "blocked",
   "buy_signal": false,
   "purpose_zh": "記取並量化：①黃的判斷原則 ②我隔日預估失敗原因。每chrono日更新；n不足不准改話筒。",
   "tz": "Asia/Taipei",
-  "n_days_absorbed": 7,
-  "n_forecasts_confronted": 7,
+  "n_days_absorbed": 8,
+  "n_forecasts_confronted": 8,
   "my_forecast_score": {
-    "hit_high_prob": 3,
+    "hit_high_prob": 4,
     "hit_high_prob_partial": 2,
     "miss_high_prob": 2,
-    "hit_rate_high_prob_strict": 0.42857142857142855,
-    "hit_rate_high_prob_incl_partial": 0.7142857142857143
+    "hit_rate_high_prob_strict": 0.5,
+    "hit_rate_high_prob_incl_partial": 0.75
   },
   "principles": [
     {
@@ -21,7 +21,7 @@
         "user_20261128",
         "public_elliott"
       ],
-      "n_seen": 1,
+      "n_seen": 2,
       "ops_check_zh": "細拆：①③⑤／C 應五波；②④／B 應三波；A 優先五、否則三（3-3-5）。C 不准收成三波當完。"
     },
     {
@@ -175,9 +175,10 @@
       "id": "HP-ADMIT-RETRACT",
       "rule_zh": "看出錯就即時改口；短線深度錯不推翻長線三段／非推動破底主架構",
       "source_days": [
-        "20261117"
+        "20261117",
+        "20261120"
       ],
-      "n_seen": 1
+      "n_seen": 2
     },
     {
       "id": "HP-SECOND-FOOT-NOW",
@@ -187,7 +188,9 @@
         "20261118"
       ],
       "n_seen": 2,
-      "next_day_lower_low": 2
+      "next_day_lower_low": 2,
+      "status": "retracted_for_TWII_20261120",
+      "retract_note_zh": "1120：大盤改第五下跌；台積仍可第二腳"
     },
     {
       "id": "HP-RETEST-STAND-BUY-IF-NOT-IMPULSE",
@@ -205,6 +208,40 @@
       ],
       "n_seen": 1,
       "nest_ref": "A可3或5／B=3／C必5"
+    },
+    {
+      "id": "HP-MARKET-5TH-DOWN",
+      "rule_zh": "大盤可與台積脫鉤：權值族群更深時大盤可走五段下跌，即使台積仍三段／第二腳",
+      "source_days": [
+        "20261120"
+      ],
+      "n_seen": 1,
+      "next_day_new_low_then_bounce": 1
+    },
+    {
+      "id": "HP-TSMC-STILL-3-FOOT",
+      "rule_zh": "台積破2020一點仍可判假破／B味道＋三段，軌道太平≠有效五段推動下",
+      "source_days": [
+        "20261120"
+      ],
+      "n_seen": 1
+    },
+    {
+      "id": "HP-5TH-DONT-PANIC-SELL",
+      "rule_zh": "第五波進行中勿殺低；等五之五／細微走完再評估",
+      "source_days": [
+        "20261120"
+      ],
+      "n_seen": 1
+    },
+    {
+      "id": "HP-STOCK-335-FINISH",
+      "rule_zh": "個股調整常見a-b-c＝3-3-5；跌完看c⑤內細微五之五末端",
+      "source_days": [
+        "20261120"
+      ],
+      "n_seen": 1,
+      "nest_ref": "A可3／B=3／C必5"
     }
   ],
   "my_failure_taxonomy": [

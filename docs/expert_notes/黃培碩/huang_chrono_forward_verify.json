@@ -1,5 +1,5 @@
 {
-  "as_of_taipei": "2026-11-28T14:26:00+0800",
+  "as_of_taipei": "2026-11-28T14:42:00+0800",
   "phone_sync": "blocked",
   "buy_signal": false,
   "method_zh": "每天同步跟他一起解盤：讀D→量化他的原則→自己先寫隔日高/低機率→隔天官方柱對答案→失敗碼累計→再讀D+1。從最早片往後；不准倒推。",
@@ -20,8 +20,8 @@
     "20261126",
     "20261127"
   ],
-  "cursor_day": "20261120",
-  "status_zh": "1110–1119 七輪對質完成；1120 官方大破前低＝本輪 miss；下一個讀1120片看他怎麼改口。",
+  "cursor_day": "20261123",
+  "status_zh": "1110–1120 八輪對質完成；大盤1120改口第五下跌；下一個讀1123片。",
   "days": [
     {
       "day": "20261110",
@@ -333,7 +333,53 @@
         ],
         "lesson_zh": "『破不破』≠無限深度；隔日若跳空大破前低，高機率要並列『推動續殺』分支並升權。下一片看他是否改口。"
       },
-      "next_film_read": "pending_20261120"
+      "next_film_read": "done_20261120"
+    },
+    {
+      "day": "20261120",
+      "film": "1120黃培碩.mp4",
+      "yt_title": "台積電強於大盤！三段式 vs. 五段式",
+      "absorb_refs": [
+        "docs/expert_notes/飆客/decade_lab/huang_wave_method_20261120.md",
+        "docs/expert_notes/飆客/decade_lab/huang_oral_absorb_20261120.json"
+      ],
+      "his_read_zh": "大盤改口：不是第二腳，是第五波下跌（認先前連動台積判斷錯）。台積仍三段／第二腳＋假破底味道。第五波中勿殺低；五完再評估。個股3-3-5細拆。",
+      "retract_zh": "TWII 第二腳→第五下跌；台積不跟改",
+      "forecast_for_next": {
+        "target_day": "20261123",
+        "note_zh": "週末後下一交易日／下一片日",
+        "written_before_peek": true,
+        "high_prob_zh": "第五波仍可再探低或末端止跌後反彈；勿當第二腳V已確認；新低後反彈可並列",
+        "low_prob_zh": "週五已見第五絕對終點、週一不破新低直接大噴離結構",
+        "basis_zh": "口播大盤第五波進行中／細微波可能未完；第五完才整理；吸收跳空破腳失敗課",
+        "applied_fix_from": [
+          "F-FOOT-DEPTH-UNLIMITED",
+          "F-UNDERWEIGHT-GAP-BREAK",
+          "HP-ADMIT-RETRACT"
+        ]
+      },
+      "confront_official": {
+        "symbol": "TWII",
+        "bar": {
+          "date": "20261123",
+          "open": 35899.48,
+          "high": 37108.2,
+          "low": 35442.41,
+          "close": 36811.89
+        },
+        "result": "hit_high_prob",
+        "score_zh": "對",
+        "what_happened_zh": "1123 再探低35442（略低於1120低35738）後強彈收36812；符合第五末端可再低＋反彈。",
+        "why_hit_zh": "新低＋反彈並列主腳命中；非第二腳假V不破新低。",
+        "failure_codes": [],
+        "principles_fired": [
+          "HP-MARKET-5TH-DOWN",
+          "HP-ADMIT-RETRACT",
+          "HP-5TH-DONT-PANIC-SELL"
+        ],
+        "lesson_zh": "改口第五波後，隔日高機率保留『可再探低』；新低後反彈仍算結構內。"
+      },
+      "next_film_read": "pending_20261123"
     }
   ]
 }
