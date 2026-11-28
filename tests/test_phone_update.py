@@ -80,7 +80,7 @@ def test_file_note_matches_this_change():
     ):
         assert junk not in raw
     assert pu._clean_note(raw) == (
-        "次級四浪：十檔後打代號可查單檔（不再被代號踢去查股）"
+        "次級四浪打代號可試畫（台光電不在十檔名單也能出兩張）"
     )
 
 

@@ -628,6 +628,44 @@ def find_wave4_row(payload: Dict[str, Any], stock_id: str) -> Optional[Dict[str,
     return None
 
 
+def row_from_wave4_paint_meta(meta: Dict[str, Any]) -> Dict[str, Any]:
+    """打代號試畫成功：用 paint meta 組單檔卡（可非十檔名單內）。觀察非買訊。"""
+    sid = str(meta.get("sid") or "").strip()
+    name = str(meta.get("name") or sid)
+    close = float(meta.get("close") or 0)
+    w4 = float(meta.get("w4") or 0)
+    w3 = float(meta.get("w3") or 0)
+    room = float(meta.get("room_pct") or 0)
+    above = bool(meta.get("above_w3"))
+    row: Dict[str, Any] = {
+        "stock_id": sid,
+        "stock_name": name,
+        "market": "",
+        "close": close,
+        "wave4": w4,
+        "wave3_low": w3,
+        "room_to_w4_pct": room,
+        "above_w4_low": above,
+        "bucket": "watch",
+        "eps_last": None,
+        "eps_profit": False,
+        "taught_tags": [],
+        "chip_label": "",
+        "why_zh": "",
+        "score": 0.0,
+        "bottom_near_year_ago_bars": 0,
+        "asof": str(meta.get("asof") or ""),
+    }
+    note = "打代號試畫（非實質十檔名單；觀察非買訊）"
+    try:
+        out = refresh_row_bucket(row)
+    except Exception:
+        out = row
+    why = str(out.get("why_zh") or "").strip()
+    out["why_zh"] = f"{note}；{why}" if why else note
+    return out
+
+
 def format_wave4_one_html(row: Dict[str, Any], *, live: bool = False) -> str:
     sid = str(row.get("stock_id") or "")
     name = str(row.get("stock_name") or sid)
@@ -760,15 +798,16 @@ def paint_wave4_one_pair(
     stock_name: str = "",
     tag: str = "one",
     header_style: str = "B",
-) -> List[Dict[str, str]]:
+) -> Tuple[List[Dict[str, str]], Optional[Dict[str, Any]]]:
     """單檔一次兩張：①次級四浪圖 ②查股同款結構圖（同路上大量區日／高低）。
 
     同一 mpl worker 內依序渲，不准並行踩 FreeType。
     結構圖 force_vol_zone＝四浪圖 pick_path_vol_zone 結果（反彈壓／下降撐壓）。
+    回 (charts, paint_meta)；五波畫不出→([], None)。
     """
     sid = str(stock_id or "").strip()
     if not sid:
-        return []
+        return [], None
     name = str(stock_name or "").strip() or sid
     out_dir_p = Path(out_dir)
     out_dir_p.mkdir(parents=True, exist_ok=True)
@@ -776,14 +815,21 @@ def paint_wave4_one_pair(
     wave_out = out_dir_p / f"wave4_{sid}_{tag or 'one'}.png"
     struct_out = out_dir_p / f"struct_{sid}_{tag or 'one'}.png"
 
-    def _do() -> List[Dict[str, str]]:
+    def _do() -> Tuple[List[Dict[str, str]], Optional[Dict[str, Any]]]:
         charts: List[Dict[str, str]] = []
         force_zone: Dict[str, Any] | None = None
         face_asof = ""
+        paint_meta: Optional[Dict[str, Any]] = None
+        disp_name = name
         try:
             from scripts.paint_focus_target_sample import paint
 
             meta = paint(sid, wave_out, db_path=Path(db_path), header_style=style)
+            if isinstance(meta, dict):
+                paint_meta = dict(meta)
+                name_m = str(meta.get("name") or "").strip()
+                if name_m and (not disp_name or disp_name == sid):
+                    disp_name = name_m
             z = (meta or {}).get("zone") if isinstance(meta, dict) else None
             if isinstance(z, dict) and z.get("date") and z.get("high") and z.get("low"):
                 force_zone = dict(z)
@@ -793,20 +839,22 @@ def paint_wave4_one_pair(
                 charts.append(
                     {
                         "stock_id": sid,
-                        "stock_name": name,
+                        "stock_name": disp_name,
                         "path": str(wave_out),
                         "kind": "wave4",
-                        "caption": f"{sid} {name} 次級四浪（觀察非買訊）",
+                        "caption": f"{sid} {disp_name} 次級四浪（觀察非買訊）",
                     }
                 )
         except Exception:
-            pass
+            paint_meta = None
+        if not charts:
+            return [], None
         try:
             from three_in_one_chart import render_lookup_structure_result
 
             path, cap = render_lookup_structure_result(
                 sid,
-                name,
+                disp_name,
                 str(db_path),
                 str(struct_out),
                 force_vol_zone=force_zone,
@@ -816,25 +864,28 @@ def paint_wave4_one_pair(
                 charts.append(
                     {
                         "stock_id": sid,
-                        "stock_name": name,
+                        "stock_name": disp_name,
                         "path": str(path),
                         "kind": "struct",
-                        "caption": str(cap or f"{sid} {name} 結構圖")[:200],
+                        "caption": str(cap or f"{sid} {disp_name} 結構圖")[:200],
                     }
                 )
         except Exception:
             pass
-        return charts
+        return charts, paint_meta
 
     try:
         from wayne_navigator import run_mpl_paint
 
-        return list(run_mpl_paint(_do) or [])
+        out = run_mpl_paint(_do)
+        if isinstance(out, tuple) and len(out) == 2:
+            return list(out[0] or []), out[1]
+        return list(out or []), None
     except Exception:
         try:
             return _do()
         except Exception:
-            return []
+            return [], None
 
 
 def paint_wave4_page_charts(

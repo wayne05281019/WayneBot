@@ -9401,21 +9401,49 @@ class WayneTelegramBot:
                     format_wave4_one_html,
                     get_wave4_desk_cached,
                     paint_wave4_one_pair,
+                    row_from_wave4_paint_meta,
                 )
                 from live_quote import fetch_lookup_quote, is_live_merge_window
 
                 payload = get_wave4_desk_cached(self.db_path)
                 row = find_wave4_row(payload, stock_id)
                 live = False
-                charts: list = []
-                if row is None:
+                chart_dir = os.path.join(
+                    getattr(self, "charts_dir", "data/charts") or "data/charts",
+                    "wave4",
+                    str(uid or "x"),
+                )
+                # 打代號＝試畫；不准只因不在實質十檔／母體名單就回「不符合五段」
+                charts, paint_meta = paint_wave4_one_pair(
+                    stock_id,
+                    db_path=self.db_path,
+                    out_dir=chart_dir,
+                    stock_name=str((row or {}).get("stock_name") or stock_id),
+                    tag="one",
+                    header_style="B",
+                )
+                if not charts:
                     return (
                         f"<b>次級四浪・{stock_id}</b>\n"
-                        "這檔目前不在可畫五波母體（或基準日異常）。"
+                        "這檔目前畫不出次級四浪五波結構（官方柱不夠或結構不過）。"
                         "觀察非買訊；可改打別檔或看實質十檔。",
                         False,
                         [],
                     )
+                if row is None and isinstance(paint_meta, dict):
+                    row = row_from_wave4_paint_meta(paint_meta)
+                if row is None:
+                    row = {
+                        "stock_id": stock_id,
+                        "stock_name": stock_id,
+                        "close": 0,
+                        "wave4": 0,
+                        "wave3_low": 0,
+                        "room_to_w4_pct": 0,
+                        "above_w4_low": True,
+                        "bucket": "watch",
+                        "why_zh": "打代號試畫（觀察非買訊）",
+                    }
                 if is_live_merge_window():
                     try:
                         rt = (
@@ -9430,19 +9458,6 @@ class WayneTelegramBot:
                             live = True
                     except Exception:
                         pass
-                chart_dir = os.path.join(
-                    getattr(self, "charts_dir", "data/charts") or "data/charts",
-                    "wave4",
-                    str(uid or "x"),
-                )
-                charts = paint_wave4_one_pair(
-                    stock_id,
-                    db_path=self.db_path,
-                    out_dir=chart_dir,
-                    stock_name=str(row.get("stock_name") or stock_id),
-                    tag="one",
-                    header_style="B",
-                )
                 return format_wave4_one_html(row, live=live), True, charts
 
             try:
@@ -9492,7 +9507,7 @@ class WayneTelegramBot:
                     def _retry_pair():
                         from focus_wave4_desk import paint_wave4_one_pair
 
-                        return paint_wave4_one_pair(
+                        ch, _meta = paint_wave4_one_pair(
                             stock_id,
                             db_path=self.db_path,
                             out_dir=os.path.join(
@@ -9505,6 +9520,7 @@ class WayneTelegramBot:
                             tag="one_retry",
                             header_style="B",
                         )
+                        return ch
 
                     charts2 = await asyncio.wait_for(
                         asyncio.to_thread(_retry_pair), timeout=120.0
