@@ -32,11 +32,13 @@
       "formula_zh": "上升①③⑤走五波；②④走三波"
     },
     "falling_abc": {
-      "motive_legs_5wave": ["A", "C"],
-      "corrective_legs_3wave": ["B"],
-      "formula_zh": "下降 A／C 走五波；B 走三波"
+      "A": {"prefer": "5", "also_ok": ["3"], "rule_zh": "A 走得了五波就五波；走不了可三波（例平坦 3-3-5）"},
+      "B": {"must": "3", "rule_zh": "B 走三波"},
+      "C": {"must": "5", "rule_zh": "C 一定走五波"},
+      "common_formulas": ["5-3-5", "3-3-5"],
+      "formula_zh": "下降 ABC：A＝五或三；B＝三；C＝一定五"
     },
-    "note_zh": "細微波刪去法硬卡；與公開 Elliott 子浪巢狀一致。黃／飆大樣本對上才升格話筒，phone_sync=blocked。"
+    "note_zh": "細微波刪去法硬卡（使用者 2026-11-28 補 A 可三）。黃／飆大樣本對上才升格話筒，phone_sync=blocked。"
   },
   "overlap_hooks": [
     "WR-OPS-FAKE-BREAK",

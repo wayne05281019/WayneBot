@@ -16,10 +16,10 @@
   "principles": [
     {
       "id": "HP-NEST-135-5_24-3",
-      "rule_zh": "上升浪①–⑤：①③⑤走五波、②④走三波；下降ABC：A／C走五波、B走三波",
+      "rule_zh": "上升浪①–⑤：①③⑤走五波、②④走三波；下降ABC：A＝五或三（走不了五可三）、B＝三、C＝一定五",
       "source_days": ["user_20261128", "public_elliott"],
       "n_seen": 1,
-      "ops_check_zh": "細拆任一腳時核對子浪數：推動腳≠三波、修正腳≠五波（除非楔形等特例另標）"
+      "ops_check_zh": "細拆：①③⑤／C 應五波；②④／B 應三波；A 優先五、否則三（3-3-5）。C 不准收成三波當完。"
     },
     {
       "id": "HP-PRESSURE-NO-CHASE",
