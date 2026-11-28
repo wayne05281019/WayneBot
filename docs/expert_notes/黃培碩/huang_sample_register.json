@@ -1,0 +1,32 @@
+{
+  "as_of_taipei": "2026-11-28T16:50:00+0800",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "purpose_zh": "他點名教具股／蓋牌靜默對質；不准話筒驚喜",
+  "samples": [
+    {
+      "id": "HS-6442-SILENT",
+      "symbol": "6442",
+      "name_zh": "光聖",
+      "visibility": "silent_card",
+      "phone_ok": false,
+      "public_name_ok": false,
+      "source_days": [],
+      "levels": {"hi_approx": 2500, "lo_approx": 790, "note_zh": "他口述；官方近窗對質用 cover_card_6442_silent.json"},
+      "mp_id": null,
+      "verify": {"status": "pending_feb_pack", "n_bars": 0}
+    },
+    {
+      "id": "HS-2408-335",
+      "symbol": "2408",
+      "name_zh": "南亞科",
+      "visibility": "public_named",
+      "phone_ok": false,
+      "source_days": ["20261120", "20261123", "20261124"],
+      "mp_id": "MP-FLAT-335",
+      "formula_claim": "3-3-5",
+      "verify": {"status": "collecting", "n_bars": 0},
+      "notes_zh": "他教具；二月包繼續收樣本，非買訊"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "as_of_taipei": "2026-11-28T16:50:00+0800",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "pack": "feb_2026_onward",
+  "status": "awaiting_drive_feb_films",
+  "cursor_day": null,
+  "earliest_target": "20260201",
+  "short_window_holdout": {
+    "days": ["20261110", "20261111", "20261112", "20261116", "20261117", "20261118", "20261119", "20261120", "20261123", "20261124", "20261125", "20261126", "20261127"],
+    "ledger": "huang_chrono_forward_verify.json",
+    "note_zh": "Nov短窗已對質；二月大回測用 huang_days/ 新規格；短窗當基線／holdout"
+  },
+  "live_forecast_pending": {
+    "from_day": "20261127",
+    "target": "next_open_twii_day",
+    "status": "pending_official_bar"
+  },
+  "resume_token": "scan_drive_then_earliest_missing_open_day"
+}

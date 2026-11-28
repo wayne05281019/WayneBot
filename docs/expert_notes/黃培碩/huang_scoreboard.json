@@ -1,0 +1,26 @@
+{
+  "as_of_taipei": "2026-11-28T16:50:00+0800",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "recomputable": true,
+  "windows": {
+    "W20": null,
+    "W40": null,
+    "all": null
+  },
+  "title_only_baseline": {
+    "source": "nov_short_window_holdout",
+    "n": 12,
+    "hit_rate_strict": 0.583,
+    "hit_rate_incl_partial": 0.833,
+    "note_zh": "1110–1127 對質基線；二月包要贏這條才算技能升（仍 phone_sync=blocked）"
+  },
+  "feb_pack": {
+    "n_confronted": 0,
+    "hit_high_prob": 0,
+    "hit_high_prob_partial": 0,
+    "miss_high_prob": 0,
+    "dual_branch_rate": null,
+    "regime_complete_rate": null
+  }
+}
