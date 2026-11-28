@@ -1,5 +1,5 @@
 {
-  "as_of_taipei": "2026-11-29T00:08:02+08:00",
+  "as_of_taipei": "2026-11-29T01:33:39+08:00",
   "phone_sync": "blocked_until_gate",
   "buy_signal": false,
   "recomputable": true,
@@ -9,28 +9,28 @@
       "n": 20,
       "path_hit_rate": 1.0,
       "wave_hit_rate": 1.0,
-      "amp_hit_rate": 0.9,
-      "amp_hit_incl_skew": 0.9,
-      "levels_hit_rate": 0.95,
+      "amp_hit_rate": 0.85,
+      "amp_hit_incl_skew": 0.85,
+      "levels_hit_rate": 1.0,
       "strict_all_hit_rate": 0.85
     },
     "W40": {
-      "n": 24,
+      "n": 27,
       "path_hit_rate": 1.0,
       "wave_hit_rate": 1.0,
-      "amp_hit_rate": 0.875,
-      "amp_hit_incl_skew": 0.9166666666666666,
-      "levels_hit_rate": 0.9583333333333334,
-      "strict_all_hit_rate": 0.8333333333333334
+      "amp_hit_rate": 0.8518518518518519,
+      "amp_hit_incl_skew": 0.8888888888888888,
+      "levels_hit_rate": 0.9629629629629629,
+      "strict_all_hit_rate": 0.8148148148148148
     },
     "all": {
-      "n": 24,
+      "n": 27,
       "path_hit_rate": 1.0,
       "wave_hit_rate": 1.0,
-      "amp_hit_rate": 0.875,
-      "amp_hit_incl_skew": 0.9166666666666666,
-      "levels_hit_rate": 0.9583333333333334,
-      "strict_all_hit_rate": 0.8333333333333334
+      "amp_hit_rate": 0.8518518518518519,
+      "amp_hit_incl_skew": 0.8888888888888888,
+      "levels_hit_rate": 0.9629629629629629,
+      "strict_all_hit_rate": 0.8148148148148148
     }
   },
   "title_only_baseline": {
@@ -41,19 +41,19 @@
     "note_zh": "1110–1127 標題基線；chrono 要贏這條才算技能升"
   },
   "market_quant": {
-    "n": 24,
-    "path_hit": 24,
-    "wave_hit": 24,
-    "amp_hit": 21,
-    "levels_hit": 23,
+    "n": 27,
+    "path_hit": 27,
+    "wave_hit": 27,
+    "amp_hit": 23,
+    "levels_hit": 26,
     "dual_branch_rate": 1.0,
     "regime_complete_rate": 1.0
   },
   "stock_quant": {
-    "n_rows": 104,
+    "n_rows": 113,
     "n_missing": 6,
-    "path_hit_rate": 0.5384615384615384,
-    "amp_hit_rate": 0.4326923076923077,
+    "path_hit_rate": 0.5398230088495575,
+    "amp_hit_rate": 0.4247787610619469,
     "by_stock": {
       "1528": {
         "n": 1,
@@ -71,13 +71,13 @@
         "amp_hit_rate": 0.5
       },
       "2330": {
-        "n": 24,
-        "path_hit_rate": 0.875,
-        "amp_hit_rate": 0.8333333333333334
+        "n": 27,
+        "path_hit_rate": 0.8518518518518519,
+        "amp_hit_rate": 0.8148148148148148
       },
       "2344": {
-        "n": 6,
-        "path_hit_rate": 0.5,
+        "n": 9,
+        "path_hit_rate": 0.4444444444444444,
         "amp_hit_rate": 0.0
       },
       "2368": {
@@ -91,9 +91,9 @@
         "amp_hit_rate": 1.0
       },
       "2408": {
-        "n": 3,
-        "path_hit_rate": 0.6666666666666666,
-        "amp_hit_rate": 0.3333333333333333
+        "n": 5,
+        "path_hit_rate": 0.6,
+        "amp_hit_rate": 0.2
       },
       "2454": {
         "n": 2,
@@ -106,9 +106,9 @@
         "amp_hit_rate": 0.25
       },
       "3481": {
-        "n": 22,
-        "path_hit_rate": 0.22727272727272727,
-        "amp_hit_rate": 0.13636363636363635
+        "n": 23,
+        "path_hit_rate": 0.2608695652173913,
+        "amp_hit_rate": 0.17391304347826086
       },
       "3532": {
         "n": 3,
@@ -183,34 +183,34 @@
     }
   },
   "gate_section8": {
-    "n_valid_confronted": 24,
+    "n_valid_confronted": 27,
     "n_ge_20": true,
     "dual_branch_rate": 1.0,
     "dual_branch_ge_0_90": true,
     "regime_complete_rate": 1.0,
     "regime_complete_ok": true,
     "beats_title_baseline_w20": true,
-    "stock_quant_n": 104,
+    "stock_quant_n": 113,
     "stock_quant_ready": true,
     "status": "collecting_n20_plus_stock_needs_lift",
     "note_zh": "§8 全過才准宣稱會判；過閘後必換話筒編碼並再生下一版。不准以 blocked 少做量化／準備。",
-    "stock_path_hit_rate": 0.5384615384615384,
-    "stock_amp_hit_rate": 0.4326923076923077,
+    "stock_path_hit_rate": 0.5398230088495575,
+    "stock_amp_hit_rate": 0.4247787610619469,
     "stock_rates_ok": false
   },
   "feb_pack": {
-    "n_confronted": 24,
-    "hit_high_prob": 24,
+    "n_confronted": 27,
+    "hit_high_prob": 27,
     "hit_high_prob_partial": 1,
-    "miss_high_prob": 2,
+    "miss_high_prob": 3,
     "dual_branch_rate": 1.0,
     "regime_complete_rate": 1.0
   },
   "chrono_2026": {
     "start": "20260102",
-    "n": 24,
-    "path_hit": 24,
-    "amp_hit": 21,
+    "n": 27,
+    "path_hit": 27,
+    "amp_hit": 23,
     "days": [
       {
         "day": "20260102",
@@ -494,6 +494,45 @@
           "MEMORY_SYNC_REST_WIDEN_FLOOR"
         ],
         "growth_zh": "口播鎖震盪／年前勿追高；隔日官方拉回落帶內。群創／華邦整理命中；南亞科同步整理但拉更深→記憶體連動整理下緣要加寬。"
+      },
+      {
+        "day": "20260205",
+        "target": "20260206",
+        "path": "hit",
+        "wave": "hit",
+        "amp": "hit",
+        "levels": "hit",
+        "fail_codes": [
+          "CRITICAL_K_DOWNTILT_CHOP",
+          "MEMORY_SYNC_REST_WIDEN_FLOOR"
+        ],
+        "growth_zh": "關鍵K後偏下震盪隔日可近乎平盤消化；記憶體同步整理下緣加寬（-9%）續用。"
+      },
+      {
+        "day": "20260206",
+        "target": "20260209",
+        "path": "hit",
+        "wave": "hit",
+        "amp": "hit",
+        "levels": "hit",
+        "fail_codes": [
+          "CRITICAL_K_DOWNTILT_CHOP",
+          "MEMORY_SYNC_REST_WIDEN_FLOOR"
+        ],
+        "growth_zh": "新低下影後反抽加寬上緣成立。2344 週一近漲停對「賣點／整理」期望＝假日跳空例外：rest 期望遇跳空爆漲改記 path miss，不准事後改成追高買訊。"
+      },
+      {
+        "day": "20260209",
+        "target": "20260210",
+        "path": "hit",
+        "wave": "hit",
+        "amp": "miss",
+        "levels": "hit",
+        "fail_codes": [
+          "CRITICAL_K_DOWNTILT_CHOP",
+          "MEMORY_SYNC_REST_WIDEN_FLOOR"
+        ],
+        "growth_zh": "震盪口播下仍可連兩日強攻破帶上緣（33307>33200）→WIDE_CHOP 上緣要再加寬或把「強攻日」低機率帶寫清。path 仍可 hit（震盪／勿追高語不"
       }
     ]
   },

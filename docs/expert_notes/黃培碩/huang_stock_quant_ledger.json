@@ -1,12 +1,12 @@
 {
-  "as_of_taipei": "2026-11-29T00:08:02+08:00",
+  "as_of_taipei": "2026-11-29T01:33:39+08:00",
   "purpose_zh": "點名個股隔日方向＋幅度對質總帳；與大盤分數板同步更新。",
   "phone_apply": "pending_gate",
   "summary": {
-    "n_rows": 104,
+    "n_rows": 113,
     "n_missing": 6,
-    "path_hit_rate": 0.5384615384615384,
-    "amp_hit_rate": 0.4326923076923077,
+    "path_hit_rate": 0.5398230088495575,
+    "amp_hit_rate": 0.4247787610619469,
     "by_stock": {
       "1528": {
         "n": 1,
@@ -24,13 +24,13 @@
         "amp_hit_rate": 0.5
       },
       "2330": {
-        "n": 24,
-        "path_hit_rate": 0.875,
-        "amp_hit_rate": 0.8333333333333334
+        "n": 27,
+        "path_hit_rate": 0.8518518518518519,
+        "amp_hit_rate": 0.8148148148148148
       },
       "2344": {
-        "n": 6,
-        "path_hit_rate": 0.5,
+        "n": 9,
+        "path_hit_rate": 0.4444444444444444,
         "amp_hit_rate": 0.0
       },
       "2368": {
@@ -44,9 +44,9 @@
         "amp_hit_rate": 1.0
       },
       "2408": {
-        "n": 3,
-        "path_hit_rate": 0.6666666666666666,
-        "amp_hit_rate": 0.3333333333333333
+        "n": 5,
+        "path_hit_rate": 0.6,
+        "amp_hit_rate": 0.2
       },
       "2454": {
         "n": 2,
@@ -59,9 +59,9 @@
         "amp_hit_rate": 0.25
       },
       "3481": {
-        "n": 22,
-        "path_hit_rate": 0.22727272727272727,
-        "amp_hit_rate": 0.13636363636363635
+        "n": 23,
+        "path_hit_rate": 0.2608695652173913,
+        "amp_hit_rate": 0.17391304347826086
       },
       "3532": {
         "n": 3,
@@ -1840,6 +1840,150 @@
       "band": [
         286.15,
         300.9
+      ]
+    },
+    {
+      "day": "20260205",
+      "target": "20260206",
+      "stock_id": "2330",
+      "status": "ok",
+      "expect": "chop",
+      "c0": 1765.0,
+      "c1": 1780.0,
+      "pct": 0.85,
+      "path": "hit",
+      "amp": "hit",
+      "band": [
+        1729.7,
+        1800.3
+      ]
+    },
+    {
+      "day": "20260205",
+      "target": "20260206",
+      "stock_id": "3481",
+      "status": "ok",
+      "expect": "chop",
+      "c0": 21.8,
+      "c1": 21.8,
+      "pct": 0.0,
+      "path": "hit",
+      "amp": "hit",
+      "band": [
+        21.36,
+        22.24
+      ]
+    },
+    {
+      "day": "20260205",
+      "target": "20260206",
+      "stock_id": "2344",
+      "status": "ok",
+      "expect": "chop",
+      "c0": 102.5,
+      "c1": 97.8,
+      "pct": -4.585,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        100.45,
+        104.55
+      ]
+    },
+    {
+      "day": "20260205",
+      "target": "20260206",
+      "stock_id": "2408",
+      "status": "ok",
+      "expect": "chop",
+      "c0": 275.0,
+      "c1": 264.0,
+      "pct": -4.0,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        269.5,
+        280.5
+      ]
+    },
+    {
+      "day": "20260206",
+      "target": "20260209",
+      "stock_id": "2330",
+      "status": "ok",
+      "expect": "up_or_chop",
+      "c0": 1780.0,
+      "c1": 1815.0,
+      "pct": 1.966,
+      "path": "hit",
+      "amp": "hit",
+      "band": [
+        1744.4,
+        1815.6
+      ]
+    },
+    {
+      "day": "20260206",
+      "target": "20260209",
+      "stock_id": "2344",
+      "status": "ok",
+      "expect": "up_or_chop",
+      "c0": 97.8,
+      "c1": 107.5,
+      "pct": 9.918,
+      "path": "hit",
+      "amp": "miss",
+      "band": [
+        95.84,
+        99.76
+      ]
+    },
+    {
+      "day": "20260206",
+      "target": "20260209",
+      "stock_id": "2408",
+      "status": "ok",
+      "expect": "up_or_chop",
+      "c0": 264.0,
+      "c1": 274.5,
+      "pct": 3.977,
+      "path": "hit",
+      "amp": "miss",
+      "band": [
+        258.72,
+        269.28
+      ]
+    },
+    {
+      "day": "20260209",
+      "target": "20260210",
+      "stock_id": "2330",
+      "status": "ok",
+      "expect": "chop",
+      "c0": 1815.0,
+      "c1": 1880.0,
+      "pct": 3.581,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        1778.7,
+        1851.3
+      ]
+    },
+    {
+      "day": "20260209",
+      "target": "20260210",
+      "stock_id": "2344",
+      "status": "ok",
+      "expect": "chop",
+      "c0": 107.5,
+      "c1": 103.5,
+      "pct": -3.721,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        105.35,
+        109.65
       ]
     }
   ]
