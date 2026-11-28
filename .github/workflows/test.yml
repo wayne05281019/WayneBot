@@ -63,48 +63,88 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
+      # PR checkout 預設是 merge commit；不准用 HEAD~1（會把整包 PR diff 當「這一推」）。
+      # synchronize：比 github.event.before → pull_request.head.sha（真·這一推）。
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Detect Huang-notes-only push
         id: gate
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before || '' }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
-          CHANGED=""
-          if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
-            CHANGED=$(git diff --name-only HEAD~1 HEAD || true)
-          fi
-          if [ -z "${CHANGED}" ]; then
-            echo "no prior commit diff → need full-suite"
-            echo "need_full=1" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          echo "changed files:"
-          echo "$CHANGED"
-          NEED=0
-          while IFS= read -r f; do
-            [ -z "$f" ] && continue
-            case "$f" in
-              docs/expert_notes/黃培碩/huang_days/_TEMPLATE.json) NEED=1 ;;
-              docs/expert_notes/黃培碩/huang_days/*) ;;
-              docs/expert_notes/黃培碩/huang_chrono_*) ;;
-              docs/expert_notes/黃培碩/huang_scoreboard.json) ;;
-              docs/expert_notes/黃培碩/huang_stock_quant_ledger.json) ;;
-              docs/expert_notes/黃培碩/huang_vnext_candidates.json) ;;
-              docs/expert_notes/黃培碩/huang_judgment_principles_quant.json) ;;
-              docs/expert_notes/黃培碩/huang_film_index.json) ;;
-              docs/expert_notes/黃培碩/huang_sample_register.json) ;;
-              docs/expert_notes/黃培碩/*.md) ;;
-              *) NEED=1 ;;
-            esac
-          done <<< "$CHANGED"
-          echo "need_full=$NEED" >> "$GITHUB_OUTPUT"
-          if [ "$NEED" = "0" ]; then
-            echo "Huang notes-only push → skip DB/pytest (job stays green)"
-          else
-            echo "code/contract-relevant paths → run full-suite"
-          fi
+          python3 - <<'PY'
+          import os, subprocess, sys
+          from pathlib import Path
+
+          def allowlisted(path: str) -> bool:
+              p = path.replace("\\", "/")
+              if p == "docs/expert_notes/黃培碩/huang_days/_TEMPLATE.json":
+                  return False
+              if p.startswith("docs/expert_notes/黃培碩/huang_days/"):
+                  return True
+              if p.startswith("docs/expert_notes/黃培碩/huang_chrono_"):
+                  return True
+              if p in {
+                  "docs/expert_notes/黃培碩/huang_scoreboard.json",
+                  "docs/expert_notes/黃培碩/huang_stock_quant_ledger.json",
+                  "docs/expert_notes/黃培碩/huang_vnext_candidates.json",
+                  "docs/expert_notes/黃培碩/huang_judgment_principles_quant.json",
+                  "docs/expert_notes/黃培碩/huang_film_index.json",
+                  "docs/expert_notes/黃培碩/huang_sample_register.json",
+              }:
+                  return True
+              if p.startswith("docs/expert_notes/黃培碩/") and p.endswith(".md"):
+                  return True
+              return False
+
+          event = os.environ.get("EVENT_NAME", "")
+          before = (os.environ.get("BEFORE_SHA") or "").strip()
+          head = (os.environ.get("HEAD_SHA") or "").strip()
+          changed: list[str] = []
+          if event == "pull_request" and before and before != "0" * 40 and head:
+              subprocess.run(["git", "fetch", "--no-tags", "origin", before, head], check=False)
+              out = subprocess.check_output(
+                  ["git", "diff", "--name-only", before, head], text=True
+              )
+              changed = [ln.strip() for ln in out.splitlines() if ln.strip()]
+          elif head and before and before != "0" * 40:
+              out = subprocess.check_output(
+                  ["git", "diff", "--name-only", before, head], text=True
+              )
+              changed = [ln.strip() for ln in out.splitlines() if ln.strip()]
+          else:
+              # fallback: last commit on checked-out tip
+              try:
+                  out = subprocess.check_output(
+                      ["git", "diff", "--name-only", "HEAD~1", "HEAD"], text=True
+                  )
+                  changed = [ln.strip() for ln in out.splitlines() if ln.strip()]
+              except subprocess.CalledProcessError:
+                  changed = []
+
+          print("changed files:")
+          for f in changed:
+              print(f)
+          if not changed:
+              need = 1
+              print("empty diff → need full-suite")
+          else:
+              need = 0 if all(allowlisted(f) for f in changed) else 1
+              print(
+                  "Huang notes-only push → skip DB/pytest"
+                  if need == 0
+                  else "code/contract-relevant paths → run full-suite"
+              )
+          Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8").write(
+              f"need_full={need}\n"
+          )
+          PY
 
       - name: Huang notes-only skip (full-suite stays green)
         if: steps.gate.outputs.need_full != '1'
