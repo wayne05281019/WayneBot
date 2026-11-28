@@ -1,0 +1,62 @@
+{
+  "as_of_taipei": "2026-11-28T16:30:00+0800",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "user_lock": "2026-11-28",
+  "purpose_zh": "二月起大回測硬規格：刪去＋雙分支＋量化＋開市無片仍判；目標＝實際解盤能力，不准隨便結案。",
+  "target_capability_zh": [
+    "釘頂→巢狀→型態刪去→雙分支機率",
+    "振幅／Fib／日量／必要時60分K量",
+    "隔日官方柱可對質並進化失敗碼",
+    "禁止結案句：沒學到怎麼判／還沒辦法進步"
+  ],
+  "agents_consulted": [
+    "bc-8390efd8-8919-5779-8f0e-31ece2bd6185",
+    "bc-3da1036f-dbb6-5add-b19f-fd717def6d2e",
+    "bc-ac485767-3f05-5cff-93a6-6b4bdf81f005"
+  ],
+  "film_status_enum": ["present", "absent_open", "closed"],
+  "absent_open_counts_toward_n": true,
+  "closed_skips": true,
+  "dual_branch_default": true,
+  "single_branch_ok_only_if": {
+    "score_gap_ge": 25,
+    "iron_gates_no_unknown": true,
+    "no_oral_contradiction": true
+  },
+  "pass_pattern_count_range": [1, 3],
+  "min_daily_quant": [
+    "amp_ratios",
+    "fib_or_skip_reason",
+    "vol_daily",
+    "escalate_60m_when_gated",
+    "micro_example_only_if_named"
+  ],
+  "progress_gate_every_n_confronted": 20,
+  "anti_casual_done_gate": {
+    "n_valid_confronted_ge": 20,
+    "dual_branch_rate_ge": 0.9,
+    "regime_complete_rate": 1.0,
+    "elim_full_catalog_daily": true,
+    "hit_vs_title_baseline_not_worse": true,
+    "min_reusable_hp": 10,
+    "min_stable_failure_fixes": 5,
+    "retract_learn_rate_ge": 0.8,
+    "blind_forecast_audits_ge": 3,
+    "fail_state_if_missing": "collecting",
+    "forbidden_excuse_zh": [
+      "沒學到怎麼實際判斷",
+      "還沒辦法進步到某地步",
+      "資料不足所以不判（未標 unknown／未升60m）"
+    ]
+  },
+  "ledger_files": {
+    "index": "huang_chrono_index.json",
+    "days_dir": "huang_days/",
+    "scoreboard": "huang_scoreboard.json",
+    "principles": "huang_judgment_principles_quant.json",
+    "samples": "huang_sample_register.json",
+    "patterns": "docs/expert_notes/飆客/observe_manual/wave_micro_pattern_catalog.json"
+  },
+  "spec_md": "docs/expert_notes/黃培碩/huang_feb_backtest_ops_spec.md"
+}
