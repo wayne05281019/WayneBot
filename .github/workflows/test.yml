@@ -75,15 +75,16 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           BEFORE_SHA: ${{ github.event.before || '' }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import os, subprocess, sys
+          import os, subprocess, unicodedata
           from pathlib import Path
 
           def allowlisted(path: str) -> bool:
-              p = path.replace("\\", "/")
+              p = unicodedata.normalize("NFC", path.replace("\\", "/"))
               if p == "docs/expert_notes/黃培碩/huang_days/_TEMPLATE.json":
                   return False
               if p.startswith("docs/expert_notes/黃培碩/huang_days/"):
@@ -103,31 +104,53 @@ jobs:
                   return True
               return False
 
+          def names_only(a: str, b: str | None = None) -> list[str]:
+              cmd = ["git", "diff", "--name-only", a] if b is None else ["git", "diff", "--name-only", a, b]
+              out = subprocess.check_output(cmd, text=True)
+              return [unicodedata.normalize("NFC", ln.strip()) for ln in out.splitlines() if ln.strip()]
+
           event = os.environ.get("EVENT_NAME", "")
           before = (os.environ.get("BEFORE_SHA") or "").strip()
+          base = (os.environ.get("BASE_SHA") or "").strip()
           head = (os.environ.get("HEAD_SHA") or "").strip()
           changed: list[str] = []
-          if event == "pull_request" and before and before != "0" * 40 and head:
+          mode = "empty"
+          # 1) synchronize／push：真·這一推 before→head
+          if before and before != "0" * 40 and head:
               subprocess.run(["git", "fetch", "--no-tags", "origin", before, head], check=False)
-              out = subprocess.check_output(
-                  ["git", "diff", "--name-only", before, head], text=True
-              )
-              changed = [ln.strip() for ln in out.splitlines() if ln.strip()]
-          elif head and before and before != "0" * 40:
-              out = subprocess.check_output(
-                  ["git", "diff", "--name-only", before, head], text=True
-              )
-              changed = [ln.strip() for ln in out.splitlines() if ln.strip()]
-          else:
-              # fallback: last commit on checked-out tip
               try:
-                  out = subprocess.check_output(
-                      ["git", "diff", "--name-only", "HEAD~1", "HEAD"], text=True
-                  )
-                  changed = [ln.strip() for ln in out.splitlines() if ln.strip()]
+                  changed = names_only(before, head)
+                  mode = "before→head"
               except subprocess.CalledProcessError:
                   changed = []
+                  mode = "before→head_fail"
+          # 2) PR opened／before 缺：比 base→head（整包 PR；筆記-only 仍可跳）
+          if not changed and event == "pull_request" and base and head:
+              subprocess.run(["git", "fetch", "--no-tags", "origin", base, head], check=False)
+              try:
+                  changed = names_only(base, head)
+                  mode = "base→head"
+              except subprocess.CalledProcessError:
+                  changed = []
+                  mode = "base→head_fail"
+          # 3) 最後：只列 tip 提交檔（不需父提交；修 HEAD~1 在 detached tip 空 diff）
+          if not changed:
+              try:
+                  out = subprocess.check_output(
+                      ["git", "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"],
+                      text=True,
+                  )
+                  changed = [
+                      unicodedata.normalize("NFC", ln.strip())
+                      for ln in out.splitlines()
+                      if ln.strip()
+                  ]
+                  mode = "diff-tree_HEAD"
+              except subprocess.CalledProcessError:
+                  changed = []
+                  mode = "diff-tree_fail"
 
+          print(f"gate mode={mode} before={before[:12] or '-'} base={base[:12] or '-'} head={head[:12] or '-'}")
           print("changed files:")
           for f in changed:
               print(f)
