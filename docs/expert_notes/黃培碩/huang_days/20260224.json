@@ -1,0 +1,549 @@
+{
+  "meta": {
+    "day": "20260224",
+    "film_status": "present",
+    "film": "0224黃培碩.mp4",
+    "written_before_peek": true,
+    "phone_sync": "blocked_until_gate",
+    "buy_signal": false,
+    "chrono_start": "2026-01-02",
+    "drive_id": "1lwvGyFtQW6ynAMUXqfuuiK-F_BbOvtxA",
+    "asr_status": "fw_small_int8",
+    "prior_lesson_applied": [
+      "HOLIDAY_TURN_DAY1_ATH_CHOP",
+      "MICRO5_DONE_NO_CHASE",
+      "CNY_GAP_WIDEN_BAND"
+    ],
+    "process_note_zh": "台積補位領軍大漲；認錯昨細微九波可結束→推動續"
+  },
+  "regime_D": {
+    "anchor_peak": 32996,
+    "anchor_trough": 27350,
+    "degree_now": "2/6低點起推動續行（台積補位）",
+    "phase_label": "短線推動中；長線暫擱",
+    "nest_state": "推動",
+    "relay_bin": "impulse_continue",
+    "iron_gate_14": "pass",
+    "iron_gate_w3": "pass",
+    "named_symbols": [
+      "2330"
+    ],
+    "kill_levels": [
+      31800,
+      31164
+    ],
+    "confirm_levels": [
+      34786,
+      35500
+    ]
+  },
+  "wave_def_draw": {
+    "degree_main": {
+      "label_zh": "自3164推動續；昨九波結束判斷作廢",
+      "now_zh": "台積補位帶動；短線推動未結束"
+    },
+    "degree_micro": {
+      "label_zh": "電子大型股上攻；金融昨強今弱"
+    },
+    "draw_notes_zh": "舊線論線認錯續推；非買訊自動開",
+    "label_lock": "candidate",
+    "align_with_huang": "same"
+  },
+  "elim_rows": [
+    {
+      "path_zh": "昨九波＝推動結束鎖死",
+      "why_zh": "口播認錯：台積一動又出去"
+    },
+    {
+      "path_zh": "弱勢底部分子可抄",
+      "why_zh": "口播量不足／難度高不定操作"
+    }
+  ],
+  "sync_us": [
+    {
+      "symbol": "SOX",
+      "status": "ok",
+      "as_of": "20260224",
+      "close": 8332.33984375
+    }
+  ],
+  "sync_tx": {
+    "day_session": {
+      "o": 34125.0,
+      "h": 34956.0,
+      "l": 34100.0,
+      "c": 34827.0,
+      "v": 78032
+    },
+    "night_session": {
+      "o": 33957.0,
+      "h": 34296.0,
+      "l": 33821.0,
+      "c": 34027.0,
+      "v": 48895
+    },
+    "status": "ok"
+  },
+  "sync_te": {
+    "day_session": null,
+    "night_session": null,
+    "status": "missing",
+    "note_zh": "缺"
+  },
+  "sync_twii": {
+    "o": 34020.7109375,
+    "h": 34786.421875,
+    "l": 33987.51171875,
+    "c": 34700.8203125,
+    "pct": 2.75
+  },
+  "peer_chain": [],
+  "teach_expand": [
+    {
+      "item_zh": "認錯續推",
+      "action_zh": "昨可結束→今台積補位改推動續；對質跟口播改口"
+    },
+    {
+      "item_zh": "量不足不定操作",
+      "action_zh": "底部量不夠檔先排除"
+    }
+  ],
+  "quant": {
+    "amp_ratios": {
+      "tx_close": 34827.0,
+      "next_chop_band_tx": [
+        33800.0,
+        36000.0
+      ],
+      "next_stretch_tx": [
+        36000.0,
+        37000
+      ],
+      "next_deep_pull_tx": 31800.0,
+      "note_zh": "推動續行加寬上緣"
+    },
+    "fib_used": {
+      "computed_at_taipei": "2026-11-29T03:08:07+08:00",
+      "rule_zh": "黃金切割＋等幅度",
+      "index": {
+        "R": 5646,
+        "anchor_lo": 27350,
+        "anchor_hi": 32996,
+        "direction": "up",
+        "fib_retrace_from_hi": {
+          "0.236": 31663.54,
+          "0.382": 30839.23,
+          "0.5": 30173.0,
+          "0.618": 29506.77,
+          "0.786": 28558.24
+        },
+        "fib_ext_from_lo": {
+          "1.0": 32996.0,
+          "1.272": 34531.71,
+          "1.618": 36485.23,
+          "2.0": 38642.0
+        },
+        "equal_amp": {
+          "up_1R_from_lo": 32996,
+          "down_1R_from_hi": 27350,
+          "up_1R_from_hi": 38642,
+          "down_0_5R_from_hi": 30173.0,
+          "down_0_618R_from_hi": 29506.77
+        }
+      },
+      "tsmc": {
+        "R": 500,
+        "anchor_lo": 1415,
+        "anchor_hi": 1915,
+        "direction": "up",
+        "fib_retrace_from_hi": {
+          "0.236": 1797.0,
+          "0.382": 1724.0,
+          "0.5": 1665.0,
+          "0.618": 1606.0,
+          "0.786": 1522.0
+        },
+        "fib_ext_from_lo": {
+          "1.0": 1915.0,
+          "1.272": 2051.0,
+          "1.618": 2224.0,
+          "2.0": 2415.0
+        },
+        "equal_amp": {
+          "up_1R_from_lo": 1915,
+          "down_1R_from_hi": 1415,
+          "up_1R_from_hi": 2415,
+          "down_0_5R_from_hi": 1665.0,
+          "down_0_618R_from_hi": 1606.0
+        }
+      },
+      "confront_next": {
+        "target": "20260225"
+      }
+    },
+    "equal_amp_synced": true,
+    "golden_cut_synced": true,
+    "fib_skip_reason": null,
+    "vol_price": {
+      "price_dir": "up",
+      "vol": 78032,
+      "vol_ma20": 76361.4,
+      "vol_price_relation": "confirm",
+      "paired_zh": "價漲量平（量/均=1.02）",
+      "used_in_forecast": true,
+      "used_in_confront": true
+    },
+    "vol_60m": null
+  },
+  "forecast_for_next": {
+    "target_day": "20260225",
+    "written_at_taipei": "2026-11-29T03:08:07+08:00",
+    "written_before_peek": true,
+    "high_prob": {
+      "path_zh": "自3164推動續行；台積領軍下短線仍偏多追蹤",
+      "wave_zh": "推動未結束；細微可再停再出",
+      "levels_zh": "帶內續攻／淺回",
+      "amp_zh": "台指收參34827：高機率33800.0～36000.0",
+      "prob": 0.55
+    },
+    "low_prob": {
+      "path_zh": "推動驟停轉深回／脫帶下殺",
+      "amp_zh": "落帶外",
+      "prob": 0.45
+    },
+    "single_branch_ok": false,
+    "required_zh": "雙分支必填"
+  },
+  "confront_official": {
+    "as_of": "20260225",
+    "twii": {
+      "o": 34753.30859375,
+      "h": 35521.5390625,
+      "l": 34753.30859375,
+      "c": 35413.0703125,
+      "pct_vs_prev_close": 2.05
+    },
+    "tx_day": {
+      "o": 35243.0,
+      "h": 35777.0,
+      "l": 35065.0,
+      "c": 35490.0
+    },
+    "tsmc": {
+      "o": 1995.0,
+      "h": 2025.0,
+      "l": 1995.0,
+      "c": 2015.0,
+      "pct": 2.54
+    },
+    "breadth_d1": {
+      "up": 875,
+      "down": 888
+    },
+    "amp_band_check": {
+      "close": 35490.0,
+      "band": [
+        33800.0,
+        36000.0
+      ],
+      "in_band": true
+    },
+    "verdict": {
+      "path": "hit",
+      "wave": "hit",
+      "amp": "hit",
+      "levels": "hit"
+    },
+    "high_prob_won": true,
+    "confronted_at_taipei": "2026-11-29T03:08:07+08:00",
+    "note_zh": "對質20260225；續漲收帶內，推動續行成立"
+  },
+  "market_power": {
+    "as_of": "20260224",
+    "target": "20260225",
+    "wave_draw": {
+      "main": {
+        "label_zh": "3164起推動續"
+      },
+      "label_lock": "candidate",
+      "align": "same"
+    },
+    "wave_confirm": {
+      "pullback_band": {
+        "lo": 33800,
+        "hi": 34827
+      },
+      "rebound_band": {
+        "lo": 33800.0,
+        "hi": 36000.0
+      },
+      "verdict_wave": "hit",
+      "verdict_levels": "hit"
+    },
+    "amp": {
+      "band": [
+        33800.0,
+        36000.0
+      ],
+      "close": 35490.0,
+      "in_band": true,
+      "verdict": "hit"
+    },
+    "path_verdict": "hit",
+    "purpose_zh": "大盤浪＋幅度",
+    "fib_equal_amp": {
+      "computed_at_taipei": "2026-11-29T03:08:07+08:00",
+      "rule_zh": "黃金切割＋等幅度",
+      "index": {
+        "R": 5646,
+        "anchor_lo": 27350,
+        "anchor_hi": 32996,
+        "direction": "up",
+        "fib_retrace_from_hi": {
+          "0.236": 31663.54,
+          "0.382": 30839.23,
+          "0.5": 30173.0,
+          "0.618": 29506.77,
+          "0.786": 28558.24
+        },
+        "fib_ext_from_lo": {
+          "1.0": 32996.0,
+          "1.272": 34531.71,
+          "1.618": 36485.23,
+          "2.0": 38642.0
+        },
+        "equal_amp": {
+          "up_1R_from_lo": 32996,
+          "down_1R_from_hi": 27350,
+          "up_1R_from_hi": 38642,
+          "down_0_5R_from_hi": 30173.0,
+          "down_0_618R_from_hi": 29506.77
+        }
+      },
+      "tsmc": {
+        "R": 500,
+        "anchor_lo": 1415,
+        "anchor_hi": 1915,
+        "direction": "up",
+        "fib_retrace_from_hi": {
+          "0.236": 1797.0,
+          "0.382": 1724.0,
+          "0.5": 1665.0,
+          "0.618": 1606.0,
+          "0.786": 1522.0
+        },
+        "fib_ext_from_lo": {
+          "1.0": 1915.0,
+          "1.272": 2051.0,
+          "1.618": 2224.0,
+          "2.0": 2415.0
+        },
+        "equal_amp": {
+          "up_1R_from_lo": 1915,
+          "down_1R_from_hi": 1415,
+          "up_1R_from_hi": 2415,
+          "down_0_5R_from_hi": 1665.0,
+          "down_0_618R_from_hi": 1606.0
+        }
+      },
+      "confront_next": {
+        "target": "20260225"
+      }
+    }
+  },
+  "stock_quant": {
+    "purpose_zh": "點名",
+    "expect_bucket_rule_zh": "台積補位推動→stretch／偏多",
+    "as_of": "20260224",
+    "target": "20260225",
+    "n": 1,
+    "path_hit": 1,
+    "amp_hit": 1,
+    "rows": [
+      {
+        "stock_id": "2330",
+        "status": "ok",
+        "expect": "stretch",
+        "expect_src": "named_oral",
+        "target": "20260225",
+        "c0": 1965.0,
+        "c1": 2015.0,
+        "pct": 2.545,
+        "band": [
+          1866.75,
+          2200.0
+        ],
+        "path": "hit",
+        "amp": "hit",
+        "vol_price": {
+          "vol": 44316,
+          "vol_ma20": 38282.7,
+          "vol_ratio": 1.16,
+          "relation": "confirm",
+          "paired_zh": "價漲量平（量/均=1.16）",
+          "next_day": {
+            "date": "20260225",
+            "price_dir": "up",
+            "vol": 47398,
+            "vol_ma20": 39053.3,
+            "vol_price_relation": "confirm",
+            "paired_zh": "價漲量平（量/均=1.21）"
+          }
+        }
+      }
+    ]
+  },
+  "miss_anatomy_zh": "見列。推動續行對上；昨結束判斷已口播作廢。",
+  "cross_learn_zh": "台積位階落後補上可改寫大盤細微結束假設。",
+  "rolling_fix": [
+    {
+      "code": "TSMC_CATCHUP_REOPEN_PUSH",
+      "note_zh": "台積補位可推翻細微結束假設"
+    },
+    {
+      "code": "ADMIT_WRONG_CONTINUE",
+      "note_zh": "短線錯要認錯並改推動續"
+    }
+  ],
+  "undiscussed_gap": [],
+  "no_forget_audit": {
+    "regime_complete": true,
+    "elim_catalog_full": true,
+    "dual_branch_no_peek": true,
+    "vol_price_filled": true,
+    "sync_sox_tx_te_day_night": true,
+    "wave_main_micro": true,
+    "peer_chain_ok_or_na": true,
+    "teach_expand_checked": true,
+    "open_day_not_skipped": true,
+    "confront_anatomy": true,
+    "cross_learn": true,
+    "rolling_fix_noted": true,
+    "exit_learn_filled": true,
+    "wave_progress_filled": true,
+    "night_morning_line_filled": true,
+    "holdings_env_gate_filled": true,
+    "five_vol_sox_noted": true,
+    "biaoke_cross_checked": true,
+    "stop_expand_ok": true,
+    "levels_frozen_ok": true,
+    "us_session_noted": true,
+    "day_complete": true,
+    "te_missing_noted": true,
+    "named_ohlcv_frozen": true,
+    "breadth_frozen": true,
+    "full_suite_evidence_ok": true,
+    "market_power_filled": true,
+    "stock_quant_filled": true,
+    "ref_zh": true,
+    "fib_equal_amp_filled": true,
+    "golden_cut_synced": true,
+    "vol_price_numeric": true,
+    "vol_ma20_filled": true,
+    "biaoke_volume_noted": true
+  },
+  "exit_learn_zh": "逼迫反彈回測高先檔；非程式賣訊。",
+  "wave_progress": {
+    "pullback_band": {
+      "lo": 33800,
+      "hi": 34827
+    },
+    "rebound_band": {
+      "lo": 33800.0,
+      "hi": 36000.0
+    },
+    "note_zh": "推動續"
+  },
+  "night_morning_line": {
+    "tx_night_close": 34027.0,
+    "note_zh": "夜盤"
+  },
+  "holdings_env_gate": {
+    "status": "observe_only",
+    "note_zh": "推動續；observe"
+  },
+  "teach_expand_rule_zh": "先停登錄再走",
+  "paper_levels": {
+    "kill": [
+      31800,
+      31164
+    ],
+    "confirm": [
+      34786,
+      35500
+    ],
+    "source_zh": "口播"
+  },
+  "us_session_for_forecast": {
+    "sox_asof": "20260224"
+  },
+  "breadth_official": {
+    "date": "20260224",
+    "up": 993,
+    "down": 774,
+    "source": "index_breadth_daily"
+  },
+  "named_stocks_ohlcv": {
+    "as_of": "20260224",
+    "bars": {
+      "2330": {
+        "o": 1915.0,
+        "h": 1975.0,
+        "l": 1915.0,
+        "c": 1965.0,
+        "v": 44316
+      }
+    },
+    "rule_zh": "點名"
+  },
+  "biaoke_cross": {
+    "status": "checked",
+    "note_zh": "量"
+  },
+  "five_vol_sox_note_zh": "量/均=1.02（價漲量平（量/均=1.02））；SOX 8332。",
+  "tf_escalate": {
+    "status": "na"
+  },
+  "retract_chain_zh": "無",
+  "sample_register_touch_zh": "結案",
+  "process_order_zh": "S1→S27",
+  "process_step_done": {
+    "S1": true,
+    "S2": true,
+    "S3": true,
+    "S4": true,
+    "S5": true,
+    "S6": true,
+    "S7": true,
+    "S8": true,
+    "S9": true,
+    "S10": true,
+    "S11": true,
+    "S12": true,
+    "S13": true,
+    "S14": true,
+    "S15": true,
+    "S16": true,
+    "S17": true,
+    "S18": true,
+    "S19": true,
+    "S20": true,
+    "S21": true,
+    "S22": true,
+    "S23": true,
+    "S24": true,
+    "S25": true,
+    "S26": true,
+    "S27": true
+  },
+  "rolling_lesson": [
+    {
+      "code": "TSMC_CATCHUP_REOPEN_PUSH",
+      "note_zh": "台積補位可重開推動"
+    },
+    {
+      "code": "ADMIT_WRONG_CONTINUE",
+      "note_zh": "短線錯要認錯續推"
+    }
+  ]
+}
