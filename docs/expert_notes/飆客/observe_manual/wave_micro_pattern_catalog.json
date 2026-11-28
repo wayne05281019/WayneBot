@@ -309,10 +309,20 @@
       "tf_prefer": ["daily", "60m", "15m"],
       "iron_gates": ["WR-IRON-14-OVERLAP"],
       "overlap_policy": "中繼窗內多重疊常見；破中繼邊界才升權續行或反轉候選——細節待對教具／影片原文",
+      "branch_rules_zh": [
+        "中繼＝N字向上攻（高過高、低墊高）→ 續行／轉強候選（仍要鐵律＋官方柱）",
+        "中繼＝區間打混：高不過高、低不過低 → 黃說這檔注定還要往下（續弱／下跌未完）；刪去「已築底翻多」讀法"
+      ],
+      "quant_hooks_pending": [
+        "relay_window_hh_hl_n_up",
+        "relay_window_no_hh_no_ll_chop",
+        "after_chop_down_continue_hit_rate"
+      ],
       "source_kind": "huang_teach",
       "provenance": [
         "user 2026-11-28：黃培碩說過震盪中繼型態（口述補錄；教具原文／時間碼待核）",
-        "user 2026-11-28 補：一大盤來講，從最近的高點往下之後，第二段就是中繼型態"
+        "user 2026-11-28 補：一大盤來講，從最近的高點往下之後，第二段就是中繼型態",
+        "user 2026-11-28 補：若中繼不是N字向上攻，而是區間上下打混（高不過高、低不過低）→ 這檔注定還要往下"
       ],
       "anchor_example_silent": {
         "symbol": "TWII",
@@ -322,7 +332,8 @@
       "sample_stocks": [],
       "verify_status": "pending_source",
       "phone_ok": false,
-      "note_zh": "位階讀法已收：近高↓ → 段1 → 段2＝震盪中繼。子浪公式／進出邊界未對到黃原文前不准發明段號。"
+      "not_buy_signal": true,
+      "note_zh": "位階讀法＋中繼二分支已收。子浪公式／N字量化未對到黃原文＋柱前，不准發明段號、不准當買訊。"
     }
   ]
 }
