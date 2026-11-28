@@ -61,15 +61,18 @@
   "undiscussed_gap": [],
   "no_forget_audit": {
     "regime_complete": false,
-    "sync_chains": false,
+    "elim_catalog_full": false,
+    "dual_branch_no_peek": false,
+    "vol_price_filled": false,
     "sync_sox_tx_te_day_night": false,
     "wave_main_micro": false,
-    "vol_price_filled": false,
+    "peer_chain_ok_or_na": false,
+    "teach_expand_checked": false,
     "open_day_not_skipped": false,
-    "dual_branch_no_peek": false,
     "confront_anatomy": false,
     "cross_learn": false,
-    "teach_expand_checked": false,
-    "day_complete": false
+    "rolling_fix_noted": false,
+    "day_complete": false,
+    "ref_zh": "huang_master_consolidate.md §9–§14"
   }
 }
