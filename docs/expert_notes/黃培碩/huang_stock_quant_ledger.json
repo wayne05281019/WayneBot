@@ -1,12 +1,12 @@
 {
-  "as_of_taipei": "2026-11-29T02:14:54+08:00",
+  "as_of_taipei": "2026-11-29T02:33:02+08:00",
   "purpose_zh": "點名個股隔日方向＋幅度對質總帳；與大盤分數板同步更新。",
   "phone_apply": "pending_gate",
   "summary": {
-    "n_rows": 115,
+    "n_rows": 118,
     "n_missing": 6,
-    "path_hit_rate": 0.5478260869565217,
-    "amp_hit_rate": 0.43478260869565216,
+    "path_hit_rate": 0.5338983050847458,
+    "amp_hit_rate": 0.423728813559322,
     "by_stock": {
       "1528": {
         "n": 1,
@@ -18,15 +18,20 @@
         "path_hit_rate": 1.0,
         "amp_hit_rate": 1.0
       },
-      "2327": {
-        "n": 4,
+      "2313": {
+        "n": 1,
         "path_hit_rate": 0.0,
-        "amp_hit_rate": 0.5
+        "amp_hit_rate": 0.0
+      },
+      "2327": {
+        "n": 5,
+        "path_hit_rate": 0.0,
+        "amp_hit_rate": 0.4
       },
       "2330": {
-        "n": 29,
-        "path_hit_rate": 0.8620689655172413,
-        "amp_hit_rate": 0.8275862068965517
+        "n": 30,
+        "path_hit_rate": 0.8333333333333334,
+        "amp_hit_rate": 0.8
       },
       "2344": {
         "n": 9,
@@ -2016,6 +2021,54 @@
       "band": [
         1876.7,
         1953.3
+      ]
+    },
+    {
+      "day": "20260223",
+      "target": "20260224",
+      "stock_id": "2330",
+      "status": "ok",
+      "expect": "chop",
+      "c0": 1900.0,
+      "c1": 1965.0,
+      "pct": 3.421,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        1862.0,
+        1938.0
+      ]
+    },
+    {
+      "day": "20260223",
+      "target": "20260224",
+      "stock_id": "2327",
+      "status": "ok",
+      "expect": "chop",
+      "c0": 281.5,
+      "c1": 301.0,
+      "pct": 6.927,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        275.87,
+        287.13
+      ]
+    },
+    {
+      "day": "20260223",
+      "target": "20260224",
+      "stock_id": "2313",
+      "status": "ok",
+      "expect": "chop",
+      "c0": 205.0,
+      "c1": 225.5,
+      "pct": 10.0,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        200.9,
+        209.1
       ]
     }
   ]
