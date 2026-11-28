@@ -80,7 +80,7 @@ def test_file_note_matches_this_change():
     ):
         assert junk not in raw
     assert pu._clean_note(raw) == (
-        "次級四浪出圖加快（已有柱不重抓、dpi120）；失敗會重試並提示"
+        "次級四浪：十檔後打代號可查單檔（不再被代號踢去查股）"
     )
 
 
