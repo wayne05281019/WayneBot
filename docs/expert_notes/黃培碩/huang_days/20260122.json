@@ -1,0 +1,376 @@
+{
+  "meta": {
+    "day": "20260122",
+    "film_status": "absent_open",
+    "film": "",
+    "written_before_peek": true,
+    "phone_sync": "blocked",
+    "buy_signal": false,
+    "chrono_start": "2026-01-02",
+    "drive_id": "",
+    "asr_status": "absent",
+    "prior_lesson_applied": [
+      "BLACK_BAR_FORK_KEEP_BAND",
+      "MEMORY_CHOP_INDEX_BAND"
+    ],
+    "push_policy_zh": "本機連續做；一段落才推／CI",
+    "process_note_zh": "S1→S27＝一件有序流程；不准並列為多條最高；無片仍判"
+  },
+  "regime_D": {
+    "anchor_peak": 32057,
+    "anchor_trough": 27350,
+    "degree_now": "post_black_bar_rebound_w5_open",
+    "phase_label": "無片；依前窗黑棒雙分支＋官方柱：反彈收帶內，第五未鎖結束",
+    "nest_state": "5之5候選仍開",
+    "relay_bin": "range_chop",
+    "iron_gate_14": "unknown",
+    "iron_gate_w3": "unknown",
+    "named_symbols": [
+      "2330",
+      "3481"
+    ],
+    "kill_levels": [
+      1720,
+      29925,
+      27350
+    ],
+    "confirm_levels": [
+      32166,
+      1780
+    ]
+  },
+  "wave_def_draw": {
+    "degree_main": {
+      "label_zh": "黑棒後反彈／第五未鎖",
+      "now_zh": "0122反彈未確認W5結束"
+    },
+    "degree_micro": {
+      "label_zh": "前窗群創／台積帶入"
+    },
+    "draw_notes_zh": "無片日用官方柱＋前窗教具；不准放假。",
+    "label_lock": "candidate",
+    "align_with_huang": "carry_forward"
+  },
+  "elim_rows": [
+    {
+      "elim": "skip_absent_open",
+      "why_zh": "開市無片仍必判"
+    },
+    {
+      "elim": "declare_w5_done",
+      "why_zh": "反彈日未鎖結束"
+    },
+    {
+      "elim": "invent_new_names",
+      "why_zh": "無片不准發明新點名"
+    }
+  ],
+  "sync_us": [
+    {
+      "symbol": "SOX",
+      "status": "ok",
+      "ohlc": {
+        "c": 8055.169921875
+      },
+      "note_zh": "費半0122收"
+    }
+  ],
+  "sync_tx": {
+    "day_session": {
+      "o": 31876.0,
+      "h": 32057.0,
+      "l": 31783.0,
+      "c": 31857.0
+    },
+    "night_session": {
+      "o": 31506.0,
+      "h": 31982.0,
+      "l": 31448.0,
+      "c": 31726.0
+    },
+    "status": "ok"
+  },
+  "sync_te": {
+    "status": "missing",
+    "day_session": null,
+    "night_session": null,
+    "note_zh": "庫內無TE＝missing"
+  },
+  "sync_twii": {
+    "ohlc": {
+      "o": 31371.130859375,
+      "h": 31890.619140625,
+      "l": 31371.130859375,
+      "c": 31746.080078125
+    },
+    "status": "ok"
+  },
+  "peer_chain": [
+    {
+      "us": "semi",
+      "tw_leader": "2330",
+      "peers_zh": "台積＋前窗群創",
+      "note_zh": "無片帶前窗"
+    }
+  ],
+  "teach_expand": [
+    {
+      "item_zh": "無片日仍雙分支＋結構帶",
+      "observe": "TWII",
+      "status": "logged"
+    }
+  ],
+  "quant": {
+    "amp_ratios": {
+      "tx_close": 31857.0,
+      "next_chop_band_tx": [
+        31379.1,
+        32494.1
+      ],
+      "next_stretch_tx": [
+        32494.1,
+        33012.0
+      ],
+      "next_deep_pull_tx": 30901.0
+    },
+    "fib_used": [],
+    "fib_skip_reason": "無片沿用黑棒雙分支",
+    "vol_price": {
+      "price_dir": "up",
+      "vol": null,
+      "vol_ma20": null,
+      "vol_price_relation": "confirm",
+      "paired_zh": "反彈日廣度轉強",
+      "used_in_forecast": true,
+      "used_in_confront": true
+    },
+    "vol_60m": null
+  },
+  "forecast_for_next": {
+    "target_day": "20260123",
+    "written_at_taipei": "2026-11-28T21:42:41+08:00",
+    "written_before_peek": true,
+    "high_prob": {
+      "path_zh": "第五未鎖；震盪／緩推延續",
+      "wave_zh": "5之5候選仍開",
+      "levels_zh": "台積1720；A區僅結束支",
+      "amp_zh": "台指收參31857：高機率31379～32494",
+      "prob": 0.55
+    },
+    "low_prob": {
+      "path_zh": "確認結束急回A",
+      "amp_zh": "收盤落帶外",
+      "prob": 0.45
+    },
+    "single_branch_ok": false,
+    "required_zh": "每個開市日必填隔日雙分支"
+  },
+  "confront_official": {
+    "as_of": "20260123",
+    "twii": {
+      "o": 31788.76953125,
+      "h": 32042.439453125,
+      "l": 31693.150390625,
+      "c": 31961.509765625,
+      "pct_vs_prev_close": 0.68
+    },
+    "tx_day": {
+      "o": 31995.0,
+      "h": 32166.0,
+      "l": 31873.0,
+      "c": 32153.0
+    },
+    "tsmc": {
+      "o": 1770.0,
+      "h": 1775.0,
+      "l": 1750.0,
+      "c": 1770.0,
+      "pct": 0.57
+    },
+    "breadth_d1": {
+      "up": 858,
+      "down": 918
+    },
+    "amp_band_check": {
+      "close": 32153.0,
+      "band": [
+        31379.1,
+        32494.1
+      ],
+      "in_band": true
+    },
+    "verdict": {
+      "path": "hit",
+      "wave": "hit",
+      "amp": "hit",
+      "levels": "hit"
+    },
+    "high_prob_won": true,
+    "confronted_at_taipei": "2026-11-28T21:42:41+08:00",
+    "note_zh": "緩推收帶內"
+  },
+  "miss_anatomy_zh": "隔日20260123 加權收31961（+0.68%）；台指日收32153。帶31379～32494：命中。無幅度失誤。",
+  "cross_learn_zh": "absent_open 沿用前窗雙分支＋官方柱即可計分。",
+  "rolling_fix": [
+    {
+      "code": "ABSENT_OPEN_CARRY_FORK",
+      "note_zh": "無片日沿用未鎖結束雙分支＋結構帶"
+    }
+  ],
+  "undiscussed_gap": [],
+  "no_forget_audit": {
+    "regime_complete": true,
+    "elim_catalog_full": true,
+    "dual_branch_no_peek": true,
+    "vol_price_filled": true,
+    "sync_sox_tx_te_day_night": true,
+    "wave_main_micro": true,
+    "peer_chain_ok_or_na": true,
+    "teach_expand_checked": true,
+    "open_day_not_skipped": true,
+    "confront_anatomy": true,
+    "cross_learn": true,
+    "rolling_fix_noted": true,
+    "exit_learn_filled": true,
+    "wave_progress_filled": true,
+    "night_morning_line_filled": true,
+    "holdings_env_gate_filled": true,
+    "five_vol_sox_noted": true,
+    "biaoke_cross_checked": true,
+    "stop_expand_ok": true,
+    "levels_frozen_ok": true,
+    "us_session_noted": true,
+    "day_complete": true,
+    "ref_zh": "huang_master_consolidate.md §0 全表（含0.7／0.8）",
+    "te_missing_noted": true,
+    "named_ohlcv_frozen": true,
+    "breadth_frozen": true,
+    "full_suite_evidence_ok": true
+  },
+  "exit_learn_zh": "無片無新出場句；沿用前窗群創穿價才加。",
+  "wave_progress": {
+    "degree_main_pct": 84,
+    "degree_micro_pct": 50,
+    "peak_claim": {
+      "price": 32057,
+      "degree": "main",
+      "status": "candidate",
+      "note_zh": "0122台指高"
+    },
+    "pullback_band": {
+      "lo": 29925.0,
+      "hi": 30593.0,
+      "role_zh": "僅結束後A"
+    },
+    "rebound_band": {
+      "lo": 31379.0,
+      "hi": 32494.0,
+      "role_zh": "未結束震盪緩推"
+    },
+    "giveback_band_zh": "未鎖結束",
+    "status": "rough",
+    "note_zh": "absent_open",
+    "confront_peak_zh": "0123續緩推"
+  },
+  "night_morning_line": {
+    "sox": 8055.169921875,
+    "tx_night": 31726.0,
+    "te_night": null,
+    "line_zh": "費半收8055.17；台指夜31726；日盤台指收31857；TE缺",
+    "source_zh": "official_only"
+  },
+  "holdings_env_gate": {
+    "env": "neutral",
+    "why_zh": "反彈日第五未鎖",
+    "action_zh": "維持雙分支；等有片交叉學習"
+  },
+  "teach_expand_rule_zh": "發現值得注意的先停登錄再走；不准讀完再補",
+  "paper_levels": {
+    "kill_levels_note": "1720／29925",
+    "confirm_levels_note": "32166"
+  },
+  "us_session_for_forecast": {
+    "status": "closed",
+    "note_zh": "費半0122已收"
+  },
+  "breadth_official": {
+    "date": "20260122",
+    "up": 1029,
+    "down": 725,
+    "flat": null,
+    "source": "quotes"
+  },
+  "named_stocks_ohlcv": {
+    "as_of": "20260122",
+    "bars": {
+      "2330": {
+        "o": 1765.0,
+        "h": 1770.0,
+        "l": 1750.0,
+        "c": 1760.0,
+        "v": 34462
+      },
+      "3481": {
+        "o": 28.4,
+        "h": 29.15,
+        "l": 25.2,
+        "c": 25.4,
+        "v": 881497
+      }
+    },
+    "rule_zh": "無片只凍前窗已點名且有官方收"
+  },
+  "biaoke_cross": {
+    "huang_themes_zh": [
+      "absent_open",
+      "黑棒後反彈",
+      "第五未鎖"
+    ],
+    "buckets": {
+      "浪頂耗盡": "未鎖",
+      "回檔回測": "前窗黑棒",
+      "細微中繼刪去": "反彈延續",
+      "費半台指夜": "費半平TX反彈",
+      "反彈止穩": "廣度轉強",
+      "出場學": "沿用前窗↔操作桶"
+    },
+    "note_zh": "六桶全勾；非買訊"
+  },
+  "five_vol_sox_note_zh": "波浪：第五未鎖；形態：反彈；量價：廣度轉強；關鍵K：反彈柱；碎形：沿用；費半：平",
+  "tf_escalate": {
+    "tf": "日線",
+    "why_zh": "無片沿用日線結構"
+  },
+  "retract_chain_zh": "無片無新刪去；沿用黑棒雙分支",
+  "sample_register_touch_zh": "ABSENT_OPEN_CARRY_FORK 已登錄",
+  "process_order_zh": "S1→S27 一件有序流程；不准並列為多條最高",
+  "process_step_done": {
+    "S1": true,
+    "S2": true,
+    "S3": true,
+    "S4": true,
+    "S5": true,
+    "S6": true,
+    "S7": true,
+    "S8": true,
+    "S9": true,
+    "S10": true,
+    "S11": true,
+    "S12": true,
+    "S13": true,
+    "S14": true,
+    "S15": true,
+    "S16": true,
+    "S17": true,
+    "S18": true,
+    "S19": true,
+    "S20": true,
+    "S21": true,
+    "S22": true,
+    "S23": true,
+    "S24": true,
+    "S25": true,
+    "S26": true,
+    "S27": true
+  }
+}

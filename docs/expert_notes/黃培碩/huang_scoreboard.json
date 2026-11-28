@@ -1,5 +1,5 @@
 {
-  "as_of_taipei": "2026-11-28T21:41:45+08:00",
+  "as_of_taipei": "2026-11-28T21:42:41+08:00",
   "phone_sync": "blocked",
   "buy_signal": false,
   "recomputable": true,
@@ -171,10 +171,20 @@
         "levels": "hit",
         "fail_codes": [],
         "growth_zh": "黑棒後雙分支＋結構帶"
+      },
+      {
+        "day": "20260122",
+        "target": "20260123",
+        "path": "hit",
+        "wave": "hit",
+        "amp": "hit",
+        "levels": "hit",
+        "fail_codes": [],
+        "growth_zh": "absent_open 沿用雙分支"
       }
     ],
-    "n": 14,
-    "path_hit": 14,
-    "amp_hit": 13
+    "n": 15,
+    "path_hit": 15,
+    "amp_hit": 14
   }
 }
