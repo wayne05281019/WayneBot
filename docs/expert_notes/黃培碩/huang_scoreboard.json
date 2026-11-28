@@ -1,5 +1,5 @@
 {
-  "as_of_taipei": "2026-11-29T02:33:02+08:00",
+  "as_of_taipei": "2026-11-29T03:08:07+08:00",
   "phone_sync": "blocked_until_gate",
   "buy_signal": false,
   "recomputable": true,
@@ -15,22 +15,22 @@
       "strict_all_hit_rate": 0.85
     },
     "W40": {
-      "n": 30,
+      "n": 31,
       "path_hit_rate": 1.0,
       "wave_hit_rate": 1.0,
-      "amp_hit_rate": 0.8666666666666667,
-      "amp_hit_incl_skew": 0.9,
-      "levels_hit_rate": 0.9666666666666667,
-      "strict_all_hit_rate": 0.8333333333333334
+      "amp_hit_rate": 0.8709677419354839,
+      "amp_hit_incl_skew": 0.9032258064516129,
+      "levels_hit_rate": 0.967741935483871,
+      "strict_all_hit_rate": 0.8387096774193549
     },
     "all": {
-      "n": 30,
+      "n": 31,
       "path_hit_rate": 1.0,
       "wave_hit_rate": 1.0,
-      "amp_hit_rate": 0.8666666666666667,
-      "amp_hit_incl_skew": 0.9,
-      "levels_hit_rate": 0.9666666666666667,
-      "strict_all_hit_rate": 0.8333333333333334
+      "amp_hit_rate": 0.8709677419354839,
+      "amp_hit_incl_skew": 0.9032258064516129,
+      "levels_hit_rate": 0.967741935483871,
+      "strict_all_hit_rate": 0.8387096774193549
     }
   },
   "title_only_baseline": {
@@ -41,19 +41,19 @@
     "note_zh": "1110–1127 標題基線；chrono 要贏這條才算技能升"
   },
   "market_quant": {
-    "n": 30,
-    "path_hit": 30,
-    "wave_hit": 30,
-    "amp_hit": 26,
-    "levels_hit": 29,
+    "n": 31,
+    "path_hit": 31,
+    "wave_hit": 31,
+    "amp_hit": 27,
+    "levels_hit": 30,
     "dual_branch_rate": 1.0,
     "regime_complete_rate": 1.0
   },
   "stock_quant": {
-    "n_rows": 118,
+    "n_rows": 119,
     "n_missing": 6,
-    "path_hit_rate": 0.5338983050847458,
-    "amp_hit_rate": 0.423728813559322,
+    "path_hit_rate": 0.5378151260504201,
+    "amp_hit_rate": 0.42016806722689076,
     "by_stock": {
       "1528": {
         "n": 1,
@@ -76,9 +76,9 @@
         "amp_hit_rate": 0.4
       },
       "2330": {
-        "n": 30,
-        "path_hit_rate": 0.8333333333333334,
-        "amp_hit_rate": 0.8
+        "n": 31,
+        "path_hit_rate": 0.8387096774193549,
+        "amp_hit_rate": 0.7741935483870968
       },
       "2344": {
         "n": 9,
@@ -188,24 +188,24 @@
     }
   },
   "gate_section8": {
-    "n_valid_confronted": 30,
+    "n_valid_confronted": 31,
     "n_ge_20": true,
     "dual_branch_rate": 1.0,
     "dual_branch_ge_0_90": true,
     "regime_complete_rate": 1.0,
     "regime_complete_ok": true,
     "beats_title_baseline_w20": true,
-    "stock_quant_n": 118,
+    "stock_quant_n": 119,
     "stock_quant_ready": true,
     "status": "collecting_n20_plus_stock_needs_lift",
     "note_zh": "§8 全過才准宣稱會判；過閘後必換話筒編碼並再生下一版。不准以 blocked 少做量化／準備。",
-    "stock_path_hit_rate": 0.5338983050847458,
-    "stock_amp_hit_rate": 0.423728813559322,
+    "stock_path_hit_rate": 0.5378151260504201,
+    "stock_amp_hit_rate": 0.42016806722689076,
     "stock_rates_ok": false
   },
   "feb_pack": {
-    "n_confronted": 30,
-    "hit_high_prob": 30,
+    "n_confronted": 31,
+    "hit_high_prob": 31,
     "hit_high_prob_partial": 1,
     "miss_high_prob": 3,
     "dual_branch_rate": 1.0,
@@ -213,9 +213,9 @@
   },
   "chrono_2026": {
     "start": "20260102",
-    "n": 30,
-    "path_hit": 30,
-    "amp_hit": 26,
+    "n": 31,
+    "path_hit": 31,
+    "amp_hit": 27,
     "days": [
       {
         "day": "20260102",
@@ -577,6 +577,19 @@
           "MICRO5_DONE_NO_CHASE"
         ],
         "growth_zh": "開紅創高＋細微五波完成≠主升鎖死；量縮價漲要更省慎選股。"
+      },
+      {
+        "day": "20260224",
+        "target": "20260225",
+        "path": "hit",
+        "wave": "hit",
+        "amp": "hit",
+        "levels": "hit",
+        "fail_codes": [
+          "TSMC_CATCHUP_REOPEN_PUSH",
+          "ADMIT_WRONG_CONTINUE"
+        ],
+        "growth_zh": "台積位階落後補上可改寫大盤細微結束假設。"
       }
     ]
   },
