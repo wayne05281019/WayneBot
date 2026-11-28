@@ -1,0 +1,397 @@
+{
+  "meta": {
+    "day": "20260126",
+    "film_status": "present",
+    "film": "0126黃培碩.mp4",
+    "written_before_peek": true,
+    "phone_sync": "blocked",
+    "buy_signal": false,
+    "chrono_start": "2026-01-02",
+    "drive_id": "17DpOH5_IE10xdlG4fZv-y_HPsykVtu6q",
+    "asr_status": "whisper_ok_tiny",
+    "prior_lesson_applied": [
+      "W5OF5_WEEKEND_CHOP_BAND",
+      "BLACK_BAR_FORK_KEEP_BAND"
+    ],
+    "push_policy_zh": "本機連續做；一段落才推／CI",
+    "process_note_zh": "S1→S27＝一件有序流程；不准並列為多條最高"
+  },
+  "regime_D": {
+    "anchor_peak": 32196,
+    "anchor_trough": 27350,
+    "degree_now": "w5_grind_new_highs_healthy",
+    "phase_label": "大盤／期／台積同步創高；台積開高走低未破結構；320守住；記憶體復活；個股仍偏多",
+    "nest_state": "5之5運行；健康盤堅",
+    "relay_bin": "range_chop",
+    "iron_gate_14": "unknown",
+    "iron_gate_w3": "unknown",
+    "named_symbols": [
+      "2330",
+      "2344",
+      "3260"
+    ],
+    "kill_levels": [
+      32000,
+      1720,
+      29925
+    ],
+    "confirm_levels": [
+      32196,
+      1785
+    ]
+  },
+  "wave_def_draw": {
+    "degree_main": {
+      "label_zh": "第五盤堅續／創高",
+      "now_zh": "320守住後續推；末升未鎖死結束"
+    },
+    "degree_micro": {
+      "label_zh": "台積開高走低；記憶體復活；美食3260拉回切入"
+    },
+    "draw_notes_zh": "就算5之5結束A-B仍可多。投機等拉回。",
+    "label_lock": "candidate",
+    "align_with_huang": "same"
+  },
+  "elim_rows": [
+    {
+      "elim": "tsmc_ohlc_destroys_bull",
+      "why_zh": "開高走低比例大但結構未破"
+    },
+    {
+      "elim": "cut_stocks_on_index_end",
+      "why_zh": "結束後A-B仍多"
+    },
+    {
+      "elim": "chase_memory_revival",
+      "why_zh": "復活組等拉回"
+    }
+  ],
+  "sync_us": [
+    {
+      "symbol": "SOX",
+      "status": "ok",
+      "ohlc": {
+        "c": 7927.0400390625
+      },
+      "note_zh": "費半0126收"
+    }
+  ],
+  "sync_tx": {
+    "day_session": {
+      "o": 32128.0,
+      "h": 32231.0,
+      "l": 32086.0,
+      "c": 32144.0
+    },
+    "night_session": {
+      "o": 32184.0,
+      "h": 32265.0,
+      "l": 32058.0,
+      "c": 32238.0
+    },
+    "status": "ok"
+  },
+  "sync_te": {
+    "status": "missing",
+    "day_session": null,
+    "night_session": null,
+    "note_zh": "庫內無TE＝missing"
+  },
+  "sync_twii": {
+    "ohlc": {
+      "o": 32002.560546875,
+      "h": 32196.75,
+      "l": 31989.859375,
+      "c": 32064.51953125
+    },
+    "status": "ok"
+  },
+  "peer_chain": [
+    {
+      "us": "memory",
+      "tw_leader": "2344",
+      "peers_zh": "記憶體復活；美食3260",
+      "note_zh": "主題復活＋拉回切入"
+    }
+  ],
+  "teach_expand": [
+    {
+      "item_zh": "同步創高＋台積開高走低仍健康",
+      "observe": "2330",
+      "status": "logged"
+    },
+    {
+      "item_zh": "320守住後續推",
+      "observe": "TX",
+      "status": "logged"
+    },
+    {
+      "item_zh": "記憶體復活／美食拉回切入教具",
+      "observe": "3260",
+      "status": "logged"
+    }
+  ],
+  "quant": {
+    "amp_ratios": {
+      "tx_close": 32144.0,
+      "next_chop_band_tx": [
+        31661.8,
+        32786.9
+      ],
+      "next_stretch_tx": [
+        32786.9,
+        33309.0
+      ],
+      "next_deep_pull_tx": 31180.0
+    },
+    "fib_used": [],
+    "fib_skip_reason": "盤堅第五續",
+    "vol_price": {
+      "price_dir": "up",
+      "vol": null,
+      "vol_ma20": null,
+      "vol_price_relation": "confirm",
+      "paired_zh": "創高廣度尚可；台積走低",
+      "used_in_forecast": true,
+      "used_in_confront": true
+    },
+    "vol_60m": null
+  },
+  "forecast_for_next": {
+    "target_day": "20260127",
+    "written_at_taipei": "2026-11-28T21:50:27+08:00",
+    "written_before_peek": true,
+    "high_prob": {
+      "path_zh": "盤堅第五續；震盪偏推",
+      "wave_zh": "5之5未鎖結束",
+      "levels_zh": "32000；台積1785",
+      "amp_zh": "台指收參32144：高機率31662～32787",
+      "prob": 0.56
+    },
+    "low_prob": {
+      "path_zh": "確認末升結束急回",
+      "amp_zh": "收盤落帶外",
+      "prob": 0.44
+    },
+    "single_branch_ok": false,
+    "required_zh": "每個開市日必填隔日雙分支"
+  },
+  "confront_official": {
+    "as_of": "20260127",
+    "twii": {
+      "o": 32095.080078125,
+      "h": 32428.169921875,
+      "l": 32095.080078125,
+      "c": 32317.919921875,
+      "pct_vs_prev_close": 0.79
+    },
+    "tx_day": {
+      "o": 32313.0,
+      "h": 32532.0,
+      "l": 32206.0,
+      "c": 32509.0
+    },
+    "tsmc": {
+      "o": 1760.0,
+      "h": 1785.0,
+      "l": 1755.0,
+      "c": 1780.0,
+      "pct": 1.42
+    },
+    "breadth_d1": {
+      "up": 707,
+      "down": 1071
+    },
+    "amp_band_check": {
+      "close": 32509.0,
+      "band": [
+        31661.8,
+        32786.9
+      ],
+      "in_band": true
+    },
+    "verdict": {
+      "path": "hit",
+      "wave": "hit",
+      "amp": "hit",
+      "levels": "hit"
+    },
+    "high_prob_won": true,
+    "confronted_at_taipei": "2026-11-28T21:50:27+08:00",
+    "note_zh": "續推收帶內"
+  },
+  "miss_anatomy_zh": "隔日20260127 加權收32317（+0.79%）；台指日收32509。帶31662～32787：命中。無幅度失誤。",
+  "cross_learn_zh": "同步創高後仍用盤堅續推帶；台積走低≠結構破。",
+  "rolling_fix": [
+    {
+      "code": "SYNC_HIGH_TSMC_OHLC_KEEP_GRIND",
+      "note_zh": "同步創高＋台積開高走低仍維持盤堅帶"
+    }
+  ],
+  "undiscussed_gap": [],
+  "no_forget_audit": {
+    "regime_complete": true,
+    "elim_catalog_full": true,
+    "dual_branch_no_peek": true,
+    "vol_price_filled": true,
+    "sync_sox_tx_te_day_night": true,
+    "wave_main_micro": true,
+    "peer_chain_ok_or_na": true,
+    "teach_expand_checked": true,
+    "open_day_not_skipped": true,
+    "confront_anatomy": true,
+    "cross_learn": true,
+    "rolling_fix_noted": true,
+    "exit_learn_filled": true,
+    "wave_progress_filled": true,
+    "night_morning_line_filled": true,
+    "holdings_env_gate_filled": true,
+    "five_vol_sox_noted": true,
+    "biaoke_cross_checked": true,
+    "stop_expand_ok": true,
+    "levels_frozen_ok": true,
+    "us_session_noted": true,
+    "day_complete": true,
+    "ref_zh": "huang_master_consolidate.md §0 全表（含0.7／0.8）",
+    "te_missing_noted": true,
+    "named_ohlcv_frozen": true,
+    "breadth_frozen": true,
+    "full_suite_evidence_ok": true
+  },
+  "exit_learn_zh": "美食／記憶體等拉回切入；不追高。非大盤出清。",
+  "wave_progress": {
+    "degree_main_pct": 88,
+    "degree_micro_pct": 65,
+    "peak_claim": {
+      "price": 32196,
+      "degree": "main",
+      "status": "candidate",
+      "note_zh": "加權高"
+    },
+    "pullback_band": {
+      "lo": 29925.0,
+      "hi": 31200.0,
+      "role_zh": "僅結束後A"
+    },
+    "rebound_band": {
+      "lo": 31662.0,
+      "hi": 32787.0,
+      "role_zh": "盤堅續推"
+    },
+    "giveback_band_zh": "台積可開高走低",
+    "status": "rough",
+    "note_zh": "健康盤堅",
+    "confront_peak_zh": "0127續推"
+  },
+  "night_morning_line": {
+    "sox": 7927.0400390625,
+    "tx_night": 32238.0,
+    "te_night": null,
+    "line_zh": "費半收7927.04；台指夜32238；日盤台指收32144；TE缺",
+    "source_zh": "official_only"
+  },
+  "holdings_env_gate": {
+    "env": "neutral",
+    "why_zh": "結構健康；個股偏多",
+    "action_zh": "盤堅續；主題等拉回"
+  },
+  "teach_expand_rule_zh": "發現值得注意的先停登錄再走；不准讀完再補",
+  "paper_levels": {
+    "kill_levels_note": "32000／1720",
+    "confirm_levels_note": "32196／1785"
+  },
+  "us_session_for_forecast": {
+    "status": "closed",
+    "note_zh": "費半0126已收"
+  },
+  "breadth_official": {
+    "date": "20260126",
+    "up": 1027,
+    "down": 742,
+    "flat": null,
+    "source": "quotes"
+  },
+  "named_stocks_ohlcv": {
+    "as_of": "20260126",
+    "bars": {
+      "2330": {
+        "o": 1765.0,
+        "h": 1785.0,
+        "l": 1755.0,
+        "c": 1755.0,
+        "v": 26157
+      },
+      "2344": {
+        "o": 107.0,
+        "h": 113.0,
+        "l": 107.0,
+        "c": 113.0,
+        "v": 59539
+      },
+      "3260": {
+        "o": 333.83,
+        "h": 334.31,
+        "l": 322.22,
+        "c": 334.31,
+        "v": 12963
+      }
+    },
+    "rule_zh": "只凍他點名且有官方收的"
+  },
+  "biaoke_cross": {
+    "huang_themes_zh": [
+      "同步創高",
+      "台積開高走低",
+      "320守住",
+      "記憶體復活",
+      "個股偏多",
+      "拉回切入"
+    ],
+    "buckets": {
+      "浪頂耗盡": "5之5未鎖",
+      "回檔回測": "台積走低未破",
+      "細微中繼刪去": "盤堅續",
+      "費半台指夜": "費半弱TX高",
+      "反彈止穩": "健康",
+      "出場學": "主題等拉回↔操作桶"
+    },
+    "note_zh": "六桶全勾；非買訊"
+  },
+  "five_vol_sox_note_zh": "波浪：盤堅第五；形態：創高；量價：廣度可；關鍵K：320守；碎形：緩升；費半：弱",
+  "tf_escalate": {
+    "tf": "日線",
+    "why_zh": "盤堅判斷"
+  },
+  "retract_chain_zh": "相對末升深回支：補結構仍健康＋320守住",
+  "sample_register_touch_zh": "SYNC_HIGH_TSMC_OHLC_KEEP_GRIND 已登錄",
+  "process_order_zh": "S1→S27 一件有序流程；不准並列為多條最高",
+  "process_step_done": {
+    "S1": true,
+    "S2": true,
+    "S3": true,
+    "S4": true,
+    "S5": true,
+    "S6": true,
+    "S7": true,
+    "S8": true,
+    "S9": true,
+    "S10": true,
+    "S11": true,
+    "S12": true,
+    "S13": true,
+    "S14": true,
+    "S15": true,
+    "S16": true,
+    "S17": true,
+    "S18": true,
+    "S19": true,
+    "S20": true,
+    "S21": true,
+    "S22": true,
+    "S23": true,
+    "S24": true,
+    "S25": true,
+    "S26": true,
+    "S27": true
+  }
+}
