@@ -1,0 +1,63 @@
+{
+  "meta": {
+    "day": "YYYYMMDD",
+    "film_status": "present|absent_open|closed",
+    "film": "",
+    "written_before_peek": true,
+    "phone_sync": "blocked",
+    "buy_signal": false
+  },
+  "regime_D": {
+    "anchor_peak": null,
+    "anchor_trough": null,
+    "degree_now": null,
+    "phase_label": null,
+    "nest_state": null,
+    "relay_bin": "N_up|range_chop|unknown",
+    "iron_gate_14": "pass|fail|diagonal_exempt|unknown",
+    "iron_gate_w3": "pass|fail|unknown",
+    "named_symbols": [],
+    "kill_levels": [],
+    "confirm_levels": []
+  },
+  "wave_def_draw": {
+    "degree_main": {},
+    "degree_micro": {},
+    "draw_notes_zh": "",
+    "label_lock": "candidate|locked",
+    "align_with_huang": "same|skew|unknown"
+  },
+  "elim_rows": [],
+  "sync_us": [],
+  "sync_tx": {"day_session": null, "night_session": null, "status": "missing|ok"},
+  "peer_chain": [],
+  "teach_expand": [],
+  "quant": {
+    "amp_ratios": {},
+    "fib_used": [],
+    "fib_skip_reason": null,
+    "vol_daily": null,
+    "vol_60m": null
+  },
+  "forecast_for_next": {
+    "target_day": "",
+    "high_prob": {},
+    "low_prob": {},
+    "single_branch_ok": false
+  },
+  "confront_official": null,
+  "miss_anatomy_zh": null,
+  "cross_learn_zh": null,
+  "rolling_fix": [],
+  "undiscussed_gap": [],
+  "no_forget_audit": {
+    "regime_complete": false,
+    "sync_chains": false,
+    "wave_main_micro": false,
+    "dual_branch_no_peek": false,
+    "confront_anatomy": false,
+    "cross_learn": false,
+    "teach_expand_checked": false,
+    "day_complete": false
+  }
+}
