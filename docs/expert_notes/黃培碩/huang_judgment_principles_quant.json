@@ -1,17 +1,17 @@
 {
-  "as_of_taipei": "2026-11-28T15:40:00+0800",
+  "as_of_taipei": "2026-11-28T15:55:00+0800",
   "phone_sync": "blocked",
   "buy_signal": false,
   "purpose_zh": "記取並量化：①黃的判斷原則 ②我隔日預估失敗原因。每chrono日更新；n不足不准改話筒。",
   "tz": "Asia/Taipei",
-  "n_days_absorbed": 11,
-  "n_forecasts_confronted": 11,
+  "n_days_absorbed": 12,
+  "n_forecasts_confronted": 12,
   "my_forecast_score": {
-    "hit_high_prob": 6,
+    "hit_high_prob": 7,
     "hit_high_prob_partial": 3,
     "miss_high_prob": 2,
-    "hit_rate_high_prob_strict": 0.5454545454545454,
-    "hit_rate_high_prob_incl_partial": 0.8181818181818182
+    "hit_rate_high_prob_strict": 0.5833333333333334,
+    "hit_rate_high_prob_incl_partial": 0.8333333333333334
   },
   "principles": [
     {
@@ -261,9 +261,10 @@
       "id": "HP-PREFER-CHOP",
       "rule_zh": "跌勢告段落後偏好震盪越久越好＝做多個股安全期；不期待V轉連推",
       "source_days": [
-        "20261124"
+        "20261124",
+        "20261126"
       ],
-      "n_seen": 1
+      "n_seen": 2
     },
     {
       "id": "HP-WAVE3-NOT-SHORTEST",
@@ -296,6 +297,31 @@
       "rule_zh": "第五波擴延風險未排除前，更深甜蜜買點觀察≠立即滿倉；形勢比人強",
       "source_days": [
         "20261125"
+      ],
+      "n_seen": 1
+    },
+    {
+      "id": "HP-CAUTIOUS-OPTIMISM",
+      "rule_zh": "落底判斷後＝審慎應對＋傾向樂觀；敬畏市場不是V轉一路飛",
+      "source_days": [
+        "20261126"
+      ],
+      "n_seen": 1,
+      "next_day_chop": 1
+    },
+    {
+      "id": "HP-BOTTOM-STILL-PULLBACK",
+      "rule_zh": "落底≠不會壓回；混混震盪才有低點可買敘事",
+      "source_days": [
+        "20261126"
+      ],
+      "n_seen": 1
+    },
+    {
+      "id": "HP-FALSE-BREAK-MICRO",
+      "rule_zh": "夜盤／美股破底＋細微波假跌破→可判落底觀察（非話筒買訊）",
+      "source_days": [
+        "20261126"
       ],
       "n_seen": 1
     }

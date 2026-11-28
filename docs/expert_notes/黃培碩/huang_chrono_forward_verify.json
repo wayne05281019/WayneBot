@@ -1,5 +1,5 @@
 {
-  "as_of_taipei": "2026-11-28T15:40:00+0800",
+  "as_of_taipei": "2026-11-28T15:55:00+0800",
   "phone_sync": "blocked",
   "buy_signal": false,
   "method_zh": "每天同步跟他一起解盤：讀D→量化他的原則→自己先寫隔日高/低機率→隔天官方柱對答案→失敗碼累計→再讀D+1。從最早片往後；不准倒推。",
@@ -20,8 +20,8 @@
     "20261126",
     "20261127"
   ],
-  "cursor_day": "20261126",
-  "status_zh": "1110–1125 十一輪對質完成；下一個讀1126片。",
+  "cursor_day": "20261127",
+  "status_zh": "1110–1126 十二輪對質完成；下一個讀1127片。",
   "days": [
     {
       "day": "20261110",
@@ -510,7 +510,51 @@
         ],
         "lesson_zh": "大逃殺／回馬槍並存日，傾回馬槍時隔日反彈權重應並列。"
       },
-      "next_film_read": "pending_20261126"
+      "next_film_read": "done_20261126"
+    },
+    {
+      "day": "20261126",
+      "film": "1126黃培碩.mp4",
+      "yt_title": "審慎應對！傾向樂觀！",
+      "absorb_refs": [
+        "docs/expert_notes/飆客/decade_lab/huang_wave_method_20261126.md",
+        "docs/expert_notes/飆客/decade_lab/huang_oral_absorb_20261126.json"
+      ],
+      "his_read_zh": "細微波判落底；審慎應對＋傾向樂觀；期待混混震盪非V轉；僅止於反彈。",
+      "forecast_for_next": {
+        "target_day": "20261127",
+        "written_before_peek": true,
+        "high_prob_zh": "震盪／淺幅整理為主（樂觀但不追推）",
+        "low_prob_zh": "再崩破35442；或V轉爆拉",
+        "basis_zh": "口播落底後混混震盪＋審慎樂觀＋仍可能壓回",
+        "applied_fix_from": [
+          "HP-CAUTIOUS-OPTIMISM",
+          "HP-PREFER-CHOP",
+          "HP-BOTTOM-STILL-PULLBACK"
+        ]
+      },
+      "confront_official": {
+        "symbol": "TWII",
+        "bar": {
+          "date": "20261127",
+          "open": 39168.57,
+          "high": 39385.8,
+          "low": 38890.53,
+          "close": 39037.77
+        },
+        "result": "hit_high_prob",
+        "score_zh": "對",
+        "what_happened_zh": "1127 開39169、高39386、低38891、收39038；淺幅震盪略收黑。",
+        "why_hit_zh": "震盪／淺幅整理主腳命中。",
+        "failure_codes": [],
+        "principles_fired": [
+          "HP-CAUTIOUS-OPTIMISM",
+          "HP-PREFER-CHOP",
+          "HP-BOTTOM-STILL-PULLBACK"
+        ],
+        "lesson_zh": "落底後隔日高機率給震盪權重，不預設連推也不預設再崩。"
+      },
+      "next_film_read": "pending_20261127"
     }
   ],
   "days_completed": [
@@ -524,6 +568,7 @@
     "20261120",
     "20261123",
     "20261124",
-    "20261125"
+    "20261125",
+    "20261126"
   ]
 }

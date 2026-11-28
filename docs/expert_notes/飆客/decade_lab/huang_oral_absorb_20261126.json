@@ -1,0 +1,29 @@
+{
+  "as_of_taipei": "2026-11-26T15:00:00+08:00",
+  "as_of_day": "20261126",
+  "source": "drive_full_asr",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "not_buy_signal": true,
+  "youtube": {
+    "title": "審慎應對！傾向樂觀！ 20261126 黃培碩 分析師 運達證券投顧",
+    "drive_file_id": "1fr1IUcRIZChznNsjgNCWEiispfPT-OaL",
+    "drive_name": "1126黃培碩.mp4"
+  },
+  "market_verdict_zh": {
+    "now": "細微波判已落底；審慎應對＋傾向樂觀；期待震盪非V轉",
+    "how_he_reads_zh": [
+      "夜盤有驚無險＋細微波→落底／假跌破",
+      "落底≠不會壓回；混混震盪才有低點",
+      "僅止於反彈：逢低買逢高賣敘事（非話筒買訊）"
+    ],
+    "not_zh": [
+      "非買訊",
+      "不准發明5／9進話筒"
+    ]
+  },
+  "forecast_anchor_for_next_zh": {
+    "high_prob": "震盪／淺幅整理為主",
+    "low_prob": "再崩破35442；或V轉爆拉"
+  }
+}
