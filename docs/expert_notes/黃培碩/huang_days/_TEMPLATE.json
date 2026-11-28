@@ -5,7 +5,8 @@
     "film": "",
     "written_before_peek": true,
     "phone_sync": "blocked",
-    "buy_signal": false
+    "buy_signal": false,
+    "chrono_start": "2026-01-02"
   },
   "regime_D": {
     "anchor_peak": null,
@@ -66,7 +67,8 @@
     "target_day": "",
     "high_prob": {},
     "low_prob": {},
-    "single_branch_ok": false
+    "single_branch_ok": false,
+    "required_zh": "每個開市日必填隔日雙分支；無一例外"
   },
   "confront_official": null,
   "miss_anatomy_zh": null,
@@ -91,6 +93,10 @@
     "night_morning_line_filled": false,
     "holdings_env_gate_filled": false,
     "five_vol_sox_noted": false,
+    "biaoke_cross_checked": false,
+    "stop_expand_ok": false,
+    "levels_frozen_ok": false,
+    "us_session_noted": false,
     "day_complete": false,
     "ref_zh": "huang_master_consolidate.md §9–§14"
   },
@@ -130,5 +136,14 @@
     "env": "risk_on|neutral|risk_off|unknown",
     "why_zh": "",
     "action_zh": "檢視重倉|維持觀察|unknown"
+  },
+  "teach_expand_rule_zh": "發現值得注意的先停登錄再走；不准讀完再補",
+  "paper_levels": {
+    "kill_levels_note": "只凍他點過的",
+    "confirm_levels_note": "只凍他點過的"
+  },
+  "us_session_for_forecast": {
+    "status": "closed|open|unknown",
+    "note_zh": "隔日預估時費半／美指已收或未收"
   }
 }

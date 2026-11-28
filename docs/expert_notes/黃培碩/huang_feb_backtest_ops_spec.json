@@ -1,11 +1,11 @@
 {
-  "as_of_taipei": "2026-11-28T18:20:00+0800",
+  "as_of_taipei": "2026-11-28T18:45:00+0800",
   "full_detail_audit": "2026-11-28T17:15:00+0800",
   "quality_first_lock": "2026-11-28T17:20:00+0800",
   "phone_sync": "blocked",
   "buy_signal": false,
   "user_lock": "2026-11-28",
-  "purpose_zh": "二月起大回測硬規格：刪去＋雙分支＋量化＋開市無片仍判；目標＝實際解盤＋精準波浪判斷／繪製，不准隨便結案、不准讀完說漏測。",
+  "purpose_zh": "自2026-01-02第一則起大回測硬規格：每日隔日雙分支＋刪去＋量化＋開市無片仍判＋發現新點先停登錄；目標＝精準波浪判斷／繪製＋持倉保命；不准隨便結案、不准讀完說漏測。",
   "master_consolidate": "docs/expert_notes/黃培碩/huang_master_consolidate.md",
   "day_template": "docs/expert_notes/黃培碩/huang_days/_TEMPLATE.json",
   "target_capability_zh": [
@@ -190,7 +190,7 @@
       "少東少西／忘記測／沒彙整到",
       "讀完了但還不會判得很準（未過結案閘卻宣稱完成）"
     ],
-    "precision_expectation_zh": "二月chrono完整跑完＝應具備精準波浪判斷與繪製能力；分數板須證明變準"
+    "precision_expectation_zh": "1/2→今chrono完整跑完＝應具備精準波浪判斷與繪製＋浪頂／回檔／出場學；分數板須證明變準"
   },
   "no_forget_rule": {
     "user_lock": "2026-11-28",
@@ -255,7 +255,7 @@
     "peak_pullback_goal_zh": "練出浪頂耗盡帶＋回檔／反彈觀察帶，官方柱對質；過閘前不准發明個股最多漲到X",
     "post_gate_phone_upgrade": {
       "user_lock": "2026-11-28T18:00:00+0800",
-      "rule_zh": "二月→今黃片chrono讀完且§11全過後，必須升級查股／大盤／持股提醒力道（浪頂耗盡／回檔／反彈已對質帶）；不准學完仍弱提醒；合main→Render並再生下一版",
+      "rule_zh": "1/2→今黃片chrono讀完且§11全過後，必須升級查股／大盤／持股提醒力道（浪頂耗盡／回檔／反彈已對質帶）；不准學完仍弱提醒；合main→Render並再生下一版",
       "targets": [
         "lookup_risk_face",
         "holdings_protect_alert",
@@ -279,6 +279,48 @@
       "0.4_parallel_D",
       "0.5_done_E",
       "0.6_forbid"
+    ],
+    "chrono_start": "2026-01-02",
+    "daily_next_day_forecast_required": true,
+    "stop_on_new_observe": true,
+    "gap_fill_G": [
+      "paper_levels_freeze",
+      "retract_chain",
+      "us_session_on_forecast",
+      "named_stock_ohlcv_freeze",
+      "tf_escalate_note",
+      "sample_register_new",
+      "biaoke_cross_checked",
+      "stop_expand_ok",
+      "film_index_1_2",
+      "nov_holdout"
     ]
+  },
+  "chrono_start": {
+    "user_lock": "2026-11-28T18:25:00+0800",
+    "start_date": "2026-01-02",
+    "rule_zh": "自1/2第一則逐日；每日必寫隔日雙分支；發現值得注意的立刻停下來teach_expand／undiscussed_gap再走；不准從1/2跳起"
+  },
+  "precision_expectation_zh": "1/2→今chrono完整跑完＝應具備精準波浪判斷與繪製＋浪頂／回檔／出場學；分數板須證明變準",
+  "agent_recommended_extras_zh": [
+    "huang_film_index：1/2起每開市日有片／缺片登記",
+    "同片改口鏈＋紙圖點位凍",
+    "隔日預估標美股已收／未收",
+    "點名個股近窗官方柱",
+    "新觀察點進 sample_register（能量化才收）",
+    "1110–1127 當 holdout"
+  ],
+  "miss_growth_lock": {
+    "rule_zh": "隔日走勢／浪位／點位／幅度有失誤→必找因 miss_anatomy＋rolling_fix；天天成長；§11過閘後必換所有必要話筒鈕編碼合main",
+    "phone_sync": "blocked_until_gate"
+  },
+  "run_status": {
+    "chrono_start": "20260102",
+    "started": true,
+    "completed_days": [
+      "20260102"
+    ],
+    "next_day": "20260105",
+    "note_zh": "0102閉環完；下一步讀0105片→預估0106"
   }
 }

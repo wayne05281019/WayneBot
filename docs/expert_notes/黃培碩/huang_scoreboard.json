@@ -1,5 +1,5 @@
 {
-  "as_of_taipei": "2026-11-28T16:50:00+0800",
+  "as_of_taipei": "2026-11-28T18:30:17+08:00",
   "phone_sync": "blocked",
   "buy_signal": false,
   "recomputable": true,
@@ -13,7 +13,7 @@
     "n": 12,
     "hit_rate_strict": 0.583,
     "hit_rate_incl_partial": 0.833,
-    "note_zh": "1110–1127 對質基線；二月包要贏這條才算技能升（仍 phone_sync=blocked）"
+    "note_zh": "1110–1127 對質基線；1/2→今包要贏這條才算技能升（仍 phone_sync=blocked）"
   },
   "feb_pack": {
     "n_confronted": 0,
@@ -22,5 +22,24 @@
     "miss_high_prob": 0,
     "dual_branch_rate": null,
     "regime_complete_rate": null
+  },
+  "chrono_2026": {
+    "start": "20260102",
+    "days": [
+      {
+        "day": "20260102",
+        "target": "20260105",
+        "path": "hit",
+        "wave": "hit",
+        "amp": "skew",
+        "levels": "hit",
+        "fail_codes": [
+          "AMP_UNDERSHOOT_UPSIDE"
+        ],
+        "growth_zh": "幅度改為必寫可對質上緣"
+      }
+    ],
+    "n": 1,
+    "path_hit": 1
   }
 }

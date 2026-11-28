@@ -56,6 +56,55 @@ HUANG_DRIVE_KNOWN_IDS = {
     "20261126": "1fr1IUcRIZChznNsjgNCWEiispfPT-OaL",
     # Drive 已有「1127黃培碩.mp4」（震盪窗盤後續集）
     "20261127": "1h8YP3PCaFy3rbQdwyP8vjZ_l1ufw81MM",
+
+    "20260102": "1wqQ8QJofkpNnZ5BpeF4hhHmdtWGeaM_8",  # Drive 黃培碩每日影音
+    "20260105": "1PBZnnU1SB5bQcGdQjt9M5OyGW6T9xFCL",  # Drive 黃培碩每日影音
+    "20260106": "1XqHepjpx2NO2g1DZKQuL0RWXab6hlxR4",  # Drive 黃培碩每日影音
+    "20260107": "1n0stdjZoDgcWWuMVAWt7wPDE8Bm_m7QI",  # Drive 黃培碩每日影音
+    "20260108": "1TtdfN-JB0kEGRWQ_r7CISxE2hnvM_093",  # Drive 黃培碩每日影音
+    "20260109": "19wqB5J7e19Y0jI3LjIP6dOIOZJCfFF_V",  # Drive 黃培碩每日影音
+    "20260112": "1G2l-RPYZnKLrbjOILixFp3UjNr5i8WFO",  # Drive 黃培碩每日影音
+    "20260113": "17xNigJqFyW1_Zw8bjbDq7R7IkGHenMaK",  # Drive 黃培碩每日影音
+    "20260114": "1-KofCTMukWZC3ZhHAN06k2DCKJDktBk3",  # Drive 黃培碩每日影音
+    "20260115": "16QVQqHoAqbmp9WbNSOgevXxKmK-bSejK",  # Drive 黃培碩每日影音
+    "20260116": "1BTGfa7Mok_InFL_nFXmn-DZlUZgJrkwh",  # Drive 黃培碩每日影音
+    "20260119": "1FHmDrInR2-EjyZeTopGJybOS6NOOZLJb",  # Drive 黃培碩每日影音
+    "20260120": "1F2CLpaPv1Mttgt5YWzzO45XTJgAwfZ0H",  # Drive 黃培碩每日影音
+    "20260121": "1iQCpVQbSWkf8yWG5uXvJ7GTJjc4sULGn",  # Drive 黃培碩每日影音
+    "20260123": "1JcPMNeRXo5IpOIixg0-71MB4x6SiSs-h",  # Drive 黃培碩每日影音
+    "20260126": "17DpOH5_IE10xdlG4fZv-y_HPsykVtu6q",  # Drive 黃培碩每日影音
+    "20260127": "1o8H-qeyf4LXsCSrtamoomrjI-vAhZWU1",  # Drive 黃培碩每日影音
+    "20260128": "1qb_op7gB26wxgL7oZDA7DFjlgm2KwYWs",  # Drive 黃培碩每日影音
+    "20260130": "1gAOOcEqfjvTaDGIgXEFpg6ExP1u25kfg",  # Drive 黃培碩每日影音
+    "20260202": "12i6oOzIfRv3kQIJ7JTkPYZete27b53km",  # Drive 黃培碩每日影音
+    "20260203": "1mYnGu0vBldX8wXfVHxwfF6jzzufVlGNC",  # Drive 黃培碩每日影音
+    "20260204": "10v7Zi5-ByfXON-Szi8A9ixwV_N5-xKrW",  # Drive 黃培碩每日影音
+    "20260205": "1D6x8sm8mTEcwWAprlEoPtbeWH6vLSj5P",  # Drive 黃培碩每日影音
+    "20260206": "1o1ssCAQulQv8TyVCKeT2Urfl1umZlkWq",  # Drive 黃培碩每日影音
+    "20260209": "1Kw234BJRt4XErc0i7IAcJyR3cHRMwkva",  # Drive 黃培碩每日影音
+    "20260210": "1Yi8NcSEg2KvQQVJHpTddxAe8NuKWyU7s",  # Drive 黃培碩每日影音
+    "20260211": "1ukH-Kbm-jVdv8YKbMHB95059j2uS3ZLl",  # Drive 黃培碩每日影音
+    "20260223": "1YLg_vxE3ZYn1Pw8Txm-JsGVbKmJGcQMi",  # Drive 黃培碩每日影音
+    "20260224": "1lwvGyFtQW6ynAMUXqfuuiK-F_BbOvtxA",  # Drive 黃培碩每日影音
+    "20260225": "1TlpmgFCRrw2RseTmOF3Q1DhvF3k5ST7c",  # Drive 黃培碩每日影音
+    "20260226": "1exC9aOHWRpwmGTYB082x9c2W-mo7iUZF",  # Drive 黃培碩每日影音
+    "20260302": "1qXyj0o7XZa2l9j8m9oAH3-KxbLNX9W8o",  # Drive 黃培碩每日影音
+    "20260303": "11oDYulN7y2Rr5ceqGFf2gfppx-n_62nc",  # Drive 黃培碩每日影音
+    "20260304": "1EexzJa8WklzoU5EjlZ4oL7jz1W8vSDQC",  # Drive 黃培碩每日影音
+    "20260305": "1DvJIcg0A4OsPxUjgouindt_zpISgQ5p0",  # Drive 黃培碩每日影音
+    "20260306": "14mXMymvABEtw2Z_mlbxuz51Ls4B3Ekbf",  # Drive 黃培碩每日影音
+    "20260309": "1OTPQyLW08p8NTE9LCvH-2Rm4ljOHVYM6",  # Drive 黃培碩每日影音
+    "20260310": "1jGG3VjAefX-zCNibjpN4J_6Q_ng6aTkb",  # Drive 黃培碩每日影音
+    "20260311": "16upouLIyj1q1M1U02fTXbESUyU7GnJSx",  # Drive 黃培碩每日影音
+    "20260312": "1TELNDAsXwtv80eCwuMEMmaIUvq0OP8kN",  # Drive 黃培碩每日影音
+    "20260313": "181oMIVEzmHCbp6p12-g7_kX2jVz4uWrf",  # Drive 黃培碩每日影音
+    "20260316": "1DAH5pfG63mTqOMQeZGPIsVbknAinVlND",  # Drive 黃培碩每日影音
+    "20260317": "1ofiJBuVKSdimkA81PczfxdleU2QpMg-h",  # Drive 黃培碩每日影音
+    "20260318": "11X7kfYumKE232aGFBp9SRikIib2O3Ypt",  # Drive 黃培碩每日影音
+    "20260319": "1UEm3LXSWaJN7QrKzA4T869KfyA_T1ebz",  # Drive 黃培碩每日影音
+    "20260320": "1AicRJBMvl0Iwe1DFJ2GK0J-WCSz1tmFr",  # Drive 黃培碩每日影音
+    "20260323": "1Za0Gzot86vCTB7A5Lp4cto9wX9Mb2PkX",  # Drive 黃培碩每日影音
+    "20260324": "1wtdYt4J2RfsAzAv0tC01eVYFPdk0ao8n",  # Drive 黃培碩每日影音
 }
 _ATOM = {"atom": "http://www.w3.org/2005/Atom", "yt": "http://www.youtube.com/xml/schemas/2015", "media": "http://search.yahoo.com/mrss/"}
 

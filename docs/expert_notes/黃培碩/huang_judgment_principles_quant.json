@@ -1,5 +1,5 @@
 {
-  "as_of_taipei": "2026-11-28T16:55:00+0800",
+  "as_of_taipei": "2026-11-28T18:30:17+08:00",
   "phone_sync": "blocked",
   "buy_signal": false,
   "purpose_zh": "記取並量化：①黃的判斷原則 ②我隔日預估失敗原因。每chrono日更新；n不足不准改話筒。",
@@ -415,5 +415,13 @@
     "每完成 confront 更新本檔計數",
     "n≥20 且穩定贏只抄標題基線才考慮升格；仍 phone_sync=blocked"
   ],
-  "live_forecast_pending": true
+  "live_forecast_pending": true,
+  "rolling_lessons": [
+    {
+      "from_day": "20260102",
+      "code": "AMP_UNDERSHOOT_UPSIDE",
+      "principle_zh": "易漲難跌／推升續表態成立時，隔日幅度預估不可只寫形容詞；必給上緣延伸帶供對質",
+      "phone_sync": "blocked"
+    }
+  ]
 }
