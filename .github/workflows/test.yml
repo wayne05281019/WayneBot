@@ -74,6 +74,7 @@ jobs:
         id: gate
         env:
           EVENT_NAME: ${{ github.event_name }}
+          EVENT_ACTION: ${{ github.event.action || '' }}
           BEFORE_SHA: ${{ github.event.before || '' }}
           BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -104,28 +105,21 @@ jobs:
                   return True
               return False
 
-          def names_only(a: str, b: str | None = None) -> list[str]:
-              cmd = ["git", "diff", "--name-only", a] if b is None else ["git", "diff", "--name-only", a, b]
-              out = subprocess.check_output(cmd, text=True)
+          def names_only(a: str, b: str) -> list:
+              out = subprocess.check_output(["git", "diff", "--name-only", a, b], text=True)
               return [unicodedata.normalize("NFC", ln.strip()) for ln in out.splitlines() if ln.strip()]
 
           event = os.environ.get("EVENT_NAME", "")
+          action = (os.environ.get("EVENT_ACTION") or "").strip()
           before = (os.environ.get("BEFORE_SHA") or "").strip()
           base = (os.environ.get("BASE_SHA") or "").strip()
           head = (os.environ.get("HEAD_SHA") or "").strip()
-          changed: list[str] = []
+          changed = []
           mode = "empty"
-          # 1) synchronize／push：真·這一推 before→head
-          if before and before != "0" * 40 and head:
-              subprocess.run(["git", "fetch", "--no-tags", "origin", before, head], check=False)
-              try:
-                  changed = names_only(before, head)
-                  mode = "before→head"
-              except subprocess.CalledProcessError:
-                  changed = []
-                  mode = "before→head_fail"
-          # 2) PR opened／before 缺：比 base→head（整包 PR；筆記-only 仍可跳）
-          if not changed and event == "pull_request" and base and head:
+
+          # PR：一律先看 base→head（整包 PR）。錯的 event.before 會把長壽分支舊碼
+          # 捲進 diff，不能讓 before→head 搶先擋掉筆記-only 跳過。
+          if event == "pull_request" and base and head:
               subprocess.run(["git", "fetch", "--no-tags", "origin", base, head], check=False)
               try:
                   changed = names_only(base, head)
@@ -133,7 +127,16 @@ jobs:
               except subprocess.CalledProcessError:
                   changed = []
                   mode = "base→head_fail"
-          # 3) 最後：只列 tip 提交檔（不需父提交；修 HEAD~1 在 detached tip 空 diff）
+          elif before and before != "0" * 40 and head:
+              # push／main：真·這一推
+              subprocess.run(["git", "fetch", "--no-tags", "origin", before, head], check=False)
+              try:
+                  changed = names_only(before, head)
+                  mode = "before→head"
+              except subprocess.CalledProcessError:
+                  changed = []
+                  mode = "before→head_fail"
+
           if not changed:
               try:
                   out = subprocess.check_output(
@@ -150,7 +153,10 @@ jobs:
                   changed = []
                   mode = "diff-tree_fail"
 
-          print(f"gate mode={mode} before={before[:12] or '-'} base={base[:12] or '-'} head={head[:12] or '-'}")
+          print(
+              f"gate mode={mode} action={action or '-'} "
+              f"before={before[:12] or '-'} base={base[:12] or '-'} head={head[:12] or '-'}"
+          )
           print("changed files:")
           for f in changed:
               print(f)
