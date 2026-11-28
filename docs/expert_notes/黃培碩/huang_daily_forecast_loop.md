@@ -4,9 +4,11 @@
 
 ## 材料
 
-- 雲端硬碟 `MMDD黃培碩.mp4`（震盪最重這十多天盤後解盤）
-- 已登記 id 見 `huang_youtube.HUANG_DRIVE_KNOWN_IDS`（含 1116–1127）
+- 雲端硬碟資料夾「黃培碩每日影音」：`MMDD黃培碩.mp4`（或 `YYYYMMDD黃培碩.mp4`）
+- **擴充（使用者 2026-11-28）：自今年二月起全部盤後片抓進同一資料夾**；到片後從**最早**往後 chrono續讀（二月→現在），不准跳最新。
+- 已登記 id 見 `huang_youtube.HUANG_DRIVE_KNOWN_IDS`（目前 1110–1127）；新片上傳後掃資料夾補登記
 - 吸收產物：`decade_lab/huang_oral_absorb_*.json`／`huang_wave_method_*.md`
+- 影音只放 Drive／本機暫存；不准整包塞 Render 5GB 碟
 
 ## 每天細讀範圍（他講什麼就學什麼）
 
