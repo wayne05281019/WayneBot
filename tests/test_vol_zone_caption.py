@@ -96,8 +96,9 @@ def test_lookup_sell_caption_unchanged_on_card():
     }
     glance = _glance_photo_caption("當日K＋籌碼價量", card)
     decision = _decision_card_photo_caption(card, "3035")
-    assert "Ai建議" in glance or "Ai建議" in decision
+    assert "出場提醒" in glance or "出場提醒" in decision
     vz = vol_zone_photo_caption(zone=_ZONE, last=_CHI_BARS[-1], bars=_CHI_BARS, card=card)
+    assert "出場提醒" not in vz
     assert "Ai建議" not in vz
     assert "如何賣" not in vz
 

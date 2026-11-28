@@ -5039,6 +5039,15 @@ def format_taiwan_market_page_html(
     # 環境觀察文案在 foreign_sell_display；美股收盤大跌時拿掉相反的不怕／緩下來。
     us_for_regime, us_regime_fresh = _resolve_us_for_display(db_path, ref, us_snap)
     us_for_lines = us_for_regime if us_regime_fresh else None
+    # 逆風／大跌頭句：有持股先想減；平常不上假警報。
+    try:
+        from lookup_risk_face import market_risk_head_line
+
+        risk_head = market_risk_head_line(db_path, us_snap=us_for_lines)
+        if risk_head:
+            lines.append(f"<b>{html_escape(risk_head)}</b>")
+    except Exception:
+        logger.debug("大盤風險頭略過", exc_info=True)
     # 費半＋台指／電子夜一句：省事對照，只官方數，不發明浪號。
     try:
         night_line = format_sox_tx_te_night_oneline(

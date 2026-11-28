@@ -67,7 +67,8 @@ class LookupImageTests(unittest.TestCase):
             "sell_why": "不同步（最高價但非最高溫）",
         }
         out = _glance_photo_caption("", card)
-        self.assertIn("Ai建議", out)
+        self.assertIn("⚠出場提醒", out)
+        self.assertTrue(out.startswith("⚠出場提醒"))
         self.assertNotIn("網頁走勢", out)
         self.assertNotIn("紀律　", out)
         self.assertIn("先出一點", out)
@@ -90,9 +91,10 @@ class LookupImageTests(unittest.TestCase):
             "sell_why": "不同步（最高價但非最高溫）",
         }
         out = _decision_card_photo_caption(card, "2330")
-        self.assertTrue(out.startswith("台積電"))
+        self.assertTrue(out.startswith("⚠出場提醒"))
+        self.assertIn("台積電", out)
         self.assertNotIn("高低決策卡", out)
-        self.assertIn("Ai建議", out)
+        self.assertIn("出場提醒", out)
         self.assertNotIn("紀律　", out)
         self.assertIn("先出一點、不要追", out)
         etf = _decision_card_photo_caption(
@@ -112,6 +114,7 @@ class LookupImageTests(unittest.TestCase):
         self.assertNotIn("半導體業剛輪進", flowed)
         self.assertNotIn("不改溫度", flowed)
         self.assertNotIn("買賣格", flowed)
+        self.assertNotIn("出場提醒", flowed)
         self.assertNotIn("Ai建議", flowed)
         self.assertNotIn("紀律　", flowed)
 

@@ -98,9 +98,26 @@
   "wave_progress": {
     "degree_main_pct": null,
     "degree_micro_pct": null,
+    "peak_claim": {
+      "price": null,
+      "degree": null,
+      "status": "unknown|candidate|locked",
+      "note_zh": "浪頂／耗盡主張；未對質不准當賣訊"
+    },
+    "pullback_band": {
+      "lo": null,
+      "hi": null,
+      "role_zh": "回檔／回測觀察帶"
+    },
+    "rebound_band": {
+      "lo": null,
+      "hi": null,
+      "role_zh": "止穩反彈觀察帶"
+    },
     "giveback_band_zh": "",
     "status": "unknown|rough|locked",
-    "note_zh": ""
+    "note_zh": "",
+    "confront_peak_zh": ""
   },
   "night_morning_line": {
     "sox": null,

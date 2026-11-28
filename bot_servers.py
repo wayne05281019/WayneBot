@@ -514,7 +514,7 @@ def _stock_caption_name(card: dict | None, code: str = "") -> str:
 
 
 def _photo_sell_caption(base: str, card: dict | None, *, fallback: str = "當日K＋籌碼價量") -> str:
-    """圖說：有如何賣就寫在圖底下；沒有就不硬塞網頁走勢／點縮圖講解。"""
+    """圖說：有如何賣就寫在最顯眼（標題前）；沒有就不硬塞網頁走勢／點縮圖講解。"""
     cap = str(base or "").strip() or str(fallback or "").strip()
     if not card:
         return cap
@@ -522,17 +522,21 @@ def _photo_sell_caption(base: str, card: dict | None, *, fallback: str = "當日
     if gap:
         cap = f"{gap}\n{cap}" if cap else gap
     short = ""
+    act = ""
     try:
         from sell_discipline import attach_sell, sell_note_short
 
         if not str(card.get("sell_action") or "").strip():
             attach_sell(card)
+        act = str(card.get("sell_action") or "").strip()
         short = sell_note_short(card)
     except Exception:
         short = ""
+        act = ""
     if short:
-        note = f"Ai建議　{html_escape(short)}"
-        cap = f"{cap}\n{note}" if cap else note
+        # 出場提醒置頂：查股常看圖說，不准藏在最後。
+        head = f"⚠出場提醒　{html_escape(act + '　' if act else '')}{html_escape(short)}"
+        cap = f"{head}\n{cap}" if cap else head
     flow = str((card or {}).get("industry_flow") or "").strip()
     if flow:
         bit = html_escape(flow)
@@ -12607,6 +12611,19 @@ class WayneTelegramBot:
             if isinstance(card, dict):
                 card.pop("_ohlc", None)
             self._cache_lookup_ctx(uid_key, code, ohlc)
+
+            # 下行／出場提醒：不需報持股；常查股就看得到。不准發明下跌機率％。
+            try:
+                from lookup_risk_face import build_lookup_risk_html
+
+                risk_html = build_lookup_risk_html(
+                    self.db_path, card if isinstance(card, dict) else None, code=code
+                )
+            except Exception:
+                logger.exception("查股風險臉失敗 code=%s", code)
+                risk_html = ""
+            if risk_html:
+                await _reply_visible(risk_html, html=True)
 
             ns = _news_ready()
             if ns is not None:

@@ -219,7 +219,8 @@ ASR／下載可平行預取，但 **forecast→confront 單線**；預取物密�
 
 ### 7c. 持倉保命學習產出（見總彙整 §14b）
 
-- 每日必填：`exit_learn_zh`／`wave_progress`／`night_morning_line`／`holdings_env_gate`
+- 每日必填：`exit_learn_zh`／`wave_progress`（含浪頂耗盡＋回檔／反彈帶＋對質）／`night_morning_line`／`holdings_env_gate`
+- 學習終點＝能標「大概衝到哪容易回、回測常見帶、哪裡像止穩反彈」；過閘前不准發明個股最多漲到 X
 - 五件＋量價＋費半聯動：有講就記，不准只畫外形
 - 話筒：官方夜盤一句可顯示；浪％／出場自動推播仍 `phone_sync=blocked` 直到過閘
 - 禁止：未過閘用個股浪％當賣訊
