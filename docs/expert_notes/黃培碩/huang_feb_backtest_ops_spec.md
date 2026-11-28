@@ -1,3 +1,5 @@
+**一次全表：** 讀黃時全部評測／學習只認 `huang_master_consolidate.md` §0（A 開跑前／B 每日／C 隔日／D 平行／E DONE）。
+
 # 黃培碩二月起大回測硬規格（使用者 2026-11-28 鎖）
 
 `phone_sync=blocked`・非買訊・不准改黃金買點。  

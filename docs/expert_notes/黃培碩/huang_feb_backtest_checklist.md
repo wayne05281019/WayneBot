@@ -1,6 +1,6 @@
 # 黃二月大回測核對表
 
-**全細則單一真相源（不可漏）：** `huang_master_consolidate.md`  
+**全細則單一真相源（不可漏）：** `huang_master_consolidate.md`（**§0 一次全表**＝讀黃時全部評測／學習總表）  
 契約：`huang_feb_backtest_ops_spec.md`／`.json`  
 每日模板：`huang_days/_TEMPLATE.json`（`no_forget_audit` 全 true 才 complete）  
 **額度策略：** 總彙整 §15（該花就花、一次到位；省重做不省深度）
