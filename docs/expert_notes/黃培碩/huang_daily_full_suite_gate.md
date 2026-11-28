@@ -2,7 +2,9 @@
 
 非買訊。  
 **來源：** `huang_master_consolidate.md` §0.0b／§0.0c。  
-**本檔＝每一天查閱必做的全部事情。**
+**本檔＝每一天查閱必做的全部事情。**  
+**重點卡（觀察／推測／記錄，免提醒）：** `huang_daily_focus_card.md`  
+**驗收：** `python3 scripts/huang_daily_audit.py` 全綠才准下一日。
 
 ## 名次（使用者 2026-11-28 鎖）
 

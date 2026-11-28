@@ -133,7 +133,11 @@
   ],
   "quant": {
     "amp_ratios": {
-      "impulse_from_27350_zh": "自27350起推至當日高／收附近"
+      "impulse_from_27350_zh": "自27350起推至當日高／收附近",
+      "next_chop_band_tx": [
+        23049.0,
+        23868.0
+      ]
     },
     "fib_used": {
       "computed_at_taipei": "2026-11-28T23:22:22+08:00",

@@ -52,11 +52,11 @@
 | **S5** | 紙圖／口播點位凍（只他點過的） | `kill_levels`／`confirm_levels`／`paper_levels` | G1／B10 |
 | **S6** | 同片改口鏈 | `retract_chain_zh` | G2 |
 | **S7** | 刪去表過一輪 | `elim_rows` | B2 |
-| **S8** | 量價（量比價至少一） | `quant.vol_price` | B3 |
+| **S8** | 量價（飆大：量很重要；價×量／20日均數字；廣度不准代替） | `quant.vol_price` | B3 |
 | **S9** | 同步鏈：TWII＋SOX＋TX日夜＋TE日夜（缺＝`missing` 明示） | `sync_*`；`te_missing_noted` | B4／A5 |
 | **S10** | 廣度官方凍 | `breadth_official` | G／廣度課 |
 | **S11** | 點名個股近窗官方 OHLC＋量 | `named_stocks_ohlcv` | G4 |
-| **S12** | 振幅／Fib 或 skip 原因；**幅度數字帶** | `quant`＋`forecast` amp | B5／0.8 |
+| **S12** | 振幅／**黃金切割＋等幅度必算**＋幅度數字帶 | `quant.fib_used`＋`forecast` amp | B5／0.8 |
 | **S13** | 升 TF 原因（有講 15／60／週才升） | `tf_escalate` | G5 |
 | **S14** | 族群鏈（有講才填） | `peer_chain` | B7 |
 | **S15** | 出場學（無則寫「無」） | `exit_learn_zh` | B9 |
