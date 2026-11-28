@@ -204,6 +204,8 @@ def test_paint_wave4_chart_uses_mpl_paint_worker():
     assert "force_vol_zone" in pair_src
     assert 'meta.get("zone")' in pair_src or 'meta or {}).get("zone")' in pair_src
     assert "face_asof" in pair_src
+    assert "paint_meta" in pair_src
+    assert "Tuple[" in pair_src or "Tuple[" in inspect.getsource(m)
 
 
 def test_force_vol_zone_skips_next_layer_attach():
@@ -247,6 +249,37 @@ def test_wave4_send_one_uses_pair_two_charts():
     src = inspect.getsource(WayneTelegramBot._wave4_send_one)
     assert "paint_wave4_one_pair" in src
     assert "次級四浪圖＋結構圖" in src
+
+
+def test_wave4_send_one_paints_even_if_not_in_desk():
+    """打代號試畫：不在實質十檔／母體名單也要 paint；不准只回不符合五段。"""
+    import inspect
+
+    from bot_servers import WayneTelegramBot
+    from focus_wave4_desk import row_from_wave4_paint_meta
+
+    src = inspect.getsource(WayneTelegramBot._wave4_send_one)
+    assert "paint_wave4_one_pair" in src
+    assert "row_from_wave4_paint_meta" in src
+    assert "不在可畫五波母體" not in src
+    assert "畫不出次級四浪五波結構" in src
+    assert "不准只因不在實質十檔" in src
+    row = row_from_wave4_paint_meta(
+        {
+            "sid": "2383",
+            "name": "台光電",
+            "close": 3605.0,
+            "w4": 4565.0,
+            "w3": 3690.0,
+            "room_pct": 26.6,
+            "above_w3": False,
+            "asof": "20261127",
+        }
+    )
+    assert row["stock_id"] == "2383"
+    assert row["stock_name"] == "台光電"
+    assert float(row["wave4"]) == 4565.0
+    assert "打代號試畫" in str(row.get("why_zh") or "")
 
 
 def test_wave4_ask_ticker_does_not_escape_to_lookup():
