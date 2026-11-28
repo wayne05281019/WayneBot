@@ -56,6 +56,19 @@
     "phone_ok": false,
     "no_invent_basket": true
   },
+  "auto_expand_after_absorb": {
+    "as_of": "2026-11-28",
+    "user_lock": true,
+    "reason_zh": "使用者近期才跟讀；年初片會出現尚未討論的美股／對照／族群——讀完D必須主動擴充，隔日開始收集對應",
+    "field": "teach_expand[]",
+    "must_do_each_day": [
+      "scan_new_us_tw_group_pattern_levels",
+      "register_sample_or_peer_chain_or_hp_candidate",
+      "start_collect_from_D_plus_1",
+      "empty_array_means_checked_not_skipped"
+    ],
+    "forbid": ["wait_user_per_symbol", "invent_basket", "phone_buy_signal", "name_silent_cover"]
+  },
   "progress_gate_every_n_confronted": 20,
   "anti_casual_done_gate": {
     "n_valid_confronted_ge": 20,
