@@ -10749,31 +10749,31 @@ class WayneTelegramBot:
                 await self._send_dongzhu_hold(update.message, raw or text)
                 return
             if pending == "wave4:ask":
-                if _text_escapes_pending(text):
-                    self._pending.pop(actor, None)
-                else:
-                    q = (raw or text or "").strip()
-                    hits = await asyncio.to_thread(lookup_stocks, self.db_path, q)
-                    if hits_need_picker(hits):
-                        self._pending[actor] = "wave4:ask"
-                        await update.message.reply_html(
-                            "有多檔相近，請點確認（次級四浪）：\n"
-                            + self._hits_list_html(hits),
-                            reply_markup=self._wave4_hits_keyboard(hits),
-                            disable_web_page_preview=True,
-                        )
-                        return
-                    if len(hits) == 1:
-                        self._pending.pop(actor, None)
-                        code = str(hits[0].get("stock_id") or "")
-                        await self._wave4_send_one(update.message, uid, code)
-                        return
+                # 代號／股名就是要查的（同飆大）；主選單鈕已在 pending 前處理。
+                # 不准再用 _text_escapes_pending：那會把四碼代號當逃出，
+                # 十檔後按「打代號」再打 2383 就跳去查股／像無法查詢。
+                q = (raw or text or "").strip()
+                hits = await asyncio.to_thread(lookup_stocks, self.db_path, q)
+                if hits_need_picker(hits):
                     self._pending[actor] = "wave4:ask"
-                    await update.message.reply_text(
-                        "找不到這檔。請再打代號或股名；同音會列出請你點。",
-                        reply_markup=self._reply_menu(uid),
+                    await update.message.reply_html(
+                        "有多檔相近，請點確認（次級四浪）：\n"
+                        + self._hits_list_html(hits),
+                        reply_markup=self._wave4_hits_keyboard(hits),
+                        disable_web_page_preview=True,
                     )
                     return
+                if len(hits) == 1:
+                    self._pending.pop(actor, None)
+                    code = str(hits[0].get("stock_id") or "")
+                    await self._wave4_send_one(update.message, uid, code)
+                    return
+                self._pending[actor] = "wave4:ask"
+                await update.message.reply_text(
+                    "找不到這檔。請再打代號或股名；同音會列出請你點。",
+                    reply_markup=self._reply_menu(uid),
+                )
+                return
             pending = self._pending.pop(actor, "")
             if pending in ("card", "dcard", "chips", "fund", "industry", "watch"):
                 handled = await self._handle_pending_pick(

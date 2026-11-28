@@ -249,6 +249,76 @@ def test_wave4_send_one_uses_pair_two_charts():
     assert "次級四浪圖＋結構圖" in src
 
 
+def test_wave4_ask_ticker_does_not_escape_to_lookup():
+    """十檔後按打代號再打四碼：必須走次級四浪單檔，不准被 _text_escapes_pending 逃去查股。"""
+    import asyncio
+    import inspect
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, MagicMock
+
+    from bot_servers import WayneTelegramBot
+
+    # 靜態：不准再呼叫 escapes（註解可提，呼叫型式不准）
+    on_src = inspect.getsource(WayneTelegramBot._on_text_bound)
+    wave_chunk = on_src[on_src.index('pending == "wave4:ask"') :]
+    wave_chunk = wave_chunk[: wave_chunk.index("pending = self._pending.pop")]
+    assert "if _text_escapes_pending(text):" not in wave_chunk
+    assert "_wave4_send_one" in wave_chunk
+
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot.db_path = ":memory:"
+    bot._reject_stranger = AsyncMock(return_value=False)
+    bot._message_is_preboot_replay = MagicMock(return_value=False)
+    bot._heavy_job_blocks_phone = MagicMock(return_value=False)
+    bot._touch_user = MagicMock()
+    bot._pending = {"9:9": "wave4:ask"}
+    bot._pending_locks = {}
+    bot._actor_key = lambda message, uid="": "9:9"
+    bot._reply_menu = MagicMock(return_value=None)
+    bot._wave4_send_one = AsyncMock()
+    bot._dispatch_intent = AsyncMock(return_value=False)
+    bot._reply_card = AsyncMock()
+
+    async def _fake_to_thread(fn, *a, **k):
+        if getattr(fn, "__name__", "") == "lookup_stocks" or fn is not None:
+            # 強制命中單檔，模擬打 2383
+            return [{"stock_id": "2383", "stock_name": "台光電"}]
+        return fn(*a, **k)
+
+    user = SimpleNamespace(id=9, first_name="t")
+    msg = MagicMock()
+    msg.from_user = user
+    msg.chat_id = 9
+    msg.text = "2383"
+    msg.reply_text = AsyncMock()
+    msg.reply_html = AsyncMock()
+    upd = SimpleNamespace(message=msg, effective_user=user)
+
+    async def _run():
+        import bot_servers as bs
+
+        real = asyncio.to_thread
+
+        async def _tt(fn, *a, **k):
+            name = getattr(fn, "__name__", "")
+            if name == "lookup_stocks":
+                return [{"stock_id": "2383", "stock_name": "台光電"}]
+            return await real(fn, *a, **k)
+
+        prev = asyncio.to_thread
+        asyncio.to_thread = _tt  # type: ignore
+        try:
+            await bot.on_text(upd, MagicMock())
+        finally:
+            asyncio.to_thread = prev  # type: ignore
+
+    asyncio.run(_run())
+    bot._wave4_send_one.assert_awaited()
+    assert bot._wave4_send_one.await_args.args[2] == "2383"
+    bot._reply_card.assert_not_awaited()
+    assert "9:9" not in bot._pending
+
+
 def test_wave4_send_page_list_first_then_wave4_not_struct():
     """實質十檔：先名單再逐張次級四浪圖；文案不准再叫結構圖。"""
     import inspect
