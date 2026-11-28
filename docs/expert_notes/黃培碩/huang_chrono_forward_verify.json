@@ -1,5 +1,5 @@
 {
-  "as_of_taipei": "2026-11-28T15:55:00+0800",
+  "as_of_taipei": "2026-11-28T16:10:00+0800",
   "phone_sync": "blocked",
   "buy_signal": false,
   "method_zh": "每天同步跟他一起解盤：讀D→量化他的原則→自己先寫隔日高/低機率→隔天官方柱對答案→失敗碼累計→再讀D+1。從最早片往後；不准倒推。",
@@ -21,7 +21,7 @@
     "20261127"
   ],
   "cursor_day": "20261127",
-  "status_zh": "1110–1126 十二輪對質完成；下一個讀1127片。",
+  "status_zh": "Drive 片 1110–1127 已吸完；對質 n=12；1127→下一開市日預估掛 live。",
   "days": [
     {
       "day": "20261110",
@@ -554,7 +554,33 @@
         ],
         "lesson_zh": "落底後隔日高機率給震盪權重，不預設連推也不預設再崩。"
       },
-      "next_film_read": "pending_20261127"
+      "next_film_read": "done_20261127"
+    },
+    {
+      "day": "20261127",
+      "film": "1127黃培碩.mp4",
+      "yt_title": "審慎樂觀！低接不追高",
+      "absorb_refs": [
+        "docs/expert_notes/飆客/decade_lab/huang_wave_method_20261127.md",
+        "docs/expert_notes/飆客/decade_lab/huang_oral_absorb_20261127.json"
+      ],
+      "his_read_zh": "認定落底；審慎樂觀；低接不追高；下降軌道未越→混震盪／壓回找點。",
+      "forecast_for_next": {
+        "target_day": "next_open_twii_day",
+        "written_before_peek": true,
+        "high_prob_zh": "區間震盪／壓回低接、不追高連推",
+        "low_prob_zh": "越下降軌道連推；或破35442續崩",
+        "basis_zh": "口播低接不追高＋軌道未越混震盪＋審慎樂觀",
+        "applied_fix_from": [
+          "HP-CAUTIOUS-OPTIMISM",
+          "HP-DIP-NO-CHASE",
+          "HP-CHANNEL-CONFIRM",
+          "HP-PREFER-CHOP"
+        ],
+        "status": "forecast_pending_live"
+      },
+      "confront_official": null,
+      "next_film_read": "pack_end_await_next_drive"
     }
   ],
   "days_completed": [
@@ -569,6 +595,22 @@
     "20261123",
     "20261124",
     "20261125",
-    "20261126"
-  ]
+    "20261126",
+    "20261127"
+  ],
+  "live_forecast": {
+    "from_day": "20261127",
+    "target": "next_open_twii_day",
+    "written_before_peek": true,
+    "high_prob_zh": "區間震盪／壓回低接、不追高連推",
+    "low_prob_zh": "越下降軌道連推；或破35442續崩",
+    "basis_zh": "落底＋審慎樂觀＋低接不追高＋下降軌道未越→混震盪",
+    "applied_fix_from": [
+      "HP-CAUTIOUS-OPTIMISM",
+      "HP-DIP-NO-CHASE",
+      "HP-CHANNEL-CONFIRM",
+      "HP-PREFER-CHOP"
+    ],
+    "confront_official": "pending_live"
+  }
 }

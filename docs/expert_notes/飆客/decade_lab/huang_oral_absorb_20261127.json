@@ -1,0 +1,31 @@
+{
+  "as_of_taipei": "2026-11-27T15:00:00+08:00",
+  "as_of_day": "20261127",
+  "source": "drive_full_asr",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "not_buy_signal": true,
+  "youtube": {
+    "title": "審慎樂觀！低接不追高 20261127 黃培碩 分析師 運達證券投顧",
+    "drive_file_id": "1h8YP3PCaFy3rbQdwyP8vjZ_l1ufw81MM",
+    "drive_name": "1127黃培碩.mp4"
+  },
+  "market_verdict_zh": {
+    "now": "認定落底；審慎樂觀；低接不追高；下降軌道未越→混震盪",
+    "how_he_reads_zh": [
+      "49968下來五段跌勢有機會告段落→先整理",
+      "低接不追高；操作節奏放慢",
+      "下降軌道未正式越過→混來混去；壓回找買點觀察≠話筒買訊"
+    ],
+    "not_zh": [
+      "非買訊",
+      "不准發明5／9進話筒"
+    ]
+  },
+  "forecast_anchor_for_next_zh": {
+    "target": "next_open_twii_day",
+    "high_prob": "區間震盪／壓回低接、不追高",
+    "low_prob": "越下降軌道連推；或破35442續崩",
+    "status": "forecast_pending_live"
+  }
+}
