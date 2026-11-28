@@ -22,6 +22,18 @@
   "film_status_enum": ["present", "absent_open", "closed"],
   "absent_open_counts_toward_n": true,
   "closed_skips": true,
+  "no_skip_open_days": {
+    "user_lock": "2026-11-28",
+    "rule_zh": "開市日一天一天判斷；無片=absent_open仍自判；禁止跳日；僅休市closed可跳"
+  },
+  "volume_price_required": {
+    "user_lock": "2026-11-28",
+    "fields": ["price_dir", "vol", "vol_ma20", "vol_price_relation"],
+    "relation_enum": ["confirm", "deny", "neutral"],
+    "examples_zh": ["價漲量增", "價漲量縮", "破底放量", "破底縮量"],
+    "applies_on": ["present", "absent_open"],
+    "escalate_60m_on_dispute": true
+  },
   "dual_branch_default": true,
   "single_branch_ok_only_if": {
     "score_gap_ge": 25,

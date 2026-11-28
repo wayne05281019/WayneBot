@@ -36,7 +36,13 @@
     "amp_ratios": {},
     "fib_used": [],
     "fib_skip_reason": null,
-    "vol_daily": null,
+    "vol_price": {
+      "price_dir": "up|down|chop",
+      "vol": null,
+      "vol_ma20": null,
+      "vol_price_relation": "confirm|deny|neutral",
+      "note_zh": "價漲量增/價漲量縮/破底放量或縮量…"
+    },
     "vol_60m": null
   },
   "forecast_for_next": {
@@ -54,6 +60,8 @@
     "regime_complete": false,
     "sync_chains": false,
     "wave_main_micro": false,
+    "vol_price_filled": false,
+    "open_day_not_skipped": false,
     "dual_branch_no_peek": false,
     "confront_anatomy": false,
     "cross_learn": false,
