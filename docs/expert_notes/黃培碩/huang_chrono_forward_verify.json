@@ -1,5 +1,5 @@
 {
-  "as_of_taipei": "2026-11-28T14:10:00+0800",
+  "as_of_taipei": "2026-11-28T14:26:00+0800",
   "phone_sync": "blocked",
   "buy_signal": false,
   "method_zh": "每天同步跟他一起解盤：讀D→量化他的原則→自己先寫隔日高/低機率→隔天官方柱對答案→失敗碼累計→再讀D+1。從最早片往後；不准倒推。",
@@ -20,8 +20,8 @@
     "20261126",
     "20261127"
   ],
-  "cursor_day": "20261119",
-  "status_zh": "1110–1118 六輪對質完成；下一個讀1119片。",
+  "cursor_day": "20261120",
+  "status_zh": "1110–1119 七輪對質完成；1120 官方大破前低＝本輪 miss；下一個讀1120片看他怎麼改口。",
   "days": [
     {
       "day": "20261110",
@@ -287,7 +287,53 @@
         ],
         "lesson_zh": "第二腳過程允許多日再低；不要因單日未止穩就改口推動破底。"
       },
-      "next_film_read": "pending_20261119"
+      "next_film_read": "done_20261119"
+    },
+    {
+      "day": "20261119",
+      "film": "1119黃培碩.mp4",
+      "yt_title": "記憶體族群 輝煌再起！",
+      "absorb_refs": [
+        "docs/expert_notes/飆客/decade_lab/huang_wave_method_20261119.md",
+        "docs/expert_notes/飆客/decade_lab/huang_oral_absorb_20261119.json"
+      ],
+      "his_read_zh": "第二腳近測37837；破不破出擊；ABC非第五推動；短線WXY震盪候選；記憶體／南亞科。",
+      "forecast_for_next": {
+        "target_day": "20261120",
+        "written_before_peek": true,
+        "high_prob_zh": "近37837測腳／輕假破後止穩或反彈；主腳仍第二腳帶，非推動五段深崩",
+        "low_prob_zh": "確認推動第五下跌、大幅破37837續殺",
+        "basis_zh": "口播『低點有效』『回測第二腳』『不會第五破往下』『破不破都出擊』—但未授權無限深度",
+        "applied_fix_from": [
+          "HP-PARALLEL-BRANCHES",
+          "HP-ABC-NOT-5DOWN"
+        ]
+      },
+      "confront_official": {
+        "symbol": "TWII",
+        "bar": {
+          "date": "20261120",
+          "open": 37646.13,
+          "high": 37646.13,
+          "low": 35738.68,
+          "close": 36033.29
+        },
+        "result": "miss_high_prob",
+        "score_zh": "錯（高機率測腳止穩未成）",
+        "what_happened_zh": "1120 跳空開37646已破37837，低35738、收36033＝深破約2100點，屬大幅破前低續殺。",
+        "why_wrong_zh": "把『破不破都一樣／低點有效』讀成隔日仍以腳帶止穩為主；低估跳空深破成推動續殺腳的機率。",
+        "failure_codes": [
+          "F-FOOT-DEPTH-UNLIMITED",
+          "F-UNDERWEIGHT-GAP-BREAK"
+        ],
+        "principles_fired": [
+          "HP-SECOND-FOOT-NOW",
+          "HP-ABC-NOT-5DOWN",
+          "HP-RETEST-STAND-BUY-IF-NOT-IMPULSE"
+        ],
+        "lesson_zh": "『破不破』≠無限深度；隔日若跳空大破前低，高機率要並列『推動續殺』分支並升權。下一片看他是否改口。"
+      },
+      "next_film_read": "pending_20261120"
     }
   ]
 }

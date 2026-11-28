@@ -1,17 +1,17 @@
 {
-  "as_of_taipei": "2026-11-28T14:10:00+0800",
+  "as_of_taipei": "2026-11-28T14:26:00+0800",
   "phone_sync": "blocked",
   "buy_signal": false,
   "purpose_zh": "記取並量化：①黃的判斷原則 ②我隔日預估失敗原因。每chrono日更新；n不足不准改話筒。",
   "tz": "Asia/Taipei",
-  "n_days_absorbed": 6,
-  "n_forecasts_confronted": 6,
+  "n_days_absorbed": 7,
+  "n_forecasts_confronted": 7,
   "my_forecast_score": {
     "hit_high_prob": 3,
     "hit_high_prob_partial": 2,
-    "miss_high_prob": 1,
-    "hit_rate_high_prob_strict": 0.5,
-    "hit_rate_high_prob_incl_partial": 0.8333333333333334
+    "miss_high_prob": 2,
+    "hit_rate_high_prob_strict": 0.42857142857142855,
+    "hit_rate_high_prob_incl_partial": 0.7142857142857143
   },
   "principles": [
     {
@@ -243,6 +243,24 @@
         "20261117→20261118"
       ],
       "fix_zh": "開盤方向降為次條件；主腳用再探低／測腳帶"
+    },
+    {
+      "id": "F-FOOT-DEPTH-UNLIMITED",
+      "def_zh": "把第二腳破不破讀成隔日深度無上限",
+      "n": 1,
+      "days": [
+        "20261119→20261120"
+      ],
+      "fix_zh": "跳空大破前低時升權推動續殺分支"
+    },
+    {
+      "id": "F-UNDERWEIGHT-GAP-BREAK",
+      "def_zh": "低估開盤跳空破前低的續殺力道",
+      "n": 1,
+      "days": [
+        "20261119→20261120"
+      ],
+      "fix_zh": "開盤相對前低位置納入隔日機率權重"
     }
   ],
   "next_ops_zh": [
