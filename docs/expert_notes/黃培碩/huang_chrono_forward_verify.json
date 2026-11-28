@@ -1,5 +1,5 @@
 {
-  "as_of_taipei": "2026-11-28T12:21:00+0800",
+  "as_of_taipei": "2026-11-28T12:50:00+0800",
   "phone_sync": "blocked",
   "buy_signal": false,
   "method_zh": "從雲端最早片往後：讀D→寫隔日高/低機率預估→官方柱對質→再讀D+1找訂錯原因。不准跳最新、不准倒推。",
@@ -19,7 +19,41 @@
     "20261126",
     "20261127"
   ],
-  "cursor_day": "20261110",
-  "status_zh": "正在抽 1110 口播／影格；預估與對質列尚未寫（未偷看後片）。",
-  "days": []
+  "cursor_day": "20261111",
+  "status_zh": "1110 已吸收並完成對 1111 官方柱對質；下一個讀 1111 片（ingest 啟動中）。",
+  "days": [
+    {
+      "day": "20261110",
+      "film": "1110黃培碩.mp4",
+      "yt_title": "次級4浪壓力區 靜待拉回再全進！",
+      "absorb_refs": [
+        "docs/expert_notes/飆客/decade_lab/huang_wave_method_20261110.md",
+        "docs/expert_notes/飆客/decade_lab/huang_oral_absorb_20261110.json"
+      ],
+      "his_read_zh": "反彈第三天精準碰到細微壓力43135；大結構暫三段、上週五第三段結束；自37837五小段上偏樂觀；今日多數非追價買點，等壓回再全進。",
+      "forecast_for_next": {
+        "target_day": "20261111",
+        "written_before_peek": true,
+        "high_prob_zh": "壓力後壓回或區間震盪整理（他：大部分會壓回；這一兩天看怎麼整理）",
+        "low_prob_zh": "幾乎不拉就續強突破壓力、直接走出生段加速（他並行備援但不當今日追價主劇本）",
+        "basis_zh": "標題＋口播『靜待拉回』『大部分會壓回』權重大於『不排除推生啟動』"
+      },
+      "confront_official": {
+        "symbol": "TWII",
+        "bar": {
+          "date": "20261111",
+          "open": 43135.76,
+          "high": 44257.15,
+          "low": 42708.05,
+          "close": 44257.15
+        },
+        "result": "miss_high_prob",
+        "score_zh": "偏／錯（高機率壓回未成主結果）",
+        "what_happened_zh": "1111 收在當日高、大漲續強（C=H≈44257）；盤中僅回 42708 後上攻，不是他所強調的壓力後主力道壓回窗。",
+        "why_wrong_zh": "把『今日壓力＝多數會壓回』當隔日主機率，低估他同場已抬出的『五小段上＝偏樂觀／可能出生段』分支；隔日行情走了備援強勢腳。",
+        "lesson_zh": "壓力日預估要把『整理壓回』與『五波上已表態偏多』並列權重；不能只抄標題『靜待拉回』。"
+      },
+      "next_film_read": "pending_20261111"
+    }
+  ]
 }
