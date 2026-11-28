@@ -1,30 +1,216 @@
 {
-  "as_of_taipei": "2026-11-28T22:26:28+08:00",
-  "phone_sync": "blocked",
+  "as_of_taipei": "2026-11-28T22:40:55+08:00",
+  "phone_sync": "blocked_until_gate",
   "buy_signal": false,
   "recomputable": true,
+  "power_goal_zh": "最終＝波浪繪製／確認、點位漲跌幅度、大盤＋個股獲勝率變強並破除限制；過閘必換話筒。準備與量化同步，不准少做。",
   "windows": {
-    "W20": null,
-    "W40": null,
-    "all": null
+    "W20": {
+      "n": 20,
+      "path_hit_rate": 1.0,
+      "wave_hit_rate": 1.0,
+      "amp_hit_rate": 0.95,
+      "amp_hit_incl_skew": 0.95,
+      "levels_hit_rate": 0.95,
+      "strict_all_hit_rate": 0.9
+    },
+    "W40": {
+      "n": 21,
+      "path_hit_rate": 1.0,
+      "wave_hit_rate": 1.0,
+      "amp_hit_rate": 0.9047619047619048,
+      "amp_hit_incl_skew": 0.9523809523809523,
+      "levels_hit_rate": 0.9523809523809523,
+      "strict_all_hit_rate": 0.8571428571428571
+    },
+    "all": {
+      "n": 21,
+      "path_hit_rate": 1.0,
+      "wave_hit_rate": 1.0,
+      "amp_hit_rate": 0.9047619047619048,
+      "amp_hit_incl_skew": 0.9523809523809523,
+      "levels_hit_rate": 0.9523809523809523,
+      "strict_all_hit_rate": 0.8571428571428571
+    }
   },
   "title_only_baseline": {
     "source": "nov_short_window_holdout",
     "n": 12,
     "hit_rate_strict": 0.583,
     "hit_rate_incl_partial": 0.833,
-    "note_zh": "1110–1127 對質基線；1/2→今包要贏這條才算技能升（仍 phone_sync=blocked）"
+    "note_zh": "1110–1127 標題基線；chrono 要贏這條才算技能升"
+  },
+  "market_quant": {
+    "n": 21,
+    "path_hit": 21,
+    "wave_hit": 21,
+    "amp_hit": 19,
+    "levels_hit": 20,
+    "dual_branch_rate": 1.0,
+    "regime_complete_rate": 1.0
+  },
+  "stock_quant": {
+    "n_rows": 95,
+    "n_missing": 6,
+    "path_hit_rate": 0.5052631578947369,
+    "amp_hit_rate": 0.42105263157894735,
+    "by_stock": {
+      "1528": {
+        "n": 1,
+        "path_hit_rate": 1.0,
+        "amp_hit_rate": 0.0
+      },
+      "1815": {
+        "n": 1,
+        "path_hit_rate": 1.0,
+        "amp_hit_rate": 1.0
+      },
+      "2327": {
+        "n": 4,
+        "path_hit_rate": 0.0,
+        "amp_hit_rate": 0.5
+      },
+      "2330": {
+        "n": 21,
+        "path_hit_rate": 0.8571428571428571,
+        "amp_hit_rate": 0.8095238095238095
+      },
+      "2344": {
+        "n": 5,
+        "path_hit_rate": 0.4,
+        "amp_hit_rate": 0.0
+      },
+      "2368": {
+        "n": 1,
+        "path_hit_rate": 1.0,
+        "amp_hit_rate": 1.0
+      },
+      "2383": {
+        "n": 1,
+        "path_hit_rate": 0.0,
+        "amp_hit_rate": 1.0
+      },
+      "2408": {
+        "n": 2,
+        "path_hit_rate": 0.5,
+        "amp_hit_rate": 0.5
+      },
+      "2454": {
+        "n": 2,
+        "path_hit_rate": 1.0,
+        "amp_hit_rate": 1.0
+      },
+      "3260": {
+        "n": 4,
+        "path_hit_rate": 0.75,
+        "amp_hit_rate": 0.25
+      },
+      "3481": {
+        "n": 20,
+        "path_hit_rate": 0.2,
+        "amp_hit_rate": 0.15
+      },
+      "3532": {
+        "n": 3,
+        "path_hit_rate": 0.3333333333333333,
+        "amp_hit_rate": 0.0
+      },
+      "6173": {
+        "n": 3,
+        "path_hit_rate": 0.3333333333333333,
+        "amp_hit_rate": 0.3333333333333333
+      },
+      "6239": {
+        "n": 1,
+        "path_hit_rate": 0.0,
+        "amp_hit_rate": 0.0
+      },
+      "6274": {
+        "n": 1,
+        "path_hit_rate": 1.0,
+        "amp_hit_rate": 1.0
+      },
+      "6443": {
+        "n": 3,
+        "path_hit_rate": 0.3333333333333333,
+        "amp_hit_rate": 0.3333333333333333
+      },
+      "6488": {
+        "n": 6,
+        "path_hit_rate": 0.5,
+        "amp_hit_rate": 0.16666666666666666
+      },
+      "6548": {
+        "n": 1,
+        "path_hit_rate": 1.0,
+        "amp_hit_rate": 1.0
+      },
+      "6770": {
+        "n": 5,
+        "path_hit_rate": 0.2,
+        "amp_hit_rate": 0.2
+      },
+      "6937": {
+        "n": 1,
+        "path_hit_rate": 0.0,
+        "amp_hit_rate": 1.0
+      },
+      "8043": {
+        "n": 1,
+        "path_hit_rate": 1.0,
+        "amp_hit_rate": 0.0
+      },
+      "8074": {
+        "n": 5,
+        "path_hit_rate": 0.4,
+        "amp_hit_rate": 0.6
+      },
+      "8114": {
+        "n": 1,
+        "path_hit_rate": 1.0,
+        "amp_hit_rate": 1.0
+      },
+      "8271": {
+        "n": 1,
+        "path_hit_rate": 1.0,
+        "amp_hit_rate": 0.0
+      },
+      "8358": {
+        "n": 1,
+        "path_hit_rate": 1.0,
+        "amp_hit_rate": 0.0
+      }
+    }
+  },
+  "gate_section8": {
+    "n_valid_confronted": 21,
+    "n_ge_20": true,
+    "dual_branch_rate": 1.0,
+    "dual_branch_ge_0_90": true,
+    "regime_complete_rate": 1.0,
+    "regime_complete_ok": true,
+    "beats_title_baseline_w20": true,
+    "stock_quant_n": 95,
+    "stock_quant_ready": true,
+    "status": "collecting_n20_plus_stock_needs_lift",
+    "note_zh": "§8 全過才准宣稱會判；過閘後必換話筒編碼並再生下一版。不准以 blocked 少做量化／準備。",
+    "stock_path_hit_rate": 0.5052631578947369,
+    "stock_amp_hit_rate": 0.42105263157894735,
+    "stock_rates_ok": false
   },
   "feb_pack": {
-    "n_confronted": 0,
-    "hit_high_prob": 0,
-    "hit_high_prob_partial": 0,
-    "miss_high_prob": 0,
-    "dual_branch_rate": null,
-    "regime_complete_rate": null
+    "n_confronted": 21,
+    "hit_high_prob": 21,
+    "hit_high_prob_partial": 1,
+    "miss_high_prob": 1,
+    "dual_branch_rate": 1.0,
+    "regime_complete_rate": 1.0
   },
   "chrono_2026": {
     "start": "20260102",
+    "n": 21,
+    "path_hit": 21,
+    "amp_hit": 19,
     "days": [
       {
         "day": "20260102",
@@ -36,7 +222,7 @@
         "fail_codes": [
           "AMP_UNDERSHOOT_UPSIDE"
         ],
-        "growth_zh": "幅度改為必寫可對質上緣"
+        "growth_zh": "0105 片尚未讀（下一輪 absorb）；官方柱已證推升續表態。交叉：我高機率方向＝他易漲難跌；我幅度偏保守＝成長點。"
       },
       {
         "day": "20260105",
@@ -48,7 +234,7 @@
         "fail_codes": [
           "BREADTH_NOT_FROZEN"
         ],
-        "growth_zh": "幅度帶命中；補廣度官方凍"
+        "growth_zh": "0106片未讀；官方柱續推吻合易漲難跌。幅度帶對上＝AMP課有效。出場學（元金）待對個股柱另軌。"
       },
       {
         "day": "20260106",
@@ -58,7 +244,7 @@
         "amp": "hit",
         "levels": "hit",
         "fail_codes": [],
-        "growth_zh": "廣度凍＋幅度帶雙到位"
+        "growth_zh": "0107片未讀；官方柱＝高檔微拉仍持結構，吻合「細微拉回無所謂／選股優先」。"
       },
       {
         "day": "20260107",
@@ -68,7 +254,7 @@
         "amp": "hit",
         "levels": "hit",
         "fail_codes": [],
-        "growth_zh": "高檔震盪帶對質"
+        "growth_zh": "0108片未讀；官方柱吻合高檔震盪／休息。"
       },
       {
         "day": "20260108",
@@ -78,7 +264,7 @@
         "amp": "hit",
         "levels": "hit",
         "fail_codes": [],
-        "growth_zh": "高檔震盪帶"
+        "growth_zh": "0109片已讀：延續高檔震盪＋還有高點；記憶體暫休為個股節奏。"
       },
       {
         "day": "20260109",
@@ -87,8 +273,10 @@
         "wave": "hit",
         "amp": "hit",
         "levels": "hit",
-        "fail_codes": [],
-        "growth_zh": "記憶體暫休≠大盤結束；幅度帶命中"
+        "fail_codes": [
+          "MEMORY_REST_THEN_RESUME"
+        ],
+        "growth_zh": "0109口播記憶體暫休＋大盤仍有高點：0112指數溫過、廣度轉強、華邦由-9.9%翻+4.3%＝休整後續表態樣本。"
       },
       {
         "day": "20260112",
@@ -100,7 +288,7 @@
         "fail_codes": [
           "TSMC_GATE_NEXTDAY_BREAK"
         ],
-        "growth_zh": "台積平高閘隔日一過立刻改口"
+        "growth_zh": "指數過高＋台積未過＝當日假突破候選；隔日台積一過就要改口，不准把當日閘鎖死到下一日。"
       },
       {
         "day": "20260113",
@@ -109,8 +297,10 @@
         "wave": "hit",
         "amp": "hit",
         "levels": "hit",
-        "fail_codes": [],
-        "growth_zh": "第五波結束要結構確認；單日急殺不夠"
+        "fail_codes": [
+          "W5_END_NEEDS_STRUCTURE"
+        ],
+        "growth_zh": "衝高大幅拉回翌日可續強（廣度翻正）；第五波結束判斷要等結構確認，不准當日急殺就鎖死結束。"
       },
       {
         "day": "20260114",
@@ -119,8 +309,10 @@
         "wave": "hit",
         "amp": "hit",
         "levels": "hit",
-        "fail_codes": [],
-        "growth_zh": "第五出後未大拉回→緩步假設"
+        "fail_codes": [
+          "W5_SLOW_GRIND"
+        ],
+        "growth_zh": "第五波出後翌日可溫消化；台積平高未破＝續觀緩步，不准急判結束。"
       },
       {
         "day": "20260115",
@@ -129,8 +321,10 @@
         "wave": "hit",
         "amp": "hit",
         "levels": "hit",
-        "fail_codes": [],
-        "growth_zh": "法說閘以台積漲跌優先於廣度"
+        "fail_codes": [
+          "EARNINGS_TSMC_DIR_GATE"
+        ],
+        "growth_zh": "法說閘＝隔日台積方向優先於廣度；廣度弱仍可指數強（台積權重）。"
       },
       {
         "day": "20260116",
@@ -139,8 +333,10 @@
         "wave": "hit",
         "amp": "hit",
         "levels": "hit",
-        "fail_codes": [],
-        "growth_zh": "閘過後維持第五運行"
+        "fail_codes": [
+          "GATE_PASS_KEEP_W5"
+        ],
+        "growth_zh": "閘過後週末開再續推；選股優先於指數拒高。"
       },
       {
         "day": "20260119",
@@ -149,8 +345,10 @@
         "wave": "hit",
         "amp": "hit",
         "levels": "hit",
-        "fail_codes": [],
-        "growth_zh": "FOMO日廣度弱≠結構結束"
+        "fail_codes": [
+          "FOMO_BREADTH_DIVERGE"
+        ],
+        "growth_zh": "FOMO日廣度可弱於指數；預估仍以結構帶為準。"
       },
       {
         "day": "20260120",
@@ -159,8 +357,10 @@
         "wave": "hit",
         "amp": "hit",
         "levels": "hit",
-        "fail_codes": [],
-        "growth_zh": "記憶體震盪日指數仍用盤堅帶"
+        "fail_codes": [
+          "MEMORY_CHOP_INDEX_BAND"
+        ],
+        "growth_zh": "記憶體大震日指數可跟弱但仍落在結構帶；出關日另盯個股。"
       },
       {
         "day": "20260121",
@@ -169,8 +369,10 @@
         "wave": "hit",
         "amp": "hit",
         "levels": "hit",
-        "fail_codes": [],
-        "growth_zh": "黑棒後雙分支＋結構帶"
+        "fail_codes": [
+          "BLACK_BAR_FORK_KEEP_BAND"
+        ],
+        "growth_zh": "大黑棒日仍維持雙分支；高機率＝未確認結束＋震盪／反彈帶。"
       },
       {
         "day": "20260122",
@@ -179,8 +381,10 @@
         "wave": "hit",
         "amp": "hit",
         "levels": "hit",
-        "fail_codes": [],
-        "growth_zh": "absent_open 沿用雙分支"
+        "fail_codes": [
+          "ABSENT_OPEN_CARRY_FORK"
+        ],
+        "growth_zh": "absent_open 沿用前窗雙分支＋官方柱即可計分。"
       },
       {
         "day": "20260123",
@@ -189,8 +393,10 @@
         "wave": "hit",
         "amp": "hit",
         "levels": "hit",
-        "fail_codes": [],
-        "growth_zh": "末升候選週末後震盪帶"
+        "fail_codes": [
+          "W5OF5_WEEKEND_CHOP_BAND"
+        ],
+        "growth_zh": "創高末日候選仍用震盪帶；深回支留低機率。"
       },
       {
         "day": "20260126",
@@ -199,8 +405,10 @@
         "wave": "hit",
         "amp": "hit",
         "levels": "hit",
-        "fail_codes": [],
-        "growth_zh": "同步創高＋台積走低仍盤堅"
+        "fail_codes": [
+          "SYNC_HIGH_TSMC_OHLC_KEEP_GRIND"
+        ],
+        "growth_zh": "同步創高後仍用盤堅續推帶；台積走低≠結構破。"
       },
       {
         "day": "20260127",
@@ -209,8 +417,10 @@
         "wave": "hit",
         "amp": "hit",
         "levels": "hit",
-        "fail_codes": [],
-        "growth_zh": "記憶體分歧日指數仍盤堅"
+        "fail_codes": [
+          "MEMORY_DIVERGE_INDEX_GRIND"
+        ],
+        "growth_zh": "記憶體分歧日指數仍可盤堅續推。"
       },
       {
         "day": "20260128",
@@ -219,8 +429,10 @@
         "wave": "hit",
         "amp": "hit",
         "levels": "hit",
-        "fail_codes": [],
-        "growth_zh": "資金瘋日隔日拉回仍擴延帶"
+        "fail_codes": [
+          "FRENZY_DAY_KEEP_EXTEND_BAND"
+        ],
+        "growth_zh": "資金瘋日隔日拉回仍用擴延震盪帶。"
       },
       {
         "day": "20260129",
@@ -232,7 +444,7 @@
         "fail_codes": [
           "POST_FRENZY_D2_WIDEN_FLOOR"
         ],
-        "growth_zh": "第二日拉回要加寬下緣"
+        "growth_zh": "瘋狗浪後第二日拉回要加深帶底（或用 deep_pull 作高機率下緣）。"
       },
       {
         "day": "20260130",
@@ -241,12 +453,13 @@
         "wave": "hit",
         "amp": "hit",
         "levels": "hit",
-        "fail_codes": [],
-        "growth_zh": "臨界黑棒後加寬下緣生效"
+        "fail_codes": [
+          "CRITICAL_K_WEEKEND_WIDE_FLOOR"
+        ],
+        "growth_zh": "臨界黑棒週末後續拉：高機率下緣必須加寬。"
       }
-    ],
-    "n": 21,
-    "path_hit": 21,
-    "amp_hit": 19
-  }
+    ]
+  },
+  "vnext_ref": "huang_vnext_candidates.json",
+  "stock_ledger_ref": "huang_stock_quant_ledger.json"
 }

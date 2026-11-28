@@ -257,7 +257,10 @@
     "te_missing_noted": true,
     "named_ohlcv_frozen": true,
     "breadth_frozen": true,
-    "full_suite_evidence_ok": true
+    "full_suite_evidence_ok": true,
+    "market_power_filled": true,
+    "stock_quant_filled": true,
+    "power_track_backfilled": true
   },
   "exit_learn_zh": "華邦第五可短要設停；鉅橡／美食拉回切入非追。非大盤出清。",
   "wave_progress": {
@@ -408,5 +411,146 @@
     "S25": true,
     "S26": true,
     "S27": true
+  },
+  "market_power": {
+    "as_of": "20260127",
+    "target": "20260128",
+    "wave_draw": {
+      "main": {
+        "label_zh": "盤堅第五續／可擴延九小",
+        "now_zh": "未破前高拉回前低；不立刻標結束"
+      },
+      "micro": {
+        "label_zh": "華邦第五可短風險；群聯一波到底；鉅橡漲停"
+      },
+      "label_lock": "candidate",
+      "align": "same"
+    },
+    "wave_confirm": {
+      "peak_claim": {
+        "price": 32428,
+        "degree": "main",
+        "status": "candidate",
+        "note_zh": "加權高"
+      },
+      "pullback_band": {
+        "lo": 29925.0,
+        "hi": 31200.0,
+        "role_zh": "僅破前低後"
+      },
+      "rebound_band": {
+        "lo": 32021.4,
+        "hi": 33159.2,
+        "role_zh": "盤堅續"
+      },
+      "verdict_wave": "hit",
+      "verdict_levels": "hit",
+      "confront_note_zh": "0128續推"
+    },
+    "amp": {
+      "tx_close_ref": 32509.0,
+      "band": [
+        32021.4,
+        33159.2
+      ],
+      "close": 32927.0,
+      "in_band": true,
+      "verdict": "hit"
+    },
+    "path_verdict": "hit",
+    "purpose_zh": "大盤波浪繪製／確認＋幅度對質；為破除限制累積勝率",
+    "backfilled_at_taipei": "2026-11-28T22:40:11+08:00"
+  },
+  "stock_quant": {
+    "as_of": "20260127",
+    "target": "20260128",
+    "n": 5,
+    "path_hit": 2,
+    "amp_hit": 1,
+    "rows": [
+      {
+        "stock_id": "2330",
+        "status": "ok",
+        "expect": "chop",
+        "expect_src": "named_local_neutral",
+        "target": "20260128",
+        "c0": 1780.0,
+        "c1": 1820.0,
+        "pct": 2.247,
+        "band": [
+          1744.4,
+          1815.6
+        ],
+        "path": "hit",
+        "amp": "miss"
+      },
+      {
+        "stock_id": "2344",
+        "status": "ok",
+        "expect": "down_or_chop",
+        "expect_src": "named_local",
+        "target": "20260128",
+        "c0": 115.5,
+        "c1": 127.0,
+        "pct": 9.957,
+        "band": [
+          112.03,
+          117.81
+        ],
+        "path": "miss",
+        "amp": "miss"
+      },
+      {
+        "stock_id": "8074",
+        "status": "ok",
+        "expect": "down_or_chop",
+        "expect_src": "named_local",
+        "target": "20260128",
+        "c0": 69.07,
+        "c1": 67.88,
+        "pct": -1.723,
+        "band": [
+          67.0,
+          70.45
+        ],
+        "path": "hit",
+        "amp": "hit"
+      },
+      {
+        "stock_id": "3260",
+        "status": "ok",
+        "expect": "down_or_chop",
+        "expect_src": "named_local",
+        "target": "20260128",
+        "c0": 344.47,
+        "c1": 357.05,
+        "pct": 3.652,
+        "band": [
+          334.14,
+          351.36
+        ],
+        "path": "miss",
+        "amp": "miss"
+      },
+      {
+        "stock_id": "3481",
+        "status": "ok",
+        "expect": "chop",
+        "expect_src": "no_named_line",
+        "target": "20260128",
+        "c0": 23.05,
+        "c1": 22.3,
+        "pct": -3.254,
+        "band": [
+          22.59,
+          23.51
+        ],
+        "path": "miss",
+        "amp": "miss"
+      }
+    ],
+    "rule_zh": "個股期望優先用當日點名語境；沒有個股句→chop中性帶；不准默默套大盤方向充當個股勝率",
+    "purpose_zh": "點名個股隔日方向＋幅度對質；與大盤同步為破除限制",
+    "backfilled_at_taipei": "2026-11-28T22:40:55+08:00"
   }
 }

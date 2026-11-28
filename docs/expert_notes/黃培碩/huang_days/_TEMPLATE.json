@@ -71,6 +71,21 @@
     "required_zh": "每個開市日必填隔日雙分支；無一例外"
   },
   "confront_official": null,
+  "market_power": {
+    "purpose_zh": "大盤波浪繪製／確認＋幅度對質；破除限制必填",
+    "wave_draw": {},
+    "wave_confirm": {},
+    "amp": {},
+    "path_verdict": null
+  },
+  "stock_quant": {
+    "purpose_zh": "點名個股隔日方向＋幅度對質；不准套大盤充當個股勝率",
+    "expect_bucket_rule_zh": "優先當日點名語境；無句→chop",
+    "n": 0,
+    "path_hit": 0,
+    "amp_hit": 0,
+    "rows": []
+  },
   "miss_anatomy_zh": null,
   "cross_learn_zh": null,
   "rolling_fix": [],
@@ -101,8 +116,10 @@
     "named_ohlcv_frozen": false,
     "breadth_frozen": false,
     "full_suite_evidence_ok": false,
+    "market_power_filled": false,
+    "stock_quant_filled": false,
     "day_complete": false,
-    "ref_zh": "huang_master_consolidate.md §0 全表（含0.7／0.8）"
+    "ref_zh": "huang_master_consolidate.md §0 全表（含0.7／0.8／0.0c）"
   },
   "exit_learn_zh": "",
   "wave_progress": {

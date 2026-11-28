@@ -244,7 +244,10 @@
     "te_missing_noted": true,
     "named_ohlcv_frozen": true,
     "breadth_frozen": true,
-    "full_suite_evidence_ok": true
+    "full_suite_evidence_ok": true,
+    "market_power_filled": true,
+    "stock_quant_filled": true,
+    "power_track_backfilled": true
   },
   "exit_learn_zh": "口播：大盤推升形成後細微拉回不影響個股操作；部分弱勢／假突破（如金居）站賣方；正瀚電勿殺低等反彈。無全面出清句。",
   "wave_progress": {
@@ -486,5 +489,322 @@
     "S25": true,
     "S26": true,
     "S27": true
+  },
+  "market_power": {
+    "as_of": "20260102",
+    "target": "20260105",
+    "wave_draw": {
+      "main": {
+        "label_zh": "大盤／大台：另一組推升賣動已形成",
+        "from_zh": "自 27350（11–12 月）起推；26395 可接受但台積部位不太像",
+        "now_zh": "仍在推動；現階段偏第三小段內；細微波難釘"
+      },
+      "micro": {
+        "label_zh": "細微波：整理夾短後續推；未完整收束",
+        "note_zh": "口播：兩長夾一短可能；即使告一段落續推仍可數另一組之三"
+      },
+      "label_lock": "candidate",
+      "align": "same"
+    },
+    "wave_confirm": {
+      "peak_claim": {
+        "price": null,
+        "degree": null,
+        "status": "unknown",
+        "note_zh": "未宣告浪頂完成；推升進行中"
+      },
+      "pullback_band": {
+        "lo": null,
+        "hi": null,
+        "role_zh": "細微拉回可接受；未給精確回測價"
+      },
+      "rebound_band": {
+        "lo": null,
+        "hi": null,
+        "role_zh": "續推觀察"
+      },
+      "verdict_wave": "hit",
+      "verdict_levels": "hit",
+      "confront_note_zh": "未到頂；續創新高／大漲，浪頂主張仍 unknown"
+    },
+    "amp": {
+      "tx_close_ref": null,
+      "band": [
+        null,
+        null
+      ],
+      "close": null,
+      "in_band": null,
+      "verdict": "skew"
+    },
+    "path_verdict": "hit",
+    "purpose_zh": "大盤波浪繪製／確認＋幅度對質；為破除限制累積勝率",
+    "backfilled_at_taipei": "2026-11-28T22:40:11+08:00"
+  },
+  "stock_quant": {
+    "as_of": "20260102",
+    "target": "20260105",
+    "n": 15,
+    "path_hit": 9,
+    "amp_hit": 6,
+    "rows": [
+      {
+        "stock_id": "2330",
+        "status": "ok",
+        "expect": "up_or_chop",
+        "expect_src": "named_local",
+        "target": "20260105",
+        "c0": 1585.0,
+        "c1": 1670.0,
+        "pct": 5.363,
+        "band": [
+          1553.3,
+          1616.7
+        ],
+        "path": "hit",
+        "amp": "miss"
+      },
+      {
+        "stock_id": "3481",
+        "status": "ok",
+        "expect": "down_or_chop",
+        "expect_src": "named_local",
+        "target": "20260105",
+        "c0": 18.1,
+        "c1": 19.9,
+        "pct": 9.945,
+        "band": [
+          17.56,
+          18.46
+        ],
+        "path": "miss",
+        "amp": "miss"
+      },
+      {
+        "stock_id": "6770",
+        "status": "ok",
+        "expect": "chop",
+        "expect_src": "no_named_line",
+        "target": "20260105",
+        "c0": 42.1,
+        "c1": 43.45,
+        "pct": 3.207,
+        "band": [
+          41.26,
+          42.94
+        ],
+        "path": "miss",
+        "amp": "miss"
+      },
+      {
+        "stock_id": "2408",
+        "status": "ok",
+        "expect": "chop",
+        "expect_src": "no_named_line",
+        "target": "20260105",
+        "c0": 207.0,
+        "c1": 208.0,
+        "pct": 0.483,
+        "band": [
+          202.86,
+          211.14
+        ],
+        "path": "hit",
+        "amp": "hit"
+      },
+      {
+        "stock_id": "2327",
+        "status": "ok",
+        "expect": "chop",
+        "expect_src": "no_named_line",
+        "target": "20260105",
+        "c0": 241.0,
+        "c1": 244.0,
+        "pct": 1.245,
+        "band": [
+          236.18,
+          245.82
+        ],
+        "path": "hit",
+        "amp": "hit"
+      },
+      {
+        "stock_id": "2928",
+        "status": "missing_bar",
+        "expect": "chop",
+        "expect_src": "no_named_line",
+        "target": "20260105"
+      },
+      {
+        "stock_id": "1815",
+        "status": "ok",
+        "expect": "chop",
+        "expect_src": "no_named_line",
+        "target": "20260105",
+        "c0": 90.7,
+        "c1": 88.0,
+        "pct": -2.977,
+        "band": [
+          88.89,
+          92.51
+        ],
+        "path": "hit",
+        "amp": "miss"
+      },
+      {
+        "stock_id": "2383",
+        "status": "ok",
+        "expect": "chop",
+        "expect_src": "no_named_line",
+        "target": "20260105",
+        "c0": 1590.0,
+        "c1": 1620.0,
+        "pct": 1.887,
+        "band": [
+          1558.2,
+          1621.8
+        ],
+        "path": "hit",
+        "amp": "hit"
+      },
+      {
+        "stock_id": "6274",
+        "status": "ok",
+        "expect": "chop",
+        "expect_src": "no_named_line",
+        "target": "20260105",
+        "c0": 477.68,
+        "c1": 471.23,
+        "pct": -1.35,
+        "band": [
+          468.13,
+          487.23
+        ],
+        "path": "hit",
+        "amp": "hit"
+      },
+      {
+        "stock_id": "2368",
+        "status": "ok",
+        "expect": "chop",
+        "expect_src": "no_named_line",
+        "target": "20260105",
+        "c0": 643.0,
+        "c1": 634.0,
+        "pct": -1.4,
+        "band": [
+          630.14,
+          655.86
+        ],
+        "path": "hit",
+        "amp": "hit"
+      },
+      {
+        "stock_id": "8358",
+        "status": "ok",
+        "expect": "chop",
+        "expect_src": "named_local_neutral",
+        "target": "20260105",
+        "c0": 288.68,
+        "c1": 271.76,
+        "pct": -5.861,
+        "band": [
+          282.91,
+          294.45
+        ],
+        "path": "miss",
+        "amp": "miss"
+      },
+      {
+        "stock_id": "8043",
+        "status": "ok",
+        "expect": "chop",
+        "expect_src": "no_named_line",
+        "target": "20260105",
+        "c0": 88.82,
+        "c1": 85.14,
+        "pct": -4.143,
+        "band": [
+          87.04,
+          90.6
+        ],
+        "path": "miss",
+        "amp": "miss"
+      },
+      {
+        "stock_id": "8114",
+        "status": "ok",
+        "expect": "chop",
+        "expect_src": "no_named_line",
+        "target": "20260105",
+        "c0": 176.0,
+        "c1": 172.0,
+        "pct": -2.273,
+        "band": [
+          172.48,
+          179.52
+        ],
+        "path": "hit",
+        "amp": "miss"
+      },
+      {
+        "stock_id": "6239",
+        "status": "ok",
+        "expect": "chop",
+        "expect_src": "no_named_line",
+        "target": "20260105",
+        "c0": 183.5,
+        "c1": 201.5,
+        "pct": 9.809,
+        "band": [
+          179.83,
+          187.17
+        ],
+        "path": "miss",
+        "amp": "miss"
+      },
+      {
+        "stock_id": "6937",
+        "status": "ok",
+        "expect": "chop",
+        "expect_src": "no_named_line",
+        "target": "20260105",
+        "c0": 250.5,
+        "c1": 255.5,
+        "pct": 1.996,
+        "band": [
+          245.49,
+          255.51
+        ],
+        "path": "hit",
+        "amp": "hit"
+      },
+      {
+        "stock_id": "1528",
+        "status": "ok",
+        "expect": "chop",
+        "expect_src": "no_named_line",
+        "target": "20260105",
+        "c0": 22.8,
+        "c1": 21.8,
+        "pct": -4.386,
+        "band": [
+          22.34,
+          23.26
+        ],
+        "path": "miss",
+        "amp": "miss"
+      },
+      {
+        "stock_id": "6068",
+        "status": "missing_bar",
+        "expect": "chop",
+        "expect_src": "no_named_line",
+        "target": "20260105"
+      }
+    ],
+    "rule_zh": "個股期望優先用當日點名語境；沒有個股句→chop中性帶；不准默默套大盤方向充當個股勝率",
+    "purpose_zh": "點名個股隔日方向＋幅度對質；與大盤同步為破除限制",
+    "backfilled_at_taipei": "2026-11-28T22:40:55+08:00"
   }
 }

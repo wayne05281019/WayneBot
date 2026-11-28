@@ -246,7 +246,10 @@
     "te_missing_noted": true,
     "named_ohlcv_frozen": true,
     "breadth_frozen": true,
-    "full_suite_evidence_ok": true
+    "full_suite_evidence_ok": true,
+    "market_power_filled": true,
+    "stock_quant_filled": true,
+    "power_track_backfilled": true
   },
   "exit_learn_zh": "沿用前窗群創勿抄。",
   "wave_progress": {
@@ -387,5 +390,130 @@
     "S25": true,
     "S26": true,
     "S27": true
+  },
+  "market_power": {
+    "as_of": "20260129",
+    "target": "20260130",
+    "wave_draw": {
+      "main": {
+        "label_zh": "擴延未完成／拉回",
+        "now_zh": "沿用前窗；未標結束"
+      },
+      "micro": {
+        "label_zh": "前窗群創勿抄"
+      },
+      "label_lock": "candidate",
+      "align": "carry_forward"
+    },
+    "wave_confirm": {
+      "peak_claim": {
+        "price": 32996,
+        "degree": "main",
+        "status": "candidate",
+        "note_zh": "日前高"
+      },
+      "pullback_band": {
+        "lo": 31200.0,
+        "hi": 32200.0,
+        "role_zh": "續拉消化"
+      },
+      "rebound_band": {
+        "lo": 32285.3,
+        "hi": 33432.5,
+        "role_zh": "震盪"
+      },
+      "verdict_wave": "hit",
+      "verdict_levels": "hit",
+      "confront_note_zh": "0130穿帶底"
+    },
+    "amp": {
+      "tx_close_ref": 32777.0,
+      "band": [
+        32285.3,
+        33432.5
+      ],
+      "close": 32247.0,
+      "in_band": false,
+      "verdict": "miss"
+    },
+    "path_verdict": "hit",
+    "purpose_zh": "大盤波浪繪製／確認＋幅度對質；為破除限制累積勝率",
+    "backfilled_at_taipei": "2026-11-28T22:40:11+08:00"
+  },
+  "stock_quant": {
+    "as_of": "20260129",
+    "target": "20260130",
+    "n": 4,
+    "path_hit": 1,
+    "amp_hit": 2,
+    "rows": [
+      {
+        "stock_id": "2330",
+        "status": "ok",
+        "expect": "up_or_chop",
+        "expect_src": "index_proxy",
+        "target": "20260130",
+        "c0": 1805.0,
+        "c1": 1775.0,
+        "pct": -1.662,
+        "band": [
+          1768.9,
+          1841.1
+        ],
+        "path": "miss",
+        "amp": "hit"
+      },
+      {
+        "stock_id": "3481",
+        "status": "ok",
+        "expect": "down_or_chop",
+        "expect_src": "named_local",
+        "target": "20260130",
+        "c0": 21.3,
+        "c1": 21.8,
+        "pct": 2.347,
+        "band": [
+          20.66,
+          21.73
+        ],
+        "path": "miss",
+        "amp": "miss"
+      },
+      {
+        "stock_id": "8074",
+        "status": "ok",
+        "expect": "chop",
+        "expect_src": "no_named_line",
+        "target": "20260130",
+        "c0": 66.7,
+        "c1": 62.35,
+        "pct": -6.522,
+        "band": [
+          65.37,
+          68.03
+        ],
+        "path": "miss",
+        "amp": "miss"
+      },
+      {
+        "stock_id": "3260",
+        "status": "ok",
+        "expect": "chop",
+        "expect_src": "no_named_line",
+        "target": "20260130",
+        "c0": 348.34,
+        "c1": 351.73,
+        "pct": 0.973,
+        "band": [
+          341.37,
+          355.31
+        ],
+        "path": "hit",
+        "amp": "hit"
+      }
+    ],
+    "rule_zh": "個股期望優先用當日點名語境；沒有個股句→chop中性帶；不准默默套大盤方向充當個股勝率",
+    "purpose_zh": "點名個股隔日方向＋幅度對質；與大盤同步為破除限制",
+    "backfilled_at_taipei": "2026-11-28T22:40:55+08:00"
   }
 }

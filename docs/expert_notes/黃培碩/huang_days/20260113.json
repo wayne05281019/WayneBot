@@ -285,7 +285,10 @@
     "te_missing_noted": true,
     "named_ohlcv_frozen": true,
     "breadth_frozen": true,
-    "full_suite_evidence_ok": true
+    "full_suite_evidence_ok": true,
+    "market_power_filled": true,
+    "stock_quant_filled": true,
+    "power_track_backfilled": true
   },
   "exit_learn_zh": "鉅橡半出後看第五波能否過癮再全出或加回；底部股推不出→小賺換股。非大盤全面出清。",
   "wave_progress": {
@@ -450,5 +453,178 @@
     "S25": true,
     "S26": true,
     "S27": true
+  },
+  "market_power": {
+    "as_of": "20260113",
+    "target": "20260114",
+    "wave_draw": {
+      "main": {
+        "label_zh": "第五波候選運行或剛出第一步；結束未鎖定",
+        "now_zh": "衝高大幅拉回可接受；極轉崩機率偏低"
+      },
+      "micro": {
+        "label_zh": "面板／細晶圓續看；鉅橡第五波半出後看過癮；底部股消化再推"
+      },
+      "label_lock": "candidate",
+      "align": "same"
+    },
+    "wave_confirm": {
+      "peak_claim": {
+        "price": 31252,
+        "degree": "micro",
+        "status": "candidate",
+        "note_zh": "期指今高第五波候選高"
+      },
+      "pullback_band": {
+        "lo": 30411.0,
+        "hi": 30874.0,
+        "role_zh": "衝高後消化帶"
+      },
+      "rebound_band": {
+        "lo": 30874.0,
+        "hi": 31491.0,
+        "role_zh": "若5-3續推觀察"
+      },
+      "verdict_wave": "hit",
+      "verdict_levels": "hit",
+      "confront_note_zh": "0114未宣告結束；指數溫過"
+    },
+    "amp": {
+      "tx_close_ref": 30874.0,
+      "band": [
+        30411,
+        31491
+      ],
+      "close": 30982.0,
+      "in_band": true,
+      "verdict": "hit"
+    },
+    "path_verdict": "hit",
+    "purpose_zh": "大盤波浪繪製／確認＋幅度對質；為破除限制累積勝率",
+    "backfilled_at_taipei": "2026-11-28T22:40:11+08:00"
+  },
+  "stock_quant": {
+    "as_of": "20260113",
+    "target": "20260114",
+    "n": 7,
+    "path_hit": 2,
+    "amp_hit": 2,
+    "rows": [
+      {
+        "stock_id": "2330",
+        "status": "ok",
+        "expect": "chop",
+        "expect_src": "named_local_neutral",
+        "target": "20260114",
+        "c0": 1710.0,
+        "c1": 1710.0,
+        "pct": 0.0,
+        "band": [
+          1675.8,
+          1744.2
+        ],
+        "path": "hit",
+        "amp": "hit"
+      },
+      {
+        "stock_id": "3481",
+        "status": "ok",
+        "expect": "chop",
+        "expect_src": "named_local_neutral",
+        "target": "20260114",
+        "c0": 22.65,
+        "c1": 24.4,
+        "pct": 7.726,
+        "band": [
+          22.2,
+          23.1
+        ],
+        "path": "miss",
+        "amp": "miss"
+      },
+      {
+        "stock_id": "6488",
+        "status": "ok",
+        "expect": "chop",
+        "expect_src": "named_local_neutral",
+        "target": "20260114",
+        "c0": 474.17,
+        "c1": 514.01,
+        "pct": 8.402,
+        "band": [
+          464.69,
+          483.65
+        ],
+        "path": "miss",
+        "amp": "miss"
+      },
+      {
+        "stock_id": "3532",
+        "status": "ok",
+        "expect": "chop",
+        "expect_src": "named_local_neutral",
+        "target": "20260114",
+        "c0": 125.5,
+        "c1": 136.0,
+        "pct": 8.367,
+        "band": [
+          122.99,
+          128.01
+        ],
+        "path": "miss",
+        "amp": "miss"
+      },
+      {
+        "stock_id": "6443",
+        "status": "ok",
+        "expect": "chop",
+        "expect_src": "named_local_neutral",
+        "target": "20260114",
+        "c0": 37.5,
+        "c1": 39.2,
+        "pct": 4.533,
+        "band": [
+          36.75,
+          38.25
+        ],
+        "path": "miss",
+        "amp": "miss"
+      },
+      {
+        "stock_id": "8074",
+        "status": "ok",
+        "expect": "down_or_chop",
+        "expect_src": "named_local",
+        "target": "20260114",
+        "c0": 54.05,
+        "c1": 57.31,
+        "pct": 6.031,
+        "band": [
+          52.43,
+          55.13
+        ],
+        "path": "miss",
+        "amp": "miss"
+      },
+      {
+        "stock_id": "6548",
+        "status": "ok",
+        "expect": "chop",
+        "expect_src": "named_local_neutral",
+        "target": "20260114",
+        "c0": 47.5,
+        "c1": 47.7,
+        "pct": 0.421,
+        "band": [
+          46.55,
+          48.45
+        ],
+        "path": "hit",
+        "amp": "hit"
+      }
+    ],
+    "rule_zh": "個股期望優先用當日點名語境；沒有個股句→chop中性帶；不准默默套大盤方向充當個股勝率",
+    "purpose_zh": "點名個股隔日方向＋幅度對質；與大盤同步為破除限制",
+    "backfilled_at_taipei": "2026-11-28T22:40:55+08:00"
   }
 }

@@ -273,7 +273,10 @@
     "te_missing_noted": true,
     "named_ohlcv_frozen": true,
     "breadth_frozen": true,
-    "full_suite_evidence_ok": true
+    "full_suite_evidence_ok": true,
+    "market_power_filled": true,
+    "stock_quant_filled": true,
+    "power_track_backfilled": true
   },
   "exit_learn_zh": "群創大型有量持有／加碼邏輯；細晶圓獲利中勿酸民式亂猜。非大盤出清。",
   "wave_progress": {
@@ -431,5 +434,162 @@
     "S25": true,
     "S26": true,
     "S27": true
+  },
+  "market_power": {
+    "as_of": "20260114",
+    "target": "20260115",
+    "wave_draw": {
+      "main": {
+        "label_zh": "第五小波運行（緩步可能）",
+        "now_zh": "昨衝高今黏住；不准當日斷定結束"
+      },
+      "micro": {
+        "label_zh": "面板群創＋細晶圓＋被動元件三強"
+      },
+      "label_lock": "candidate",
+      "align": "same"
+    },
+    "wave_confirm": {
+      "peak_claim": {
+        "price": 1720,
+        "degree": "micro",
+        "status": "candidate",
+        "note_zh": "台積第五出高點候選"
+      },
+      "pullback_band": {
+        "lo": 30517.0,
+        "hi": 30982.0,
+        "role_zh": "緩步消化帶"
+      },
+      "rebound_band": {
+        "lo": 30982.0,
+        "hi": 31602.0,
+        "role_zh": "續推觀察"
+      },
+      "verdict_wave": "hit",
+      "verdict_levels": "hit",
+      "confront_note_zh": "0115溫消化未崩"
+    },
+    "amp": {
+      "tx_close_ref": 30982.0,
+      "band": [
+        30517,
+        31602
+      ],
+      "close": 31050.0,
+      "in_band": true,
+      "verdict": "hit"
+    },
+    "path_verdict": "hit",
+    "purpose_zh": "大盤波浪繪製／確認＋幅度對質；為破除限制累積勝率",
+    "backfilled_at_taipei": "2026-11-28T22:40:11+08:00"
+  },
+  "stock_quant": {
+    "as_of": "20260114",
+    "target": "20260115",
+    "n": 6,
+    "path_hit": 3,
+    "amp_hit": 2,
+    "rows": [
+      {
+        "stock_id": "2330",
+        "status": "ok",
+        "expect": "chop",
+        "expect_src": "named_local_neutral",
+        "target": "20260115",
+        "c0": 1710.0,
+        "c1": 1690.0,
+        "pct": -1.17,
+        "band": [
+          1675.8,
+          1744.2
+        ],
+        "path": "hit",
+        "amp": "hit"
+      },
+      {
+        "stock_id": "3481",
+        "status": "ok",
+        "expect": "down_or_chop",
+        "expect_src": "named_local",
+        "target": "20260115",
+        "c0": 24.4,
+        "c1": 24.95,
+        "pct": 2.254,
+        "band": [
+          23.67,
+          24.89
+        ],
+        "path": "miss",
+        "amp": "miss"
+      },
+      {
+        "stock_id": "6488",
+        "status": "ok",
+        "expect": "chop",
+        "expect_src": "named_local_neutral",
+        "target": "20260115",
+        "c0": 514.01,
+        "c1": 487.12,
+        "pct": -5.231,
+        "band": [
+          503.73,
+          524.29
+        ],
+        "path": "miss",
+        "amp": "miss"
+      },
+      {
+        "stock_id": "3532",
+        "status": "ok",
+        "expect": "chop",
+        "expect_src": "named_local_neutral",
+        "target": "20260115",
+        "c0": 136.0,
+        "c1": 132.5,
+        "pct": -2.574,
+        "band": [
+          133.28,
+          138.72
+        ],
+        "path": "hit",
+        "amp": "miss"
+      },
+      {
+        "stock_id": "6443",
+        "status": "ok",
+        "expect": "chop",
+        "expect_src": "no_named_line",
+        "target": "20260115",
+        "c0": 39.2,
+        "c1": 38.6,
+        "pct": -1.531,
+        "band": [
+          38.42,
+          39.98
+        ],
+        "path": "hit",
+        "amp": "hit"
+      },
+      {
+        "stock_id": "6173",
+        "status": "ok",
+        "expect": "chop",
+        "expect_src": "named_local_neutral",
+        "target": "20260115",
+        "c0": 76.09,
+        "c1": 73.71,
+        "pct": -3.128,
+        "band": [
+          74.57,
+          77.61
+        ],
+        "path": "miss",
+        "amp": "miss"
+      }
+    ],
+    "rule_zh": "個股期望優先用當日點名語境；沒有個股句→chop中性帶；不准默默套大盤方向充當個股勝率",
+    "purpose_zh": "點名個股隔日方向＋幅度對質；與大盤同步為破除限制",
+    "backfilled_at_taipei": "2026-11-28T22:40:55+08:00"
   }
 }

@@ -256,7 +256,10 @@
     "te_missing_noted": true,
     "named_ohlcv_frozen": true,
     "breadth_frozen": true,
-    "full_suite_evidence_ok": true
+    "full_suite_evidence_ok": true,
+    "market_power_filled": true,
+    "stock_quant_filled": true,
+    "power_track_backfilled": true
   },
   "exit_learn_zh": "破後用B反彈調持股；今日勿殺低。群創滿足短反非追新推。",
   "wave_progress": {
@@ -386,5 +389,98 @@
     "S25": true,
     "S26": true,
     "S27": true
+  },
+  "market_power": {
+    "as_of": "20260130",
+    "target": "20260202",
+    "wave_draw": {
+      "main": {
+        "label_zh": "黑棒臨界雙分支",
+        "now_zh": "未確認關鍵K改向；下週表態"
+      },
+      "micro": {
+        "label_zh": "台積1775切線；群創20.25滿足"
+      },
+      "label_lock": "candidate",
+      "align": "same"
+    },
+    "wave_confirm": {
+      "peak_claim": {
+        "price": 32996,
+        "degree": "main",
+        "status": "candidate",
+        "note_zh": "前高"
+      },
+      "pullback_band": {
+        "lo": 31200.0,
+        "hi": 32000.0,
+        "role_zh": "修正首落區"
+      },
+      "rebound_band": {
+        "lo": 31279.6,
+        "hi": 32891.9,
+        "role_zh": "臨界後震盪"
+      },
+      "verdict_wave": "hit",
+      "verdict_levels": "hit",
+      "confront_note_zh": "0202續拉帶內"
+    },
+    "amp": {
+      "tx_close_ref": 32247.0,
+      "band": [
+        31279.6,
+        32891.9
+      ],
+      "close": 31610.0,
+      "in_band": true,
+      "verdict": "hit"
+    },
+    "path_verdict": "hit",
+    "purpose_zh": "大盤波浪繪製／確認＋幅度對質；為破除限制累積勝率",
+    "backfilled_at_taipei": "2026-11-28T22:40:11+08:00"
+  },
+  "stock_quant": {
+    "as_of": "20260130",
+    "target": "20260202",
+    "n": 2,
+    "path_hit": 2,
+    "amp_hit": 2,
+    "rows": [
+      {
+        "stock_id": "2330",
+        "status": "ok",
+        "expect": "chop",
+        "expect_src": "named_local_neutral",
+        "target": "20260202",
+        "c0": 1775.0,
+        "c1": 1765.0,
+        "pct": -0.563,
+        "band": [
+          1739.5,
+          1810.5
+        ],
+        "path": "hit",
+        "amp": "hit"
+      },
+      {
+        "stock_id": "3481",
+        "status": "ok",
+        "expect": "down_or_chop",
+        "expect_src": "named_local",
+        "target": "20260202",
+        "c0": 21.8,
+        "c1": 21.15,
+        "pct": -2.982,
+        "band": [
+          21.15,
+          22.24
+        ],
+        "path": "hit",
+        "amp": "hit"
+      }
+    ],
+    "rule_zh": "個股期望優先用當日點名語境；沒有個股句→chop中性帶；不准默默套大盤方向充當個股勝率",
+    "purpose_zh": "點名個股隔日方向＋幅度對質；與大盤同步為破除限制",
+    "backfilled_at_taipei": "2026-11-28T22:40:55+08:00"
   }
 }

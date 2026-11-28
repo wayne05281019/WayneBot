@@ -1,7 +1,7 @@
 # 黃培碩每日影片查閱・流程序（S1→S27）
 
-`phone_sync=blocked`・非買訊。  
-**來源：** `huang_master_consolidate.md` §0.0b。  
+非買訊。  
+**來源：** `huang_master_consolidate.md` §0.0b／§0.0c。  
 **本檔＝每一天查閱必做的全部事情。**
 
 ## 名次（使用者 2026-11-28 鎖）
@@ -17,7 +17,8 @@
 3. S4（停看登錄）可在讀片中途插入，不得略過。  
 4. S22 寫預估前不准偷看隔日官方柱。  
 5. D 節（ASR 腳本／飆大補丁／話筒弱提醒）**不准插入打斷**本序。  
-6. 本機連做；一段落才推／CI（CI 不是每日序）。
+6. 本機連做；一段落才推／CI（CI 不是每日序）。  
+7. **大盤＋個股量化同步**（§0.0c）：每日必填 `market_power`＋`stock_quant`；少做從 `0102` 回頭補；不准以 blocked 少做。
 
 ## 流程序
 
@@ -48,9 +49,9 @@
 | S23 | 樣本登錄觸碰 | `sample_register_touch_zh` |
 | S24 | 隔日官方柱對質 | `confront_official` |
 | S25 | 失誤找因＋成長＋交叉覆核 | `miss_anatomy_zh`／`rolling_fix`／`cross_learn_zh` |
-| S26 | audit＋`full_suite_evidence_ok` | `no_forget_audit` |
-| S27 | 分數板／原則帳更新 → 才開下一日 | scoreboard |
+| S26 | audit＋`full_suite_evidence_ok`＋`market_power`＋`stock_quant` | `no_forget_audit` |
+| S27 | 分數板／原則帳／個股總帳／vnext 更新 → 才開下一日 | scoreboard＋stock_ledger＋vnext |
 
 ## DONE 才准下一日
 
-`full_suite_evidence_ok` ∧ confront ∧ miss_anatomy ∧ scoreboard 當日列 → 下一開市日。
+`full_suite_evidence_ok` ∧ confront ∧ miss_anatomy ∧ `market_power` ∧ `stock_quant` ∧ scoreboard 當日列 → 下一開市日。

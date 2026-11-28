@@ -285,7 +285,10 @@
     "te_missing_noted": true,
     "named_ohlcv_frozen": true,
     "breadth_frozen": true,
-    "full_suite_evidence_ok": true
+    "full_suite_evidence_ok": true,
+    "market_power_filled": true,
+    "stock_quant_filled": true,
+    "power_track_backfilled": true
   },
   "exit_learn_zh": "宇瞻8271：09:08附近出清高點133.5（彈中交易證據）；力積電6770：0107 12:32附近出清高50.5。記憶體／面板暫休該出就出；非大盤全面出清。",
   "wave_progress": {
@@ -448,5 +451,162 @@
     "S25": true,
     "S26": true,
     "S27": true
+  },
+  "market_power": {
+    "as_of": "20260109",
+    "target": "20260112",
+    "wave_draw": {
+      "main": {
+        "label_zh": "高檔震盪中；結構仍偏還有高點",
+        "now_zh": "今早盤急拉回後快回；低點交代漂亮；非崩跌"
+      },
+      "micro": {
+        "label_zh": "記憶體族群暫休（警示／分盤）；面板亦休；底部轉強另做"
+      },
+      "label_lock": "candidate",
+      "align": "same"
+    },
+    "wave_confirm": {
+      "peak_claim": {
+        "price": 30578,
+        "degree": "micro",
+        "status": "candidate",
+        "note_zh": "日盤高區震盪上緣候選；主張之後還有高點"
+      },
+      "pullback_band": {
+        "lo": 29925.0,
+        "hi": 30456.0,
+        "role_zh": "今低交代帶／震盪下緣"
+      },
+      "rebound_band": {
+        "lo": 30456.0,
+        "hi": 31065.0,
+        "role_zh": "整理後過高觀察帶"
+      },
+      "verdict_wave": "hit",
+      "verdict_levels": "hit",
+      "confront_note_zh": "0112台指收30701溫過；未宣告大頂"
+    },
+    "amp": {
+      "tx_close_ref": 30456.0,
+      "band": [
+        29998,
+        31065
+      ],
+      "close": 30701.0,
+      "in_band": true,
+      "verdict": "hit"
+    },
+    "path_verdict": "hit",
+    "purpose_zh": "大盤波浪繪製／確認＋幅度對質；為破除限制累積勝率",
+    "backfilled_at_taipei": "2026-11-28T22:40:11+08:00"
+  },
+  "stock_quant": {
+    "as_of": "20260109",
+    "target": "20260112",
+    "n": 6,
+    "path_hit": 2,
+    "amp_hit": 2,
+    "rows": [
+      {
+        "stock_id": "2330",
+        "status": "ok",
+        "expect": "down_or_chop",
+        "expect_src": "named_local",
+        "target": "20260112",
+        "c0": 1680.0,
+        "c1": 1690.0,
+        "pct": 0.595,
+        "band": [
+          1629.6,
+          1713.6
+        ],
+        "path": "hit",
+        "amp": "hit"
+      },
+      {
+        "stock_id": "2344",
+        "status": "ok",
+        "expect": "down_or_chop",
+        "expect_src": "named_local",
+        "target": "20260112",
+        "c0": 97.8,
+        "c1": 102.0,
+        "pct": 4.294,
+        "band": [
+          94.87,
+          99.76
+        ],
+        "path": "miss",
+        "amp": "miss"
+      },
+      {
+        "stock_id": "8074",
+        "status": "ok",
+        "expect": "down_or_chop",
+        "expect_src": "named_local",
+        "target": "20260112",
+        "c0": 55.63,
+        "c1": 55.34,
+        "pct": -0.521,
+        "band": [
+          53.96,
+          56.74
+        ],
+        "path": "hit",
+        "amp": "hit"
+      },
+      {
+        "stock_id": "8271",
+        "status": "ok",
+        "expect": "down_or_chop",
+        "expect_src": "named_local",
+        "target": "20260112",
+        "c0": 128.5,
+        "c1": 132.0,
+        "pct": 2.724,
+        "band": [
+          124.64,
+          131.07
+        ],
+        "path": "miss",
+        "amp": "miss"
+      },
+      {
+        "stock_id": "6770",
+        "status": "ok",
+        "expect": "down_or_chop",
+        "expect_src": "named_local",
+        "target": "20260112",
+        "c0": 47.5,
+        "c1": 49.8,
+        "pct": 4.842,
+        "band": [
+          46.07,
+          48.45
+        ],
+        "path": "miss",
+        "amp": "miss"
+      },
+      {
+        "stock_id": "3481",
+        "status": "ok",
+        "expect": "down_or_chop",
+        "expect_src": "named_local",
+        "target": "20260112",
+        "c0": 20.0,
+        "c1": 22.0,
+        "pct": 10.0,
+        "band": [
+          19.4,
+          20.4
+        ],
+        "path": "miss",
+        "amp": "miss"
+      }
+    ],
+    "rule_zh": "個股期望優先用當日點名語境；沒有個股句→chop中性帶；不准默默套大盤方向充當個股勝率",
+    "purpose_zh": "點名個股隔日方向＋幅度對質；與大盤同步為破除限制",
+    "backfilled_at_taipei": "2026-11-28T22:40:55+08:00"
   }
 }
