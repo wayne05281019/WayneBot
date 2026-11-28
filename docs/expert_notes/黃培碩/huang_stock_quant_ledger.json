@@ -1,12 +1,12 @@
 {
-  "as_of_taipei": "2026-11-28T23:35:24+08:00",
+  "as_of_taipei": "2026-11-29T00:08:02+08:00",
   "purpose_zh": "點名個股隔日方向＋幅度對質總帳；與大盤分數板同步更新。",
   "phone_apply": "pending_gate",
   "summary": {
-    "n_rows": 100,
+    "n_rows": 104,
     "n_missing": 6,
-    "path_hit_rate": 0.52,
-    "amp_hit_rate": 0.44,
+    "path_hit_rate": 0.5384615384615384,
+    "amp_hit_rate": 0.4326923076923077,
     "by_stock": {
       "1528": {
         "n": 1,
@@ -24,13 +24,13 @@
         "amp_hit_rate": 0.5
       },
       "2330": {
-        "n": 23,
-        "path_hit_rate": 0.8695652173913043,
-        "amp_hit_rate": 0.8260869565217391
+        "n": 24,
+        "path_hit_rate": 0.875,
+        "amp_hit_rate": 0.8333333333333334
       },
       "2344": {
-        "n": 5,
-        "path_hit_rate": 0.4,
+        "n": 6,
+        "path_hit_rate": 0.5,
         "amp_hit_rate": 0.0
       },
       "2368": {
@@ -44,9 +44,9 @@
         "amp_hit_rate": 1.0
       },
       "2408": {
-        "n": 2,
-        "path_hit_rate": 0.5,
-        "amp_hit_rate": 0.5
+        "n": 3,
+        "path_hit_rate": 0.6666666666666666,
+        "amp_hit_rate": 0.3333333333333333
       },
       "2454": {
         "n": 2,
@@ -59,9 +59,9 @@
         "amp_hit_rate": 0.25
       },
       "3481": {
-        "n": 21,
-        "path_hit_rate": 0.19047619047619047,
-        "amp_hit_rate": 0.14285714285714285
+        "n": 22,
+        "path_hit_rate": 0.22727272727272727,
+        "amp_hit_rate": 0.13636363636363635
       },
       "3532": {
         "n": 3,
@@ -1776,6 +1776,70 @@
       "band": [
         463.71,
         482.63
+      ]
+    },
+    {
+      "day": "20260204",
+      "target": "20260205",
+      "stock_id": "2330",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 1785.0,
+      "c1": 1765.0,
+      "pct": -1.12,
+      "path": "hit",
+      "amp": "hit",
+      "band": [
+        1731.45,
+        1820.7
+      ]
+    },
+    {
+      "day": "20260204",
+      "target": "20260205",
+      "stock_id": "3481",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 23.0,
+      "c1": 21.8,
+      "pct": -5.217,
+      "path": "hit",
+      "amp": "miss",
+      "band": [
+        22.31,
+        23.46
+      ]
+    },
+    {
+      "day": "20260204",
+      "target": "20260205",
+      "stock_id": "2344",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 108.5,
+      "c1": 102.5,
+      "pct": -5.53,
+      "path": "hit",
+      "amp": "miss",
+      "band": [
+        105.24,
+        110.67
+      ]
+    },
+    {
+      "day": "20260204",
+      "target": "20260205",
+      "stock_id": "2408",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 295.0,
+      "c1": 275.0,
+      "pct": -6.78,
+      "path": "hit",
+      "amp": "miss",
+      "band": [
+        286.15,
+        300.9
       ]
     }
   ]
