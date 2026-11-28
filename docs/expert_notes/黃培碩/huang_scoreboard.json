@@ -1,5 +1,5 @@
 {
-  "as_of_taipei": "2026-11-28T21:03:10+08:00",
+  "as_of_taipei": "2026-11-28T21:07:43+08:00",
   "phone_sync": "blocked",
   "buy_signal": false,
   "recomputable": true,
@@ -141,10 +141,20 @@
         "levels": "hit",
         "fail_codes": [],
         "growth_zh": "閘過後維持第五運行"
+      },
+      {
+        "day": "20260119",
+        "target": "20260120",
+        "path": "hit",
+        "wave": "hit",
+        "amp": "hit",
+        "levels": "hit",
+        "fail_codes": [],
+        "growth_zh": "FOMO日廣度弱≠結構結束"
       }
     ],
-    "n": 11,
-    "path_hit": 11,
-    "amp_hit": 10
+    "n": 12,
+    "path_hit": 12,
+    "amp_hit": 11
   }
 }
