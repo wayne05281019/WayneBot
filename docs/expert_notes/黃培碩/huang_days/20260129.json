@@ -210,13 +210,115 @@
     },
     "fib_skip_reason": null,
     "vol_price": {
+      "rule_zh": "每日必用量價：價方向＋量vs20日均；confirm/deny/neutral；廣度只輔助不准代替量",
+      "tx": {
+        "symbol": "TX",
+        "session": "regular",
+        "price_dir": "down",
+        "vol": 78180.0,
+        "vol_ma20": 68645.1,
+        "vol_ratio": 1.139,
+        "vol_price_relation": "confirm",
+        "paired_zh": "價跌量增（量/均=1.14）",
+        "used_in_forecast": true,
+        "used_in_confront": true,
+        "next_day": {
+          "date": "20260130",
+          "price_dir": "down",
+          "vol": 84129.0,
+          "vol_ma20": 69643.0,
+          "vol_price_relation": "confirm",
+          "paired_zh": "價跌量增（量/均=1.21）"
+        }
+      },
+      "named_stocks": [
+        {
+          "stock_id": "2330",
+          "status": "ok",
+          "price_dir": "down",
+          "vol": 36261.0,
+          "vol_ma20": 40176.2,
+          "vol_ratio": 0.903,
+          "vol_price_relation": "neutral",
+          "paired_zh": "價跌量平（量/均=0.90）",
+          "next_day": {
+            "date": "20260130",
+            "price_dir": "down",
+            "vol": 46587.0,
+            "vol_ma20": 40534.8,
+            "vol_price_relation": "confirm",
+            "paired_zh": "價跌量增（量/均=1.15）"
+          }
+        },
+        {
+          "stock_id": "3481",
+          "status": "ok",
+          "price_dir": "down",
+          "vol": 530238.0,
+          "vol_ma20": 450160.0,
+          "vol_ratio": 1.178,
+          "vol_price_relation": "confirm",
+          "paired_zh": "價跌量增（量/均=1.18）",
+          "next_day": {
+            "date": "20260130",
+            "price_dir": "up",
+            "vol": 827530.0,
+            "vol_ma20": 453440.0,
+            "vol_price_relation": "confirm",
+            "paired_zh": "價漲量增（量/均=1.83）"
+          }
+        },
+        {
+          "stock_id": "8074",
+          "status": "ok",
+          "price_dir": "down",
+          "vol": 11665.0,
+          "vol_ma20": 16453.0,
+          "vol_ratio": 0.709,
+          "vol_price_relation": "deny",
+          "paired_zh": "價跌量縮（量/均=0.71）",
+          "next_day": {
+            "date": "20260130",
+            "price_dir": "down",
+            "vol": 5867.0,
+            "vol_ma20": 16268.5,
+            "vol_price_relation": "deny",
+            "paired_zh": "價跌量縮（量/均=0.36）"
+          }
+        },
+        {
+          "stock_id": "3260",
+          "status": "ok",
+          "price_dir": "down",
+          "vol": 22136.0,
+          "vol_ma20": 9169.4,
+          "vol_ratio": 2.414,
+          "vol_price_relation": "confirm",
+          "paired_zh": "價跌量增（量/均=2.41）",
+          "next_day": {
+            "date": "20260130",
+            "price_dir": "up",
+            "vol": 19448.0,
+            "vol_ma20": 9790.6,
+            "vol_price_relation": "confirm",
+            "paired_zh": "價漲量增（量/均=1.99）"
+          }
+        }
+      ],
+      "breadth_aux": {
+        "up": 474,
+        "down": 1315,
+        "note_zh": "廣度僅輔助，不准代替成交量"
+      },
       "price_dir": "down",
-      "vol": null,
-      "vol_ma20": null,
-      "vol_price_relation": "deny",
-      "paired_zh": "拉回廣度弱",
+      "vol": 78180.0,
+      "vol_ma20": 68645.1,
+      "vol_price_relation": "confirm",
+      "paired_zh": "價跌量增（量/均=1.14）",
       "used_in_forecast": true,
-      "used_in_confront": true
+      "used_in_confront": true,
+      "legacy_paired_zh": "拉回廣度弱",
+      "synced_at_taipei": "2026-11-28T23:24:13+08:00"
     },
     "vol_60m": null,
     "equal_amp_synced": true,
@@ -326,7 +428,9 @@
     "stock_quant_filled": true,
     "power_track_backfilled": true,
     "fib_equal_amp_filled": true,
-    "golden_cut_synced": true
+    "golden_cut_synced": true,
+    "vol_price_numeric": true,
+    "vol_ma20_filled": true
   },
   "exit_learn_zh": "沿用前窗群創勿抄。",
   "wave_progress": {
@@ -589,6 +693,117 @@
         }
       },
       "skip": null
+    },
+    "vol_price": {
+      "rule_zh": "每日必用量價：價方向＋量vs20日均；confirm/deny/neutral；廣度只輔助不准代替量",
+      "tx": {
+        "symbol": "TX",
+        "session": "regular",
+        "price_dir": "down",
+        "vol": 78180.0,
+        "vol_ma20": 68645.1,
+        "vol_ratio": 1.139,
+        "vol_price_relation": "confirm",
+        "paired_zh": "價跌量增（量/均=1.14）",
+        "used_in_forecast": true,
+        "used_in_confront": true,
+        "next_day": {
+          "date": "20260130",
+          "price_dir": "down",
+          "vol": 84129.0,
+          "vol_ma20": 69643.0,
+          "vol_price_relation": "confirm",
+          "paired_zh": "價跌量增（量/均=1.21）"
+        }
+      },
+      "named_stocks": [
+        {
+          "stock_id": "2330",
+          "status": "ok",
+          "price_dir": "down",
+          "vol": 36261.0,
+          "vol_ma20": 40176.2,
+          "vol_ratio": 0.903,
+          "vol_price_relation": "neutral",
+          "paired_zh": "價跌量平（量/均=0.90）",
+          "next_day": {
+            "date": "20260130",
+            "price_dir": "down",
+            "vol": 46587.0,
+            "vol_ma20": 40534.8,
+            "vol_price_relation": "confirm",
+            "paired_zh": "價跌量增（量/均=1.15）"
+          }
+        },
+        {
+          "stock_id": "3481",
+          "status": "ok",
+          "price_dir": "down",
+          "vol": 530238.0,
+          "vol_ma20": 450160.0,
+          "vol_ratio": 1.178,
+          "vol_price_relation": "confirm",
+          "paired_zh": "價跌量增（量/均=1.18）",
+          "next_day": {
+            "date": "20260130",
+            "price_dir": "up",
+            "vol": 827530.0,
+            "vol_ma20": 453440.0,
+            "vol_price_relation": "confirm",
+            "paired_zh": "價漲量增（量/均=1.83）"
+          }
+        },
+        {
+          "stock_id": "8074",
+          "status": "ok",
+          "price_dir": "down",
+          "vol": 11665.0,
+          "vol_ma20": 16453.0,
+          "vol_ratio": 0.709,
+          "vol_price_relation": "deny",
+          "paired_zh": "價跌量縮（量/均=0.71）",
+          "next_day": {
+            "date": "20260130",
+            "price_dir": "down",
+            "vol": 5867.0,
+            "vol_ma20": 16268.5,
+            "vol_price_relation": "deny",
+            "paired_zh": "價跌量縮（量/均=0.36）"
+          }
+        },
+        {
+          "stock_id": "3260",
+          "status": "ok",
+          "price_dir": "down",
+          "vol": 22136.0,
+          "vol_ma20": 9169.4,
+          "vol_ratio": 2.414,
+          "vol_price_relation": "confirm",
+          "paired_zh": "價跌量增（量/均=2.41）",
+          "next_day": {
+            "date": "20260130",
+            "price_dir": "up",
+            "vol": 19448.0,
+            "vol_ma20": 9790.6,
+            "vol_price_relation": "confirm",
+            "paired_zh": "價漲量增（量/均=1.99）"
+          }
+        }
+      ],
+      "breadth_aux": {
+        "up": 474,
+        "down": 1315,
+        "note_zh": "廣度僅輔助，不准代替成交量"
+      },
+      "price_dir": "down",
+      "vol": 78180.0,
+      "vol_ma20": 68645.1,
+      "vol_price_relation": "confirm",
+      "paired_zh": "價跌量增（量/均=1.14）",
+      "used_in_forecast": true,
+      "used_in_confront": true,
+      "legacy_paired_zh": "拉回廣度弱",
+      "synced_at_taipei": "2026-11-28T23:24:13+08:00"
     }
   },
   "stock_quant": {
@@ -612,7 +827,22 @@
           1841.1
         ],
         "path": "miss",
-        "amp": "hit"
+        "amp": "hit",
+        "vol_price": {
+          "vol": 36261.0,
+          "vol_ma20": 40176.2,
+          "vol_ratio": 0.903,
+          "relation": "neutral",
+          "paired_zh": "價跌量平（量/均=0.90）",
+          "next_day": {
+            "date": "20260130",
+            "price_dir": "down",
+            "vol": 46587.0,
+            "vol_ma20": 40534.8,
+            "vol_price_relation": "confirm",
+            "paired_zh": "價跌量增（量/均=1.15）"
+          }
+        }
       },
       {
         "stock_id": "3481",
@@ -628,7 +858,22 @@
           21.73
         ],
         "path": "miss",
-        "amp": "miss"
+        "amp": "miss",
+        "vol_price": {
+          "vol": 530238.0,
+          "vol_ma20": 450160.0,
+          "vol_ratio": 1.178,
+          "relation": "confirm",
+          "paired_zh": "價跌量增（量/均=1.18）",
+          "next_day": {
+            "date": "20260130",
+            "price_dir": "up",
+            "vol": 827530.0,
+            "vol_ma20": 453440.0,
+            "vol_price_relation": "confirm",
+            "paired_zh": "價漲量增（量/均=1.83）"
+          }
+        }
       },
       {
         "stock_id": "8074",
@@ -644,7 +889,22 @@
           68.03
         ],
         "path": "miss",
-        "amp": "miss"
+        "amp": "miss",
+        "vol_price": {
+          "vol": 11665.0,
+          "vol_ma20": 16453.0,
+          "vol_ratio": 0.709,
+          "relation": "deny",
+          "paired_zh": "價跌量縮（量/均=0.71）",
+          "next_day": {
+            "date": "20260130",
+            "price_dir": "down",
+            "vol": 5867.0,
+            "vol_ma20": 16268.5,
+            "vol_price_relation": "deny",
+            "paired_zh": "價跌量縮（量/均=0.36）"
+          }
+        }
       },
       {
         "stock_id": "3260",
@@ -660,7 +920,22 @@
           355.31
         ],
         "path": "hit",
-        "amp": "hit"
+        "amp": "hit",
+        "vol_price": {
+          "vol": 22136.0,
+          "vol_ma20": 9169.4,
+          "vol_ratio": 2.414,
+          "relation": "confirm",
+          "paired_zh": "價跌量增（量/均=2.41）",
+          "next_day": {
+            "date": "20260130",
+            "price_dir": "up",
+            "vol": 19448.0,
+            "vol_ma20": 9790.6,
+            "vol_price_relation": "confirm",
+            "paired_zh": "價漲量增（量/均=1.99）"
+          }
+        }
       }
     ],
     "rule_zh": "個股期望優先用當日點名語境；沒有個股句→chop中性帶；不准默默套大盤方向充當個股勝率",

@@ -31,7 +31,7 @@
 | S5 | 紙圖／口播點位凍 | `kill`／`confirm`／`paper_levels` |
 | S6 | 同片改口鏈 | `retract_chain_zh` |
 | S7 | 刪去表 | `elim_rows` |
-| S8 | 量價 | `quant.vol_price` |
+| S8 | 量價（價方向＋量vs20日均；廣度不准代替量） | `quant.vol_price`（含數字） |
 | S9 | TWII＋SOX＋TX日夜＋TE日夜（缺＝missing） | `sync_*` |
 | S10 | 廣度官方凍 | `breadth_official` |
 | S11 | 點名股官方 OHLC＋量 | `named_stocks_ohlcv` |
