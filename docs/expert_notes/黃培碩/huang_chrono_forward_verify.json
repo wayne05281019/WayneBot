@@ -1,5 +1,5 @@
 {
-  "as_of_taipei": "2026-11-28T13:53:00+0800",
+  "as_of_taipei": "2026-11-28T14:10:00+0800",
   "phone_sync": "blocked",
   "buy_signal": false,
   "method_zh": "每天同步跟他一起解盤：讀D→量化他的原則→自己先寫隔日高/低機率→隔天官方柱對答案→失敗碼累計→再讀D+1。從最早片往後；不准倒推。",
@@ -20,8 +20,8 @@
     "20261126",
     "20261127"
   ],
-  "cursor_day": "20261118",
-  "status_zh": "1110–1117 五輪對質完成；下一個讀1118片。",
+  "cursor_day": "20261119",
+  "status_zh": "1110–1118 六輪對質完成；下一個讀1119片。",
   "days": [
     {
       "day": "20261110",
@@ -244,7 +244,50 @@
         ],
         "lesson_zh": "他說『最好開低』是偏好不是必然；高機率用『再探低或測腳』，開盤方向當次條件。"
       },
-      "next_film_read": "pending_20261118"
+      "next_film_read": "done_20261118"
+    },
+    {
+      "day": "20261118",
+      "film": "1118黃培碩.mp4",
+      "yt_title": "關鍵第二隻腳？看見了才相信？相信了才看見？",
+      "absorb_refs": [
+        "docs/expert_notes/飆客/decade_lab/huang_wave_method_20261118.md",
+        "docs/expert_notes/飆客/decade_lab/huang_oral_absorb_20261118.json"
+      ],
+      "his_read_zh": "認定第二腳＝ABC修正非推動五跌；開高勿追；相對低可再低／假破；低本益。",
+      "forecast_for_next": {
+        "target_day": "20261119",
+        "written_before_peek": true,
+        "high_prob_zh": "可再探低／近37837或假破一點（相對低第二腳）；或止穩反彈；主腳非確認推動破底",
+        "low_prob_zh": "確認推動五段下跌持續破底無腳；或已見絕對低當日大V不回頭",
+        "basis_zh": "口播『未必絕對低、可再低／破一點點一樣』『認定第二腳』『三段寫ABC』＋巢狀C必五若當C",
+        "applied_fix_from": [
+          "F-OPEN-DIRECTION-OVERWEIGHT",
+          "HP-PARALLEL-BRANCHES"
+        ]
+      },
+      "confront_official": {
+        "symbol": "TWII",
+        "bar": {
+          "date": "20261119",
+          "open": 40145.73,
+          "high": 40315.53,
+          "low": 38259.7,
+          "close": 38426.89
+        },
+        "result": "hit_high_prob",
+        "score_zh": "對",
+        "what_happened_zh": "1119 續探低至38259（更近37837、未破），收弱38427；符合相對低可再低、尚未確認推動破底收盤型。",
+        "why_hit_zh": "再探低主腳命中；未破37837亦符合假破／近測敘事。",
+        "failure_codes": [],
+        "principles_fired": [
+          "HP-SECOND-FOOT-NOW",
+          "HP-ABC-NOT-5DOWN",
+          "HP-RETEST-STAND-BUY-IF-NOT-IMPULSE"
+        ],
+        "lesson_zh": "第二腳過程允許多日再低；不要因單日未止穩就改口推動破底。"
+      },
+      "next_film_read": "pending_20261119"
     }
   ]
 }
