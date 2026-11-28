@@ -35,4 +35,4 @@
 - `peak_anchor_year_or_swing_v1`：日線浪頂候選並列 → 鐵律刪去  
 - `tf_zoom_daily_then_hourly_v1`：日線釘頂後，爭議段改小時／15–60 細拆  
 - `overlap_real_vs_fake_quant_v1`：重疊／破底後收回的官方柱規則對質（假跌破≠趨勢真結束）  
-- 型態庫：`observe_manual/wave_micro_pattern_catalog.json`（16 條骨架・來源分鍋・樣本位）；對到原文／柱才升格，不過閘不上話筒浪號  
+- 型態庫：`observe_manual/wave_micro_pattern_catalog.json`（含黃「震盪中繼」`MP-HUANG-OSC-RELAY`・來源分鍋・樣本位）；對到原文／柱才升格，不過閘不上話筒浪號  

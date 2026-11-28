@@ -29,7 +29,7 @@
     "wick_only_pierce",
     "close_reclaim_same_day"
   ],
-  "n_patterns": 16,
+  "n_patterns": 17,
   "patterns": [
     {
       "id": "MP-IMPULSE-5",
@@ -298,6 +298,25 @@
       "sample_stocks": [],
       "verify_status": "pending_quant",
       "phone_ok": false
+    },
+    {
+      "id": "MP-HUANG-OSC-RELAY",
+      "title_zh": "震盪中繼型態（黃培碩）",
+      "family": "huang_morph",
+      "structure_code": "osc_relay",
+      "subwave_formula": "pending_teach",
+      "degree_hint": "趨勢中的震盪中繼（非趨勢終結）；細拆時與三角形／平坦／複合並列刪去，不准先當頭部或底部",
+      "tf_prefer": ["daily", "60m", "15m"],
+      "iron_gates": ["WR-IRON-14-OVERLAP"],
+      "overlap_policy": "中繼窗內多重疊常見；破中繼邊界才升權續行或反轉候選——細節待對教具／影片原文",
+      "source_kind": "huang_teach",
+      "provenance": [
+        "user 2026-11-28：黃培碩說過震盪中繼型態（口述補錄；教具原文／時間碼待核）"
+      ],
+      "sample_stocks": [],
+      "verify_status": "pending_source",
+      "phone_ok": false,
+      "note_zh": "先前 16 條骨架漏收；本條補入。子浪公式／進出邊界未對到黃原文前不准發明。"
     }
   ]
 }
