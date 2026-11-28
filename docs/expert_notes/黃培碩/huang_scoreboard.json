@@ -1,5 +1,5 @@
 {
-  "as_of_taipei": "2026-11-28T20:03:34+08:00",
+  "as_of_taipei": "2026-11-28T20:26:29+08:00",
   "phone_sync": "blocked",
   "buy_signal": false,
   "recomputable": true,
@@ -111,10 +111,20 @@
         "levels": "hit",
         "fail_codes": [],
         "growth_zh": "第五波結束要結構確認；單日急殺不夠"
+      },
+      {
+        "day": "20260114",
+        "target": "20260115",
+        "path": "hit",
+        "wave": "hit",
+        "amp": "hit",
+        "levels": "hit",
+        "fail_codes": [],
+        "growth_zh": "第五出後未大拉回→緩步假設"
       }
     ],
-    "n": 8,
-    "path_hit": 8,
-    "amp_hit": 7
+    "n": 9,
+    "path_hit": 9,
+    "amp_hit": 8
   }
 }
