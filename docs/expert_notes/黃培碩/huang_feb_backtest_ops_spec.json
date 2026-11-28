@@ -1,6 +1,7 @@
 {
-  "as_of_taipei": "2026-11-28T17:15:00+0800",
+  "as_of_taipei": "2026-11-28T17:20:00+0800",
   "full_detail_audit": "2026-11-28T17:15:00+0800",
+  "quality_first_lock": "2026-11-28T17:20:00+0800",
   "phone_sync": "blocked",
   "buy_signal": false,
   "user_lock": "2026-11-28",
@@ -133,30 +134,37 @@
     "user_lock": "2026-11-28",
     "rule_zh": "開跑前用 master_consolidate 勾完；每日 no_forget_audit 全 true 才 complete；禁止事後說漏測"
   },
-  "token_efficient_ops": {
-    "user_lock": "2026-11-28",
+  "quality_first_ops": {
+    "user_lock": "2026-11-28T17:20:00+0800",
+    "supersedes": "token_efficient_ops_skim_caps",
     "ref_zh": "huang_master_consolidate.md §15",
-    "layers": ["L0_script_ingest", "L1_short_schema_fill", "L2_script_score_plus_short_anatomy", "L3_script_scoreboard"],
-    "context_per_day_max": [
-      "template_or_day_file",
-      "cursor_summary_le_20_lines",
-      "asr_excerpt_le_80_lines",
-      "sync_ohlcv_table",
-      "prior_forecast_block"
+    "rule_zh": "正確／完整優先一次到位；省重做不省深度；絕對不准為省額度打折結果或害整包重讀",
+    "must_spend_on": [
+      "full_day_absorb_structure_levels_vol_price",
+      "full_sync_chain_sox_tx_te_twii",
+      "degree_main_and_micro_draw",
+      "dual_branch_forecast_and_confront",
+      "teach_expand_same_day",
+      "extra_passes_until_day_readable_clear"
+    ],
+    "may_save_on": [
+      "script_ingest_asr_bars_scoreboard",
+      "no_reload_completed_days",
+      "cursor_summary_plus_day_materials_only",
+      "no_chat_transcript_spam",
+      "no_subagent_when_script_suffices",
+      "no_padding_prose"
     ],
     "forbid": [
-      "full_transcript_in_context",
-      "reload_all_principles_every_day",
-      "rewrite_completed_days",
-      "open_subagent_when_script_suffices"
+      "skim_caps_that_discount_judgment",
+      "hard_field_caps_that_force_cut_content",
+      "mark_complete_before_readable_clear",
+      "shallow_day_then_full_reread",
+      "skip_sync_or_vol_to_save_tokens",
+      "rewrite_completed_days_unless_audit_fail"
     ],
-    "field_caps_zh": {
-      "his_read": 240,
-      "miss_anatomy": 120,
-      "cross_learn": 120,
-      "draw_notes": 160
-    },
-    "max_forecast_confront_days_per_turn": 3
+    "once_complete_gate_zh": "no_forget_audit全true且能獨立講清主／細微波與隔日雙分支才封存",
+    "batch_zh": "並行ASR／柱預取；單線一日一閉環；沒讀透就加回合不准趕淺"
   },
   "ledger_files": {
     "index": "huang_chrono_index.json",
