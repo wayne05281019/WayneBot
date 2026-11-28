@@ -1,5 +1,5 @@
 {
-  "as_of_taipei": "2026-11-28T18:56:28+08:00",
+  "as_of_taipei": "2026-11-28T19:15:22+08:00",
   "phone_sync": "blocked",
   "buy_signal": false,
   "recomputable": true,
@@ -69,10 +69,20 @@
         "levels": "hit",
         "fail_codes": [],
         "growth_zh": "高檔震盪帶對質"
+      },
+      {
+        "day": "20260108",
+        "target": "20260109",
+        "path": "hit",
+        "wave": "hit",
+        "amp": "hit",
+        "levels": "hit",
+        "fail_codes": [],
+        "growth_zh": "高檔震盪帶"
       }
     ],
-    "n": 4,
-    "path_hit": 4,
-    "amp_hit": 3
+    "n": 5,
+    "path_hit": 5,
+    "amp_hit": 4
   }
 }

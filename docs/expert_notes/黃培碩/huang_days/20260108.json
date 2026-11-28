@@ -1,0 +1,308 @@
+{
+  "meta": {
+    "day": "20260108",
+    "film_status": "present",
+    "film": "0108黃培碩.mp4",
+    "written_before_peek": true,
+    "phone_sync": "blocked",
+    "buy_signal": false,
+    "chrono_start": "2026-01-02",
+    "drive_id": "1TtdfN-JB0kEGRWQ_r7CISxE2hnvM_093",
+    "asr_status": "whisper_tiny_ok",
+    "prior_lesson_applied": [
+      "AMP_UNDERSHOOT_UPSIDE",
+      "BREADTH_NOT_FROZEN"
+    ],
+    "push_policy_zh": "本機連續做；一段落才推／CI"
+  },
+  "regime_D": {
+    "anchor_peak": 1705,
+    "anchor_trough": 27350,
+    "degree_now": "impulse_w3_in_consolidation",
+    "phase_label": "台積／大盤第三波進入高檔震盪；升軌短線疊破→區間高空低多",
+    "nest_state": "整理完基本還有一段；拉回深度通常不深",
+    "relay_bin": "range_chop",
+    "iron_gate_14": "unknown",
+    "iron_gate_w3": "unknown",
+    "named_symbols": [
+      "2330",
+      "3481",
+      "6488",
+      "6013",
+      "2327"
+    ],
+    "kill_levels": [
+      27350,
+      27457
+    ],
+    "confirm_levels": [
+      30663,
+      30458
+    ]
+  },
+  "wave_def_draw": {
+    "degree_main": {
+      "label_zh": "第三波整理中；非崩跌",
+      "now_zh": "高檔政黨；不適合追多追空"
+    },
+    "degree_micro": {
+      "label_zh": "區間震盪；買點偏下緣"
+    },
+    "draw_notes_zh": "下一棒傾向細晶圓（環球晶等）非機械／被動；面板仍運行；廣度今日跌多於漲",
+    "label_lock": "candidate",
+    "align_with_huang": "same"
+  },
+  "elim_rows": [
+    {
+      "elim": "chase_breakout_now",
+      "why_zh": "口播暫不適合往上追高／往下追空"
+    },
+    {
+      "elim": "mech_passive_next_baton",
+      "why_zh": "口播否決機械／被動為下一棒；票投細晶圓"
+    }
+  ],
+  "sync_us": [
+    {
+      "symbol": "SOX",
+      "status": "ok",
+      "ohlc": {
+        "o": 7543.25,
+        "h": 7548.31005859375,
+        "l": 7372.7900390625,
+        "c": 7436.10009765625
+      },
+      "note_zh": "費半0108收弱"
+    }
+  ],
+  "sync_tx": {
+    "day_session": {
+      "o": 30362.0,
+      "h": 30663.0,
+      "l": 30353.0,
+      "c": 30458.0,
+      "v": 63571
+    },
+    "night_session": {
+      "o": 30508.0,
+      "h": 30563.0,
+      "l": 30266.0,
+      "c": 30306.0,
+      "v": 34258
+    },
+    "status": "ok"
+  },
+  "sync_te": {
+    "status": "missing",
+    "note_zh": "缺列"
+  },
+  "peer_chain": [
+    {
+      "us": "TSM",
+      "tw_leader": "2330",
+      "peers_zh": "細晶圓6488／面板／記憶體",
+      "note_zh": "下一棒細晶圓"
+    }
+  ],
+  "teach_expand": [
+    {
+      "item_zh": "高檔震盪＝高空低多；假突破可空但快回補",
+      "observe": "0109區間",
+      "status": "logged"
+    },
+    {
+      "item_zh": "細晶圓為下一棒候選（否決機械／被動）",
+      "observe": "6488等",
+      "status": "logged"
+    }
+  ],
+  "quant": {
+    "amp_ratios": {
+      "tx_close": 30458.0,
+      "next_chop_band_tx": [
+        30001.0,
+        30823.0
+      ],
+      "next_stretch_tx": [
+        30823.0,
+        31067.0
+      ],
+      "next_deep_pull_tx": 29544.0
+    },
+    "fib_used": [],
+    "fib_skip_reason": "區間震盪為主",
+    "vol_price": {
+      "price_dir": "chop",
+      "vol": 8283300.0,
+      "vol_ma20": null,
+      "vol_price_relation": "deny",
+      "paired_zh": "指數高檔震盪＋廣度偏弱",
+      "used_in_forecast": true,
+      "used_in_confront": true
+    },
+    "vol_60m": null
+  },
+  "forecast_for_next": {
+    "target_day": "20260109",
+    "written_at_taipei": "2026-11-28T19:15:22+08:00",
+    "written_before_peek": true,
+    "high_prob": {
+      "path_zh": "高檔震盪延續；不追高不追空；拉回不深",
+      "wave_zh": "第三波整理中；整理完基本還有一段但延遲過早談五",
+      "levels_zh": "觀察升軌疊破後的區間上下緣；防禦27350邏輯仍在",
+      "amp_zh": "台指收參30458：高機率 30001～30823（約-1.5%～+1.2%）；深於-3%（<29544）改低機率",
+      "breadth_zh": "今日up667/down1099；震盪日廣度可續弱",
+      "prob": 0.65
+    },
+    "low_prob": {
+      "path_zh": "假突破後失速加深／或突然再噴出離開震盪",
+      "wave_zh": "整理失敗變深調，或擴延提前結束震盪",
+      "amp_zh": "收盤落在震盪帶外（>30823 或 <30001）",
+      "prob": 0.35
+    },
+    "single_branch_ok": false
+  },
+  "confront_official": {
+    "as_of": "20260109",
+    "twii": {
+      "o": 30370.44921875,
+      "h": 30500.419921875,
+      "l": 29925.490234375,
+      "c": 30288.9609375,
+      "v": 6518900.0,
+      "pct_vs_prev_close": -0.24
+    },
+    "tx_day": {
+      "o": 30450.0,
+      "h": 30578.0,
+      "l": 30005.0,
+      "c": 30456.0,
+      "v": 83205,
+      "pct_vs_prev_close": -0.01
+    },
+    "sox": {
+      "o": 7471.330078125,
+      "h": 7678.89013671875,
+      "l": 7467.830078125,
+      "c": 7638.77978515625
+    },
+    "breadth_d1": {
+      "up": 943,
+      "down": 802,
+      "flat": 164
+    },
+    "amp_band_check": {
+      "close": 30456.0,
+      "band": [
+        30001,
+        30823
+      ],
+      "in_band": true
+    },
+    "verdict": {
+      "path": "hit",
+      "wave": "hit",
+      "amp": "hit",
+      "levels": "hit"
+    },
+    "high_prob_won": true,
+    "confronted_at_taipei": "2026-11-28T19:15:22+08:00"
+  },
+  "miss_anatomy_zh": "隔日20260109 加權收30289（-0.24%）；台指日收30456（-0.01%）。震盪帶30001～30823：命中。廣度 D up667/down1099 → D+1 up943/down802。高檔震盪敘事成立。",
+  "cross_learn_zh": "0109片未讀；官方柱吻合高檔震盪。",
+  "rolling_fix": [],
+  "undiscussed_gap": [],
+  "no_forget_audit": {
+    "regime_complete": true,
+    "elim_catalog_full": true,
+    "dual_branch_no_peek": true,
+    "vol_price_filled": true,
+    "sync_sox_tx_te_day_night": true,
+    "wave_main_micro": true,
+    "peer_chain_ok_or_na": true,
+    "teach_expand_checked": true,
+    "open_day_not_skipped": true,
+    "confront_anatomy": true,
+    "cross_learn": true,
+    "rolling_fix_noted": true,
+    "exit_learn_filled": true,
+    "wave_progress_filled": true,
+    "night_morning_line_filled": true,
+    "holdings_env_gate_filled": true,
+    "five_vol_sox_noted": true,
+    "biaoke_cross_checked": true,
+    "stop_expand_ok": true,
+    "levels_frozen_ok": true,
+    "us_session_noted": true,
+    "day_complete": true,
+    "ref_zh": "huang_master_consolidate.md §9–§14"
+  },
+  "exit_learn_zh": "期指區間：高空低多、假突破快回補；個股不追高。非大盤全面出清。",
+  "wave_progress": {
+    "degree_main_pct": 55,
+    "degree_micro_pct": 75,
+    "peak_claim": {
+      "price": 30663,
+      "degree": "micro",
+      "status": "candidate",
+      "note_zh": "短線高區震盪上緣候選"
+    },
+    "pullback_band": {
+      "lo": 30001.0,
+      "hi": 30458.0,
+      "role_zh": "震盪下緣偏買觀察"
+    },
+    "rebound_band": {
+      "lo": 30458.0,
+      "hi": 30823.0,
+      "role_zh": "震盪上緣偏賣觀察"
+    },
+    "giveback_band_zh": "拉回通常不深",
+    "status": "rough",
+    "note_zh": "高檔震盪",
+    "confront_peak_zh": "仍在震盪高區；未宣告大頂結束"
+  },
+  "night_morning_line": {
+    "sox": 7436.10009765625,
+    "tx_night": 30306.0,
+    "te_night": null,
+    "line_zh": "費半收7436.10009765625；台指夜30306.0；日盤台指收30458.0",
+    "source_zh": "official_only"
+  },
+  "holdings_env_gate": {
+    "env": "neutral",
+    "why_zh": "高檔震盪＋廣度弱",
+    "action_zh": "檢視重倉；不追高"
+  },
+  "teach_expand_rule_zh": "發現值得注意的先停登錄再走；不准讀完再補",
+  "paper_levels": {
+    "kill_levels_note": "只凍他點過的",
+    "confirm_levels_note": "只凍他點過的"
+  },
+  "us_session_for_forecast": {
+    "status": "closed",
+    "note_zh": "費半0108已收偏弱"
+  },
+  "sync_twii": {
+    "ohlc": {
+      "o": 30330.580078125,
+      "h": 30593.490234375,
+      "l": 30268.359375,
+      "c": 30360.55078125,
+      "v": 8283300.0
+    },
+    "status": "ok"
+  },
+  "breadth_official": {
+    "date": "20260108",
+    "up": 667,
+    "down": 1099,
+    "flat": 142,
+    "up_tw": 376,
+    "down_tw": 591,
+    "up_two": 291,
+    "down_two": 508,
+    "source": "quotes",
+    "note_zh": "跌家數>漲＝指數高檔／個股分化"
+  }
+}
