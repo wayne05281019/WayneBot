@@ -186,7 +186,7 @@
     "status": "missing|ok"
   },
   "daily_gate_zh": "day_complete 僅在 full_suite_evidence_ok＋confront＋miss_anatomy 齊才准 true；不准只勾不寫",
-  "process_order_zh": "S1→S27 見 huang_daily_full_suite_gate.md；最高；不准並列略過",
+  "process_order_zh": "S1→S27 見 huang_daily_full_suite_gate.md；一件有序流程；不准並列為多條最高、不准略過",
   "process_step_done": {
     "S1": false,
     "S2": false,
