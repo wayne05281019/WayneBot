@@ -1,5 +1,5 @@
 {
-  "as_of_taipei": "2026-11-28T14:42:00+0800",
+  "as_of_taipei": "2026-11-28T14:58:00+0800",
   "phone_sync": "blocked",
   "buy_signal": false,
   "method_zh": "每天同步跟他一起解盤：讀D→量化他的原則→自己先寫隔日高/低機率→隔天官方柱對答案→失敗碼累計→再讀D+1。從最早片往後；不准倒推。",
@@ -20,8 +20,8 @@
     "20261126",
     "20261127"
   ],
-  "cursor_day": "20261123",
-  "status_zh": "1110–1120 八輪對質完成；大盤1120改口第五下跌；下一個讀1123片。",
+  "cursor_day": "20261124",
+  "status_zh": "1110–1123 九輪對質完成；下一個讀1124片。",
   "days": [
     {
       "day": "20261110",
@@ -379,7 +379,49 @@
         ],
         "lesson_zh": "改口第五波後，隔日高機率保留『可再探低』；新低後反彈仍算結構內。"
       },
-      "next_film_read": "pending_20261123"
+      "next_film_read": "done_20261123"
+    },
+    {
+      "day": "20261123",
+      "film": "1123黃培碩.mp4",
+      "yt_title": "費半、台積電ADR、美光、南亞科",
+      "absorb_refs": [
+        "docs/expert_notes/飆客/decade_lab/huang_wave_method_20261123.md",
+        "docs/expert_notes/飆客/decade_lab/huang_oral_absorb_20261123.json"
+      ],
+      "his_read_zh": "大盤仍五段／第五波末跌；當日低35442僅略破上週五；開低＝短線買點觀察勿恐慌；台積仍三段未破1970；南亞科3-3-5。",
+      "forecast_for_next": {
+        "target_day": "20261124",
+        "written_before_peek": true,
+        "high_prob_zh": "反彈延續／第五末端後反彈為主；再深破35442續殺為次",
+        "low_prob_zh": "直接再創大幅新低、第五波加速破底",
+        "basis_zh": "口播開低買點觀察＋第五波可能已見低／還差一小段但未必；美股破底台股破底翻味道",
+        "applied_fix_from": [
+          "HP-MARKET-5TH-DOWN",
+          "HP-PARALLEL-BRANCHES"
+        ]
+      },
+      "confront_official": {
+        "symbol": "TWII",
+        "bar": {
+          "date": "20261124",
+          "open": 39148.91,
+          "high": 40180.38,
+          "low": 39148.91,
+          "close": 40122.35
+        },
+        "result": "hit_high_prob",
+        "score_zh": "對",
+        "what_happened_zh": "1124 跳空大漲開39149、高40180、收40122；強勢反彈未破35442。",
+        "why_hit_zh": "反彈延續主腳命中。",
+        "failure_codes": [],
+        "principles_fired": [
+          "HP-MARKET-5TH-DOWN",
+          "HP-5TH-DONT-PANIC-SELL"
+        ],
+        "lesson_zh": "第五波探低後隔日高機率給反彈權重，尤其他已標開低觀察買點。"
+      },
+      "next_film_read": "pending_20261124"
     }
   ]
 }

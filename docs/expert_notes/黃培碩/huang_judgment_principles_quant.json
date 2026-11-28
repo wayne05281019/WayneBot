@@ -1,17 +1,17 @@
 {
-  "as_of_taipei": "2026-11-28T14:42:00+0800",
+  "as_of_taipei": "2026-11-28T14:58:00+0800",
   "phone_sync": "blocked",
   "buy_signal": false,
   "purpose_zh": "記取並量化：①黃的判斷原則 ②我隔日預估失敗原因。每chrono日更新；n不足不准改話筒。",
   "tz": "Asia/Taipei",
-  "n_days_absorbed": 8,
-  "n_forecasts_confronted": 8,
+  "n_days_absorbed": 9,
+  "n_forecasts_confronted": 9,
   "my_forecast_score": {
-    "hit_high_prob": 4,
+    "hit_high_prob": 5,
     "hit_high_prob_partial": 2,
     "miss_high_prob": 2,
-    "hit_rate_high_prob_strict": 0.5,
-    "hit_rate_high_prob_incl_partial": 0.75
+    "hit_rate_high_prob_strict": 0.5555555555555556,
+    "hit_rate_high_prob_incl_partial": 0.7777777777777778
   },
   "principles": [
     {
@@ -213,9 +213,10 @@
       "id": "HP-MARKET-5TH-DOWN",
       "rule_zh": "大盤可與台積脫鉤：權值族群更深時大盤可走五段下跌，即使台積仍三段／第二腳",
       "source_days": [
-        "20261120"
+        "20261120",
+        "20261123"
       ],
-      "n_seen": 1,
+      "n_seen": 2,
       "next_day_new_low_then_bounce": 1
     },
     {
@@ -230,9 +231,10 @@
       "id": "HP-5TH-DONT-PANIC-SELL",
       "rule_zh": "第五波進行中勿殺低；等五之五／細微走完再評估",
       "source_days": [
-        "20261120"
+        "20261120",
+        "20261123"
       ],
-      "n_seen": 1
+      "n_seen": 2
     },
     {
       "id": "HP-STOCK-335-FINISH",
