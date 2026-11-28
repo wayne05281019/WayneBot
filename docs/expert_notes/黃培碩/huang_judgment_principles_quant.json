@@ -1,5 +1,5 @@
 {
-  "as_of_taipei": "2026-11-28T18:30:17+08:00",
+  "as_of_taipei": "2026-11-28T18:37:15+08:00",
   "phone_sync": "blocked",
   "buy_signal": false,
   "purpose_zh": "記取並量化：①黃的判斷原則 ②我隔日預估失敗原因。每chrono日更新；n不足不准改話筒。",
@@ -422,6 +422,13 @@
       "code": "AMP_UNDERSHOOT_UPSIDE",
       "principle_zh": "易漲難跌／推升續表態成立時，隔日幅度預估不可只寫形容詞；必給上緣延伸帶供對質",
       "phone_sync": "blocked"
+    },
+    {
+      "from_day": "20260105",
+      "code": "BREADTH_NOT_FROZEN",
+      "principle_zh": "指數強但口播廣度差時，confront 必凍官方漲跌家數／不是只寫形容詞",
+      "phone_sync": "blocked",
+      "note_zh": "AMP_UNDERSHOOT 修正有效（本輪 amp hit）"
     }
   ]
 }

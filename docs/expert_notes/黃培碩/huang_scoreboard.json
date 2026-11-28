@@ -1,5 +1,5 @@
 {
-  "as_of_taipei": "2026-11-28T18:30:17+08:00",
+  "as_of_taipei": "2026-11-28T18:37:15+08:00",
   "phone_sync": "blocked",
   "buy_signal": false,
   "recomputable": true,
@@ -37,9 +37,22 @@
           "AMP_UNDERSHOOT_UPSIDE"
         ],
         "growth_zh": "幅度改為必寫可對質上緣"
+      },
+      {
+        "day": "20260105",
+        "target": "20260106",
+        "path": "hit",
+        "wave": "hit",
+        "amp": "hit",
+        "levels": "hit",
+        "fail_codes": [
+          "BREADTH_NOT_FROZEN"
+        ],
+        "growth_zh": "幅度帶命中；補廣度官方凍"
       }
     ],
-    "n": 1,
-    "path_hit": 1
+    "n": 2,
+    "path_hit": 2,
+    "amp_hit": 1
   }
 }
