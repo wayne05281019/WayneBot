@@ -1,8 +1,8 @@
 {
-  "as_of_taipei": "2026-11-28T12:50:00+0800",
+  "as_of_taipei": "2026-11-28T13:05:00+0800",
   "phone_sync": "blocked",
   "buy_signal": false,
-  "method_zh": "每天同步跟他一起解盤：讀D→自己先寫隔日高/低機率判斷→隔天官方柱對答案→記取並量化他的判斷原則＋我失敗原因→再讀D+1成長。從雲端最早片往後；不准跳最新、不准倒推、不准只抄他事後句。",
+  "method_zh": "每天同步跟他一起解盤：讀D→量化他的原則→自己先寫隔日高/低機率→隔天官方柱對答案→失敗碼累計→再讀D+1。從最早片往後；不准倒推。",
   "principles_quant_ref": "docs/expert_notes/黃培碩/huang_judgment_principles_quant.json",
   "drive_folder_id": "1JkZ3P_AjAq4QigGplenKZ4o5CNaUvtfR",
   "chrono_order": [
@@ -20,8 +20,8 @@
     "20261126",
     "20261127"
   ],
-  "cursor_day": "20261111",
-  "status_zh": "1110 已吸收並完成對 1111 官方柱對質；下一個讀 1111 片（ingest 啟動中）。",
+  "cursor_day": "20261112",
+  "status_zh": "1110–1111 兩輪對質完成；下一個讀 1112 片。",
   "days": [
     {
       "day": "20261110",
@@ -31,37 +31,56 @@
         "docs/expert_notes/飆客/decade_lab/huang_wave_method_20261110.md",
         "docs/expert_notes/飆客/decade_lab/huang_oral_absorb_20261110.json"
       ],
-      "his_read_zh": "反彈第三天精準碰到細微壓力43135；大結構暫三段、上週五第三段結束；自37837五小段上偏樂觀；今日多數非追價買點，等壓回再全進。",
+      "his_read_zh": "反彈第三天精準碰到細微壓力43135；大結構暫三段；自37837五小段上偏樂觀；今日多數非追價，等壓回再全進。",
       "forecast_for_next": {
         "target_day": "20261111",
         "written_before_peek": true,
-        "high_prob_zh": "壓力後壓回或區間震盪整理（他：大部分會壓回；這一兩天看怎麼整理）",
-        "low_prob_zh": "幾乎不拉就續強突破壓力、直接走出生段加速（他並行備援但不當今日追價主劇本）",
-        "basis_zh": "標題＋口播『靜待拉回』『大部分會壓回』權重大於『不排除推生啟動』"
+        "high_prob_zh": "壓力後壓回或區間震盪整理",
+        "low_prob_zh": "幾乎不拉就續強突破壓力",
+        "basis_zh": "標題靜待拉回權重過重（事後檢討）"
       },
       "confront_official": {
         "symbol": "TWII",
-        "bar": {
-          "date": "20261111",
-          "open": 43135.76,
-          "high": 44257.15,
-          "low": 42708.05,
-          "close": 44257.15
-        },
+        "bar": {"date": "20261111", "open": 43135.76, "high": 44257.15, "low": 42708.05, "close": 44257.15},
         "result": "miss_high_prob",
-        "score_zh": "偏／錯（高機率壓回未成主結果）",
-        "what_happened_zh": "1111 收在當日高、大漲續強（C=H≈44257）；盤中僅回 42708 後上攻，不是他所強調的壓力後主力道壓回窗。",
-        "why_wrong_zh": "把『今日壓力＝多數會壓回』當隔日主機率，低估他同場已抬出的『五小段上＝偏樂觀／可能出生段』分支；隔日行情走了備援強勢腳。",
-        "lesson_zh": "壓力日預估要把『整理壓回』與『五波上已表態偏多』並列權重；不能只抄標題『靜待拉回』。",
+        "score_zh": "錯（高機率壓回未成）",
+        "what_happened_zh": "續強收在高≈44257；僅淺回42708。",
+        "why_wrong_zh": "標題壓過同場五小段偏多分支",
         "failure_codes": ["F-TITLE-OVERWEIGHT", "F-UNDERWEIGHT-5UP"],
-        "principles_fired": [
-          "HP-PRESSURE-NO-CHASE",
-          "HP-WAIT-PULLBACK-FULL",
-          "HP-5MICRO-UP-BULLISH",
-          "HP-PARALLEL-BRANCHES"
-        ]
+        "principles_fired": ["HP-PRESSURE-NO-CHASE", "HP-WAIT-PULLBACK-FULL", "HP-5MICRO-UP-BULLISH", "HP-PARALLEL-BRANCHES"],
+        "lesson_zh": "壓力＋五小段上時，續強須並列高機率"
       },
-      "next_film_read": "pending_20261111"
+      "next_film_read": "done_20261111"
+    },
+    {
+      "day": "20261111",
+      "film": "1111黃培碩.mp4",
+      "yt_title": "會打第二支腳嗎？3段或5段式修正？",
+      "absorb_refs": [
+        "docs/expert_notes/飆客/decade_lab/huang_wave_method_20261111.md",
+        "docs/expert_notes/飆客/decade_lab/huang_oral_absorb_20261111.json"
+      ],
+      "his_read_zh": "大三段低點傾向已現、第二隻腳低；短線細微約7段未完至少要9；明天還差一小段／可再建高但勿追高；長線出生段／五浪推生傾向。",
+      "forecast_for_next": {
+        "target_day": "20261112",
+        "written_before_peek": true,
+        "high_prob_zh": "再攻一小段或高檔淺整理後仍可建高（朝9波）；第二隻腳／破前低機會低；過程可壓回但非深第二腳",
+        "low_prob_zh": "直接深打第二隻腳、大結構第五下跌破37837附近",
+        "basis_zh": "口播『明天還差一小段／先建高』＋『7非完整要9』＋『第二隻腳不高』＋『明天不要追高會拉回』並列（吸收1110失敗課）",
+        "applied_fix_from": ["F-TITLE-OVERWEIGHT", "F-UNDERWEIGHT-5UP"]
+      },
+      "confront_official": {
+        "symbol": "TWII",
+        "bar": {"date": "20261112", "open": 44180.46, "high": 44525.24, "low": 42943.5, "close": 43091.87},
+        "result": "hit_high_prob_partial",
+        "score_zh": "對（方向對；壓回深度偏深）",
+        "what_happened_zh": "先創新高44525（再一小段），其後下殺至42943、收43092；未破37837、非第二隻腳。",
+        "why_partial_zh": "建高腳命中；同日壓回幅度大於『稍微整理』，接近他『不要追高／會拉回』但深度偏強。",
+        "failure_codes": ["F-PULLBACK-DEPTH-UNDER"],
+        "principles_fired": ["HP-NO-SECOND-FOOT", "HP-7-NEEDS-9", "HP-PARALLEL-BRANCHES", "HP-5MICRO-UP-BULLISH"],
+        "lesson_zh": "『還差一小段』與『不要追高會拉回』要同權：允許先高後中幅壓回，不只淺整理。"
+      },
+      "next_film_read": "pending_20261112"
     }
   ]
 }

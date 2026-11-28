@@ -1,0 +1,29 @@
+{
+  "as_of_taipei": "2026-11-28T13:05:00+08:00",
+  "as_of_day": "20261111",
+  "source": "drive_asr_frames+youtube_title",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "chrono_index": 2,
+  "youtube": {
+    "title": "會打第二支腳嗎？3段或5段式修正？20261111 黃培碩 分析師 運達證券投顧",
+    "drive_name": "1111黃培碩.mp4",
+    "drive_file_id": "1efllG90yQBmFPC-3yFuba2TxW0FLA2jh"
+  },
+  "media_evidence": {
+    "mp4": "/tmp/huang-drive-20261111/20261111.mp4",
+    "asr": "/tmp/huang-drive-20261111/asr_full.txt",
+    "frames_n": 17
+  },
+  "market_verdict_zh": {
+    "now": "大三段修正低點傾向已現；短線細微約7段未完、還要再攻／建高；第二隻腳機率低；勿追高",
+    "how_he_reads_zh": [
+      "49968↓大三段；37837＝本波低點候選；第五下跌／第二隻腳不高",
+      "台積越關鍵＋斜率破壞→大盤不易再走第五下跌",
+      "短線7段→至少9段才完整；明天還差一小段；9段後等拉回",
+      "長線：四浪整理結束→五浪推生／出生段；最差區間"
+    ],
+    "levels_he_marked": ["49968", "37837", "44257", "2395", "2590", "2020", "351", "8997"],
+    "not_zh": ["非買訊", "不准發明浪號進話筒"]
+  }
+}

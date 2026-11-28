@@ -1,30 +1,29 @@
 # 黃判斷原則＋我失敗檢討（量化帳）
 
-`phone_sync=blocked`・以 `huang_judgment_principles_quant.json` 為準。
+以 `huang_judgment_principles_quant.json` 為準。`phone_sync=blocked`。
 
-## 目前分數（n=1 預估對質）
+## 分數（n=2 預估對質）
 
 | 項目 | 值 |
 |---|---|
-| 高機率命中 | 0 |
-| 高機率未中 | 1 |
-| 命中率 | 0.0 |
+| 嚴格命中 | 0 |
+| 部分命中 | 1 |
+| 未中 | 1 |
+| 含部分命中率 | 0.5 |
 
-## 已收原則（節錄）
+## 原則計數（節錄）
 
-| id | 原則 | n |
+| id | n_seen | 備註 |
 |---|---|---|
-| HP-PRESSURE-NO-CHASE | 壓力日多數非追價 | 1 |
-| HP-WAIT-PULLBACK-FULL | 靜待拉回再全進（敘事） | 1 |
-| HP-5MICRO-UP-BULLISH | 五小段上＝偏樂觀／可能出生段 | 1 |
-| HP-PARALLEL-BRANCHES | 主腳＋備援並列 | 1 |
-| HP-RELAY-FLAT-WEAK | 橫抬中繼→續弱 | 1 |
+| HP-5MICRO-UP-BULLISH | 2 | 1110→11 續強 |
+| HP-7-NEEDS-9 | 1 | 1112 先創新高 |
+| HP-NO-SECOND-FOOT | 1 | 1112 未破修正低 |
+| HP-DONT-CHASE-THEN-PULL | 1 | 先高後壓回 |
 
-## 我的失敗碼（累計）
+## 失敗碼
 
-| id | 定義 | n | 修正 |
-|---|---|---|---|
-| F-TITLE-OVERWEIGHT | 標題壓過同場偏多分支 | 1 | 五小段上與壓回並列計分 |
-| F-UNDERWEIGHT-5UP | 低估五小段上對隔日續強 | 1 | 壓力＋五上時續強升並列高機率 |
-
-每天 chrono 對答案後更新此表。
+| id | n | 修正 |
+|---|---|---|
+| F-TITLE-OVERWEIGHT | 1 | 並列偏多分支 |
+| F-UNDERWEIGHT-5UP | 1 | 續強升權 |
+| F-PULLBACK-DEPTH-UNDER | 1 | 允許先高後中幅壓回 |

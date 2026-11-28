@@ -1,94 +1,117 @@
 {
-  "as_of_taipei": "2026-11-28T12:54:00+0800",
+  "as_of_taipei": "2026-11-28T13:05:00+0800",
   "phone_sync": "blocked",
   "buy_signal": false,
-  "purpose_zh": "記取並量化：①黃的判斷原則 ②我隔日預估失敗原因。每chrono日更新 hit/miss；n不足不准改話筒。",
+  "purpose_zh": "記取並量化：①黃的判斷原則 ②我隔日預估失敗原因。每chrono日更新；n不足不准改話筒。",
   "tz": "Asia/Taipei",
-  "n_days_absorbed": 1,
-  "n_forecasts_confronted": 1,
+  "n_days_absorbed": 2,
+  "n_forecasts_confronted": 2,
   "my_forecast_score": {
     "hit_high_prob": 0,
+    "hit_high_prob_partial": 1,
     "miss_high_prob": 1,
-    "partial": 0,
-    "hit_rate_high_prob": 0.0
+    "hit_rate_high_prob_strict": 0.0,
+    "hit_rate_high_prob_incl_partial": 0.5
   },
   "principles": [
     {
       "id": "HP-PRESSURE-NO-CHASE",
-      "rule_zh": "多日強彈後碰到細微波刺激式讓／次級壓力＝當日多數個股非追價買點",
+      "rule_zh": "多日強彈後碰到細微波壓力＝當日多數非追價買點",
       "source_days": ["20261110"],
-      "ops_check_zh": "當日高是否貼近他標的壓力位；口播『不是買點』",
       "n_seen": 1,
       "n_next_day_pullback_or_chop": 0,
-      "n_next_day_continue_up": 1,
-      "note_zh": "原則是當日操作紀律；隔日是否壓回要另計（見我失敗檢討）"
+      "n_next_day_continue_up": 1
     },
     {
       "id": "HP-WAIT-PULLBACK-FULL",
-      "rule_zh": "壓力後靜待拉回／整理，再考慮全力買進（敘事≠話筒黃金買點）",
+      "rule_zh": "壓力後靜待拉回再全進（敘事≠黃金買點）",
       "source_days": ["20261110"],
-      "ops_check_zh": "標題或口播含靜待拉回／壓回再全進",
       "n_seen": 1,
       "as_next_day_main_script_hit": 0,
       "as_next_day_main_script_miss": 1
     },
     {
       "id": "HP-CORRECT-3-OR-5",
-      "rule_zh": "大拉回結構有時三段、有時五段；五段最標準、結束後常有較長安全反彈窗",
-      "source_days": ["20261110"],
-      "ops_check_zh": "他當日標大結構段數；未走完五段不准當『低點已到』唯一解",
-      "n_seen": 1
+      "rule_zh": "大拉回有時三段有時五段；1111 鎖定本波為三段結束",
+      "source_days": ["20261110", "20261111"],
+      "n_seen": 2
     },
     {
       "id": "HP-5MICRO-UP-BULLISH",
-      "rule_zh": "自波段低點反彈已走出五小段＝偏樂觀；可能只是A，也可能是出生段①",
-      "source_days": ["20261110"],
-      "ops_check_zh": "低點錨＋五小段計數；與壓力壓回劇本並列，不准刪掉",
-      "n_seen": 1,
+      "rule_zh": "自波段低五小段上＝偏樂觀／可能出生段",
+      "source_days": ["20261110", "20261111"],
+      "n_seen": 2,
       "when_present_next_day_continue_up": 1,
       "when_present_next_day_deep_pullback": 0
     },
     {
-      "id": "HP-RELAY-FLAT-WEAK",
-      "rule_zh": "賣動後若中繼是橫抬／打混（非N字向上）＝預告續弱再往下",
-      "source_days": ["20261110", "user_osc_relay"],
-      "ops_check_zh": "中繼窗 HH/HL vs 無HH無LL；對齊 MP-HUANG-OSC-RELAY",
+      "id": "HP-7-NEEDS-9",
+      "rule_zh": "細微推到7段未完整；至少9段才像一組完整結構／出生段 → 短線還要再攻或建高",
+      "source_days": ["20261111"],
       "n_seen": 1,
+      "next_day_new_high": 1,
+      "next_day_close_down_after_high": 1
+    },
+    {
+      "id": "HP-NO-SECOND-FOOT",
+      "rule_zh": "大三段低點已現＋龍頭越關鍵／斜率破壞 → 第二隻腳／第五下跌機率低",
+      "source_days": ["20261111"],
+      "n_seen": 1,
+      "next_day_broke_correction_low": 0,
+      "next_day_held_above_low": 1
+    },
+    {
+      "id": "HP-DONT-CHASE-THEN-PULL",
+      "rule_zh": "還差一小段／可建高，但明天不要追高；完整段後等拉回（五之二／0.618禮物）",
+      "source_days": ["20261111"],
+      "n_seen": 1,
+      "next_day_made_high_then_pulled": 1
+    },
+    {
+      "id": "HP-RELAY-FLAT-WEAK",
+      "rule_zh": "賣動後橫抬中繼（非N字）＝續弱再下",
+      "source_days": ["20261110", "user_osc_relay"],
+      "n_seen": 2,
       "quant_pending": true
     },
     {
       "id": "HP-PARALLEL-BRANCHES",
-      "rule_zh": "同一場必並列主劇本＋備援（例：壓回整理 vs 推生啟動）；分析有所本、不單押亂喊",
-      "source_days": ["20261110"],
-      "ops_check_zh": "absorb 必須同時記下 high_prob 對應他主腳＋low_prob 對應他備援",
-      "n_seen": 1
+      "rule_zh": "同場主腳＋備援並列",
+      "source_days": ["20261110", "20261111"],
+      "n_seen": 2
     },
     {
       "id": "HP-US-TARGET-LINK",
-      "rule_zh": "費半／ADR／台積進目標或止跌觀察區＝台股聯動推生的備援證據，不是當日追價令",
-      "source_days": ["20261110"],
-      "ops_check_zh": "美系標的是否進他說的目標／止跌區",
-      "n_seen": 1
+      "rule_zh": "費半／ADR／台積進目標區＝聯動備援，非當日追價令",
+      "source_days": ["20261110", "20261111"],
+      "n_seen": 2
     }
   ],
   "my_failure_taxonomy": [
     {
       "id": "F-TITLE-OVERWEIGHT",
-      "def_zh": "標題／口號權重過重，壓過同場並列的偏多結構分支",
+      "def_zh": "標題權重過重，壓過同場偏多分支",
       "n": 1,
       "days": ["20261110→20261111"],
-      "fix_zh": "預估時強制把 HP-5MICRO-UP-BULLISH 與壓力壓回並列計分，不得因標題『靜待拉回』直接當唯一高機率"
+      "fix_zh": "五小段上與壓回並列計分"
     },
     {
       "id": "F-UNDERWEIGHT-5UP",
-      "def_zh": "低估『已五小段上＝偏樂觀／可能出生段』對隔日續強的含義",
+      "def_zh": "低估五小段上對隔日續強",
       "n": 1,
       "days": ["20261110→20261111"],
-      "fix_zh": "若當日同時滿足壓力＋五小段上：高機率改為『淺回或續強』與『深壓回』雙主並列，或把續強升為並列高機率"
+      "fix_zh": "壓力＋五上時續強升並列高機率"
+    },
+    {
+      "id": "F-PULLBACK-DEPTH-UNDER",
+      "def_zh": "預估到『會拉回』但低估同日壓回深度（只寫淺整理）",
+      "n": 1,
+      "days": ["20261111→20261112"],
+      "fix_zh": "『建高＋勿追高』同權時，高機率允許先高後中幅壓回（仍不破修正低＝非第二腳）"
     }
   ],
   "next_ops_zh": [
-    "每完成一日 confront：更新 principles 計數＋ failure taxonomy",
-    "n_forecasts_confronted≥20 且穩定贏『只抄標題』基線，才考慮升格教法卡；仍 phone_sync=blocked"
+    "每完成 confront 更新本檔計數",
+    "n≥20 且穩定贏只抄標題基線才考慮升格；仍 phone_sync=blocked"
   ]
 }
