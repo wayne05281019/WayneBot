@@ -1,5 +1,5 @@
 {
-  "as_of_taipei": "2026-11-28T15:20:00+0800",
+  "as_of_taipei": "2026-11-28T15:40:00+0800",
   "phone_sync": "blocked",
   "buy_signal": false,
   "method_zh": "每天同步跟他一起解盤：讀D→量化他的原則→自己先寫隔日高/低機率→隔天官方柱對答案→失敗碼累計→再讀D+1。從最早片往後；不准倒推。",
@@ -20,8 +20,8 @@
     "20261126",
     "20261127"
   ],
-  "cursor_day": "20261125",
-  "status_zh": "1110–1124 十輪對質完成；下一個讀1125片。",
+  "cursor_day": "20261126",
+  "status_zh": "1110–1125 十一輪對質完成；下一個讀1126片。",
   "days": [
     {
       "day": "20261110",
@@ -467,7 +467,50 @@
         ],
         "lesson_zh": "反彈大陽翌日高機率允許先高後深幅壓回；『震盪』權重要含中幅以上回吐。"
       },
-      "next_film_read": "pending_20261125"
+      "next_film_read": "done_20261125"
+    },
+    {
+      "day": "20261125",
+      "film": "1125黃培碩.mp4",
+      "yt_title": "大逃殺？？回馬槍？？？",
+      "absorb_refs": [
+        "docs/expert_notes/飆客/decade_lab/huang_wave_method_20261125.md",
+        "docs/expert_notes/飆客/decade_lab/huang_oral_absorb_20261125.json"
+      ],
+      "his_read_zh": "第五波仍在；當日重挫兩分支大逃殺vs回馬槍；傾回馬槍但等下降軌道確認；不急全力加碼。",
+      "forecast_for_next": {
+        "target_day": "20261126",
+        "written_before_peek": true,
+        "high_prob_zh": "回馬槍後反彈／震盪為主；不破35442續崩為次",
+        "low_prob_zh": "第五波擴延直接破35442深殺",
+        "basis_zh": "口播傾回馬槍＋不賭擴延；越軌道才確認五波結束",
+        "applied_fix_from": [
+          "HP-HUIMAQIANG-BRANCH",
+          "HP-CHANNEL-CONFIRM",
+          "HP-5TH-EXTEND-RISK"
+        ]
+      },
+      "confront_official": {
+        "symbol": "TWII",
+        "bar": {
+          "date": "20261126",
+          "open": 38435.99,
+          "high": 39459.95,
+          "low": 38435.99,
+          "close": 39151.81
+        },
+        "result": "hit_high_prob",
+        "score_zh": "對",
+        "what_happened_zh": "1126 開38436、高39460、收39152；反彈未破35442。",
+        "why_hit_zh": "回馬槍後反彈主腳命中。",
+        "failure_codes": [],
+        "principles_fired": [
+          "HP-HUIMAQIANG-BRANCH",
+          "HP-CHANNEL-CONFIRM"
+        ],
+        "lesson_zh": "大逃殺／回馬槍並存日，傾回馬槍時隔日反彈權重應並列。"
+      },
+      "next_film_read": "pending_20261126"
     }
   ],
   "days_completed": [
@@ -480,6 +523,7 @@
     "20261119",
     "20261120",
     "20261123",
-    "20261124"
+    "20261124",
+    "20261125"
   ]
 }

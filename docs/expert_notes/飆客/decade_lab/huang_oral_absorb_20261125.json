@@ -1,0 +1,37 @@
+{
+  "as_of_taipei": "2026-11-25T15:00:00+08:00",
+  "as_of_day": "20261125",
+  "source": "drive_full_asr",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "not_buy_signal": true,
+  "youtube": {
+    "title": "大逃殺？？回馬槍？？？ 20261125 黃培碩 分析師 運達證券投顧",
+    "drive_file_id": "19yG-DmROdfBLlgfQvuLm_Xk6YPI0YFse",
+    "drive_name": "1125黃培碩.mp4"
+  },
+  "market_verdict_zh": {
+    "now": "大盤仍五段／第五波；當日重挫＝大逃殺 vs 回馬槍兩分支並存，傾回馬槍但等下降軌道確認",
+    "today_levels": {
+      "low_asr": "36681",
+      "prior_low": "35442",
+      "prior_high_day": "40180",
+      "peak": "49968"
+    },
+    "how_he_reads_zh": [
+      "若底部有效→標準回馬槍（A上B壓），後面很長不急",
+      "關鍵＝第五波會不會擴延；同一組往下推動下降軌道未破＝仍觀察",
+      "昨40180未越軌道；越軌道才像五波結束確認",
+      "不賭結構全力加碼；擴延時更深甜蜜買點觀察≠話筒買訊"
+    ],
+    "not_zh": [
+      "非買訊",
+      "不准發明5／9進話筒",
+      "路人留言不准吸"
+    ]
+  },
+  "forecast_anchor_for_next_zh": {
+    "high_prob": "回馬槍後反彈／震盪、不破35442續崩",
+    "low_prob": "第五擴延破35442深殺"
+  }
+}

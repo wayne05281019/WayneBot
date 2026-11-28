@@ -1,17 +1,17 @@
 {
-  "as_of_taipei": "2026-11-28T15:20:00+0800",
+  "as_of_taipei": "2026-11-28T15:40:00+0800",
   "phone_sync": "blocked",
   "buy_signal": false,
   "purpose_zh": "記取並量化：①黃的判斷原則 ②我隔日預估失敗原因。每chrono日更新；n不足不准改話筒。",
   "tz": "Asia/Taipei",
-  "n_days_absorbed": 10,
-  "n_forecasts_confronted": 10,
+  "n_days_absorbed": 11,
+  "n_forecasts_confronted": 11,
   "my_forecast_score": {
-    "hit_high_prob": 5,
+    "hit_high_prob": 6,
     "hit_high_prob_partial": 3,
     "miss_high_prob": 2,
-    "hit_rate_high_prob_strict": 0.5,
-    "hit_rate_high_prob_incl_partial": 0.8
+    "hit_rate_high_prob_strict": 0.5454545454545454,
+    "hit_rate_high_prob_incl_partial": 0.8181818181818182
   },
   "principles": [
     {
@@ -273,6 +273,31 @@
       ],
       "n_seen": 1,
       "nest_ref": "①③⑤五波結構檢驗"
+    },
+    {
+      "id": "HP-HUIMAQIANG-BRANCH",
+      "rule_zh": "大漲翌日重挫＝大逃殺 vs 落底回馬槍兩分支；傾回馬槍仍等確認、不急全力加碼",
+      "source_days": [
+        "20261125"
+      ],
+      "n_seen": 1,
+      "next_day_bounce": 1
+    },
+    {
+      "id": "HP-CHANNEL-CONFIRM",
+      "rule_zh": "同一組往下推動下降軌道未破＝第五波擴延疑慮仍在；越過軌道才像五波結束確認",
+      "source_days": [
+        "20261125"
+      ],
+      "n_seen": 1
+    },
+    {
+      "id": "HP-5TH-EXTEND-RISK",
+      "rule_zh": "第五波擴延風險未排除前，更深甜蜜買點觀察≠立即滿倉；形勢比人強",
+      "source_days": [
+        "20261125"
+      ],
+      "n_seen": 1
     }
   ],
   "my_failure_taxonomy": [
