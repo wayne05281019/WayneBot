@@ -1,10 +1,11 @@
 {
-  "as_of_taipei": "2026-11-28T17:15:00+0800",
+  "as_of_taipei": "2026-11-28T19:30:00+0800",
   "full_detail_audit": "2026-11-28T17:15:00+0800",
+  "quality_first_lock": "2026-11-28T17:20:00+0800",
   "phone_sync": "blocked",
   "buy_signal": false,
   "user_lock": "2026-11-28",
-  "purpose_zh": "二月起大回測硬規格：刪去＋雙分支＋量化＋開市無片仍判；目標＝實際解盤＋精準波浪判斷／繪製，不准隨便結案、不准讀完說漏測。",
+  "purpose_zh": "自2026-01-02第一則起大回測硬規格：每日隔日雙分支＋刪去＋量化＋開市無片仍判＋發現新點先停登錄；目標＝精準波浪判斷／繪製＋持倉保命；不准隨便結案、不准讀完說漏測。",
   "master_consolidate": "docs/expert_notes/黃培碩/huang_master_consolidate.md",
   "day_template": "docs/expert_notes/黃培碩/huang_days/_TEMPLATE.json",
   "target_capability_zh": [
@@ -13,14 +14,21 @@
     "振幅／Fib／日量／必要時60分K量",
     "美股／台指期日夜／族群鏈同步",
     "隔日官方柱對質＋交叉學習＋滾動修正",
-    "讀完須變準；禁止漏測／忘記／還不會當結論"
+    "讀完須變準；禁止漏測／忘記／還不會當結論",
+    "出場學＋浪走完度／給回帶可對質",
+    "費半＋台指／電子夜 → 開盤前一句",
+    "持股環境閘（覆巢）先於個股操作"
   ],
   "agents_consulted": [
     "bc-8390efd8-8919-5779-8f0e-31ece2bd6185",
     "bc-3da1036f-dbb6-5add-b19f-fd717def6d2e",
     "bc-ac485767-3f05-5cff-93a6-6b4bdf81f005"
   ],
-  "film_status_enum": ["present", "absent_open", "closed"],
+  "film_status_enum": [
+    "present",
+    "absent_open",
+    "closed"
+  ],
   "absent_open_counts_toward_n": true,
   "closed_skips": true,
   "no_skip_open_days": {
@@ -39,11 +47,33 @@
   "volume_price_required": {
     "user_lock": "2026-11-28",
     "rule_zh": "量要比對價；不准只看價不看量；預估／刪去／對質都要把量價關係算進去",
-    "fields": ["price_dir", "vol", "vol_ma20", "vol_price_relation"],
-    "relation_enum": ["confirm", "deny", "neutral"],
-    "examples_zh": ["價漲量增", "價漲量縮", "破底放量", "破底縮量"],
-    "applies_on": ["present", "absent_open"],
-    "use_in": ["regime", "dual_branch_score", "forecast", "confront"],
+    "fields": [
+      "price_dir",
+      "vol",
+      "vol_ma20",
+      "vol_price_relation"
+    ],
+    "relation_enum": [
+      "confirm",
+      "deny",
+      "neutral"
+    ],
+    "examples_zh": [
+      "價漲量增",
+      "價漲量縮",
+      "破底放量",
+      "破底縮量"
+    ],
+    "applies_on": [
+      "present",
+      "absent_open"
+    ],
+    "use_in": [
+      "regime",
+      "dual_branch_score",
+      "forecast",
+      "confront"
+    ],
     "ignore_volume_blocks_complete": true,
     "escalate_60m_on_dispute": true
   },
@@ -53,7 +83,10 @@
     "iron_gates_no_unknown": true,
     "no_oral_contradiction": true
   },
-  "pass_pattern_count_range": [1, 3],
+  "pass_pattern_count_range": [
+    1,
+    3
+  ],
   "min_daily_quant": [
     "amp_ratios",
     "fib_or_skip_reason",
@@ -64,11 +97,28 @@
   "sync_compare_required": {
     "as_of": "2026-11-28",
     "user_lock": true,
-    "us": ["SOX", "TSM_ADR", "named_us_stocks_when_taught"],
-    "tx_futures": ["day_session", "night_session"],
-    "te_electronics_futures": ["day_session", "night_session"],
-    "twii": ["ohlc", "volume"],
-    "fields": ["sync_us[]", "sync_tx", "sync_te"],
+    "us": [
+      "SOX",
+      "TSM_ADR",
+      "named_us_stocks_when_taught"
+    ],
+    "tx_futures": [
+      "day_session",
+      "night_session"
+    ],
+    "te_electronics_futures": [
+      "day_session",
+      "night_session"
+    ],
+    "twii": [
+      "ohlc",
+      "volume"
+    ],
+    "fields": [
+      "sync_us[]",
+      "sync_tx",
+      "sync_te"
+    ],
     "rule_zh": "開市日一天一天必同步：加權＋費半＋台指期日／夜＋電子期日／夜（＋點名美股／ADR）；缺官方收標 missing，不准假數、不准跳鏈"
   },
   "peer_chain_required": {
@@ -90,9 +140,17 @@
   "rolling_cross_learn": {
     "as_of": "2026-11-28",
     "user_lock": true,
-    "fields": ["miss_anatomy_zh", "cross_learn_zh", "rolling_fix[]", "undiscussed_gap[]"],
+    "fields": [
+      "miss_anatomy_zh",
+      "cross_learn_zh",
+      "rolling_fix[]",
+      "undiscussed_gap[]"
+    ],
     "wave_def_draw_required": true,
-    "degrees": ["degree_main", "degree_micro"],
+    "degrees": [
+      "degree_main",
+      "degree_micro"
+    ],
     "forbid_diary_only": true
   },
   "auto_expand_after_absorb": {
@@ -106,7 +164,12 @@
       "start_collect_from_D_plus_1",
       "empty_array_means_checked_not_skipped"
     ],
-    "forbid": ["wait_user_per_symbol", "invent_basket", "phone_buy_signal", "name_silent_cover"]
+    "forbid": [
+      "wait_user_per_symbol",
+      "invent_basket",
+      "phone_buy_signal",
+      "name_silent_cover"
+    ]
   },
   "progress_gate_every_n_confronted": 20,
   "anti_casual_done_gate": {
@@ -127,36 +190,43 @@
       "少東少西／忘記測／沒彙整到",
       "讀完了但還不會判得很準（未過結案閘卻宣稱完成）"
     ],
-    "precision_expectation_zh": "二月chrono完整跑完＝應具備精準波浪判斷與繪製能力；分數板須證明變準"
+    "precision_expectation_zh": "1/2→今chrono完整跑完＝應具備精準波浪判斷與繪製＋浪頂／回檔／出場學；分數板須證明變準"
   },
   "no_forget_rule": {
     "user_lock": "2026-11-28",
     "rule_zh": "開跑前用 master_consolidate 勾完；每日 no_forget_audit 全 true 才 complete；禁止事後說漏測"
   },
-  "token_efficient_ops": {
-    "user_lock": "2026-11-28",
+  "quality_first_ops": {
+    "user_lock": "2026-11-28T17:20:00+0800",
+    "supersedes": "token_efficient_ops_skim_caps",
     "ref_zh": "huang_master_consolidate.md §15",
-    "layers": ["L0_script_ingest", "L1_short_schema_fill", "L2_script_score_plus_short_anatomy", "L3_script_scoreboard"],
-    "context_per_day_max": [
-      "template_or_day_file",
-      "cursor_summary_le_20_lines",
-      "asr_excerpt_le_80_lines",
-      "sync_ohlcv_table",
-      "prior_forecast_block"
+    "rule_zh": "正確／完整優先一次到位；省重做不省深度；絕對不准為省額度打折結果或害整包重讀",
+    "must_spend_on": [
+      "full_day_absorb_structure_levels_vol_price",
+      "full_sync_chain_sox_tx_te_twii",
+      "degree_main_and_micro_draw",
+      "dual_branch_forecast_and_confront",
+      "teach_expand_same_day",
+      "extra_passes_until_day_readable_clear"
+    ],
+    "may_save_on": [
+      "script_ingest_asr_bars_scoreboard",
+      "no_reload_completed_days",
+      "cursor_summary_plus_day_materials_only",
+      "no_chat_transcript_spam",
+      "no_subagent_when_script_suffices",
+      "no_padding_prose"
     ],
     "forbid": [
-      "full_transcript_in_context",
-      "reload_all_principles_every_day",
-      "rewrite_completed_days",
-      "open_subagent_when_script_suffices"
+      "skim_caps_that_discount_judgment",
+      "hard_field_caps_that_force_cut_content",
+      "mark_complete_before_readable_clear",
+      "shallow_day_then_full_reread",
+      "skip_sync_or_vol_to_save_tokens",
+      "rewrite_completed_days_unless_audit_fail"
     ],
-    "field_caps_zh": {
-      "his_read": 240,
-      "miss_anatomy": 120,
-      "cross_learn": 120,
-      "draw_notes": 160
-    },
-    "max_forecast_confront_days_per_turn": 3
+    "once_complete_gate_zh": "no_forget_audit全true且能獨立講清主／細微波與隔日雙分支才封存",
+    "batch_zh": "並行ASR／柱預取；單線一日一閉環；沒讀透就加回合不准趕淺"
   },
   "ledger_files": {
     "index": "huang_chrono_index.json",
@@ -166,5 +236,128 @@
     "samples": "huang_sample_register.json",
     "patterns": "docs/expert_notes/飆客/observe_manual/wave_micro_pattern_catalog.json"
   },
-  "spec_md": "docs/expert_notes/黃培碩/huang_feb_backtest_ops_spec.md"
+  "spec_md": "docs/expert_notes/黃培碩/huang_feb_backtest_ops_spec.md",
+  "holdings_protect_learn": {
+    "user_lock": "2026-11-28T17:45:00+0800",
+    "ref_zh": "huang_master_consolidate.md §14b",
+    "fields": [
+      "exit_learn_zh",
+      "wave_progress",
+      "night_morning_line",
+      "holdings_env_gate",
+      "wave_progress.peak_claim",
+      "wave_progress.pullback_band",
+      "wave_progress.rebound_band",
+      "wave_progress.confront_peak_zh"
+    ],
+    "phone_sync": "blocked_until_gate",
+    "forbid_zh": "未過閘不准發明個股浪％當賣訊；夜盤一句只准官方數",
+    "peak_pullback_goal_zh": "練出浪頂耗盡帶＋回檔／反彈觀察帶，官方柱對質；過閘前不准發明個股最多漲到X",
+    "post_gate_phone_upgrade": {
+      "user_lock": "2026-11-28T18:00:00+0800",
+      "rule_zh": "1/2→今黃片chrono讀完且§11全過後，必須升級查股／大盤／持股提醒力道（浪頂耗盡／回檔／反彈已對質帶）；不准學完仍弱提醒；合main→Render並再生下一版",
+      "targets": [
+        "lookup_risk_face",
+        "holdings_protect_alert",
+        "market_risk_head"
+      ],
+      "forbid_until_gate": [
+        "invented_stock_top_price",
+        "fake_drop_probability_pct",
+        "buy_signal_change"
+      ]
+    }
+  },
+  "full_suite_once": {
+    "user_lock": "2026-11-28T18:20:00+0800",
+    "ref_zh": "huang_master_consolidate.md §0",
+    "rule_zh": "讀黃＝開跑前A＋每日B＋隔日C＋平行D＋DONE E 一次全表；漏一格＝沒做完；重讀更貴",
+    "sections": [
+      "0.1_preflight_A",
+      "0.2_day_B",
+      "0.3_confront_C",
+      "0.4_parallel_D",
+      "0.5_done_E",
+      "0.6_forbid"
+    ],
+    "chrono_start": "2026-01-02",
+    "daily_next_day_forecast_required": true,
+    "stop_on_new_observe": true,
+    "gap_fill_G": [
+      "paper_levels_freeze",
+      "retract_chain",
+      "us_session_on_forecast",
+      "named_stock_ohlcv_freeze",
+      "tf_escalate_note",
+      "sample_register_new",
+      "biaoke_cross_checked",
+      "stop_expand_ok",
+      "film_index_1_2",
+      "nov_holdout"
+    ]
+  },
+  "chrono_start": {
+    "user_lock": "2026-11-28T18:25:00+0800",
+    "start_date": "2026-01-02",
+    "rule_zh": "自1/2第一則逐日；每日必寫隔日雙分支；發現值得注意的立刻停下來teach_expand／undiscussed_gap再走；不准從1/2跳起"
+  },
+  "precision_expectation_zh": "1/2→今chrono完整跑完＝應具備精準波浪判斷與繪製＋浪頂／回檔／出場學；分數板須證明變準",
+  "agent_recommended_extras_zh": [
+    "huang_film_index：1/2起每開市日有片／缺片登記",
+    "同片改口鏈＋紙圖點位凍",
+    "隔日預估標美股已收／未收",
+    "點名個股近窗官方柱",
+    "新觀察點進 sample_register（能量化才收）",
+    "1110–1127 當 holdout"
+  ],
+  "miss_growth_lock": {
+    "rule_zh": "隔日走勢／浪位／點位／幅度有失誤→必找因 miss_anatomy＋rolling_fix；天天成長；§11過閘後必換所有必要話筒鈕編碼合main",
+    "phone_sync": "blocked_until_gate"
+  },
+  "run_status": {
+    "chrono_start": "20260102",
+    "started": true,
+    "completed_days": [
+      "20260102",
+      "20260105",
+      "20260106",
+      "20260107",
+      "20260108"
+    ],
+    "next_day": "20260109",
+    "push_policy_zh": "本機連做；一段落才推CI"
+  },
+  "daily_process_order": {
+    "rule_zh": "每日影片查閱必做＝§0.0b S1→S27 最高流程序；不准並列略過、不准插入D平行項；漏一步不准day_complete、不准進下一日",
+    "ref": "huang_master_consolidate.md §0.0b / huang_daily_full_suite_gate.md",
+    "steps": [
+      "S1",
+      "S2",
+      "S3",
+      "S4",
+      "S5",
+      "S6",
+      "S7",
+      "S8",
+      "S9",
+      "S10",
+      "S11",
+      "S12",
+      "S13",
+      "S14",
+      "S15",
+      "S16",
+      "S17",
+      "S18",
+      "S19",
+      "S20",
+      "S21",
+      "S22",
+      "S23",
+      "S24",
+      "S25",
+      "S26",
+      "S27"
+    ]
+  }
 }

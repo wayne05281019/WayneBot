@@ -2270,7 +2270,11 @@ def test_market_page_index_points_chips_us_align(tmp_path):
     assert "+0.10%（+40.00點）" in _html_plain(dji)
     assert "+0.05%（+3.00點）" in _html_plain(spx)
     assert "-0.12%（-20.00點）" in _html_plain(nasdaq)
-    assert "+0.02%（+1.00點）" in _html_plain(sox)
+    # 費半改走夜盤對照一句（現金收％＋美股時區來源；點數併在道瓊／標普／那指列）
+    sox_plain = _html_plain(sox)
+    assert "夜盤對照" in sox_plain
+    assert "費半+0.02%" in sox_plain
+    assert "美股時區" in sox_plain
 
 
 def _extract_us_cash_moves(text: str) -> dict:

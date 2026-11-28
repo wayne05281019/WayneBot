@@ -687,7 +687,7 @@ def test_l6_caption_sell_appended():
 
     card = {"sell_action": "直接減碼", "sell_why": "不同步（最高價但非最高溫）"}
     cap = _glance_photo_caption("介紹圖", card)
-    assert "Ai建議" in cap or "現在" in cap
+    assert "出場提醒" in cap or "現在" in cap
 
 
 def test_l6_decision_caption_uses_name():

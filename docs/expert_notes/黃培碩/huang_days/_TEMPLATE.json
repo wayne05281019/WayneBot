@@ -5,7 +5,8 @@
     "film": "",
     "written_before_peek": true,
     "phone_sync": "blocked",
-    "buy_signal": false
+    "buy_signal": false,
+    "chrono_start": "2026-01-02"
   },
   "regime_D": {
     "anchor_peak": null,
@@ -28,14 +29,35 @@
     "align_with_huang": "same|skew|unknown"
   },
   "elim_rows": [],
-  "sync_us": [{"symbol": "SOX", "status": "missing|ok"}],
-  "sync_tx": {"day_session": null, "night_session": null, "status": "missing|ok"},
-  "sync_te": {"day_session": null, "night_session": null, "status": "missing|ok", "note_zh": "電子期日／夜"},
+  "sync_us": [
+    {
+      "symbol": "SOX",
+      "status": "missing|ok"
+    }
+  ],
+  "sync_tx": {
+    "day_session": null,
+    "night_session": null,
+    "status": "missing|ok"
+  },
+  "sync_te": {
+    "day_session": null,
+    "night_session": null,
+    "status": "missing|ok",
+    "note_zh": "電子期日／夜"
+  },
   "peer_chain": [],
   "teach_expand": [],
   "quant": {
     "amp_ratios": {},
-    "fib_used": [],
+    "fib_used": {
+      "rule_zh": "每日必算黃金切割回撤／延伸＋等幅度；隔日觸及對質",
+      "index": null,
+      "tsmc": null,
+      "confront_next": null
+    },
+    "equal_amp_synced": true,
+    "golden_cut_synced": true,
     "fib_skip_reason": null,
     "vol_price": {
       "price_dir": "up|down|chop",
@@ -52,9 +74,25 @@
     "target_day": "",
     "high_prob": {},
     "low_prob": {},
-    "single_branch_ok": false
+    "single_branch_ok": false,
+    "required_zh": "每個開市日必填隔日雙分支；無一例外"
   },
   "confront_official": null,
+  "market_power": {
+    "purpose_zh": "大盤波浪繪製／確認＋幅度對質；破除限制必填",
+    "wave_draw": {},
+    "wave_confirm": {},
+    "amp": {},
+    "path_verdict": null
+  },
+  "stock_quant": {
+    "purpose_zh": "點名個股隔日方向＋幅度對質；不准套大盤充當個股勝率",
+    "expect_bucket_rule_zh": "優先當日點名語境；無句→chop",
+    "n": 0,
+    "path_hit": 0,
+    "amp_hit": 0,
+    "rows": []
+  },
   "miss_anatomy_zh": null,
   "cross_learn_zh": null,
   "rolling_fix": [],
@@ -72,7 +110,134 @@
     "confront_anatomy": false,
     "cross_learn": false,
     "rolling_fix_noted": false,
+    "exit_learn_filled": false,
+    "wave_progress_filled": false,
+    "night_morning_line_filled": false,
+    "holdings_env_gate_filled": false,
+    "five_vol_sox_noted": false,
+    "biaoke_cross_checked": false,
+    "stop_expand_ok": false,
+    "levels_frozen_ok": false,
+    "us_session_noted": false,
+    "te_missing_noted": false,
+    "named_ohlcv_frozen": false,
+    "breadth_frozen": false,
+    "full_suite_evidence_ok": false,
+    "market_power_filled": false,
+    "stock_quant_filled": false,
     "day_complete": false,
-    "ref_zh": "huang_master_consolidate.md §9–§14"
+    "ref_zh": "huang_master_consolidate.md §0 全表（含0.7／0.8／0.0c）"
+  },
+  "exit_learn_zh": "",
+  "wave_progress": {
+    "degree_main_pct": null,
+    "degree_micro_pct": null,
+    "peak_claim": {
+      "price": null,
+      "degree": null,
+      "status": "unknown|candidate|locked",
+      "note_zh": "浪頂／耗盡主張；未對質不准當賣訊"
+    },
+    "pullback_band": {
+      "lo": null,
+      "hi": null,
+      "role_zh": "回檔／回測觀察帶"
+    },
+    "rebound_band": {
+      "lo": null,
+      "hi": null,
+      "role_zh": "止穩反彈觀察帶"
+    },
+    "giveback_band_zh": "",
+    "status": "unknown|rough|locked",
+    "note_zh": "",
+    "confront_peak_zh": ""
+  },
+  "night_morning_line": {
+    "sox": null,
+    "tx_night": null,
+    "te_night": null,
+    "line_zh": "",
+    "source_zh": "official_only"
+  },
+  "holdings_env_gate": {
+    "env": "risk_on|neutral|risk_off|unknown",
+    "why_zh": "",
+    "action_zh": "檢視重倉|維持觀察|unknown"
+  },
+  "teach_expand_rule_zh": "發現值得注意的先停登錄再走；不准讀完再補",
+  "paper_levels": {
+    "kill_levels_note": "只凍他點過的",
+    "confirm_levels_note": "只凍他點過的"
+  },
+  "us_session_for_forecast": {
+    "status": "closed|open|unknown",
+    "note_zh": "隔日預估時費半／美指已收或未收"
+  },
+  "breadth_official": {
+    "date": "",
+    "up": null,
+    "down": null,
+    "flat": null,
+    "source": ""
+  },
+  "named_stocks_ohlcv": {
+    "as_of": "",
+    "bars": {},
+    "rule_zh": "只凍他點名官方OHLC+量"
+  },
+  "biaoke_cross": {
+    "huang_themes_zh": [],
+    "buckets": {
+      "浪頂耗盡": "",
+      "回檔回測": "",
+      "細微中繼刪去": "",
+      "費半台指夜": "",
+      "反彈止穩": "",
+      "出場學": ""
+    },
+    "note_zh": ""
+  },
+  "five_vol_sox_note_zh": "",
+  "tf_escalate": {
+    "tf": "",
+    "why_zh": ""
+  },
+  "retract_chain_zh": "",
+  "sample_register_touch_zh": "",
+  "sync_twii": {
+    "ohlc": null,
+    "status": "missing|ok"
+  },
+  "daily_gate_zh": "day_complete 僅在 full_suite_evidence_ok＋confront＋miss_anatomy 齊才准 true；不准只勾不寫",
+  "process_order_zh": "S1→S27 見 huang_daily_full_suite_gate.md；一件有序流程；不准並列為多條最高、不准略過",
+  "process_step_done": {
+    "S1": false,
+    "S2": false,
+    "S3": false,
+    "S4": false,
+    "S5": false,
+    "S6": false,
+    "S7": false,
+    "S8": false,
+    "S9": false,
+    "S10": false,
+    "S11": false,
+    "S12": false,
+    "S13": false,
+    "S14": false,
+    "S15": false,
+    "S16": false,
+    "S17": false,
+    "S18": false,
+    "S19": false,
+    "S20": false,
+    "S21": false,
+    "S22": false,
+    "S23": false,
+    "S24": false,
+    "S25": false,
+    "S26": false,
+    "S27": false
   }
 }

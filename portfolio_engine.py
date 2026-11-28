@@ -613,7 +613,8 @@ class PortfolioEngine:
             return (
                 f"{section_eq('我的持股（手記）')}\n"
                 "這頁是「你已經買了」的紀錄，空的代表還沒記過買入。\n"
-                "做法：打南亞或 2330 → 按「記買入」→ 輸入 <code>1 68.5</code>（張數 價格）。"
+                "做法：打南亞或 2330 → 按「記買入」→ 輸入 <code>1 68.5</code>（張數 價格）。\n"
+                "有持股時：出場提醒（如何賣）會排最前，浮盈％一眼可見。"
             )
         ids = [str(h.get("stock_code") or h.get("stock_id") or "") for h in holdings]
         quotes_map = self.load_quotes_for(ids, quotes_map)
@@ -633,8 +634,36 @@ class PortfolioEngine:
         except Exception:
             sell_notes = {}
             readings = {}
-        lines = [section_eq("我的持股（手記）"), "自己記的真實買入，不是觀察、也不是 AI 模擬倉。"]
-        for h in holdings:
+        # 有出場提醒的排前面——台光電那種大浮盈未賣，要先看到該不該減。
+        def _protect_rank(h: Dict[str, Any]) -> tuple:
+            code = str(h.get("stock_code") or h.get("stock_id") or "")
+            note = str(sell_notes.get(code) or "")
+            return (0 if note else 1, code)
+
+        ordered = sorted(list(holdings), key=_protect_rank)
+        protect_bits = []
+        for h in ordered:
+            code = str(h.get("stock_code") or h.get("stock_id") or "")
+            note = str(sell_notes.get(code) or "").strip()
+            if not note:
+                continue
+            name = str(h.get("stock_name") or "")
+            label = f"{code}{name}".strip() or code
+            protect_bits.append(label)
+        lines = [
+            section_eq("我的持股（手記）"),
+            "真實買入手記。重點＝浮盈％＋出場提醒（作者如何賣）；不是觀察、不是自動賣。",
+        ]
+        if protect_bits:
+            lines.append(
+                f"<b>出場提醒</b>　{len(protect_bits)} 檔該檢視減碼："
+                + "、".join(html_escape(x) for x in protect_bits[:12])
+                + ("…" if len(protect_bits) > 12 else "")
+            )
+            lines.append("規則＝最高價（20高）vs 最高溫；不同步／再脫離→先減。不是買訊、不送單。")
+        else:
+            lines.append("目前無「如何賣」減碼標；仍請看各檔浮盈％，大漲勿傻抱。")
+        for i, h in enumerate(ordered):
             code = str(h.get("stock_code") or h.get("stock_id") or "")
             name = str(h.get("stock_name") or "")
             lots = float(h.get("shares") or 0)
@@ -654,7 +683,11 @@ class PortfolioEngine:
                 title = html_stock_anchor(code, name, self.db_path)
             except Exception:
                 title = f"<code>{html_escape(code)}</code> {html_escape(name)}"
+            lines.append("")
             lines.append(title)
+            note = sell_notes.get(code) or ""
+            if note:
+                lines.append(kv_compact("出場提醒", note))
             lines.append(kv_html_compact(holdings_qty_label(lots), html_holdings_qty(lots)))
             lines.append(kv_html_compact("成本", html_price(cost, compact=True)))
             mc = None
@@ -673,20 +706,48 @@ class PortfolioEngine:
                 lines.append(kv_html_compact("現價", html_last_move(last, chg, pct, compact=True)))
             else:
                 lines.append(kv_html_compact("現價", html_price(last, compact=True)))
-            lines.append(kv_html_compact("未實現", html_num_paren(_plain_num(u_pnl, signed=True), u_pct, compact=True)))
+            lines.append(
+                kv_html_compact("浮盈", html_num_paren(_plain_num(u_pnl, signed=True), u_pct, compact=True))
+            )
             lines.append(kv_html_compact("市值", html_money(mkt, signed=False, compact=True)))
             flow = flows.get(code) or ""
             if flow:
                 lines.append(kv_compact("資金", flow.rstrip("。")))
-            note = sell_notes.get(code) or ""
-            if note:
-                lines.append(kv_compact("紀律", note))
             month = str((readings.get(code) or {}).get("monthly_stage_short") or "").strip()
             if month:
                 lines.append(kv_compact("月K", month))
-            if h is not holdings[-1]:
-                lines.append("")
         return "\n".join(lines)
+
+    def format_holdings_protect_alert_html(self, holdings: List[Dict[str, Any]]) -> str:
+        """持股頁開頭的短喊：有如何賣減碼標才回非空。不自動賣。"""
+        from tg_layout import html_escape
+
+        if not holdings:
+            return ""
+        ids = [str(h.get("stock_code") or h.get("stock_id") or "") for h in holdings]
+        sell_notes: Dict[str, str] = {}
+        try:
+            from sell_discipline import sell_notes_for_stocks
+
+            sell_notes = sell_notes_for_stocks(ids, self.db_path, full=True) or {}
+        except Exception:
+            return ""
+        bits = []
+        for h in holdings:
+            code = str(h.get("stock_code") or h.get("stock_id") or "")
+            note = str(sell_notes.get(code) or "").strip()
+            if not note:
+                continue
+            name = str(h.get("stock_name") or "")
+            bits.append(f"{html_escape(code)}{html_escape(name)}".strip() or html_escape(code))
+        if not bits:
+            return ""
+        return (
+            f"<b>持股出場提醒</b>　{len(bits)} 檔\n"
+            + "、".join(bits[:12])
+            + ("…" if len(bits) > 12 else "")
+            + "\n如何賣＝20高 vs 最高溫；不同步／再脫離→先減。詳見下方清單。"
+        )
 
 
 # ==============================================================================

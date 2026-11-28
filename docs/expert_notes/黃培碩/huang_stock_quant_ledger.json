@@ -1,0 +1,1846 @@
+{
+  "as_of_taipei": "2026-11-29T00:08:02+08:00",
+  "purpose_zh": "點名個股隔日方向＋幅度對質總帳；與大盤分數板同步更新。",
+  "phone_apply": "pending_gate",
+  "summary": {
+    "n_rows": 104,
+    "n_missing": 6,
+    "path_hit_rate": 0.5384615384615384,
+    "amp_hit_rate": 0.4326923076923077,
+    "by_stock": {
+      "1528": {
+        "n": 1,
+        "path_hit_rate": 1.0,
+        "amp_hit_rate": 0.0
+      },
+      "1815": {
+        "n": 1,
+        "path_hit_rate": 1.0,
+        "amp_hit_rate": 1.0
+      },
+      "2327": {
+        "n": 4,
+        "path_hit_rate": 0.0,
+        "amp_hit_rate": 0.5
+      },
+      "2330": {
+        "n": 24,
+        "path_hit_rate": 0.875,
+        "amp_hit_rate": 0.8333333333333334
+      },
+      "2344": {
+        "n": 6,
+        "path_hit_rate": 0.5,
+        "amp_hit_rate": 0.0
+      },
+      "2368": {
+        "n": 1,
+        "path_hit_rate": 1.0,
+        "amp_hit_rate": 1.0
+      },
+      "2383": {
+        "n": 1,
+        "path_hit_rate": 0.0,
+        "amp_hit_rate": 1.0
+      },
+      "2408": {
+        "n": 3,
+        "path_hit_rate": 0.6666666666666666,
+        "amp_hit_rate": 0.3333333333333333
+      },
+      "2454": {
+        "n": 2,
+        "path_hit_rate": 1.0,
+        "amp_hit_rate": 1.0
+      },
+      "3260": {
+        "n": 4,
+        "path_hit_rate": 0.75,
+        "amp_hit_rate": 0.25
+      },
+      "3481": {
+        "n": 22,
+        "path_hit_rate": 0.22727272727272727,
+        "amp_hit_rate": 0.13636363636363635
+      },
+      "3532": {
+        "n": 3,
+        "path_hit_rate": 0.3333333333333333,
+        "amp_hit_rate": 0.0
+      },
+      "6173": {
+        "n": 3,
+        "path_hit_rate": 0.3333333333333333,
+        "amp_hit_rate": 0.3333333333333333
+      },
+      "6239": {
+        "n": 1,
+        "path_hit_rate": 0.0,
+        "amp_hit_rate": 0.0
+      },
+      "6274": {
+        "n": 1,
+        "path_hit_rate": 1.0,
+        "amp_hit_rate": 1.0
+      },
+      "6443": {
+        "n": 3,
+        "path_hit_rate": 0.3333333333333333,
+        "amp_hit_rate": 0.3333333333333333
+      },
+      "6488": {
+        "n": 8,
+        "path_hit_rate": 0.625,
+        "amp_hit_rate": 0.375
+      },
+      "6548": {
+        "n": 1,
+        "path_hit_rate": 1.0,
+        "amp_hit_rate": 1.0
+      },
+      "6770": {
+        "n": 5,
+        "path_hit_rate": 0.2,
+        "amp_hit_rate": 0.2
+      },
+      "6937": {
+        "n": 1,
+        "path_hit_rate": 0.0,
+        "amp_hit_rate": 1.0
+      },
+      "8043": {
+        "n": 1,
+        "path_hit_rate": 1.0,
+        "amp_hit_rate": 0.0
+      },
+      "8074": {
+        "n": 5,
+        "path_hit_rate": 0.4,
+        "amp_hit_rate": 0.6
+      },
+      "8114": {
+        "n": 1,
+        "path_hit_rate": 1.0,
+        "amp_hit_rate": 1.0
+      },
+      "8271": {
+        "n": 1,
+        "path_hit_rate": 1.0,
+        "amp_hit_rate": 0.0
+      },
+      "8358": {
+        "n": 1,
+        "path_hit_rate": 1.0,
+        "amp_hit_rate": 0.0
+      }
+    }
+  },
+  "rows": [
+    {
+      "day": "20260102",
+      "target": "20260105",
+      "stock_id": "2330",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 1585.0,
+      "c1": 1670.0,
+      "pct": 5.363,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        1537.45,
+        1616.7
+      ]
+    },
+    {
+      "day": "20260102",
+      "target": "20260105",
+      "stock_id": "3481",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 18.1,
+      "c1": 19.9,
+      "pct": 9.945,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        17.56,
+        18.46
+      ]
+    },
+    {
+      "day": "20260102",
+      "target": "20260105",
+      "stock_id": "6770",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 42.1,
+      "c1": 43.45,
+      "pct": 3.207,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        40.84,
+        42.94
+      ]
+    },
+    {
+      "day": "20260102",
+      "target": "20260105",
+      "stock_id": "2408",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 207.0,
+      "c1": 208.0,
+      "pct": 0.483,
+      "path": "hit",
+      "amp": "hit",
+      "band": [
+        200.79,
+        211.14
+      ]
+    },
+    {
+      "day": "20260102",
+      "target": "20260105",
+      "stock_id": "2327",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 241.0,
+      "c1": 244.0,
+      "pct": 1.245,
+      "path": "miss",
+      "amp": "hit",
+      "band": [
+        233.77,
+        245.82
+      ]
+    },
+    {
+      "day": "20260102",
+      "target": "20260105",
+      "stock_id": "2928",
+      "status": "missing_bar",
+      "expect": "down_or_chop"
+    },
+    {
+      "day": "20260102",
+      "target": "20260105",
+      "stock_id": "1815",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 90.7,
+      "c1": 88.0,
+      "pct": -2.977,
+      "path": "hit",
+      "amp": "hit",
+      "band": [
+        87.98,
+        92.51
+      ]
+    },
+    {
+      "day": "20260102",
+      "target": "20260105",
+      "stock_id": "2383",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 1590.0,
+      "c1": 1620.0,
+      "pct": 1.887,
+      "path": "miss",
+      "amp": "hit",
+      "band": [
+        1542.3,
+        1621.8
+      ]
+    },
+    {
+      "day": "20260102",
+      "target": "20260105",
+      "stock_id": "6274",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 477.68,
+      "c1": 471.23,
+      "pct": -1.35,
+      "path": "hit",
+      "amp": "hit",
+      "band": [
+        463.35,
+        487.23
+      ]
+    },
+    {
+      "day": "20260102",
+      "target": "20260105",
+      "stock_id": "2368",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 643.0,
+      "c1": 634.0,
+      "pct": -1.4,
+      "path": "hit",
+      "amp": "hit",
+      "band": [
+        623.71,
+        655.86
+      ]
+    },
+    {
+      "day": "20260102",
+      "target": "20260105",
+      "stock_id": "8358",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 288.68,
+      "c1": 271.76,
+      "pct": -5.861,
+      "path": "hit",
+      "amp": "miss",
+      "band": [
+        280.02,
+        294.45
+      ]
+    },
+    {
+      "day": "20260102",
+      "target": "20260105",
+      "stock_id": "8043",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 88.82,
+      "c1": 85.14,
+      "pct": -4.143,
+      "path": "hit",
+      "amp": "miss",
+      "band": [
+        86.16,
+        90.6
+      ]
+    },
+    {
+      "day": "20260102",
+      "target": "20260105",
+      "stock_id": "8114",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 176.0,
+      "c1": 172.0,
+      "pct": -2.273,
+      "path": "hit",
+      "amp": "hit",
+      "band": [
+        170.72,
+        179.52
+      ]
+    },
+    {
+      "day": "20260102",
+      "target": "20260105",
+      "stock_id": "6239",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 183.5,
+      "c1": 201.5,
+      "pct": 9.809,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        178.0,
+        187.17
+      ]
+    },
+    {
+      "day": "20260102",
+      "target": "20260105",
+      "stock_id": "6937",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 250.5,
+      "c1": 255.5,
+      "pct": 1.996,
+      "path": "miss",
+      "amp": "hit",
+      "band": [
+        242.98,
+        255.51
+      ]
+    },
+    {
+      "day": "20260102",
+      "target": "20260105",
+      "stock_id": "1528",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 22.8,
+      "c1": 21.8,
+      "pct": -4.386,
+      "path": "hit",
+      "amp": "miss",
+      "band": [
+        22.12,
+        23.26
+      ]
+    },
+    {
+      "day": "20260102",
+      "target": "20260105",
+      "stock_id": "6068",
+      "status": "missing_bar",
+      "expect": "down_or_chop"
+    },
+    {
+      "day": "20260105",
+      "target": "20260106",
+      "stock_id": "2330",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 1670.0,
+      "c1": 1705.0,
+      "pct": 2.096,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        1619.9,
+        1703.4
+      ]
+    },
+    {
+      "day": "20260105",
+      "target": "20260106",
+      "stock_id": "3481",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 19.9,
+      "c1": 21.85,
+      "pct": 9.799,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        19.3,
+        20.3
+      ]
+    },
+    {
+      "day": "20260105",
+      "target": "20260106",
+      "stock_id": "6770",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 43.45,
+      "c1": 47.75,
+      "pct": 9.896,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        42.15,
+        44.32
+      ]
+    },
+    {
+      "day": "20260105",
+      "target": "20260106",
+      "stock_id": "2408",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 208.0,
+      "c1": 228.5,
+      "pct": 9.856,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        201.76,
+        212.16
+      ]
+    },
+    {
+      "day": "20260105",
+      "target": "20260106",
+      "stock_id": "2454",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 1525.0,
+      "c1": 1485.0,
+      "pct": -2.623,
+      "path": "hit",
+      "amp": "hit",
+      "band": [
+        1479.25,
+        1555.5
+      ]
+    },
+    {
+      "day": "20260105",
+      "target": "20260106",
+      "stock_id": "元金",
+      "status": "missing_bar",
+      "expect": "down_or_chop"
+    },
+    {
+      "day": "20260105",
+      "target": "20260106",
+      "stock_id": "2327",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 244.0,
+      "c1": 253.5,
+      "pct": 3.893,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        236.68,
+        248.88
+      ]
+    },
+    {
+      "day": "20260106",
+      "target": "20260107",
+      "stock_id": "2330",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 1705.0,
+      "c1": 1675.0,
+      "pct": -1.76,
+      "path": "hit",
+      "amp": "hit",
+      "band": [
+        1653.85,
+        1739.1
+      ]
+    },
+    {
+      "day": "20260106",
+      "target": "20260107",
+      "stock_id": "3481",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 21.85,
+      "c1": 22.15,
+      "pct": 1.373,
+      "path": "miss",
+      "amp": "hit",
+      "band": [
+        21.19,
+        22.29
+      ]
+    },
+    {
+      "day": "20260106",
+      "target": "20260107",
+      "stock_id": "6770",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 47.75,
+      "c1": 49.2,
+      "pct": 3.037,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        46.32,
+        48.7
+      ]
+    },
+    {
+      "day": "20260106",
+      "target": "20260107",
+      "stock_id": "2454",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 1485.0,
+      "c1": 1490.0,
+      "pct": 0.337,
+      "path": "hit",
+      "amp": "hit",
+      "band": [
+        1440.45,
+        1514.7
+      ]
+    },
+    {
+      "day": "20260107",
+      "target": "20260108",
+      "stock_id": "2330",
+      "status": "ok",
+      "expect": "chop",
+      "c0": 1675.0,
+      "c1": 1685.0,
+      "pct": 0.597,
+      "path": "hit",
+      "amp": "hit",
+      "band": [
+        1641.5,
+        1708.5
+      ]
+    },
+    {
+      "day": "20260107",
+      "target": "20260108",
+      "stock_id": "3481",
+      "status": "ok",
+      "expect": "chop",
+      "c0": 22.15,
+      "c1": 20.75,
+      "pct": -6.321,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        21.71,
+        22.59
+      ]
+    },
+    {
+      "day": "20260107",
+      "target": "20260108",
+      "stock_id": "6770",
+      "status": "ok",
+      "expect": "chop",
+      "c0": 49.2,
+      "c1": 49.65,
+      "pct": 0.915,
+      "path": "hit",
+      "amp": "hit",
+      "band": [
+        48.22,
+        50.18
+      ]
+    },
+    {
+      "day": "20260107",
+      "target": "20260108",
+      "stock_id": "6488",
+      "status": "ok",
+      "expect": "chop",
+      "c0": 468.19,
+      "c1": 448.27,
+      "pct": -4.255,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        458.83,
+        477.55
+      ]
+    },
+    {
+      "day": "20260108",
+      "target": "20260109",
+      "stock_id": "2330",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 1685.0,
+      "c1": 1680.0,
+      "pct": -0.297,
+      "path": "hit",
+      "amp": "hit",
+      "band": [
+        1634.45,
+        1718.7
+      ]
+    },
+    {
+      "day": "20260108",
+      "target": "20260109",
+      "stock_id": "3481",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 20.75,
+      "c1": 20.0,
+      "pct": -3.614,
+      "path": "hit",
+      "amp": "miss",
+      "band": [
+        20.13,
+        21.16
+      ]
+    },
+    {
+      "day": "20260108",
+      "target": "20260109",
+      "stock_id": "6488",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 448.27,
+      "c1": 427.85,
+      "pct": -4.555,
+      "path": "hit",
+      "amp": "miss",
+      "band": [
+        434.82,
+        457.24
+      ]
+    },
+    {
+      "day": "20260108",
+      "target": "20260109",
+      "stock_id": "6013",
+      "status": "missing_bar",
+      "expect": "down_or_chop"
+    },
+    {
+      "day": "20260108",
+      "target": "20260109",
+      "stock_id": "2327",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 237.5,
+      "c1": 241.5,
+      "pct": 1.684,
+      "path": "miss",
+      "amp": "hit",
+      "band": [
+        230.38,
+        242.25
+      ]
+    },
+    {
+      "day": "20260109",
+      "target": "20260112",
+      "stock_id": "2330",
+      "status": "ok",
+      "expect": "chop",
+      "c0": 1680.0,
+      "c1": 1690.0,
+      "pct": 0.595,
+      "path": "hit",
+      "amp": "hit",
+      "band": [
+        1646.4,
+        1713.6
+      ]
+    },
+    {
+      "day": "20260109",
+      "target": "20260112",
+      "stock_id": "2344",
+      "status": "ok",
+      "expect": "chop",
+      "c0": 97.8,
+      "c1": 102.0,
+      "pct": 4.294,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        95.84,
+        99.76
+      ]
+    },
+    {
+      "day": "20260109",
+      "target": "20260112",
+      "stock_id": "8074",
+      "status": "ok",
+      "expect": "chop",
+      "c0": 55.63,
+      "c1": 55.34,
+      "pct": -0.521,
+      "path": "hit",
+      "amp": "hit",
+      "band": [
+        54.52,
+        56.74
+      ]
+    },
+    {
+      "day": "20260109",
+      "target": "20260112",
+      "stock_id": "8271",
+      "status": "ok",
+      "expect": "chop",
+      "c0": 128.5,
+      "c1": 132.0,
+      "pct": 2.724,
+      "path": "hit",
+      "amp": "miss",
+      "band": [
+        125.93,
+        131.07
+      ]
+    },
+    {
+      "day": "20260109",
+      "target": "20260112",
+      "stock_id": "6770",
+      "status": "ok",
+      "expect": "chop",
+      "c0": 47.5,
+      "c1": 49.8,
+      "pct": 4.842,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        46.55,
+        48.45
+      ]
+    },
+    {
+      "day": "20260109",
+      "target": "20260112",
+      "stock_id": "3481",
+      "status": "ok",
+      "expect": "chop",
+      "c0": 20.0,
+      "c1": 22.0,
+      "pct": 10.0,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        19.6,
+        20.4
+      ]
+    },
+    {
+      "day": "20260112",
+      "target": "20260113",
+      "stock_id": "2330",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 1690.0,
+      "c1": 1710.0,
+      "pct": 1.183,
+      "path": "miss",
+      "amp": "hit",
+      "band": [
+        1639.3,
+        1723.8
+      ]
+    },
+    {
+      "day": "20260112",
+      "target": "20260113",
+      "stock_id": "3481",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 22.0,
+      "c1": 22.65,
+      "pct": 2.955,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        21.34,
+        22.44
+      ]
+    },
+    {
+      "day": "20260112",
+      "target": "20260113",
+      "stock_id": "6488",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 470.18,
+      "c1": 474.17,
+      "pct": 0.849,
+      "path": "hit",
+      "amp": "hit",
+      "band": [
+        456.07,
+        479.58
+      ]
+    },
+    {
+      "day": "20260112",
+      "target": "20260113",
+      "stock_id": "3532",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 121.0,
+      "c1": 125.5,
+      "pct": 3.719,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        117.37,
+        123.42
+      ]
+    },
+    {
+      "day": "20260112",
+      "target": "20260113",
+      "stock_id": "6443",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 34.8,
+      "c1": 37.5,
+      "pct": 7.759,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        33.76,
+        35.5
+      ]
+    },
+    {
+      "day": "20260113",
+      "target": "20260114",
+      "stock_id": "2330",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 1710.0,
+      "c1": 1710.0,
+      "pct": 0.0,
+      "path": "hit",
+      "amp": "hit",
+      "band": [
+        1658.7,
+        1744.2
+      ]
+    },
+    {
+      "day": "20260113",
+      "target": "20260114",
+      "stock_id": "3481",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 22.65,
+      "c1": 24.4,
+      "pct": 7.726,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        21.97,
+        23.1
+      ]
+    },
+    {
+      "day": "20260113",
+      "target": "20260114",
+      "stock_id": "6488",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 474.17,
+      "c1": 514.01,
+      "pct": 8.402,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        459.94,
+        483.65
+      ]
+    },
+    {
+      "day": "20260113",
+      "target": "20260114",
+      "stock_id": "3532",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 125.5,
+      "c1": 136.0,
+      "pct": 8.367,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        121.73,
+        128.01
+      ]
+    },
+    {
+      "day": "20260113",
+      "target": "20260114",
+      "stock_id": "6443",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 37.5,
+      "c1": 39.2,
+      "pct": 4.533,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        36.38,
+        38.25
+      ]
+    },
+    {
+      "day": "20260113",
+      "target": "20260114",
+      "stock_id": "8074",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 54.05,
+      "c1": 57.31,
+      "pct": 6.031,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        52.43,
+        55.13
+      ]
+    },
+    {
+      "day": "20260113",
+      "target": "20260114",
+      "stock_id": "6548",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 47.5,
+      "c1": 47.7,
+      "pct": 0.421,
+      "path": "hit",
+      "amp": "hit",
+      "band": [
+        46.07,
+        48.45
+      ]
+    },
+    {
+      "day": "20260114",
+      "target": "20260115",
+      "stock_id": "2330",
+      "status": "ok",
+      "expect": "chop",
+      "c0": 1710.0,
+      "c1": 1690.0,
+      "pct": -1.17,
+      "path": "hit",
+      "amp": "hit",
+      "band": [
+        1675.8,
+        1744.2
+      ]
+    },
+    {
+      "day": "20260114",
+      "target": "20260115",
+      "stock_id": "3481",
+      "status": "ok",
+      "expect": "chop",
+      "c0": 24.4,
+      "c1": 24.95,
+      "pct": 2.254,
+      "path": "hit",
+      "amp": "miss",
+      "band": [
+        23.91,
+        24.89
+      ]
+    },
+    {
+      "day": "20260114",
+      "target": "20260115",
+      "stock_id": "6488",
+      "status": "ok",
+      "expect": "chop",
+      "c0": 514.01,
+      "c1": 487.12,
+      "pct": -5.231,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        503.73,
+        524.29
+      ]
+    },
+    {
+      "day": "20260114",
+      "target": "20260115",
+      "stock_id": "3532",
+      "status": "ok",
+      "expect": "chop",
+      "c0": 136.0,
+      "c1": 132.5,
+      "pct": -2.574,
+      "path": "hit",
+      "amp": "miss",
+      "band": [
+        133.28,
+        138.72
+      ]
+    },
+    {
+      "day": "20260114",
+      "target": "20260115",
+      "stock_id": "6443",
+      "status": "ok",
+      "expect": "chop",
+      "c0": 39.2,
+      "c1": 38.6,
+      "pct": -1.531,
+      "path": "hit",
+      "amp": "hit",
+      "band": [
+        38.42,
+        39.98
+      ]
+    },
+    {
+      "day": "20260114",
+      "target": "20260115",
+      "stock_id": "6173",
+      "status": "ok",
+      "expect": "chop",
+      "c0": 76.09,
+      "c1": 73.71,
+      "pct": -3.128,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        74.57,
+        77.61
+      ]
+    },
+    {
+      "day": "20260115",
+      "target": "20260116",
+      "stock_id": "2330",
+      "status": "ok",
+      "expect": "chop",
+      "c0": 1690.0,
+      "c1": 1740.0,
+      "pct": 2.959,
+      "path": "hit",
+      "amp": "miss",
+      "band": [
+        1656.2,
+        1723.8
+      ]
+    },
+    {
+      "day": "20260115",
+      "target": "20260116",
+      "stock_id": "3481",
+      "status": "ok",
+      "expect": "chop",
+      "c0": 24.95,
+      "c1": 26.6,
+      "pct": 6.613,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        24.45,
+        25.45
+      ]
+    },
+    {
+      "day": "20260115",
+      "target": "20260116",
+      "stock_id": "6173",
+      "status": "ok",
+      "expect": "chop",
+      "c0": 73.71,
+      "c1": 73.81,
+      "pct": 0.136,
+      "path": "hit",
+      "amp": "hit",
+      "band": [
+        72.24,
+        75.18
+      ]
+    },
+    {
+      "day": "20260115",
+      "target": "20260116",
+      "stock_id": "6488",
+      "status": "ok",
+      "expect": "chop",
+      "c0": 487.12,
+      "c1": 477.16,
+      "pct": -2.045,
+      "path": "hit",
+      "amp": "miss",
+      "band": [
+        477.38,
+        496.86
+      ]
+    },
+    {
+      "day": "20260116",
+      "target": "20260119",
+      "stock_id": "2330",
+      "status": "ok",
+      "expect": "chop",
+      "c0": 1740.0,
+      "c1": 1760.0,
+      "pct": 1.149,
+      "path": "hit",
+      "amp": "hit",
+      "band": [
+        1705.2,
+        1774.8
+      ]
+    },
+    {
+      "day": "20260116",
+      "target": "20260119",
+      "stock_id": "3481",
+      "status": "ok",
+      "expect": "chop",
+      "c0": 26.6,
+      "c1": 28.8,
+      "pct": 8.271,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        26.07,
+        27.13
+      ]
+    },
+    {
+      "day": "20260116",
+      "target": "20260119",
+      "stock_id": "6173",
+      "status": "ok",
+      "expect": "chop",
+      "c0": 73.81,
+      "c1": 77.59,
+      "pct": 5.121,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        72.33,
+        75.29
+      ]
+    },
+    {
+      "day": "20260116",
+      "target": "20260119",
+      "stock_id": "2327",
+      "status": "ok",
+      "expect": "chop",
+      "c0": 283.0,
+      "c1": 295.5,
+      "pct": 4.417,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        277.34,
+        288.66
+      ]
+    },
+    {
+      "day": "20260119",
+      "target": "20260120",
+      "stock_id": "2330",
+      "status": "ok",
+      "expect": "chop",
+      "c0": 1760.0,
+      "c1": 1775.0,
+      "pct": 0.852,
+      "path": "hit",
+      "amp": "hit",
+      "band": [
+        1724.8,
+        1795.2
+      ]
+    },
+    {
+      "day": "20260119",
+      "target": "20260120",
+      "stock_id": "3481",
+      "status": "ok",
+      "expect": "chop",
+      "c0": 28.8,
+      "c1": 27.15,
+      "pct": -5.729,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        28.22,
+        29.38
+      ]
+    },
+    {
+      "day": "20260119",
+      "target": "20260120",
+      "stock_id": "2344",
+      "status": "ok",
+      "expect": "chop",
+      "c0": 116.5,
+      "c1": 113.0,
+      "pct": -3.004,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        114.17,
+        118.83
+      ]
+    },
+    {
+      "day": "20260120",
+      "target": "20260121",
+      "stock_id": "2330",
+      "status": "ok",
+      "expect": "chop",
+      "c0": 1775.0,
+      "c1": 1740.0,
+      "pct": -1.972,
+      "path": "hit",
+      "amp": "hit",
+      "band": [
+        1739.5,
+        1810.5
+      ]
+    },
+    {
+      "day": "20260120",
+      "target": "20260121",
+      "stock_id": "2344",
+      "status": "ok",
+      "expect": "chop",
+      "c0": 113.0,
+      "c1": 105.5,
+      "pct": -6.637,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        110.74,
+        115.26
+      ]
+    },
+    {
+      "day": "20260120",
+      "target": "20260121",
+      "stock_id": "3481",
+      "status": "ok",
+      "expect": "chop",
+      "c0": 27.15,
+      "c1": 27.15,
+      "pct": 0.0,
+      "path": "hit",
+      "amp": "hit",
+      "band": [
+        26.61,
+        27.69
+      ]
+    },
+    {
+      "day": "20260120",
+      "target": "20260121",
+      "stock_id": "8074",
+      "status": "missing_bar",
+      "expect": "chop"
+    },
+    {
+      "day": "20260121",
+      "target": "20260122",
+      "stock_id": "2330",
+      "status": "ok",
+      "expect": "up_or_chop",
+      "c0": 1740.0,
+      "c1": 1760.0,
+      "pct": 1.149,
+      "path": "hit",
+      "amp": "hit",
+      "band": [
+        1705.2,
+        1774.8
+      ]
+    },
+    {
+      "day": "20260121",
+      "target": "20260122",
+      "stock_id": "3481",
+      "status": "ok",
+      "expect": "up_or_chop",
+      "c0": 27.15,
+      "c1": 25.4,
+      "pct": -6.446,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        26.61,
+        27.69
+      ]
+    },
+    {
+      "day": "20260121",
+      "target": "20260122",
+      "stock_id": "8074",
+      "status": "missing_bar",
+      "expect": "up_or_chop"
+    },
+    {
+      "day": "20260122",
+      "target": "20260123",
+      "stock_id": "2330",
+      "status": "ok",
+      "expect": "up_or_chop",
+      "c0": 1760.0,
+      "c1": 1770.0,
+      "pct": 0.568,
+      "path": "hit",
+      "amp": "hit",
+      "band": [
+        1724.8,
+        1795.2
+      ]
+    },
+    {
+      "day": "20260122",
+      "target": "20260123",
+      "stock_id": "3481",
+      "status": "ok",
+      "expect": "up_or_chop",
+      "c0": 25.4,
+      "c1": 24.0,
+      "pct": -5.512,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        24.89,
+        25.91
+      ]
+    },
+    {
+      "day": "20260123",
+      "target": "20260126",
+      "stock_id": "2330",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 1770.0,
+      "c1": 1755.0,
+      "pct": -0.847,
+      "path": "hit",
+      "amp": "hit",
+      "band": [
+        1716.9,
+        1805.4
+      ]
+    },
+    {
+      "day": "20260123",
+      "target": "20260126",
+      "stock_id": "3481",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 24.0,
+      "c1": 24.55,
+      "pct": 2.292,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        23.28,
+        24.48
+      ]
+    },
+    {
+      "day": "20260126",
+      "target": "20260127",
+      "stock_id": "2330",
+      "status": "ok",
+      "expect": "up_or_chop",
+      "c0": 1755.0,
+      "c1": 1780.0,
+      "pct": 1.425,
+      "path": "hit",
+      "amp": "hit",
+      "band": [
+        1719.9,
+        1790.1
+      ]
+    },
+    {
+      "day": "20260126",
+      "target": "20260127",
+      "stock_id": "2344",
+      "status": "ok",
+      "expect": "up_or_chop",
+      "c0": 113.0,
+      "c1": 115.5,
+      "pct": 2.212,
+      "path": "hit",
+      "amp": "miss",
+      "band": [
+        110.74,
+        115.26
+      ]
+    },
+    {
+      "day": "20260126",
+      "target": "20260127",
+      "stock_id": "3260",
+      "status": "ok",
+      "expect": "up_or_chop",
+      "c0": 334.31,
+      "c1": 344.47,
+      "pct": 3.039,
+      "path": "hit",
+      "amp": "miss",
+      "band": [
+        327.62,
+        341.0
+      ]
+    },
+    {
+      "day": "20260127",
+      "target": "20260128",
+      "stock_id": "2330",
+      "status": "ok",
+      "expect": "up_or_chop",
+      "c0": 1780.0,
+      "c1": 1820.0,
+      "pct": 2.247,
+      "path": "hit",
+      "amp": "miss",
+      "band": [
+        1744.4,
+        1815.6
+      ]
+    },
+    {
+      "day": "20260127",
+      "target": "20260128",
+      "stock_id": "2344",
+      "status": "ok",
+      "expect": "up_or_chop",
+      "c0": 115.5,
+      "c1": 127.0,
+      "pct": 9.957,
+      "path": "hit",
+      "amp": "miss",
+      "band": [
+        113.19,
+        117.81
+      ]
+    },
+    {
+      "day": "20260127",
+      "target": "20260128",
+      "stock_id": "8074",
+      "status": "ok",
+      "expect": "up_or_chop",
+      "c0": 69.07,
+      "c1": 67.88,
+      "pct": -1.723,
+      "path": "miss",
+      "amp": "hit",
+      "band": [
+        67.69,
+        70.45
+      ]
+    },
+    {
+      "day": "20260127",
+      "target": "20260128",
+      "stock_id": "3260",
+      "status": "ok",
+      "expect": "up_or_chop",
+      "c0": 344.47,
+      "c1": 357.05,
+      "pct": 3.652,
+      "path": "hit",
+      "amp": "miss",
+      "band": [
+        337.58,
+        351.36
+      ]
+    },
+    {
+      "day": "20260127",
+      "target": "20260128",
+      "stock_id": "3481",
+      "status": "ok",
+      "expect": "up_or_chop",
+      "c0": 23.05,
+      "c1": 22.3,
+      "pct": -3.254,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        22.59,
+        23.51
+      ]
+    },
+    {
+      "day": "20260128",
+      "target": "20260129",
+      "stock_id": "2330",
+      "status": "ok",
+      "expect": "up_or_chop",
+      "c0": 1820.0,
+      "c1": 1805.0,
+      "pct": -0.824,
+      "path": "hit",
+      "amp": "hit",
+      "band": [
+        1783.6,
+        1856.4
+      ]
+    },
+    {
+      "day": "20260128",
+      "target": "20260129",
+      "stock_id": "3481",
+      "status": "ok",
+      "expect": "up_or_chop",
+      "c0": 22.3,
+      "c1": 21.3,
+      "pct": -4.484,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        21.85,
+        22.75
+      ]
+    },
+    {
+      "day": "20260128",
+      "target": "20260129",
+      "stock_id": "8074",
+      "status": "ok",
+      "expect": "up_or_chop",
+      "c0": 67.88,
+      "c1": 66.7,
+      "pct": -1.738,
+      "path": "miss",
+      "amp": "hit",
+      "band": [
+        66.52,
+        69.24
+      ]
+    },
+    {
+      "day": "20260128",
+      "target": "20260129",
+      "stock_id": "3260",
+      "status": "ok",
+      "expect": "up_or_chop",
+      "c0": 357.05,
+      "c1": 348.34,
+      "pct": -2.439,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        349.91,
+        364.19
+      ]
+    },
+    {
+      "day": "20260129",
+      "target": "20260130",
+      "stock_id": "2330",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 1805.0,
+      "c1": 1775.0,
+      "pct": -1.662,
+      "path": "hit",
+      "amp": "hit",
+      "band": [
+        1750.85,
+        1841.1
+      ]
+    },
+    {
+      "day": "20260129",
+      "target": "20260130",
+      "stock_id": "3481",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 21.3,
+      "c1": 21.8,
+      "pct": 2.347,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        20.66,
+        21.73
+      ]
+    },
+    {
+      "day": "20260129",
+      "target": "20260130",
+      "stock_id": "8074",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 66.7,
+      "c1": 62.35,
+      "pct": -6.522,
+      "path": "hit",
+      "amp": "miss",
+      "band": [
+        64.7,
+        68.03
+      ]
+    },
+    {
+      "day": "20260129",
+      "target": "20260130",
+      "stock_id": "3260",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 348.34,
+      "c1": 351.73,
+      "pct": 0.973,
+      "path": "hit",
+      "amp": "hit",
+      "band": [
+        337.89,
+        355.31
+      ]
+    },
+    {
+      "day": "20260130",
+      "target": "20260202",
+      "stock_id": "2330",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 1775.0,
+      "c1": 1765.0,
+      "pct": -0.563,
+      "path": "hit",
+      "amp": "hit",
+      "band": [
+        1721.75,
+        1810.5
+      ]
+    },
+    {
+      "day": "20260130",
+      "target": "20260202",
+      "stock_id": "3481",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 21.8,
+      "c1": 21.15,
+      "pct": -2.982,
+      "path": "hit",
+      "amp": "hit",
+      "band": [
+        21.15,
+        22.24
+      ]
+    },
+    {
+      "day": "20260202",
+      "target": "20260203",
+      "stock_id": "2330",
+      "status": "ok",
+      "expect": "up_or_chop",
+      "c0": 1765.0,
+      "c1": 1800.0,
+      "pct": 1.983,
+      "path": "hit",
+      "amp": "hit",
+      "band": [
+        1729.7,
+        1800.3
+      ]
+    },
+    {
+      "day": "20260202",
+      "target": "20260203",
+      "stock_id": "6488",
+      "status": "ok",
+      "expect": "up_or_chop",
+      "c0": 471.18,
+      "c1": 473.17,
+      "pct": 0.422,
+      "path": "hit",
+      "amp": "hit",
+      "band": [
+        461.76,
+        480.6
+      ]
+    },
+    {
+      "day": "20260203",
+      "target": "20260204",
+      "stock_id": "2330",
+      "status": "ok",
+      "expect": "chop",
+      "c0": 1800.0,
+      "c1": 1785.0,
+      "pct": -0.833,
+      "path": "hit",
+      "amp": "hit",
+      "band": [
+        1764.0,
+        1836.0
+      ]
+    },
+    {
+      "day": "20260203",
+      "target": "20260204",
+      "stock_id": "3481",
+      "status": "ok",
+      "expect": "chop",
+      "c0": 20.95,
+      "c1": 23.0,
+      "pct": 9.785,
+      "path": "miss",
+      "amp": "miss",
+      "band": [
+        20.53,
+        21.37
+      ]
+    },
+    {
+      "day": "20260203",
+      "target": "20260204",
+      "stock_id": "6488",
+      "status": "ok",
+      "expect": "chop",
+      "c0": 473.17,
+      "c1": 477.65,
+      "pct": 0.947,
+      "path": "hit",
+      "amp": "hit",
+      "band": [
+        463.71,
+        482.63
+      ]
+    },
+    {
+      "day": "20260204",
+      "target": "20260205",
+      "stock_id": "2330",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 1785.0,
+      "c1": 1765.0,
+      "pct": -1.12,
+      "path": "hit",
+      "amp": "hit",
+      "band": [
+        1731.45,
+        1820.7
+      ]
+    },
+    {
+      "day": "20260204",
+      "target": "20260205",
+      "stock_id": "3481",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 23.0,
+      "c1": 21.8,
+      "pct": -5.217,
+      "path": "hit",
+      "amp": "miss",
+      "band": [
+        22.31,
+        23.46
+      ]
+    },
+    {
+      "day": "20260204",
+      "target": "20260205",
+      "stock_id": "2344",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 108.5,
+      "c1": 102.5,
+      "pct": -5.53,
+      "path": "hit",
+      "amp": "miss",
+      "band": [
+        105.24,
+        110.67
+      ]
+    },
+    {
+      "day": "20260204",
+      "target": "20260205",
+      "stock_id": "2408",
+      "status": "ok",
+      "expect": "down_or_chop",
+      "c0": 295.0,
+      "c1": 275.0,
+      "pct": -6.78,
+      "path": "hit",
+      "amp": "miss",
+      "band": [
+        286.15,
+        300.9
+      ]
+    }
+  ]
+}

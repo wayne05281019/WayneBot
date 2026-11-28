@@ -1,0 +1,64 @@
+{
+  "as_of_taipei": "2026-11-29T00:08:02+08:00",
+  "purpose_zh": "過閘前就再生／備好下一版候選；大盤＋個股同步。過閘＝必換話筒並再開下一軌。",
+  "phone_apply": "pending_gate",
+  "candidates": [
+    {
+      "id": "MKT_AMP_WIDE_FLOOR_POST_STRESS",
+      "scope": "market_amp",
+      "rule_zh": "瘋狗浪／連續拉回／臨界黑棒後，高機率幅度下緣用深拉（約-3%）而非死守-1.5%",
+      "evidence": [
+        "POST_FRENZY_D2_WIDEN_FLOOR",
+        "CRITICAL_K_WEEKEND_WIDE_FLOOR"
+      ],
+      "status": "silent_collecting",
+      "n_fired": 2,
+      "n_hit_after": 1
+    },
+    {
+      "id": "MKT_BLACK_BAR_FORK",
+      "scope": "market_wave",
+      "rule_zh": "大黑棒日維持雙分支（未確認結束 vs 結束進A），幅度用結構帶",
+      "evidence": [
+        "BLACK_BAR_FORK_KEEP_BAND"
+      ],
+      "status": "silent_collecting",
+      "n_fired": 1,
+      "n_hit_after": 1
+    },
+    {
+      "id": "MKT_MEMORY_DIVERGE_KEEP_GRIND",
+      "scope": "market_wave",
+      "rule_zh": "記憶體內部分歧≠指數敗象；指數仍盤堅帶",
+      "evidence": [
+        "MEMORY_DIVERGE_INDEX_GRIND"
+      ],
+      "status": "silent_collecting",
+      "n_fired": 1,
+      "n_hit_after": 1
+    },
+    {
+      "id": "STK_NAMED_DIR_AMP_LEDGER",
+      "scope": "stock_path_amp",
+      "rule_zh": "點名股逐日方向＋±2%/深拉帶對質；累積勝率後才接查股結構提醒",
+      "evidence": [
+        "huang_stock_quant_ledger"
+      ],
+      "status": "silent_collecting",
+      "n_fired": 104,
+      "n_hit_after": 37
+    },
+    {
+      "id": "WAVE_DRAW_CONFIRM_BANDS",
+      "scope": "wave_draw_confirm",
+      "rule_zh": "浪頂／回檔／反彈帶每日凍＋隔日柱對質；過閘後升級大盤／查股可畫可對質帶",
+      "evidence": [
+        "wave_progress",
+        "chrono wave hit"
+      ],
+      "status": "silent_collecting",
+      "n_fired": 24,
+      "n_hit_after": 24
+    }
+  ]
+}

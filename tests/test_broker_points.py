@@ -298,10 +298,13 @@ def test_csv_drop_and_holdings_archive_roundtrip(tmp_path, monkeypatch):
             "3035": {"close": 179.5, "pct_change": -0.28},
         },
     )
-    assert "主力成本" in html.split("達發")[1].split("智原")[0]
-    assert "100.00（分點平均買超）" in html
-    assert "成本對主力" in html.split("達發")[1].split("智原")[0]
-    assert "主力成本" not in html.split("智原")[-1]
+    # 持股面依代號排序（出場提醒優先）；用代號切塊，不准靠輸入順序。
+    dafa = html.split("6526 達發", 1)[1].split("<a href=", 1)[0]
+    zhi = html.split("3035 智原", 1)[1].split("<a href=", 1)[0]
+    assert "主力成本" in dafa
+    assert "100.00（分點平均買超）" in dafa
+    assert "成本對主力" in dafa
+    assert "主力成本" not in zhi
 
 
 def test_main_cost_not_from_three_institutional():

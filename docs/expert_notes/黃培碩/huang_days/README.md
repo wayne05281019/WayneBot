@@ -1,4 +1,4 @@
-# `huang_days/` — 二月大回測一日一檔
+# `huang_days/` — 大回測一日一檔（起點 2026-01-02）
 
-上片開跑後寫 `YYYYMMDD.json`（regime＋刪去＋雙分支預估＋官方對質）。  
-欄位契約見 `../huang_feb_backtest_ops_spec.md`。開跑前此目錄可空。
+自 1/2 第一則起逐日；每日必有隔日雙分支；發現新觀察點先停登錄 `teach_expand`。
+模板：`_TEMPLATE.json`；規則：`../huang_master_consolidate.md` §0。

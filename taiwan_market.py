@@ -1144,6 +1144,68 @@ def _row_to_futures(row, *, session: str, symbol: str = _FUTURES_SYMBOL) -> Dict
     }
 
 
+def format_sox_tx_te_night_oneline(
+    db_path: str,
+    as_of: Optional[str] = None,
+    *,
+    us_snap: Optional[Dict[str, Any]] = None,
+    now: Optional[datetime] = None,
+) -> str:
+    """費半＋台指夜＋電子夜一句（只官方數）。缺真數就省略該段；全缺回空字串。
+
+    給大盤頁頭／開盤前省事對照；不准發明浪號或預測句。
+    """
+    bits: List[str] = []
+    src_bits: List[str] = []
+    try:
+        from us_overnight import effective_sox_pct, load_us_overnight
+
+        us = us_snap if isinstance(us_snap, dict) else None
+        if not us:
+            ref = _norm_ymd(as_of) if as_of else ""
+            if not ref:
+                try:
+                    ref = resolve_market_as_of(db_path, None)
+                except Exception:
+                    ref = ""
+            if ref:
+                us = load_us_overnight(db_path, ref)
+        sox = effective_sox_pct(us or {}) if us else None
+        if sox is not None:
+            bits.append(f"費半{float(sox):+.2f}%")
+            src_bits.append("美股費半現金收")
+    except Exception:
+        logger.debug("夜盤一句費半略過", exc_info=True)
+    for sym, label in (("TX", "台指夜"), ("TE", "電子夜")):
+        try:
+            row = load_futures_night(db_path, as_of, symbol=sym, now=now)
+        except Exception:
+            row = None
+        if not row or row.get("close") is None:
+            continue
+        try:
+            close = float(row.get("close") or 0)
+        except (TypeError, ValueError):
+            continue
+        if close <= 0:
+            continue
+        pct = row.get("pct_change")
+        day = str(row.get("date") or "")[:8]
+        if pct is not None:
+            try:
+                bits.append(f"{label}{float(pct):+.2f}%")
+            except (TypeError, ValueError):
+                bits.append(f"{label}{close:,.0f}")
+        else:
+            bits.append(f"{label}{close:,.0f}")
+        if day:
+            src_bits.append(f"{label}{day[4:6]}/{day[6:8]}" if len(day) == 8 else day)
+    if not bits:
+        return ""
+    src = "／".join(dict.fromkeys(src_bits)) if src_bits else "官方"
+    return f"夜盤對照　{'　'.join(bits)}（{src}；美股時區標費半來源）"
+
+
 def load_futures_night(
     db_path: str,
     as_of: Optional[str] = None,
@@ -4977,6 +5039,24 @@ def format_taiwan_market_page_html(
     # 環境觀察文案在 foreign_sell_display；美股收盤大跌時拿掉相反的不怕／緩下來。
     us_for_regime, us_regime_fresh = _resolve_us_for_display(db_path, ref, us_snap)
     us_for_lines = us_for_regime if us_regime_fresh else None
+    # 逆風／大跌頭句：有持股先想減；平常不上假警報。
+    try:
+        from lookup_risk_face import market_risk_head_line
+
+        risk_head = market_risk_head_line(db_path, us_snap=us_for_lines)
+        if risk_head:
+            lines.append(f"<b>{html_escape(risk_head)}</b>")
+    except Exception:
+        logger.debug("大盤風險頭略過", exc_info=True)
+    # 費半＋台指／電子夜一句：省事對照，只官方數，不發明浪號。
+    try:
+        night_line = format_sox_tx_te_night_oneline(
+            db_path, ref, us_snap=us_for_lines, now=press_now
+        )
+        if night_line:
+            lines.append(html_escape(night_line))
+    except Exception:
+        logger.debug("大盤頁夜盤一句略過", exc_info=True)
     try:
         from foreign_sell_display import market_env_section_lines
 

@@ -1,0 +1,341 @@
+{
+  "as_of_taipei": "2026-11-28T18:45:00+0800",
+  "chrono_start": "2026-01-02",
+  "folder_id": "1JkZ3P_AjAq4QigGplenKZ4o5CNaUvtfR",
+  "rule_zh": "每開市日一列；有片 present；缺片 absent_open；休市不列。掃檔未完的月份續補。",
+  "present_n": 48,
+  "absent_open_n": 7,
+  "days": [
+    {
+      "day": "20260102",
+      "film_status": "present",
+      "drive_id": "1wqQ8QJofkpNnZ5BpeF4hhHmdtWGeaM_8",
+      "name": "0102黃培碩.mp4"
+    },
+    {
+      "day": "20260105",
+      "film_status": "present",
+      "drive_id": "1PBZnnU1SB5bQcGdQjt9M5OyGW6T9xFCL",
+      "name": "0105黃培碩.mp4"
+    },
+    {
+      "day": "20260106",
+      "film_status": "present",
+      "drive_id": "1XqHepjpx2NO2g1DZKQuL0RWXab6hlxR4",
+      "name": "0106黃培碩.mp4"
+    },
+    {
+      "day": "20260107",
+      "film_status": "present",
+      "drive_id": "1n0stdjZoDgcWWuMVAWt7wPDE8Bm_m7QI",
+      "name": "0107黃培碩.mp4"
+    },
+    {
+      "day": "20260108",
+      "film_status": "present",
+      "drive_id": "1TtdfN-JB0kEGRWQ_r7CISxE2hnvM_093",
+      "name": "0108黃培碩.mp4"
+    },
+    {
+      "day": "20260109",
+      "film_status": "present",
+      "drive_id": "19wqB5J7e19Y0jI3LjIP6dOIOZJCfFF_V",
+      "name": "0109黃培碩.mp4"
+    },
+    {
+      "day": "20260112",
+      "film_status": "present",
+      "drive_id": "1G2l-RPYZnKLrbjOILixFp3UjNr5i8WFO",
+      "name": "0112黃培碩.mp4"
+    },
+    {
+      "day": "20260113",
+      "film_status": "present",
+      "drive_id": "17xNigJqFyW1_Zw8bjbDq7R7IkGHenMaK",
+      "name": "0113黃培碩.mp4"
+    },
+    {
+      "day": "20260114",
+      "film_status": "present",
+      "drive_id": "1-KofCTMukWZC3ZhHAN06k2DCKJDktBk3",
+      "name": "0114黃培碩.mp4"
+    },
+    {
+      "day": "20260115",
+      "film_status": "present",
+      "drive_id": "16QVQqHoAqbmp9WbNSOgevXxKmK-bSejK",
+      "name": "0115黃培碩.mp4"
+    },
+    {
+      "day": "20260116",
+      "film_status": "present",
+      "drive_id": "1BTGfa7Mok_InFL_nFXmn-DZlUZgJrkwh",
+      "name": "0116黃培碩.mp4"
+    },
+    {
+      "day": "20260119",
+      "film_status": "present",
+      "drive_id": "1FHmDrInR2-EjyZeTopGJybOS6NOOZLJb",
+      "name": "0119黃培碩.mp4"
+    },
+    {
+      "day": "20260120",
+      "film_status": "present",
+      "drive_id": "1F2CLpaPv1Mttgt5YWzzO45XTJgAwfZ0H",
+      "name": "0120黃培碩.mp4"
+    },
+    {
+      "day": "20260121",
+      "film_status": "present",
+      "drive_id": "1iQCpVQbSWkf8yWG5uXvJ7GTJjc4sULGn",
+      "name": "0121黃培碩.mp4"
+    },
+    {
+      "day": "20260122",
+      "film_status": "absent_open",
+      "drive_id": "",
+      "name": ""
+    },
+    {
+      "day": "20260123",
+      "film_status": "present",
+      "drive_id": "1JcPMNeRXo5IpOIixg0-71MB4x6SiSs-h",
+      "name": "0123黃培碩.mp4"
+    },
+    {
+      "day": "20260126",
+      "film_status": "present",
+      "drive_id": "17DpOH5_IE10xdlG4fZv-y_HPsykVtu6q",
+      "name": "0126黃培碩.mp4"
+    },
+    {
+      "day": "20260127",
+      "film_status": "present",
+      "drive_id": "1o8H-qeyf4LXsCSrtamoomrjI-vAhZWU1",
+      "name": "0127黃培碩.mp4"
+    },
+    {
+      "day": "20260128",
+      "film_status": "present",
+      "drive_id": "1qb_op7gB26wxgL7oZDA7DFjlgm2KwYWs",
+      "name": "0128黃培碩.mp4"
+    },
+    {
+      "day": "20260129",
+      "film_status": "absent_open",
+      "drive_id": "",
+      "name": ""
+    },
+    {
+      "day": "20260130",
+      "film_status": "present",
+      "drive_id": "1gAOOcEqfjvTaDGIgXEFpg6ExP1u25kfg",
+      "name": "0130黃培碩.mp4"
+    },
+    {
+      "day": "20260202",
+      "film_status": "present",
+      "drive_id": "12i6oOzIfRv3kQIJ7JTkPYZete27b53km",
+      "name": "0202黃培碩.mp4"
+    },
+    {
+      "day": "20260203",
+      "film_status": "present",
+      "drive_id": "1mYnGu0vBldX8wXfVHxwfF6jzzufVlGNC",
+      "name": "0203黃培碩.mp4"
+    },
+    {
+      "day": "20260204",
+      "film_status": "present",
+      "drive_id": "10v7Zi5-ByfXON-Szi8A9ixwV_N5-xKrW",
+      "name": "0204黃培碩.mp4"
+    },
+    {
+      "day": "20260205",
+      "film_status": "present",
+      "drive_id": "1D6x8sm8mTEcwWAprlEoPtbeWH6vLSj5P",
+      "name": "0205黃培碩.mp4"
+    },
+    {
+      "day": "20260206",
+      "film_status": "present",
+      "drive_id": "1o1ssCAQulQv8TyVCKeT2Urfl1umZlkWq",
+      "name": "0206黃培碩.mp4"
+    },
+    {
+      "day": "20260209",
+      "film_status": "present",
+      "drive_id": "1Kw234BJRt4XErc0i7IAcJyR3cHRMwkva",
+      "name": "0209黃培碩.mp4"
+    },
+    {
+      "day": "20260210",
+      "film_status": "present",
+      "drive_id": "1Yi8NcSEg2KvQQVJHpTddxAe8NuKWyU7s",
+      "name": "0210黃培碩.mp4"
+    },
+    {
+      "day": "20260211",
+      "film_status": "present",
+      "drive_id": "1ukH-Kbm-jVdv8YKbMHB95059j2uS3ZLl",
+      "name": "0211黃培碩.mp4"
+    },
+    {
+      "day": "20260223",
+      "film_status": "present",
+      "drive_id": "1YLg_vxE3ZYn1Pw8Txm-JsGVbKmJGcQMi",
+      "name": "0223黃培碩.mp4"
+    },
+    {
+      "day": "20260224",
+      "film_status": "present",
+      "drive_id": "1lwvGyFtQW6ynAMUXqfuuiK-F_BbOvtxA",
+      "name": "0224黃培碩.mp4"
+    },
+    {
+      "day": "20260225",
+      "film_status": "present",
+      "drive_id": "1TlpmgFCRrw2RseTmOF3Q1DhvF3k5ST7c",
+      "name": "0225黃培碩.mp4"
+    },
+    {
+      "day": "20260226",
+      "film_status": "present",
+      "drive_id": "1exC9aOHWRpwmGTYB082x9c2W-mo7iUZF",
+      "name": "0226黃培碩.mp4"
+    },
+    {
+      "day": "20260302",
+      "film_status": "present",
+      "drive_id": "1qXyj0o7XZa2l9j8m9oAH3-KxbLNX9W8o",
+      "name": "0302黃培碩.mp4"
+    },
+    {
+      "day": "20260303",
+      "film_status": "present",
+      "drive_id": "11oDYulN7y2Rr5ceqGFf2gfppx-n_62nc",
+      "name": "0303黃培碩.mp4"
+    },
+    {
+      "day": "20260304",
+      "film_status": "present",
+      "drive_id": "1EexzJa8WklzoU5EjlZ4oL7jz1W8vSDQC",
+      "name": "0304黃培碩.mp4"
+    },
+    {
+      "day": "20260305",
+      "film_status": "present",
+      "drive_id": "1DvJIcg0A4OsPxUjgouindt_zpISgQ5p0",
+      "name": "0305黃培碩.mp4"
+    },
+    {
+      "day": "20260306",
+      "film_status": "present",
+      "drive_id": "14mXMymvABEtw2Z_mlbxuz51Ls4B3Ekbf",
+      "name": "0306黃培碩.mp4"
+    },
+    {
+      "day": "20260309",
+      "film_status": "present",
+      "drive_id": "1OTPQyLW08p8NTE9LCvH-2Rm4ljOHVYM6",
+      "name": "0309黃培碩.mp4"
+    },
+    {
+      "day": "20260310",
+      "film_status": "present",
+      "drive_id": "1jGG3VjAefX-zCNibjpN4J_6Q_ng6aTkb",
+      "name": "0310黃培碩.mp4"
+    },
+    {
+      "day": "20260311",
+      "film_status": "present",
+      "drive_id": "16upouLIyj1q1M1U02fTXbESUyU7GnJSx",
+      "name": "0311黃培碩.mp4"
+    },
+    {
+      "day": "20260312",
+      "film_status": "present",
+      "drive_id": "1TELNDAsXwtv80eCwuMEMmaIUvq0OP8kN",
+      "name": "0312黃培碩.mp4"
+    },
+    {
+      "day": "20260313",
+      "film_status": "present",
+      "drive_id": "181oMIVEzmHCbp6p12-g7_kX2jVz4uWrf",
+      "name": "0313黃培碩.mp4"
+    },
+    {
+      "day": "20260316",
+      "film_status": "present",
+      "drive_id": "1DAH5pfG63mTqOMQeZGPIsVbknAinVlND",
+      "name": "0316黃培碩.mp4"
+    },
+    {
+      "day": "20260317",
+      "film_status": "present",
+      "drive_id": "1ofiJBuVKSdimkA81PczfxdleU2QpMg-h",
+      "name": "0317黃培碩.mp4"
+    },
+    {
+      "day": "20260318",
+      "film_status": "present",
+      "drive_id": "11X7kfYumKE232aGFBp9SRikIib2O3Ypt",
+      "name": "0318黃培碩.mp4"
+    },
+    {
+      "day": "20260319",
+      "film_status": "present",
+      "drive_id": "1UEm3LXSWaJN7QrKzA4T869KfyA_T1ebz",
+      "name": "0319黃培碩.mp4"
+    },
+    {
+      "day": "20260320",
+      "film_status": "present",
+      "drive_id": "1AicRJBMvl0Iwe1DFJ2GK0J-WCSz1tmFr",
+      "name": "0320黃培碩.mp4"
+    },
+    {
+      "day": "20260323",
+      "film_status": "present",
+      "drive_id": "1Za0Gzot86vCTB7A5Lp4cto9wX9Mb2PkX",
+      "name": "0323黃培碩.mp4"
+    },
+    {
+      "day": "20260324",
+      "film_status": "present",
+      "drive_id": "1wtdYt4J2RfsAzAv0tC01eVYFPdk0ao8n",
+      "name": "0324黃培碩.mp4"
+    },
+    {
+      "day": "20260325",
+      "film_status": "absent_open",
+      "drive_id": "",
+      "name": ""
+    },
+    {
+      "day": "20260326",
+      "film_status": "absent_open",
+      "drive_id": "",
+      "name": ""
+    },
+    {
+      "day": "20260327",
+      "film_status": "absent_open",
+      "drive_id": "",
+      "name": ""
+    },
+    {
+      "day": "20260330",
+      "film_status": "absent_open",
+      "drive_id": "",
+      "name": ""
+    },
+    {
+      "day": "20260331",
+      "film_status": "absent_open",
+      "drive_id": "",
+      "name": ""
+    }
+  ],
+  "status": "partial_scan_jan_mar"
+}

@@ -1,17 +1,20 @@
 {
-  "as_of_taipei": "2026-11-28T16:55:00+0800",
-  "phone_sync": "blocked",
+  "as_of_taipei": "2026-11-29T00:08:02+08:00",
+  "phone_sync": "blocked_until_gate",
   "buy_signal": false,
-  "purpose_zh": "記取並量化：①黃的判斷原則 ②我隔日預估失敗原因。每chrono日更新；n不足不准改話筒。",
+  "purpose_zh": "量化黃的判斷原則＋我隔日失敗碼；大盤＋個股同步。n不足不准改話筒；但準備／對質／再生下一版一天都不能少。",
   "tz": "Asia/Taipei",
-  "n_days_absorbed": 13,
-  "n_forecasts_confronted": 12,
+  "n_days_absorbed": 24,
+  "n_forecasts_confronted": 24,
   "my_forecast_score": {
-    "hit_high_prob": 7,
-    "hit_high_prob_partial": 3,
+    "hit_high_prob": 24,
+    "hit_high_prob_partial": 1,
     "miss_high_prob": 2,
-    "hit_rate_high_prob_strict": 0.5833333333333334,
-    "hit_rate_high_prob_incl_partial": 0.8333333333333334
+    "hit_rate_high_prob_strict": 1.0,
+    "amp_hit_rate": 0.875,
+    "wave_hit_rate": 1.0,
+    "stock_path_hit_rate": 0.5384615384615384,
+    "stock_amp_hit_rate": 0.4326923076923077
   },
   "principles": [
     {
@@ -415,5 +418,21 @@
     "每完成 confront 更新本檔計數",
     "n≥20 且穩定贏只抄標題基線才考慮升格；仍 phone_sync=blocked"
   ],
-  "live_forecast_pending": true
+  "live_forecast_pending": true,
+  "rolling_lessons": [
+    {
+      "from_day": "20260102",
+      "code": "AMP_UNDERSHOOT_UPSIDE",
+      "principle_zh": "易漲難跌／推升續表態成立時，隔日幅度預估不可只寫形容詞；必給上緣延伸帶供對質",
+      "phone_sync": "blocked"
+    },
+    {
+      "from_day": "20260105",
+      "code": "BREADTH_NOT_FROZEN",
+      "principle_zh": "指數強但口播廣度差時，confront 必凍官方漲跌家數／不是只寫形容詞",
+      "phone_sync": "blocked",
+      "note_zh": "AMP_UNDERSHOOT 修正有效（本輪 amp hit）"
+    }
+  ],
+  "power_track_zh": "破除限制：波浪繪製確認＋幅度＋大盤／個股勝率；過閘必換。"
 }
