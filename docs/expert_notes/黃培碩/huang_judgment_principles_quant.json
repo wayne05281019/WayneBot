@@ -1,5 +1,5 @@
 {
-  "as_of_taipei": "2026-11-28T16:10:00+0800",
+  "as_of_taipei": "2026-11-28T16:55:00+0800",
   "phone_sync": "blocked",
   "buy_signal": false,
   "purpose_zh": "記取並量化：①黃的判斷原則 ②我隔日預估失敗原因。每chrono日更新；n不足不准改話筒。",
@@ -335,6 +335,23 @@
         "20261127"
       ],
       "n_seen": 1
+    },
+    {
+      "id": "HP-US-TW-PEER-CHAIN",
+      "rule_zh": "美股教具→台灣同類型龍頭→同族群（僅他點名）：同一套波浪對照學習／判斷；例美光→南亞科→記憶體",
+      "source_days": [
+        "20261120",
+        "20261123",
+        "20261124",
+        "user_20261128"
+      ],
+      "n_seen": 3,
+      "ops_check_zh": "當日有美股＋台股對照則必填 peer_chain；畫／判用官方柱；不准發明族群籃當買訊；phone_sync=blocked",
+      "seed_example": {
+        "us": "MU",
+        "tw_leader": "2408",
+        "group_zh": "記憶體"
+      }
     }
   ],
   "my_failure_taxonomy": [

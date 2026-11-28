@@ -41,6 +41,21 @@
     "fields": ["sync_us[]", "sync_tx"],
     "rule_zh": "每天解盤／隔日預估必須同步美股鏈＋台指期日／夜盤＋加權；缺官方收標 missing，不准假數；預估若綁定該鏈則隔日一併對質"
   },
+  "peer_chain_required": {
+    "as_of": "2026-11-28",
+    "user_lock": true,
+    "field": "peer_chain[]",
+    "flow_zh": "美股教具 → 台灣同類型龍頭 → 同族群（僅他點名）→ 同套波浪刪去／繪製學習 → 隔日分支對質",
+    "seed_example": {
+      "us_symbol": "MU",
+      "tw_leader": "2408",
+      "group_zh": "記憶體",
+      "note_zh": "美光比對南亞科，再用南亞科看同族群"
+    },
+    "when_required": "huang_named_us_and_tw_pair_same_day_or_active_chain",
+    "phone_ok": false,
+    "no_invent_basket": true
+  },
   "progress_gate_every_n_confronted": 20,
   "anti_casual_done_gate": {
     "n_valid_confronted_ge": 20,
