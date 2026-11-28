@@ -164,8 +164,57 @@
       ],
       "next_deep_pull_tx": 29542.0
     },
-    "fib_used": [],
-    "fib_skip_reason": "高檔震盪＋主張過高；未用Fib拆大段",
+    "fib_used": {
+      "computed_at_taipei": "2026-11-28T23:22:22+08:00",
+      "rule_zh": "每日必算：衝動段 R 的黃金切割回撤／延伸＋等幅度（1R／0.5R／0.618R）；隔日高低是否觸及",
+      "index": null,
+      "tsmc": {
+        "R": 285.0,
+        "anchor_lo": 1415.0,
+        "anchor_hi": 1700.0,
+        "direction": "up",
+        "fib_retrace_from_hi": {
+          "0.236": 1632.74,
+          "0.382": 1591.13,
+          "0.5": 1557.5,
+          "0.618": 1523.87,
+          "0.786": 1475.99
+        },
+        "fib_ext_from_lo": {
+          "1.0": 1700.0,
+          "1.272": 1777.52,
+          "1.618": 1876.13,
+          "2.0": 1985.0
+        },
+        "equal_amp": {
+          "up_1R_from_lo": 1700.0,
+          "down_1R_from_hi": 1415.0,
+          "up_1R_from_hi": 1985.0,
+          "down_0_5R_from_hi": 1557.5,
+          "down_0_618R_from_hi": 1523.87
+        }
+      },
+      "confront_next": {
+        "2330": {
+          "next_low_touches": [],
+          "next_high_touches": [
+            {
+              "level": "fib.1.0",
+              "price": 1700.0,
+              "touch": 1705.0
+            },
+            {
+              "level": "eq.up_1R_from_lo",
+              "price": 1700.0,
+              "touch": 1705.0
+            }
+          ],
+          "next_close": 1690.0
+        }
+      },
+      "skip": null
+    },
+    "fib_skip_reason": null,
     "vol_price": {
       "price_dir": "chop",
       "vol": 6518900.0,
@@ -175,7 +224,9 @@
       "used_in_forecast": true,
       "used_in_confront": true
     },
-    "vol_60m": null
+    "vol_60m": null,
+    "equal_amp_synced": true,
+    "golden_cut_synced": true
   },
   "forecast_for_next": {
     "target_day": "20260112",
@@ -288,7 +339,9 @@
     "full_suite_evidence_ok": true,
     "market_power_filled": true,
     "stock_quant_filled": true,
-    "power_track_backfilled": true
+    "power_track_backfilled": true,
+    "fib_equal_amp_filled": true,
+    "golden_cut_synced": true
   },
   "exit_learn_zh": "宇瞻8271：09:08附近出清高點133.5（彈中交易證據）；力積電6770：0107 12:32附近出清高50.5。記憶體／面板暫休該出就出；非大盤全面出清。",
   "wave_progress": {
@@ -499,7 +552,57 @@
     },
     "path_verdict": "hit",
     "purpose_zh": "大盤波浪繪製／確認＋幅度對質；為破除限制累積勝率",
-    "backfilled_at_taipei": "2026-11-28T22:40:11+08:00"
+    "backfilled_at_taipei": "2026-11-28T22:40:11+08:00",
+    "fib_equal_amp": {
+      "computed_at_taipei": "2026-11-28T23:22:22+08:00",
+      "rule_zh": "每日必算：衝動段 R 的黃金切割回撤／延伸＋等幅度（1R／0.5R／0.618R）；隔日高低是否觸及",
+      "index": null,
+      "tsmc": {
+        "R": 285.0,
+        "anchor_lo": 1415.0,
+        "anchor_hi": 1700.0,
+        "direction": "up",
+        "fib_retrace_from_hi": {
+          "0.236": 1632.74,
+          "0.382": 1591.13,
+          "0.5": 1557.5,
+          "0.618": 1523.87,
+          "0.786": 1475.99
+        },
+        "fib_ext_from_lo": {
+          "1.0": 1700.0,
+          "1.272": 1777.52,
+          "1.618": 1876.13,
+          "2.0": 1985.0
+        },
+        "equal_amp": {
+          "up_1R_from_lo": 1700.0,
+          "down_1R_from_hi": 1415.0,
+          "up_1R_from_hi": 1985.0,
+          "down_0_5R_from_hi": 1557.5,
+          "down_0_618R_from_hi": 1523.87
+        }
+      },
+      "confront_next": {
+        "2330": {
+          "next_low_touches": [],
+          "next_high_touches": [
+            {
+              "level": "fib.1.0",
+              "price": 1700.0,
+              "touch": 1705.0
+            },
+            {
+              "level": "eq.up_1R_from_lo",
+              "price": 1700.0,
+              "touch": 1705.0
+            }
+          ],
+          "next_close": 1690.0
+        }
+      },
+      "skip": null
+    }
   },
   "stock_quant": {
     "as_of": "20260109",

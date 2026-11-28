@@ -142,8 +142,46 @@
       ],
       "next_deep_pull_tx": 30722.0
     },
-    "fib_used": [],
-    "fib_skip_reason": "盤堅第五",
+    "fib_used": {
+      "computed_at_taipei": "2026-11-28T23:22:22+08:00",
+      "rule_zh": "每日必算：衝動段 R 的黃金切割回撤／延伸＋等幅度（1R／0.5R／0.618R）；隔日高低是否觸及",
+      "index": null,
+      "tsmc": {
+        "R": 365.0,
+        "anchor_lo": 1415.0,
+        "anchor_hi": 1780.0,
+        "direction": "up",
+        "fib_retrace_from_hi": {
+          "0.236": 1693.86,
+          "0.382": 1640.57,
+          "0.5": 1597.5,
+          "0.618": 1554.43,
+          "0.786": 1493.11
+        },
+        "fib_ext_from_lo": {
+          "1.0": 1780.0,
+          "1.272": 1879.28,
+          "1.618": 2005.57,
+          "2.0": 2145.0
+        },
+        "equal_amp": {
+          "up_1R_from_lo": 1780.0,
+          "down_1R_from_hi": 1415.0,
+          "up_1R_from_hi": 2145.0,
+          "down_0_5R_from_hi": 1597.5,
+          "down_0_618R_from_hi": 1554.43
+        }
+      },
+      "confront_next": {
+        "2330": {
+          "next_low_touches": [],
+          "next_high_touches": [],
+          "next_close": 1740.0
+        }
+      },
+      "skip": null
+    },
+    "fib_skip_reason": null,
     "vol_price": {
       "price_dir": "chop",
       "vol": null,
@@ -153,7 +191,9 @@
       "used_in_forecast": true,
       "used_in_confront": true
     },
-    "vol_60m": null
+    "vol_60m": null,
+    "equal_amp_synced": true,
+    "golden_cut_synced": true
   },
   "forecast_for_next": {
     "target_day": "20260121",
@@ -257,7 +297,9 @@
     "full_suite_evidence_ok": true,
     "market_power_filled": true,
     "stock_quant_filled": true,
-    "power_track_backfilled": true
+    "power_track_backfilled": true,
+    "fib_equal_amp_filled": true,
+    "golden_cut_synced": true
   },
   "exit_learn_zh": "群創出關密切關注；望拉回加碼非追高。華邦臨界未鎖死出清。非大盤出清。",
   "wave_progress": {
@@ -449,7 +491,46 @@
     },
     "path_verdict": "hit",
     "purpose_zh": "大盤波浪繪製／確認＋幅度對質；為破除限制累積勝率",
-    "backfilled_at_taipei": "2026-11-28T22:40:11+08:00"
+    "backfilled_at_taipei": "2026-11-28T22:40:11+08:00",
+    "fib_equal_amp": {
+      "computed_at_taipei": "2026-11-28T23:22:22+08:00",
+      "rule_zh": "每日必算：衝動段 R 的黃金切割回撤／延伸＋等幅度（1R／0.5R／0.618R）；隔日高低是否觸及",
+      "index": null,
+      "tsmc": {
+        "R": 365.0,
+        "anchor_lo": 1415.0,
+        "anchor_hi": 1780.0,
+        "direction": "up",
+        "fib_retrace_from_hi": {
+          "0.236": 1693.86,
+          "0.382": 1640.57,
+          "0.5": 1597.5,
+          "0.618": 1554.43,
+          "0.786": 1493.11
+        },
+        "fib_ext_from_lo": {
+          "1.0": 1780.0,
+          "1.272": 1879.28,
+          "1.618": 2005.57,
+          "2.0": 2145.0
+        },
+        "equal_amp": {
+          "up_1R_from_lo": 1780.0,
+          "down_1R_from_hi": 1415.0,
+          "up_1R_from_hi": 2145.0,
+          "down_0_5R_from_hi": 1597.5,
+          "down_0_618R_from_hi": 1554.43
+        }
+      },
+      "confront_next": {
+        "2330": {
+          "next_low_touches": [],
+          "next_high_touches": [],
+          "next_close": 1740.0
+        }
+      },
+      "skip": null
+    }
   },
   "stock_quant": {
     "as_of": "20260120",

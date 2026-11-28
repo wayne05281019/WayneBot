@@ -35,7 +35,7 @@
 | S9 | TWII＋SOX＋TX日夜＋TE日夜（缺＝missing） | `sync_*` |
 | S10 | 廣度官方凍 | `breadth_official` |
 | S11 | 點名股官方 OHLC＋量 | `named_stocks_ohlcv` |
-| S12 | 振幅／Fib＋幅度數字帶 | `quant`＋forecast amp |
+| S12 | 振幅／**黃金切割＋等幅度必算**＋幅度數字帶 | `quant.fib_used`／`equal_amp`＋forecast amp |
 | S13 | 升 TF 原因 | `tf_escalate` |
 | S14 | 族群鏈（有講才填） | `peer_chain` |
 | S15 | 出場學（無則「無」） | `exit_learn_zh` |

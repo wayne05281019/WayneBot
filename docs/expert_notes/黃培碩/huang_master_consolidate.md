@@ -31,7 +31,8 @@
 2. **不准**用「還 blocked／還沒過閘／受限制」當理由少做準備、少做量化、少再生下一版候選。過閘前＝全力蒐證＋備好 vnext；過閘＝必換。  
 3. **不准**拿大盤命中率冒充個股勝率；個股期望優先用當日點名語境。  
 4. 發現少做 → **從 2026-01-02 第一則起回頭補**，再往下走。  
-5. 重算入口：`scripts/huang_recompute_power_scoreboard.py` → `huang_scoreboard.json`／`huang_stock_quant_ledger.json`／`huang_vnext_candidates.json`。
+5. 重算入口：`scripts/huang_recompute_power_scoreboard.py` → `huang_scoreboard.json`／`huang_stock_quant_ledger.json`／`huang_vnext_candidates.json`。  
+6. **每日必同步算黃金切割＋等幅度**（衝動段 R→0.382／0.5／0.618／0.786 回撤、1／1.272／1.618 延伸、等幅 1R／0.5R／0.618R）；寫進 `quant.fib_used`，隔日高低是否觸及一併對質。不准只寫震盪％帶就略過。
 
 
 ### 0.0b 每日影片查閱・流程序（使用者 2026-11-28 鎖・不可並列為最高）

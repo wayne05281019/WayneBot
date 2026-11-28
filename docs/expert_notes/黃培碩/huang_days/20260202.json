@@ -144,8 +144,87 @@
       "next_deep_pull_tx": 30661.7,
       "note_zh": "破線壓力日沿用加寬下緣"
     },
-    "fib_used": [],
-    "fib_skip_reason": "破線整理雙分支",
+    "fib_used": {
+      "computed_at_taipei": "2026-11-28T23:22:22+08:00",
+      "rule_zh": "每日必算：衝動段 R 的黃金切割回撤／延伸＋等幅度（1R／0.5R／0.618R）；隔日高低是否觸及",
+      "index": {
+        "R": 5646.0,
+        "anchor_lo": 27350.0,
+        "anchor_hi": 32996.0,
+        "direction": "up",
+        "fib_retrace_from_hi": {
+          "0.236": 31663.54,
+          "0.382": 30839.23,
+          "0.5": 30173.0,
+          "0.618": 29506.77,
+          "0.786": 28558.24
+        },
+        "fib_ext_from_lo": {
+          "1.0": 32996.0,
+          "1.272": 34531.71,
+          "1.618": 36485.23,
+          "2.0": 38642.0
+        },
+        "equal_amp": {
+          "up_1R_from_lo": 32996.0,
+          "down_1R_from_hi": 27350.0,
+          "up_1R_from_hi": 38642.0,
+          "down_0_5R_from_hi": 30173.0,
+          "down_0_618R_from_hi": 29506.77
+        }
+      },
+      "tsmc": {
+        "R": 30675.0,
+        "anchor_lo": 1415.0,
+        "anchor_hi": 32090.0,
+        "direction": "up",
+        "fib_retrace_from_hi": {
+          "0.236": 24850.7,
+          "0.382": 20372.15,
+          "0.5": 16752.5,
+          "0.618": 13132.85,
+          "0.786": 7979.45
+        },
+        "fib_ext_from_lo": {
+          "1.0": 32090.0,
+          "1.272": 40433.6,
+          "1.618": 51047.15,
+          "2.0": 62765.0
+        },
+        "equal_amp": {
+          "up_1R_from_lo": 32090.0,
+          "down_1R_from_hi": 1415.0,
+          "up_1R_from_hi": 62765.0,
+          "down_0_5R_from_hi": 16752.5,
+          "down_0_618R_from_hi": 13132.85
+        }
+      },
+      "confront_next": {
+        "twii": {
+          "next_low_touches": [
+            {
+              "level": "fib.0.236",
+              "price": 31663.54,
+              "touch": 31737.66
+            }
+          ],
+          "next_high_touches": [],
+          "next_close": 32195.359375
+        },
+        "tx": {
+          "next_low_touches": [],
+          "next_high_touches": [],
+          "next_close": 32261.0
+        },
+        "2330": {
+          "next_low_touches": [],
+          "next_high_touches": [],
+          "next_close": 1800.0
+        }
+      },
+      "skip": null
+    },
+    "fib_skip_reason": null,
     "vol_price": {
       "price_dir": "down",
       "vol": null,
@@ -155,7 +234,9 @@
       "used_in_forecast": true,
       "used_in_confront": true
     },
-    "vol_60m": null
+    "vol_60m": null,
+    "equal_amp_synced": true,
+    "golden_cut_synced": true
   },
   "forecast_for_next": {
     "target_day": "20260203",
@@ -261,7 +342,87 @@
       "verdict": "miss"
     },
     "path_verdict": "hit",
-    "purpose_zh": "大盤波浪繪製／確認＋幅度對質；為破除限制累積勝率"
+    "purpose_zh": "大盤波浪繪製／確認＋幅度對質；為破除限制累積勝率",
+    "fib_equal_amp": {
+      "computed_at_taipei": "2026-11-28T23:22:22+08:00",
+      "rule_zh": "每日必算：衝動段 R 的黃金切割回撤／延伸＋等幅度（1R／0.5R／0.618R）；隔日高低是否觸及",
+      "index": {
+        "R": 5646.0,
+        "anchor_lo": 27350.0,
+        "anchor_hi": 32996.0,
+        "direction": "up",
+        "fib_retrace_from_hi": {
+          "0.236": 31663.54,
+          "0.382": 30839.23,
+          "0.5": 30173.0,
+          "0.618": 29506.77,
+          "0.786": 28558.24
+        },
+        "fib_ext_from_lo": {
+          "1.0": 32996.0,
+          "1.272": 34531.71,
+          "1.618": 36485.23,
+          "2.0": 38642.0
+        },
+        "equal_amp": {
+          "up_1R_from_lo": 32996.0,
+          "down_1R_from_hi": 27350.0,
+          "up_1R_from_hi": 38642.0,
+          "down_0_5R_from_hi": 30173.0,
+          "down_0_618R_from_hi": 29506.77
+        }
+      },
+      "tsmc": {
+        "R": 30675.0,
+        "anchor_lo": 1415.0,
+        "anchor_hi": 32090.0,
+        "direction": "up",
+        "fib_retrace_from_hi": {
+          "0.236": 24850.7,
+          "0.382": 20372.15,
+          "0.5": 16752.5,
+          "0.618": 13132.85,
+          "0.786": 7979.45
+        },
+        "fib_ext_from_lo": {
+          "1.0": 32090.0,
+          "1.272": 40433.6,
+          "1.618": 51047.15,
+          "2.0": 62765.0
+        },
+        "equal_amp": {
+          "up_1R_from_lo": 32090.0,
+          "down_1R_from_hi": 1415.0,
+          "up_1R_from_hi": 62765.0,
+          "down_0_5R_from_hi": 16752.5,
+          "down_0_618R_from_hi": 13132.85
+        }
+      },
+      "confront_next": {
+        "twii": {
+          "next_low_touches": [
+            {
+              "level": "fib.0.236",
+              "price": 31663.54,
+              "touch": 31737.66
+            }
+          ],
+          "next_high_touches": [],
+          "next_close": 32195.359375
+        },
+        "tx": {
+          "next_low_touches": [],
+          "next_high_touches": [],
+          "next_close": 32261.0
+        },
+        "2330": {
+          "next_low_touches": [],
+          "next_high_touches": [],
+          "next_close": 1800.0
+        }
+      },
+      "skip": null
+    }
   },
   "stock_quant": {
     "as_of": "20260202",
@@ -344,7 +505,9 @@
     "breadth_frozen": true,
     "full_suite_evidence_ok": true,
     "market_power_filled": true,
-    "stock_quant_filled": true
+    "stock_quant_filled": true,
+    "fib_equal_amp_filled": true,
+    "golden_cut_synced": true
   },
   "exit_learn_zh": "破線後反彈用來調持股／減不健康；少數領性拉回才接。非全面出清唯一解。",
   "wave_progress": {

@@ -50,7 +50,14 @@
   "teach_expand": [],
   "quant": {
     "amp_ratios": {},
-    "fib_used": [],
+    "fib_used": {
+      "rule_zh": "每日必算黃金切割回撤／延伸＋等幅度；隔日觸及對質",
+      "index": null,
+      "tsmc": null,
+      "confront_next": null
+    },
+    "equal_amp_synced": true,
+    "golden_cut_synced": true,
     "fib_skip_reason": null,
     "vol_price": {
       "price_dir": "up|down|chop",

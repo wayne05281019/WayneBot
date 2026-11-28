@@ -144,8 +144,93 @@
       ],
       "next_deep_pull_tx": 31180.0
     },
-    "fib_used": [],
-    "fib_skip_reason": "盤堅第五續",
+    "fib_used": {
+      "computed_at_taipei": "2026-11-28T23:22:22+08:00",
+      "rule_zh": "每日必算：衝動段 R 的黃金切割回撤／延伸＋等幅度（1R／0.5R／0.618R）；隔日高低是否觸及",
+      "index": {
+        "R": 4846.0,
+        "anchor_lo": 27350.0,
+        "anchor_hi": 32196.0,
+        "direction": "up",
+        "fib_retrace_from_hi": {
+          "0.236": 31052.34,
+          "0.382": 30344.83,
+          "0.5": 29773.0,
+          "0.618": 29201.17,
+          "0.786": 28387.04
+        },
+        "fib_ext_from_lo": {
+          "1.0": 32196.0,
+          "1.272": 33514.11,
+          "1.618": 35190.83,
+          "2.0": 37042.0
+        },
+        "equal_amp": {
+          "up_1R_from_lo": 32196.0,
+          "down_1R_from_hi": 27350.0,
+          "up_1R_from_hi": 37042.0,
+          "down_0_5R_from_hi": 29773.0,
+          "down_0_618R_from_hi": 29201.17
+        }
+      },
+      "tsmc": {
+        "R": 30781.0,
+        "anchor_lo": 1415.0,
+        "anchor_hi": 32196.0,
+        "direction": "up",
+        "fib_retrace_from_hi": {
+          "0.236": 24931.68,
+          "0.382": 20437.66,
+          "0.5": 16805.5,
+          "0.618": 13173.34,
+          "0.786": 8002.13
+        },
+        "fib_ext_from_lo": {
+          "1.0": 32196.0,
+          "1.272": 40568.43,
+          "1.618": 51218.66,
+          "2.0": 62977.0
+        },
+        "equal_amp": {
+          "up_1R_from_lo": 32196.0,
+          "down_1R_from_hi": 1415.0,
+          "up_1R_from_hi": 62977.0,
+          "down_0_5R_from_hi": 16805.5,
+          "down_0_618R_from_hi": 13173.34
+        }
+      },
+      "confront_next": {
+        "twii": {
+          "next_low_touches": [
+            {
+              "level": "eq.up_1R_from_lo",
+              "price": 32196.0,
+              "touch": 32095.08
+            }
+          ],
+          "next_high_touches": [],
+          "next_close": 32317.919921875
+        },
+        "tx": {
+          "next_low_touches": [
+            {
+              "level": "eq.up_1R_from_lo",
+              "price": 32196.0,
+              "touch": 32206.0
+            }
+          ],
+          "next_high_touches": [],
+          "next_close": 32509.0
+        },
+        "2330": {
+          "next_low_touches": [],
+          "next_high_touches": [],
+          "next_close": 1780.0
+        }
+      },
+      "skip": null
+    },
+    "fib_skip_reason": null,
     "vol_price": {
       "price_dir": "up",
       "vol": null,
@@ -155,7 +240,9 @@
       "used_in_forecast": true,
       "used_in_confront": true
     },
-    "vol_60m": null
+    "vol_60m": null,
+    "equal_amp_synced": true,
+    "golden_cut_synced": true
   },
   "forecast_for_next": {
     "target_day": "20260127",
@@ -259,7 +346,9 @@
     "full_suite_evidence_ok": true,
     "market_power_filled": true,
     "stock_quant_filled": true,
-    "power_track_backfilled": true
+    "power_track_backfilled": true,
+    "fib_equal_amp_filled": true,
+    "golden_cut_synced": true
   },
   "exit_learn_zh": "美食／記憶體等拉回切入；不追高。非大盤出清。",
   "wave_progress": {
@@ -444,7 +533,93 @@
     },
     "path_verdict": "hit",
     "purpose_zh": "大盤波浪繪製／確認＋幅度對質；為破除限制累積勝率",
-    "backfilled_at_taipei": "2026-11-28T22:40:11+08:00"
+    "backfilled_at_taipei": "2026-11-28T22:40:11+08:00",
+    "fib_equal_amp": {
+      "computed_at_taipei": "2026-11-28T23:22:22+08:00",
+      "rule_zh": "每日必算：衝動段 R 的黃金切割回撤／延伸＋等幅度（1R／0.5R／0.618R）；隔日高低是否觸及",
+      "index": {
+        "R": 4846.0,
+        "anchor_lo": 27350.0,
+        "anchor_hi": 32196.0,
+        "direction": "up",
+        "fib_retrace_from_hi": {
+          "0.236": 31052.34,
+          "0.382": 30344.83,
+          "0.5": 29773.0,
+          "0.618": 29201.17,
+          "0.786": 28387.04
+        },
+        "fib_ext_from_lo": {
+          "1.0": 32196.0,
+          "1.272": 33514.11,
+          "1.618": 35190.83,
+          "2.0": 37042.0
+        },
+        "equal_amp": {
+          "up_1R_from_lo": 32196.0,
+          "down_1R_from_hi": 27350.0,
+          "up_1R_from_hi": 37042.0,
+          "down_0_5R_from_hi": 29773.0,
+          "down_0_618R_from_hi": 29201.17
+        }
+      },
+      "tsmc": {
+        "R": 30781.0,
+        "anchor_lo": 1415.0,
+        "anchor_hi": 32196.0,
+        "direction": "up",
+        "fib_retrace_from_hi": {
+          "0.236": 24931.68,
+          "0.382": 20437.66,
+          "0.5": 16805.5,
+          "0.618": 13173.34,
+          "0.786": 8002.13
+        },
+        "fib_ext_from_lo": {
+          "1.0": 32196.0,
+          "1.272": 40568.43,
+          "1.618": 51218.66,
+          "2.0": 62977.0
+        },
+        "equal_amp": {
+          "up_1R_from_lo": 32196.0,
+          "down_1R_from_hi": 1415.0,
+          "up_1R_from_hi": 62977.0,
+          "down_0_5R_from_hi": 16805.5,
+          "down_0_618R_from_hi": 13173.34
+        }
+      },
+      "confront_next": {
+        "twii": {
+          "next_low_touches": [
+            {
+              "level": "eq.up_1R_from_lo",
+              "price": 32196.0,
+              "touch": 32095.08
+            }
+          ],
+          "next_high_touches": [],
+          "next_close": 32317.919921875
+        },
+        "tx": {
+          "next_low_touches": [
+            {
+              "level": "eq.up_1R_from_lo",
+              "price": 32196.0,
+              "touch": 32206.0
+            }
+          ],
+          "next_high_touches": [],
+          "next_close": 32509.0
+        },
+        "2330": {
+          "next_low_touches": [],
+          "next_high_touches": [],
+          "next_close": 1780.0
+        }
+      },
+      "skip": null
+    }
   },
   "stock_quant": {
     "as_of": "20260126",
