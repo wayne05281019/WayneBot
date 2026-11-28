@@ -56,6 +56,15 @@
     "phone_ok": false,
     "no_invent_basket": true
   },
+  "main_axis_zh": "當天判斷隔天 → 隔天比對看錯點 → 交叉學習 → 滾動修正未討論缺口；並行學習主波＋細微波繪製與定義",
+  "rolling_cross_learn": {
+    "as_of": "2026-11-28",
+    "user_lock": true,
+    "fields": ["miss_anatomy_zh", "cross_learn_zh", "rolling_fix[]", "undiscussed_gap[]"],
+    "wave_def_draw_required": true,
+    "degrees": ["degree_main", "degree_micro"],
+    "forbid_diary_only": true
+  },
   "auto_expand_after_absorb": {
     "as_of": "2026-11-28",
     "user_lock": true,
