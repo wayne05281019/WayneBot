@@ -19,7 +19,8 @@
 5. **個股教具**：他點名／畫圖的才記位；沒畫不准發明浪號  
 6. **蓋牌股**：內部對質用；他未公開前**不准話筒點名／推播**  
 
-同步鏈硬欄見 `huang_feb_backtest_ops_spec.md` §1b（`sync_us`／`sync_tx`）＋ §1c（`peer_chain`）＋ §1d（讀完主動擴充）。
+同步鏈硬欄見 `huang_feb_backtest_ops_spec.md` §1b（`sync_us`／`sync_tx`／`sync_te`）＋ §1c（`peer_chain`）＋ §1d（讀完主動擴充）。  
+**全細則總勾（不可漏）：** `huang_master_consolidate.md`。
 
 **主動擴充（使用者近期才跟讀）：** 年初片若出現尚未討論的美股／台股對照／族群／型態，讀完 D **自己登錄**，D+1 起納入收集與判斷；不准每檔再問要不要加。只加他點名的；非買訊。
 
