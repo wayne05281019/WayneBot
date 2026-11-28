@@ -15,6 +15,13 @@
   },
   "principles": [
     {
+      "id": "HP-NEST-135-5_24-3",
+      "rule_zh": "上升浪①–⑤：①③⑤走五波、②④走三波；下降ABC：A／C走五波、B走三波",
+      "source_days": ["user_20261128", "public_elliott"],
+      "n_seen": 1,
+      "ops_check_zh": "細拆任一腳時核對子浪數：推動腳≠三波、修正腳≠五波（除非楔形等特例另標）"
+    },
+    {
       "id": "HP-PRESSURE-NO-CHASE",
       "rule_zh": "多日強彈後碰到細微波壓力＝當日多數非追價買點",
       "source_days": [

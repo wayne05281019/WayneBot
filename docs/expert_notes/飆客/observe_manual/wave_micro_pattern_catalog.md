@@ -22,4 +22,9 @@
 | MP-FAKE-BREAK-UP | 假突破 | fake_break_high | trial | pending_quant |
 | MP-HUANG-OSC-RELAY | 震盪中繼（黃培碩） | osc_relay | huang | pending_source |
 
+## 子浪巢狀硬卡（使用者 2026-11-28）
+
+- 上升①–⑤：**①③⑤＝五波**，**②④＝三波**
+- 下降 ABC：**A／C＝五波**，**B＝三波**
+
 作業：日K釘頂 → 小時細拆 → 本表並列刪去 → 重疊真假量化。對到原文／官方柱才升 `verify_status`。
