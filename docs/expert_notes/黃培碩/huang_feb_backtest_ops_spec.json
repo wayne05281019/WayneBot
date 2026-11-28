@@ -37,10 +37,13 @@
   },
   "volume_price_required": {
     "user_lock": "2026-11-28",
+    "rule_zh": "量要比對價；不准只看價不看量；預估／刪去／對質都要把量價關係算進去",
     "fields": ["price_dir", "vol", "vol_ma20", "vol_price_relation"],
     "relation_enum": ["confirm", "deny", "neutral"],
     "examples_zh": ["價漲量增", "價漲量縮", "破底放量", "破底縮量"],
     "applies_on": ["present", "absent_open"],
+    "use_in": ["regime", "dual_branch_score", "forecast", "confront"],
+    "ignore_volume_blocks_complete": true,
     "escalate_60m_on_dispute": true
   },
   "dual_branch_default": true,

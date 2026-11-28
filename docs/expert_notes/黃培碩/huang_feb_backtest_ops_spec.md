@@ -163,11 +163,13 @@ ASR／下載可平行預取，但 **forecast→confront 單線**；預取物密�
 
 1. **振幅比**：`r_w3_w1`、`r_w5_w1`、`r_C_A`；等幅容差 8%  
 2. **Fib**：至少 2 列 `{from,to,ratio,level,role}` 或寫 `fib_skip_reason`  
-3. **量價關係（必填・有片無片都要）**：`price_dir` × `vol`/`vol_ma20` → `confirm`\|`deny`\|`neutral`；至少記價漲量增／價漲量縮／破底放量或縮量之一。預估與對質都要看量是否支持結構分支。  
+3. **量要比對價（必填・硬卡）**：不准只看價不看量。每天用 `price_dir` × `vol`/`vol_ma20`（必要時 60 分 K 量）寫 `vol_price_relation=confirm|deny|neutral`；至少標價漲量增／價漲量縮／破底放量／破底縮量之一。  
+   - 雙分支打分：量支持價＝加分；量背離價＝降權或改低分支  
+   - 隔日對質：結構對了但量價背離未寫＝`partial`；完全忽略量＝當日 `no_forget_audit.vol_price_filled=false`，不准 complete  
 4. **升 60 分 K 閘**（任一即升）：鐵律 unknown、他畫細微、中繼爭議、振幅灰區 8–12%、假突破／有效重疊分流、量價爭議  
 5. **微浪教具**：他點名才記 `micro_example`；蓋牌 6442 靜默  
 
-**開市日串行硬卡：** chrono 依開市日逐日前進；每天必含 **費半＋台指日／夜＋電子日／夜＋加權**（＋量價）；`present`／`absent_open` 都要預估＋隔日對質；禁止跳日、禁止跳鏈。
+**開市日串行硬卡：** chrono 依開市日逐日前進；每天必含 **費半＋台指日／夜＋電子日／夜＋加權**，且**量要比對價**；`present`／`absent_open` 都要預估＋隔日對質；禁止跳日、禁止跳鏈、禁止只判價不判量。
 
 ---
 

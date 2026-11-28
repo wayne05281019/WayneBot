@@ -26,7 +26,7 @@
 | 盤勢 | `regime_D` 全欄（釘頂底、位階、巢狀、中繼、鐵律14／W3、殺／活價） |
 | 型態 | catalog 全表刪去 `pass\|fail\|unknown`（pass∈[1,3]） |
 | 雙分支 | high／low + `ohlc_test`（預設不准單支） |
-| 量化 | 振幅比、Fib（或 skip 原因）、**量價關係**（價↔量 confirm／deny／neutral；必要時 60 分 K 量） |
+| 量化 | 振幅比、Fib（或 skip 原因）、**量要比對價**（價漲量增／縮、破底放量／縮；confirm／deny／neutral；必要時 60 分 K 量）— 只判價不算完成 |
 | 同步鏈 | **每天必含**：費半、台指日／夜、電子日／夜、TWII（＋ADR／點名美股）；缺＝`missing`，不准跳鏈 |
 | 族群鏈 | 有美↔台對照則 `peer_chain`（例 MU→南亞科→記憶體） |
 | 波浪繪 | `wave_def_draw`：`degree_main`＋`degree_micro`＋畫法＋與他對齊 |

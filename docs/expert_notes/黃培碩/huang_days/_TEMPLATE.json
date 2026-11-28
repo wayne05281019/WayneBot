@@ -42,7 +42,9 @@
       "vol": null,
       "vol_ma20": null,
       "vol_price_relation": "confirm|deny|neutral",
-      "note_zh": "價漲量增/價漲量縮/破底放量或縮量…"
+      "paired_zh": "量要比對價：價漲量增/價漲量縮/破底放量/破底縮量",
+      "used_in_forecast": false,
+      "used_in_confront": false
     },
     "vol_60m": null
   },
