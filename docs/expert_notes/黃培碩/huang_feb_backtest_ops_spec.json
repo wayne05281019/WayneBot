@@ -3,12 +3,16 @@
   "phone_sync": "blocked",
   "buy_signal": false,
   "user_lock": "2026-11-28",
-  "purpose_zh": "二月起大回測硬規格：刪去＋雙分支＋量化＋開市無片仍判；目標＝實際解盤能力，不准隨便結案。",
+  "purpose_zh": "二月起大回測硬規格：刪去＋雙分支＋量化＋開市無片仍判；目標＝實際解盤＋精準波浪判斷／繪製，不准隨便結案、不准讀完說漏測。",
+  "master_consolidate": "docs/expert_notes/黃培碩/huang_master_consolidate.md",
+  "day_template": "docs/expert_notes/黃培碩/huang_days/_TEMPLATE.json",
   "target_capability_zh": [
     "釘頂→巢狀→型態刪去→雙分支機率",
+    "主波＋細微波定義與繪製",
     "振幅／Fib／日量／必要時60分K量",
-    "隔日官方柱可對質並進化失敗碼",
-    "禁止結案句：沒學到怎麼判／還沒辦法進步"
+    "美股／台指期日夜／族群鏈同步",
+    "隔日官方柱對質＋交叉學習＋滾動修正",
+    "讀完須變準；禁止漏測／忘記／還不會當結論"
   ],
   "agents_consulted": [
     "bc-8390efd8-8919-5779-8f0e-31ece2bd6185",
@@ -93,8 +97,15 @@
     "forbidden_excuse_zh": [
       "沒學到怎麼實際判斷",
       "還沒辦法進步到某地步",
-      "資料不足所以不判（未標 unknown／未升60m）"
-    ]
+      "資料不足所以不判（未標 unknown／未升60m）",
+      "少東少西／忘記測／沒彙整到",
+      "讀完了但還不會判得很準（未過結案閘卻宣稱完成）"
+    ],
+    "precision_expectation_zh": "二月chrono完整跑完＝應具備精準波浪判斷與繪製能力；分數板須證明變準"
+  },
+  "no_forget_rule": {
+    "user_lock": "2026-11-28",
+    "rule_zh": "開跑前用 master_consolidate 勾完；每日 no_forget_audit 全 true 才 complete；禁止事後說漏測"
   },
   "ledger_files": {
     "index": "huang_chrono_index.json",
