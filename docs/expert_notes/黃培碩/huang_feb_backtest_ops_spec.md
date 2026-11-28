@@ -82,17 +82,21 @@ ASR／下載可平行預取，但 **forecast→confront 單線**；預取物密�
 
 | 鏈 | 必比對 | 怎麼用 |
 |---|---|---|
-| **美股／美指** | 費半（SOX）、台積 ADR；他當日點名的美股（例美光） | 結構段位＋相對高低；對台股隔日假設寫進高／低分支；破底／假跌破要標 |
-| **台指期** | 日盤指數＋**夜盤**指數（有官方／可核對來源才寫） | 與加權同窗對齊：夜盤「有驚無險／破底」是否在隔日日盤兌現 |
+| **美股／美指** | **費半（SOX）每天必比**；台積 ADR；他當日點名美股 | 結構段位＋相對高低；對台股隔日假設寫進高／低分支；破底／假跌破要標 |
+| **台指期** | **日盤＋夜盤**每天必比 | 與加權同窗：夜盤有驚無險／破底是否隔日日盤兌現 |
+| **電子期** | **日盤＋夜盤**每天必比 | 與費半／電子族群聯動；缺收標 missing |
 | **加權 TWII** | 開高低收＋量 | 主對質柱（既有） |
+
+**一天一天＝上表全鏈都要過**，不是只判加權。
 
 欄位（進 `huang_days/YYYYMMDD.json`）：
 
-- `sync_us[]`：`{symbol, ohlc?, structure_note, vs_prior_low_high, link_to_tw_hyp}`
+- `sync_us[]`：`{symbol, ohlc?, structure_note, vs_prior_low_high, link_to_tw_hyp}`（含 SOX）
 - `sync_tx`：`{day_session{...}, night_session{...}, vs_twii, note_zh}`
-- 缺資料＝`status=missing`＋原因；**不准假數**。缺美股或夜盤不得假裝「已同步」。
+- `sync_te`：`{day_session{...}, night_session{...}, vs_sox_or_twii, note_zh}`（電子期）
+- 缺資料＝`status=missing`＋原因；**不准假數**。缺費半／台指夜／電子夜不得假裝「已同步」。
 
-隔日對質：除 TWII 外，若預估綁定了美股破底／夜盤方向，該鏈也要打 hit／partial／miss（可 `partial` 若只台股對、美股／夜盤未驗證）。
+隔日對質：除 TWII 外，費半／台指日夜／電子日夜若預估有綁定（或當日有結構主張）也要打 hit／partial／miss。
 
 ### 1c. 美股→台股龍頭→同族群（使用者 2026-11-28 確認要納入）
 
@@ -159,9 +163,11 @@ ASR／下載可平行預取，但 **forecast→confront 單線**；預取物密�
 
 1. **振幅比**：`r_w3_w1`、`r_w5_w1`、`r_C_A`；等幅容差 8%  
 2. **Fib**：至少 2 列 `{from,to,ratio,level,role}` 或寫 `fib_skip_reason`  
-3. **日量價**：`vol` / `vol_ma20` → confirm\|deny\|neutral  
-4. **升 60 分 K 閘**（任一即升）：鐵律 unknown、他畫細微、中繼爭議、振幅灰區 8–12%、假突破／有效重疊分流  
-5. **微浪教具**：他點名才記 `micro_example`；蓋牌 6442 靜默
+3. **量價關係（必填・有片無片都要）**：`price_dir` × `vol`/`vol_ma20` → `confirm`\|`deny`\|`neutral`；至少記價漲量增／價漲量縮／破底放量或縮量之一。預估與對質都要看量是否支持結構分支。  
+4. **升 60 分 K 閘**（任一即升）：鐵律 unknown、他畫細微、中繼爭議、振幅灰區 8–12%、假突破／有效重疊分流、量價爭議  
+5. **微浪教具**：他點名才記 `micro_example`；蓋牌 6442 靜默  
+
+**開市日串行硬卡：** chrono 依開市日逐日前進；每天必含 **費半＋台指日／夜＋電子日／夜＋加權**（＋量價）；`present`／`absent_open` 都要預估＋隔日對質；禁止跳日、禁止跳鏈。
 
 ---
 

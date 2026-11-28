@@ -28,15 +28,22 @@
     "align_with_huang": "same|skew|unknown"
   },
   "elim_rows": [],
-  "sync_us": [],
+  "sync_us": [{"symbol": "SOX", "status": "missing|ok"}],
   "sync_tx": {"day_session": null, "night_session": null, "status": "missing|ok"},
+  "sync_te": {"day_session": null, "night_session": null, "status": "missing|ok", "note_zh": "電子期日／夜"},
   "peer_chain": [],
   "teach_expand": [],
   "quant": {
     "amp_ratios": {},
     "fib_used": [],
     "fib_skip_reason": null,
-    "vol_daily": null,
+    "vol_price": {
+      "price_dir": "up|down|chop",
+      "vol": null,
+      "vol_ma20": null,
+      "vol_price_relation": "confirm|deny|neutral",
+      "note_zh": "價漲量增/價漲量縮/破底放量或縮量…"
+    },
     "vol_60m": null
   },
   "forecast_for_next": {
@@ -53,7 +60,10 @@
   "no_forget_audit": {
     "regime_complete": false,
     "sync_chains": false,
+    "sync_sox_tx_te_day_night": false,
     "wave_main_micro": false,
+    "vol_price_filled": false,
+    "open_day_not_skipped": false,
     "dual_branch_no_peek": false,
     "confront_anatomy": false,
     "cross_learn": false,
