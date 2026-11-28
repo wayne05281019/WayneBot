@@ -1,5 +1,5 @@
 {
-  "as_of_taipei": "2026-11-29T00:08:02+08:00",
+  "as_of_taipei": "2026-11-29T00:53:51+08:00",
   "purpose_zh": "過閘前就再生／備好下一版候選；大盤＋個股同步。過閘＝必換話筒並再開下一軌。",
   "phone_apply": "pending_gate",
   "candidates": [
@@ -45,8 +45,8 @@
         "huang_stock_quant_ledger"
       ],
       "status": "silent_collecting",
-      "n_fired": 104,
-      "n_hit_after": 37
+      "n_fired": 108,
+      "n_hit_after": 39
     },
     {
       "id": "WAVE_DRAW_CONFIRM_BANDS",
@@ -57,8 +57,8 @@
         "chrono wave hit"
       ],
       "status": "silent_collecting",
-      "n_fired": 24,
-      "n_hit_after": 24
+      "n_fired": 25,
+      "n_hit_after": 25
     }
   ]
 }
