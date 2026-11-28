@@ -1,5 +1,5 @@
 {
-  "as_of_taipei": "2026-11-29T00:53:51+08:00",
+  "as_of_taipei": "2026-11-29T01:04:40+08:00",
   "phone_sync": "blocked_until_gate",
   "buy_signal": false,
   "recomputable": true,
@@ -15,22 +15,22 @@
       "strict_all_hit_rate": 0.85
     },
     "W40": {
-      "n": 25,
+      "n": 26,
       "path_hit_rate": 1.0,
       "wave_hit_rate": 1.0,
-      "amp_hit_rate": 0.88,
-      "amp_hit_incl_skew": 0.92,
-      "levels_hit_rate": 0.96,
-      "strict_all_hit_rate": 0.84
+      "amp_hit_rate": 0.8846153846153846,
+      "amp_hit_incl_skew": 0.9230769230769231,
+      "levels_hit_rate": 0.9615384615384616,
+      "strict_all_hit_rate": 0.8461538461538461
     },
     "all": {
-      "n": 25,
+      "n": 26,
       "path_hit_rate": 1.0,
       "wave_hit_rate": 1.0,
-      "amp_hit_rate": 0.88,
-      "amp_hit_incl_skew": 0.92,
-      "levels_hit_rate": 0.96,
-      "strict_all_hit_rate": 0.84
+      "amp_hit_rate": 0.8846153846153846,
+      "amp_hit_incl_skew": 0.9230769230769231,
+      "levels_hit_rate": 0.9615384615384616,
+      "strict_all_hit_rate": 0.8461538461538461
     }
   },
   "title_only_baseline": {
@@ -41,19 +41,19 @@
     "note_zh": "1110–1127 標題基線；chrono 要贏這條才算技能升"
   },
   "market_quant": {
-    "n": 25,
-    "path_hit": 25,
-    "wave_hit": 25,
-    "amp_hit": 22,
-    "levels_hit": 24,
+    "n": 26,
+    "path_hit": 26,
+    "wave_hit": 26,
+    "amp_hit": 23,
+    "levels_hit": 25,
     "dual_branch_rate": 1.0,
     "regime_complete_rate": 1.0
   },
   "stock_quant": {
-    "n_rows": 108,
+    "n_rows": 111,
     "n_missing": 6,
-    "path_hit_rate": 0.5370370370370371,
-    "amp_hit_rate": 0.4351851851851852,
+    "path_hit_rate": 0.5495495495495496,
+    "amp_hit_rate": 0.43243243243243246,
     "by_stock": {
       "1528": {
         "n": 1,
@@ -71,13 +71,13 @@
         "amp_hit_rate": 0.5
       },
       "2330": {
-        "n": 25,
-        "path_hit_rate": 0.88,
-        "amp_hit_rate": 0.84
+        "n": 26,
+        "path_hit_rate": 0.8846153846153846,
+        "amp_hit_rate": 0.8461538461538461
       },
       "2344": {
-        "n": 7,
-        "path_hit_rate": 0.42857142857142855,
+        "n": 8,
+        "path_hit_rate": 0.5,
         "amp_hit_rate": 0.0
       },
       "2368": {
@@ -91,9 +91,9 @@
         "amp_hit_rate": 1.0
       },
       "2408": {
-        "n": 4,
-        "path_hit_rate": 0.5,
-        "amp_hit_rate": 0.25
+        "n": 5,
+        "path_hit_rate": 0.6,
+        "amp_hit_rate": 0.2
       },
       "2454": {
         "n": 2,
@@ -183,24 +183,24 @@
     }
   },
   "gate_section8": {
-    "n_valid_confronted": 25,
+    "n_valid_confronted": 26,
     "n_ge_20": true,
     "dual_branch_rate": 1.0,
     "dual_branch_ge_0_90": true,
     "regime_complete_rate": 1.0,
     "regime_complete_ok": true,
     "beats_title_baseline_w20": true,
-    "stock_quant_n": 108,
+    "stock_quant_n": 111,
     "stock_quant_ready": true,
     "status": "collecting_n20_plus_stock_needs_lift",
     "note_zh": "§8 全過才准宣稱會判；過閘後必換話筒編碼並再生下一版。不准以 blocked 少做量化／準備。",
-    "stock_path_hit_rate": 0.5370370370370371,
-    "stock_amp_hit_rate": 0.4351851851851852,
+    "stock_path_hit_rate": 0.5495495495495496,
+    "stock_amp_hit_rate": 0.43243243243243246,
     "stock_rates_ok": false
   },
   "feb_pack": {
-    "n_confronted": 25,
-    "hit_high_prob": 25,
+    "n_confronted": 26,
+    "hit_high_prob": 26,
     "hit_high_prob_partial": 1,
     "miss_high_prob": 2,
     "dual_branch_rate": 1.0,
@@ -208,9 +208,9 @@
   },
   "chrono_2026": {
     "start": "20260102",
-    "n": 25,
-    "path_hit": 25,
-    "amp_hit": 22,
+    "n": 26,
+    "path_hit": 26,
+    "amp_hit": 23,
     "days": [
       {
         "day": "20260102",
@@ -507,6 +507,19 @@
           "MEMORY_SYNC_REST_WIDEN_FLOOR"
         ],
         "growth_zh": "關鍵K後偏下震盪隔日可近乎平盤消化；記憶體同步整理下緣加寬（-9%）續用。"
+      },
+      {
+        "day": "20260206",
+        "target": "20260209",
+        "path": "hit",
+        "wave": "hit",
+        "amp": "hit",
+        "levels": "hit",
+        "fail_codes": [
+          "CRITICAL_K_DOWNTILT_CHOP",
+          "MEMORY_SYNC_REST_WIDEN_FLOOR"
+        ],
+        "growth_zh": "新低下影後反抽加寬上緣成立。2344 週一近漲停對「賣點／整理」期望＝假日跳空例外：rest 期望遇跳空爆漲改記 path miss，不准事後改成追高買訊。"
       }
     ]
   },

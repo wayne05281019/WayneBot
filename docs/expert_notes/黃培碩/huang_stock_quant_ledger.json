@@ -1,12 +1,12 @@
 {
-  "as_of_taipei": "2026-11-29T00:53:51+08:00",
+  "as_of_taipei": "2026-11-29T01:04:40+08:00",
   "purpose_zh": "點名個股隔日方向＋幅度對質總帳；與大盤分數板同步更新。",
   "phone_apply": "pending_gate",
   "summary": {
-    "n_rows": 108,
+    "n_rows": 111,
     "n_missing": 6,
-    "path_hit_rate": 0.5370370370370371,
-    "amp_hit_rate": 0.4351851851851852,
+    "path_hit_rate": 0.5495495495495496,
+    "amp_hit_rate": 0.43243243243243246,
     "by_stock": {
       "1528": {
         "n": 1,
@@ -24,13 +24,13 @@
         "amp_hit_rate": 0.5
       },
       "2330": {
-        "n": 25,
-        "path_hit_rate": 0.88,
-        "amp_hit_rate": 0.84
+        "n": 26,
+        "path_hit_rate": 0.8846153846153846,
+        "amp_hit_rate": 0.8461538461538461
       },
       "2344": {
-        "n": 7,
-        "path_hit_rate": 0.42857142857142855,
+        "n": 8,
+        "path_hit_rate": 0.5,
         "amp_hit_rate": 0.0
       },
       "2368": {
@@ -44,9 +44,9 @@
         "amp_hit_rate": 1.0
       },
       "2408": {
-        "n": 4,
-        "path_hit_rate": 0.5,
-        "amp_hit_rate": 0.25
+        "n": 5,
+        "path_hit_rate": 0.6,
+        "amp_hit_rate": 0.2
       },
       "2454": {
         "n": 2,
@@ -1904,6 +1904,54 @@
       "band": [
         269.5,
         280.5
+      ]
+    },
+    {
+      "day": "20260206",
+      "target": "20260209",
+      "stock_id": "2330",
+      "status": "ok",
+      "expect": "up_or_chop",
+      "c0": 1780.0,
+      "c1": 1815.0,
+      "pct": 1.966,
+      "path": "hit",
+      "amp": "hit",
+      "band": [
+        1744.4,
+        1815.6
+      ]
+    },
+    {
+      "day": "20260206",
+      "target": "20260209",
+      "stock_id": "2344",
+      "status": "ok",
+      "expect": "up_or_chop",
+      "c0": 97.8,
+      "c1": 107.5,
+      "pct": 9.918,
+      "path": "hit",
+      "amp": "miss",
+      "band": [
+        95.84,
+        99.76
+      ]
+    },
+    {
+      "day": "20260206",
+      "target": "20260209",
+      "stock_id": "2408",
+      "status": "ok",
+      "expect": "up_or_chop",
+      "c0": 264.0,
+      "c1": 274.5,
+      "pct": 3.977,
+      "path": "hit",
+      "amp": "miss",
+      "band": [
+        258.72,
+        269.28
       ]
     }
   ]

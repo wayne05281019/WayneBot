@@ -1,20 +1,20 @@
 {
-  "as_of_taipei": "2026-11-29T00:53:51+08:00",
+  "as_of_taipei": "2026-11-29T01:04:40+08:00",
   "phone_sync": "blocked_until_gate",
   "buy_signal": false,
   "purpose_zh": "量化黃的判斷原則＋我隔日失敗碼；大盤＋個股同步。n不足不准改話筒；但準備／對質／再生下一版一天都不能少。",
   "tz": "Asia/Taipei",
-  "n_days_absorbed": 25,
-  "n_forecasts_confronted": 25,
+  "n_days_absorbed": 26,
+  "n_forecasts_confronted": 26,
   "my_forecast_score": {
-    "hit_high_prob": 25,
+    "hit_high_prob": 26,
     "hit_high_prob_partial": 1,
     "miss_high_prob": 2,
     "hit_rate_high_prob_strict": 1.0,
-    "amp_hit_rate": 0.88,
+    "amp_hit_rate": 0.8846153846153846,
     "wave_hit_rate": 1.0,
-    "stock_path_hit_rate": 0.5370370370370371,
-    "stock_amp_hit_rate": 0.4351851851851852
+    "stock_path_hit_rate": 0.5495495495495496,
+    "stock_amp_hit_rate": 0.43243243243243246
   },
   "principles": [
     {
