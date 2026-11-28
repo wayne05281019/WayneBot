@@ -1,0 +1,25 @@
+{
+  "as_of_taipei": "2026-11-28T12:16:00+0800",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "public_name_ok": false,
+  "title_zh": "黃培碩蓋牌股（內部對質）",
+  "user_said_name_zh": "光盛",
+  "resolved": {
+    "stock_id": "6442",
+    "stock_name": "光聖",
+    "resolve_note_zh": "使用者說光盛；市場無光盛代號。6442 光聖官方高≈2540（近 2500）、2026-11-23 低 779（近 790）對得上口述窗。"
+  },
+  "levels_he_described": {
+    "high_approx": 2500,
+    "low_approx": 790,
+    "official_confront_hint": {
+      "peak_bar": {"date": "20260303", "high": 2540.0},
+      "near_low_bar": {"date": "20261123", "low": 779.0}
+    }
+  },
+  "status_zh": "他尚未對外公布蓋牌名稱；只准靜默對質／學畫法，不准話筒點名或推播。",
+  "provenance": [
+    "user 2026-11-28：蓋牌股＝光盛，高約2500低約790，尚未公布"
+  ]
+}

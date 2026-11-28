@@ -333,7 +333,8 @@
       "verify_status": "pending_source",
       "phone_ok": false,
       "not_buy_signal": true,
-      "note_zh": "位階讀法＋中繼二分支已收。子浪公式／N字量化未對到黃原文＋柱前，不准發明段號、不准當買訊。"
+      "note_zh": "位階讀法＋中繼二分支已收。子浪公式／N字量化未對到黃原文＋柱前，不准發明段號、不准當買訊。",
+      "daily_loop_ref": "docs/expert_notes/黃培碩/huang_daily_forecast_loop.md"
     }
   ]
 }
