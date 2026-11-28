@@ -1,17 +1,17 @@
 {
-  "as_of_taipei": "2026-11-28T14:58:00+0800",
+  "as_of_taipei": "2026-11-28T15:20:00+0800",
   "phone_sync": "blocked",
   "buy_signal": false,
   "purpose_zh": "記取並量化：①黃的判斷原則 ②我隔日預估失敗原因。每chrono日更新；n不足不准改話筒。",
   "tz": "Asia/Taipei",
-  "n_days_absorbed": 9,
-  "n_forecasts_confronted": 9,
+  "n_days_absorbed": 10,
+  "n_forecasts_confronted": 10,
   "my_forecast_score": {
     "hit_high_prob": 5,
-    "hit_high_prob_partial": 2,
+    "hit_high_prob_partial": 3,
     "miss_high_prob": 2,
-    "hit_rate_high_prob_strict": 0.5555555555555556,
-    "hit_rate_high_prob_incl_partial": 0.7777777777777778
+    "hit_rate_high_prob_strict": 0.5,
+    "hit_rate_high_prob_incl_partial": 0.8
   },
   "principles": [
     {
@@ -28,10 +28,11 @@
       "id": "HP-PRESSURE-NO-CHASE",
       "rule_zh": "多日強彈後碰到細微波壓力＝當日多數非追價買點",
       "source_days": [
-        "20261110"
+        "20261110",
+        "20261124"
       ],
-      "n_seen": 1,
-      "n_next_day_pullback_or_chop": 0,
+      "n_seen": 2,
+      "n_next_day_pullback_or_chop": 1,
       "n_next_day_continue_up": 1
     },
     {
@@ -104,9 +105,10 @@
       "rule_zh": "賣動後橫抬中繼（非N字）＝續弱再下",
       "source_days": [
         "20261110",
+        "20261124",
         "user_osc_relay"
       ],
-      "n_seen": 2,
+      "n_seen": 3,
       "quant_pending": true
     },
     {
@@ -240,10 +242,37 @@
       "id": "HP-STOCK-335-FINISH",
       "rule_zh": "個股調整常見a-b-c＝3-3-5；跌完看c⑤內細微五之五末端",
       "source_days": [
-        "20261120"
+        "20261120",
+        "20261124"
+      ],
+      "n_seen": 2,
+      "nest_ref": "A可3／B=3／C必5"
+    },
+    {
+      "id": "HP-REBOUND-DAY-NO-CHASE",
+      "rule_zh": "恐慌割肉翌日大漲＝逆向檢視持股／弱勢出清日，不准傻追；隔日強弱分明",
+      "source_days": [
+        "20261124"
       ],
       "n_seen": 1,
-      "nest_ref": "A可3／B=3／C必5"
+      "next_day_digest_down": 1
+    },
+    {
+      "id": "HP-PREFER-CHOP",
+      "rule_zh": "跌勢告段落後偏好震盪越久越好＝做多個股安全期；不期待V轉連推",
+      "source_days": [
+        "20261124"
+      ],
+      "n_seen": 1
+    },
+    {
+      "id": "HP-WAVE3-NOT-SHORTEST",
+      "rule_zh": "鐵律：第三段不能最短；違規／⑤過長→不是第五段、可能改讀擴延或3-3-3",
+      "source_days": [
+        "20261124"
+      ],
+      "n_seen": 1,
+      "nest_ref": "①③⑤五波結構檢驗"
     }
   ],
   "my_failure_taxonomy": [
@@ -268,11 +297,12 @@
     {
       "id": "F-PULLBACK-DEPTH-UNDER",
       "def_zh": "預估到『會拉回』但低估同日壓回深度（只寫淺整理）",
-      "n": 1,
+      "n": 2,
       "days": [
-        "20261111→20261112"
+        "20261111→20261112",
+        "20261124→20261125"
       ],
-      "fix_zh": "『建高＋勿追高』同權時，高機率允許先高後中幅壓回（仍不破修正低＝非第二腳）"
+      "fix_zh": "大陽翌日『震盪／勿追』同權時，高機率允許先高後中深幅壓回（仍不破修正低＝非續崩第五）"
     },
     {
       "id": "F-OPEN-DIRECTION-OVERWEIGHT",

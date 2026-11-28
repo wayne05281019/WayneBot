@@ -1,5 +1,5 @@
 {
-  "as_of_taipei": "2026-11-28T14:58:00+0800",
+  "as_of_taipei": "2026-11-28T15:20:00+0800",
   "phone_sync": "blocked",
   "buy_signal": false,
   "method_zh": "每天同步跟他一起解盤：讀D→量化他的原則→自己先寫隔日高/低機率→隔天官方柱對答案→失敗碼累計→再讀D+1。從最早片往後；不准倒推。",
@@ -20,8 +20,8 @@
     "20261126",
     "20261127"
   ],
-  "cursor_day": "20261124",
-  "status_zh": "1110–1123 九輪對質完成；下一個讀1124片。",
+  "cursor_day": "20261125",
+  "status_zh": "1110–1124 十輪對質完成；下一個讀1125片。",
   "days": [
     {
       "day": "20261110",
@@ -421,7 +421,65 @@
         ],
         "lesson_zh": "第五波探低後隔日高機率給反彈權重，尤其他已標開低觀察買點。"
       },
-      "next_film_read": "pending_20261124"
+      "next_film_read": "done_20261124"
+    },
+    {
+      "day": "20261124",
+      "film": "1124黃培碩.mp4",
+      "yt_title": "昨割肉 今回歸！逆向思維靠謀略",
+      "absorb_refs": [
+        "docs/expert_notes/飆客/decade_lab/huang_wave_method_20261124.md",
+        "docs/expert_notes/飆客/decade_lab/huang_oral_absorb_20261124.json"
+      ],
+      "his_read_zh": "大盤第五波內長紅／細微小轉折；逆向＝昨低買點觀察、今日大漲檢視持股弱勢出清；偏好震盪勿追；費半五段結束；台積仍三段；鐵律③不能最短。",
+      "forecast_for_next": {
+        "target_day": "20261125",
+        "written_before_peek": true,
+        "high_prob_zh": "震盪或拉回消化大漲、強弱分明、勿追連漲",
+        "low_prob_zh": "再爆拉三千點；或崩破35442續殺",
+        "basis_zh": "口播明天強弱分明勿追＋偏好震盪越久越好＋冷水未必止跌確認",
+        "applied_fix_from": [
+          "HP-PRESSURE-NO-CHASE",
+          "HP-REBOUND-DAY-NO-CHASE",
+          "HP-PREFER-CHOP"
+        ]
+      },
+      "confront_official": {
+        "symbol": "TWII",
+        "bar": {
+          "date": "20261125",
+          "open": 39983.91,
+          "high": 39983.91,
+          "low": 36681.9,
+          "close": 38195.43
+        },
+        "result": "hit_high_prob_partial",
+        "score_zh": "部分對",
+        "what_happened_zh": "1125 開近高39984後深殺低36682、收38195；大漲翌日劇烈消化。",
+        "why_partial_zh": "『不連漲／消化』方向命中，但深度遠超『震盪』敘事。",
+        "failure_codes": [
+          "F-PULLBACK-DEPTH-UNDER"
+        ],
+        "principles_fired": [
+          "HP-REBOUND-DAY-NO-CHASE",
+          "HP-PREFER-CHOP",
+          "HP-PRESSURE-NO-CHASE"
+        ],
+        "lesson_zh": "反彈大陽翌日高機率允許先高後深幅壓回；『震盪』權重要含中幅以上回吐。"
+      },
+      "next_film_read": "pending_20261125"
     }
+  ],
+  "days_completed": [
+    "20261110",
+    "20261111",
+    "20261112",
+    "20261116",
+    "20261117",
+    "20261118",
+    "20261119",
+    "20261120",
+    "20261123",
+    "20261124"
   ]
 }
