@@ -1,0 +1,30 @@
+{
+  "as_of_taipei": "2026-11-28T12:50:00+08:00",
+  "as_of_day": "20261110",
+  "source": "drive_asr_frames+youtube_title",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "chrono_index": 1,
+  "youtube": {
+    "title": "次級4浪壓力區 靜待拉回再全進！20261110 黃培碩 分析師 運達證券投顧",
+    "drive_name": "1110黃培碩.mp4",
+    "drive_file_id": "1m5GHbPCxjWZz5NHHdHgtzOJiITUeDj9I"
+  },
+  "media_evidence": {
+    "mp4": "/tmp/huang-drive-20261110/20261110.mp4",
+    "asr": "/tmp/huang-drive-20261110/asr_full.txt",
+    "frames_n": 17,
+    "asr_note_zh": "whisper；台語／專有名詞雜訊多；位階以標題＋可核對口播＋官方柱為準"
+  },
+  "market_verdict_zh": {
+    "now": "反彈第三天碰上細微壓力 43135；大拉回暫讀三段、第三段上週五結束；自 37837 已五小段上＝偏樂觀觀察窗",
+    "how_he_reads_zh": [
+      "釘 49968 下來五小段賣動→中繼→再下；現在大三段味道",
+      "壓力日多數不是追價買點；等壓回／整理",
+      "五小段上可能只是 A，也可能是出生段①；橫抬 B 則回撤不必深",
+      "費半／ADR／台積進目標或止跌觀察區＝聯動備援推生"
+    ],
+    "levels_he_marked": ["49968", "43135", "37837", "8997", "7084", "14655", "350", "2020"],
+    "not_zh": ["非買訊", "不准發明浪號進話筒", "『全力買』＝他紀律敘事≠leave_zero"]
+  }
+}

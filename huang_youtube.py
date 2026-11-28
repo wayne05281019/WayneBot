@@ -54,6 +54,8 @@ HUANG_DRIVE_KNOWN_IDS = {
     # 使用者 2026-11-27 上傳「1125黃培碩.mp4」「1126黃培碩.mp4」（昨／前天）
     "20261125": "19yG-DmROdfBLlgfQvuLm_Xk6YPI0YFse",
     "20261126": "1fr1IUcRIZChznNsjgNCWEiispfPT-OaL",
+    # Drive 已有「1127黃培碩.mp4」（震盪窗盤後續集）
+    "20261127": "1h8YP3PCaFy3rbQdwyP8vjZ_l1ufw81MM",
 }
 _ATOM = {"atom": "http://www.w3.org/2005/Atom", "yt": "http://www.youtube.com/xml/schemas/2015", "media": "http://search.yahoo.com/mrss/"}
 

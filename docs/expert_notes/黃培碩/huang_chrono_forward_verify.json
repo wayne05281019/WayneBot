@@ -1,0 +1,616 @@
+{
+  "as_of_taipei": "2026-11-28T16:10:00+0800",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "method_zh": "每天同步跟他一起解盤：讀D→量化他的原則→自己先寫隔日高/低機率→隔天官方柱對答案→失敗碼累計→再讀D+1。從最早片往後；不准倒推。",
+  "principles_quant_ref": "docs/expert_notes/黃培碩/huang_judgment_principles_quant.json",
+  "drive_folder_id": "1JkZ3P_AjAq4QigGplenKZ4o5CNaUvtfR",
+  "chrono_order": [
+    "20261110",
+    "20261111",
+    "20261112",
+    "20261116",
+    "20261117",
+    "20261118",
+    "20261119",
+    "20261120",
+    "20261123",
+    "20261124",
+    "20261125",
+    "20261126",
+    "20261127"
+  ],
+  "cursor_day": "20261127",
+  "status_zh": "Drive 片 1110–1127 已吸完；對質 n=12；1127→下一開市日預估掛 live。",
+  "days": [
+    {
+      "day": "20261110",
+      "film": "1110黃培碩.mp4",
+      "yt_title": "次級4浪壓力區 靜待拉回再全進！",
+      "absorb_refs": [
+        "docs/expert_notes/飆客/decade_lab/huang_wave_method_20261110.md",
+        "docs/expert_notes/飆客/decade_lab/huang_oral_absorb_20261110.json"
+      ],
+      "his_read_zh": "反彈第三天精準碰到細微壓力43135；大結構暫三段；自37837五小段上偏樂觀；今日多數非追價，等壓回再全進。",
+      "forecast_for_next": {
+        "target_day": "20261111",
+        "written_before_peek": true,
+        "high_prob_zh": "壓力後壓回或區間震盪整理",
+        "low_prob_zh": "幾乎不拉就續強突破壓力",
+        "basis_zh": "標題靜待拉回權重過重（事後檢討）"
+      },
+      "confront_official": {
+        "symbol": "TWII",
+        "bar": {
+          "date": "20261111",
+          "open": 43135.76,
+          "high": 44257.15,
+          "low": 42708.05,
+          "close": 44257.15
+        },
+        "result": "miss_high_prob",
+        "score_zh": "錯（高機率壓回未成）",
+        "what_happened_zh": "續強收在高≈44257；僅淺回42708。",
+        "why_wrong_zh": "標題壓過同場五小段偏多分支",
+        "failure_codes": [
+          "F-TITLE-OVERWEIGHT",
+          "F-UNDERWEIGHT-5UP"
+        ],
+        "principles_fired": [
+          "HP-PRESSURE-NO-CHASE",
+          "HP-WAIT-PULLBACK-FULL",
+          "HP-5MICRO-UP-BULLISH",
+          "HP-PARALLEL-BRANCHES"
+        ],
+        "lesson_zh": "壓力＋五小段上時，續強須並列高機率"
+      },
+      "next_film_read": "done_20261111"
+    },
+    {
+      "day": "20261111",
+      "film": "1111黃培碩.mp4",
+      "yt_title": "會打第二支腳嗎？3段或5段式修正？",
+      "absorb_refs": [
+        "docs/expert_notes/飆客/decade_lab/huang_wave_method_20261111.md",
+        "docs/expert_notes/飆客/decade_lab/huang_oral_absorb_20261111.json"
+      ],
+      "his_read_zh": "大三段低點傾向已現、第二隻腳低；短線細微約7段未完至少要9；明天還差一小段／可再建高但勿追高；長線出生段／五浪推生傾向。",
+      "forecast_for_next": {
+        "target_day": "20261112",
+        "written_before_peek": true,
+        "high_prob_zh": "再攻一小段或高檔淺整理後仍可建高（朝9波）；第二隻腳／破前低機會低；過程可壓回但非深第二腳",
+        "low_prob_zh": "直接深打第二隻腳、大結構第五下跌破37837附近",
+        "basis_zh": "口播『明天還差一小段／先建高』＋『7非完整要9』＋『第二隻腳不高』＋『明天不要追高會拉回』並列（吸收1110失敗課）",
+        "applied_fix_from": [
+          "F-TITLE-OVERWEIGHT",
+          "F-UNDERWEIGHT-5UP"
+        ]
+      },
+      "confront_official": {
+        "symbol": "TWII",
+        "bar": {
+          "date": "20261112",
+          "open": 44180.46,
+          "high": 44525.24,
+          "low": 42943.5,
+          "close": 43091.87
+        },
+        "result": "hit_high_prob_partial",
+        "score_zh": "對（方向對；壓回深度偏深）",
+        "what_happened_zh": "先創新高44525（再一小段），其後下殺至42943、收43092；未破37837、非第二隻腳。",
+        "why_partial_zh": "建高腳命中；同日壓回幅度大於『稍微整理』，接近他『不要追高／會拉回』但深度偏強。",
+        "failure_codes": [
+          "F-PULLBACK-DEPTH-UNDER"
+        ],
+        "principles_fired": [
+          "HP-NO-SECOND-FOOT",
+          "HP-7-NEEDS-9",
+          "HP-PARALLEL-BRANCHES",
+          "HP-5MICRO-UP-BULLISH"
+        ],
+        "lesson_zh": "『還差一小段』與『不要追高會拉回』要同權：允許先高後中幅壓回，不只淺整理。"
+      },
+      "next_film_read": "done_20261112"
+    },
+    {
+      "day": "20261112",
+      "film": "1112黃培碩.mp4",
+      "yt_title": "殺低又追高？操作節奏勿亂！",
+      "absorb_refs": [
+        "docs/expert_notes/飆客/decade_lab/huang_wave_method_20261112.md",
+        "docs/expert_notes/飆客/decade_lab/huang_oral_absorb_20261112.json"
+      ],
+      "his_read_zh": "驗證勿追高會拉回（約1300）；初步強彈小菜；壓回後第五大波才大錢；37837有效；個股分歧、勿殺低又追高。",
+      "forecast_for_next": {
+        "target_day": "20261113",
+        "note_zh": "下一交易日；雲端無1113片，只對官方柱",
+        "written_before_peek": true,
+        "high_prob_zh": "高檔震盪／延續壓回後反彈但不破37837；未必再創44525以上強勢新高；個股分歧",
+        "low_prob_zh": "V型直接狂攻大創新高且無整理，或反向打第二隻腳破修正低",
+        "basis_zh": "口播『壓回後再上才大錢』『等拉回』『低點不破』『勿追高』；吸收深度失敗課允許中幅震盪",
+        "applied_fix_from": [
+          "F-PULLBACK-DEPTH-UNDER",
+          "F-TITLE-OVERWEIGHT"
+        ]
+      },
+      "confront_official": {
+        "symbol": "TWII",
+        "bar": {
+          "date": "20261113",
+          "open": 43719.75,
+          "high": 44489.48,
+          "low": 43534.12,
+          "close": 43675.12
+        },
+        "result": "hit_high_prob",
+        "score_zh": "對",
+        "what_happened_zh": "1113 自43092附近反彈震盪：高44489未過1112高44525，低43534、收43675；未破37837。",
+        "why_hit_zh": "符合壓回後高檔震盪／反彈、不破修正低、未失控追價創新高主腳。",
+        "failure_codes": [],
+        "principles_fired": [
+          "HP-APPETIZER-THEN-BIG",
+          "HP-NO-SECOND-FOOT",
+          "HP-DONT-CHASE-THEN-PULL",
+          "HP-WAIT-PULLBACK-FULL"
+        ],
+        "lesson_zh": "『小菜後等壓回再上』日：隔日高機率用震盪／淺反彈而非立刻主升。"
+      },
+      "next_film_read": "done_20261116"
+    },
+    {
+      "day": "20261116",
+      "film": "1116黃培碩.mp4",
+      "yt_title": "追高又殺低？有第二隻腳？",
+      "absorb_refs": [
+        "docs/expert_notes/飆客/decade_lab/huang_wave_method_20261116.md",
+        "docs/expert_notes/飆客/decade_lab/huang_oral_absorb_20261116.json"
+      ],
+      "his_read_zh": "大黑回撤約0.52至41040；第二隻腳仍不高；屬預期拉回／回馬槍候選；可再低一點無關；選股找買點勿亂節奏。",
+      "forecast_for_next": {
+        "target_day": "20261117",
+        "written_before_peek": true,
+        "high_prob_zh": "可再低一點（朝0.618／41040下緣再測）或附近回馬槍反彈；不破37837第二腳；個股分歧",
+        "low_prob_zh": "直接打第二腳近／破37837，或無再測就V大噴離場",
+        "basis_zh": "口播『再多一點點無關』『0.52未到0.618』『第二腳不高』『回馬槍買點候選』",
+        "applied_fix_from": [
+          "F-PULLBACK-DEPTH-UNDER",
+          "HP-PARALLEL-BRANCHES"
+        ]
+      },
+      "confront_official": {
+        "symbol": "TWII",
+        "bar": {
+          "date": "20261117",
+          "open": 40546.64,
+          "high": 41533.84,
+          "low": 39786.45,
+          "close": 40092.11
+        },
+        "result": "hit_high_prob",
+        "score_zh": "對",
+        "what_happened_zh": "1117 續低至39786後反彈高41534、收40092；明顯再低一截，未破37837。",
+        "why_hit_zh": "符合『可再多一點點』深測＋非第二腳；收在低區偏弱但仍在修正低之上。",
+        "failure_codes": [],
+        "principles_fired": [
+          "HP-NO-SECOND-FOOT",
+          "HP-DONT-CHASE-THEN-PULL",
+          "HP-APPETIZER-THEN-BIG",
+          "HP-FALSE-BREAK-OR-RETEST"
+        ],
+        "lesson_zh": "回撤未到0.618時，隔日高機率保留『再低一點』權重，不要因單日大黑就改口第二腳。"
+      },
+      "next_film_read": "done_20261117"
+    },
+    {
+      "day": "20261117",
+      "film": "1117黃培碩.mp4",
+      "yt_title": "個股表現差異大！手握低本益比股！",
+      "absorb_refs": [
+        "docs/expert_notes/飆客/decade_lab/huang_wave_method_20261117.md",
+        "docs/expert_notes/飆客/decade_lab/huang_oral_absorb_20261117.json"
+      ],
+      "his_read_zh": "承認第二腳／深度判斷錯；改第二腳候選；最好再低測腳；破不破站買方若非推動下跌；低本益、高星不碰。",
+      "forecast_for_next": {
+        "target_day": "20261118",
+        "written_before_peek": true,
+        "high_prob_zh": "再探低／開低測第二腳帶（近37837或假破）；若止穩反彈；不當作已確認推動五段破底主腳",
+        "low_prob_zh": "不再探低直接大V；或確認推動下跌持續破底無止穩",
+        "basis_zh": "口播『最好明天再開低／再一個低點更漂亮』『第二腳成形』『破不破站買方』＋改口承認",
+        "applied_fix_from": [
+          "HP-PARALLEL-BRANCHES",
+          "HP-ADMIT-RETRACT"
+        ]
+      },
+      "confront_official": {
+        "symbol": "TWII",
+        "bar": {
+          "date": "20261118",
+          "open": 40720.09,
+          "high": 40938.2,
+          "low": 39260.99,
+          "close": 40194.91
+        },
+        "result": "hit_high_prob_partial",
+        "score_zh": "部分命中（有再低；未開低）",
+        "what_happened_zh": "1118 開高40720非開低；盤中低39260再探低（更近37837），收40195反彈；未破37837。",
+        "why_partial_zh": "『再一個低點』命中；『最好開低』未中。",
+        "failure_codes": [
+          "F-OPEN-DIRECTION-OVERWEIGHT"
+        ],
+        "principles_fired": [
+          "HP-ADMIT-RETRACT",
+          "HP-SECOND-FOOT-NOW",
+          "HP-RETEST-STAND-BUY-IF-NOT-IMPULSE"
+        ],
+        "lesson_zh": "他說『最好開低』是偏好不是必然；高機率用『再探低或測腳』，開盤方向當次條件。"
+      },
+      "next_film_read": "done_20261118"
+    },
+    {
+      "day": "20261118",
+      "film": "1118黃培碩.mp4",
+      "yt_title": "關鍵第二隻腳？看見了才相信？相信了才看見？",
+      "absorb_refs": [
+        "docs/expert_notes/飆客/decade_lab/huang_wave_method_20261118.md",
+        "docs/expert_notes/飆客/decade_lab/huang_oral_absorb_20261118.json"
+      ],
+      "his_read_zh": "認定第二腳＝ABC修正非推動五跌；開高勿追；相對低可再低／假破；低本益。",
+      "forecast_for_next": {
+        "target_day": "20261119",
+        "written_before_peek": true,
+        "high_prob_zh": "可再探低／近37837或假破一點（相對低第二腳）；或止穩反彈；主腳非確認推動破底",
+        "low_prob_zh": "確認推動五段下跌持續破底無腳；或已見絕對低當日大V不回頭",
+        "basis_zh": "口播『未必絕對低、可再低／破一點點一樣』『認定第二腳』『三段寫ABC』＋巢狀C必五若當C",
+        "applied_fix_from": [
+          "F-OPEN-DIRECTION-OVERWEIGHT",
+          "HP-PARALLEL-BRANCHES"
+        ]
+      },
+      "confront_official": {
+        "symbol": "TWII",
+        "bar": {
+          "date": "20261119",
+          "open": 40145.73,
+          "high": 40315.53,
+          "low": 38259.7,
+          "close": 38426.89
+        },
+        "result": "hit_high_prob",
+        "score_zh": "對",
+        "what_happened_zh": "1119 續探低至38259（更近37837、未破），收弱38427；符合相對低可再低、尚未確認推動破底收盤型。",
+        "why_hit_zh": "再探低主腳命中；未破37837亦符合假破／近測敘事。",
+        "failure_codes": [],
+        "principles_fired": [
+          "HP-SECOND-FOOT-NOW",
+          "HP-ABC-NOT-5DOWN",
+          "HP-RETEST-STAND-BUY-IF-NOT-IMPULSE"
+        ],
+        "lesson_zh": "第二腳過程允許多日再低；不要因單日未止穩就改口推動破底。"
+      },
+      "next_film_read": "done_20261119"
+    },
+    {
+      "day": "20261119",
+      "film": "1119黃培碩.mp4",
+      "yt_title": "記憶體族群 輝煌再起！",
+      "absorb_refs": [
+        "docs/expert_notes/飆客/decade_lab/huang_wave_method_20261119.md",
+        "docs/expert_notes/飆客/decade_lab/huang_oral_absorb_20261119.json"
+      ],
+      "his_read_zh": "第二腳近測37837；破不破出擊；ABC非第五推動；短線WXY震盪候選；記憶體／南亞科。",
+      "forecast_for_next": {
+        "target_day": "20261120",
+        "written_before_peek": true,
+        "high_prob_zh": "近37837測腳／輕假破後止穩或反彈；主腳仍第二腳帶，非推動五段深崩",
+        "low_prob_zh": "確認推動第五下跌、大幅破37837續殺",
+        "basis_zh": "口播『低點有效』『回測第二腳』『不會第五破往下』『破不破都出擊』—但未授權無限深度",
+        "applied_fix_from": [
+          "HP-PARALLEL-BRANCHES",
+          "HP-ABC-NOT-5DOWN"
+        ]
+      },
+      "confront_official": {
+        "symbol": "TWII",
+        "bar": {
+          "date": "20261120",
+          "open": 37646.13,
+          "high": 37646.13,
+          "low": 35738.68,
+          "close": 36033.29
+        },
+        "result": "miss_high_prob",
+        "score_zh": "錯（高機率測腳止穩未成）",
+        "what_happened_zh": "1120 跳空開37646已破37837，低35738、收36033＝深破約2100點，屬大幅破前低續殺。",
+        "why_wrong_zh": "把『破不破都一樣／低點有效』讀成隔日仍以腳帶止穩為主；低估跳空深破成推動續殺腳的機率。",
+        "failure_codes": [
+          "F-FOOT-DEPTH-UNLIMITED",
+          "F-UNDERWEIGHT-GAP-BREAK"
+        ],
+        "principles_fired": [
+          "HP-SECOND-FOOT-NOW",
+          "HP-ABC-NOT-5DOWN",
+          "HP-RETEST-STAND-BUY-IF-NOT-IMPULSE"
+        ],
+        "lesson_zh": "『破不破』≠無限深度；隔日若跳空大破前低，高機率要並列『推動續殺』分支並升權。下一片看他是否改口。"
+      },
+      "next_film_read": "done_20261120"
+    },
+    {
+      "day": "20261120",
+      "film": "1120黃培碩.mp4",
+      "yt_title": "台積電強於大盤！三段式 vs. 五段式",
+      "absorb_refs": [
+        "docs/expert_notes/飆客/decade_lab/huang_wave_method_20261120.md",
+        "docs/expert_notes/飆客/decade_lab/huang_oral_absorb_20261120.json"
+      ],
+      "his_read_zh": "大盤改口：不是第二腳，是第五波下跌（認先前連動台積判斷錯）。台積仍三段／第二腳＋假破底味道。第五波中勿殺低；五完再評估。個股3-3-5細拆。",
+      "retract_zh": "TWII 第二腳→第五下跌；台積不跟改",
+      "forecast_for_next": {
+        "target_day": "20261123",
+        "note_zh": "週末後下一交易日／下一片日",
+        "written_before_peek": true,
+        "high_prob_zh": "第五波仍可再探低或末端止跌後反彈；勿當第二腳V已確認；新低後反彈可並列",
+        "low_prob_zh": "週五已見第五絕對終點、週一不破新低直接大噴離結構",
+        "basis_zh": "口播大盤第五波進行中／細微波可能未完；第五完才整理；吸收跳空破腳失敗課",
+        "applied_fix_from": [
+          "F-FOOT-DEPTH-UNLIMITED",
+          "F-UNDERWEIGHT-GAP-BREAK",
+          "HP-ADMIT-RETRACT"
+        ]
+      },
+      "confront_official": {
+        "symbol": "TWII",
+        "bar": {
+          "date": "20261123",
+          "open": 35899.48,
+          "high": 37108.2,
+          "low": 35442.41,
+          "close": 36811.89
+        },
+        "result": "hit_high_prob",
+        "score_zh": "對",
+        "what_happened_zh": "1123 再探低35442（略低於1120低35738）後強彈收36812；符合第五末端可再低＋反彈。",
+        "why_hit_zh": "新低＋反彈並列主腳命中；非第二腳假V不破新低。",
+        "failure_codes": [],
+        "principles_fired": [
+          "HP-MARKET-5TH-DOWN",
+          "HP-ADMIT-RETRACT",
+          "HP-5TH-DONT-PANIC-SELL"
+        ],
+        "lesson_zh": "改口第五波後，隔日高機率保留『可再探低』；新低後反彈仍算結構內。"
+      },
+      "next_film_read": "done_20261123"
+    },
+    {
+      "day": "20261123",
+      "film": "1123黃培碩.mp4",
+      "yt_title": "費半、台積電ADR、美光、南亞科",
+      "absorb_refs": [
+        "docs/expert_notes/飆客/decade_lab/huang_wave_method_20261123.md",
+        "docs/expert_notes/飆客/decade_lab/huang_oral_absorb_20261123.json"
+      ],
+      "his_read_zh": "大盤仍五段／第五波末跌；當日低35442僅略破上週五；開低＝短線買點觀察勿恐慌；台積仍三段未破1970；南亞科3-3-5。",
+      "forecast_for_next": {
+        "target_day": "20261124",
+        "written_before_peek": true,
+        "high_prob_zh": "反彈延續／第五末端後反彈為主；再深破35442續殺為次",
+        "low_prob_zh": "直接再創大幅新低、第五波加速破底",
+        "basis_zh": "口播開低買點觀察＋第五波可能已見低／還差一小段但未必；美股破底台股破底翻味道",
+        "applied_fix_from": [
+          "HP-MARKET-5TH-DOWN",
+          "HP-PARALLEL-BRANCHES"
+        ]
+      },
+      "confront_official": {
+        "symbol": "TWII",
+        "bar": {
+          "date": "20261124",
+          "open": 39148.91,
+          "high": 40180.38,
+          "low": 39148.91,
+          "close": 40122.35
+        },
+        "result": "hit_high_prob",
+        "score_zh": "對",
+        "what_happened_zh": "1124 跳空大漲開39149、高40180、收40122；強勢反彈未破35442。",
+        "why_hit_zh": "反彈延續主腳命中。",
+        "failure_codes": [],
+        "principles_fired": [
+          "HP-MARKET-5TH-DOWN",
+          "HP-5TH-DONT-PANIC-SELL"
+        ],
+        "lesson_zh": "第五波探低後隔日高機率給反彈權重，尤其他已標開低觀察買點。"
+      },
+      "next_film_read": "done_20261124"
+    },
+    {
+      "day": "20261124",
+      "film": "1124黃培碩.mp4",
+      "yt_title": "昨割肉 今回歸！逆向思維靠謀略",
+      "absorb_refs": [
+        "docs/expert_notes/飆客/decade_lab/huang_wave_method_20261124.md",
+        "docs/expert_notes/飆客/decade_lab/huang_oral_absorb_20261124.json"
+      ],
+      "his_read_zh": "大盤第五波內長紅／細微小轉折；逆向＝昨低買點觀察、今日大漲檢視持股弱勢出清；偏好震盪勿追；費半五段結束；台積仍三段；鐵律③不能最短。",
+      "forecast_for_next": {
+        "target_day": "20261125",
+        "written_before_peek": true,
+        "high_prob_zh": "震盪或拉回消化大漲、強弱分明、勿追連漲",
+        "low_prob_zh": "再爆拉三千點；或崩破35442續殺",
+        "basis_zh": "口播明天強弱分明勿追＋偏好震盪越久越好＋冷水未必止跌確認",
+        "applied_fix_from": [
+          "HP-PRESSURE-NO-CHASE",
+          "HP-REBOUND-DAY-NO-CHASE",
+          "HP-PREFER-CHOP"
+        ]
+      },
+      "confront_official": {
+        "symbol": "TWII",
+        "bar": {
+          "date": "20261125",
+          "open": 39983.91,
+          "high": 39983.91,
+          "low": 36681.9,
+          "close": 38195.43
+        },
+        "result": "hit_high_prob_partial",
+        "score_zh": "部分對",
+        "what_happened_zh": "1125 開近高39984後深殺低36682、收38195；大漲翌日劇烈消化。",
+        "why_partial_zh": "『不連漲／消化』方向命中，但深度遠超『震盪』敘事。",
+        "failure_codes": [
+          "F-PULLBACK-DEPTH-UNDER"
+        ],
+        "principles_fired": [
+          "HP-REBOUND-DAY-NO-CHASE",
+          "HP-PREFER-CHOP",
+          "HP-PRESSURE-NO-CHASE"
+        ],
+        "lesson_zh": "反彈大陽翌日高機率允許先高後深幅壓回；『震盪』權重要含中幅以上回吐。"
+      },
+      "next_film_read": "done_20261125"
+    },
+    {
+      "day": "20261125",
+      "film": "1125黃培碩.mp4",
+      "yt_title": "大逃殺？？回馬槍？？？",
+      "absorb_refs": [
+        "docs/expert_notes/飆客/decade_lab/huang_wave_method_20261125.md",
+        "docs/expert_notes/飆客/decade_lab/huang_oral_absorb_20261125.json"
+      ],
+      "his_read_zh": "第五波仍在；當日重挫兩分支大逃殺vs回馬槍；傾回馬槍但等下降軌道確認；不急全力加碼。",
+      "forecast_for_next": {
+        "target_day": "20261126",
+        "written_before_peek": true,
+        "high_prob_zh": "回馬槍後反彈／震盪為主；不破35442續崩為次",
+        "low_prob_zh": "第五波擴延直接破35442深殺",
+        "basis_zh": "口播傾回馬槍＋不賭擴延；越軌道才確認五波結束",
+        "applied_fix_from": [
+          "HP-HUIMAQIANG-BRANCH",
+          "HP-CHANNEL-CONFIRM",
+          "HP-5TH-EXTEND-RISK"
+        ]
+      },
+      "confront_official": {
+        "symbol": "TWII",
+        "bar": {
+          "date": "20261126",
+          "open": 38435.99,
+          "high": 39459.95,
+          "low": 38435.99,
+          "close": 39151.81
+        },
+        "result": "hit_high_prob",
+        "score_zh": "對",
+        "what_happened_zh": "1126 開38436、高39460、收39152；反彈未破35442。",
+        "why_hit_zh": "回馬槍後反彈主腳命中。",
+        "failure_codes": [],
+        "principles_fired": [
+          "HP-HUIMAQIANG-BRANCH",
+          "HP-CHANNEL-CONFIRM"
+        ],
+        "lesson_zh": "大逃殺／回馬槍並存日，傾回馬槍時隔日反彈權重應並列。"
+      },
+      "next_film_read": "done_20261126"
+    },
+    {
+      "day": "20261126",
+      "film": "1126黃培碩.mp4",
+      "yt_title": "審慎應對！傾向樂觀！",
+      "absorb_refs": [
+        "docs/expert_notes/飆客/decade_lab/huang_wave_method_20261126.md",
+        "docs/expert_notes/飆客/decade_lab/huang_oral_absorb_20261126.json"
+      ],
+      "his_read_zh": "細微波判落底；審慎應對＋傾向樂觀；期待混混震盪非V轉；僅止於反彈。",
+      "forecast_for_next": {
+        "target_day": "20261127",
+        "written_before_peek": true,
+        "high_prob_zh": "震盪／淺幅整理為主（樂觀但不追推）",
+        "low_prob_zh": "再崩破35442；或V轉爆拉",
+        "basis_zh": "口播落底後混混震盪＋審慎樂觀＋仍可能壓回",
+        "applied_fix_from": [
+          "HP-CAUTIOUS-OPTIMISM",
+          "HP-PREFER-CHOP",
+          "HP-BOTTOM-STILL-PULLBACK"
+        ]
+      },
+      "confront_official": {
+        "symbol": "TWII",
+        "bar": {
+          "date": "20261127",
+          "open": 39168.57,
+          "high": 39385.8,
+          "low": 38890.53,
+          "close": 39037.77
+        },
+        "result": "hit_high_prob",
+        "score_zh": "對",
+        "what_happened_zh": "1127 開39169、高39386、低38891、收39038；淺幅震盪略收黑。",
+        "why_hit_zh": "震盪／淺幅整理主腳命中。",
+        "failure_codes": [],
+        "principles_fired": [
+          "HP-CAUTIOUS-OPTIMISM",
+          "HP-PREFER-CHOP",
+          "HP-BOTTOM-STILL-PULLBACK"
+        ],
+        "lesson_zh": "落底後隔日高機率給震盪權重，不預設連推也不預設再崩。"
+      },
+      "next_film_read": "done_20261127"
+    },
+    {
+      "day": "20261127",
+      "film": "1127黃培碩.mp4",
+      "yt_title": "審慎樂觀！低接不追高",
+      "absorb_refs": [
+        "docs/expert_notes/飆客/decade_lab/huang_wave_method_20261127.md",
+        "docs/expert_notes/飆客/decade_lab/huang_oral_absorb_20261127.json"
+      ],
+      "his_read_zh": "認定落底；審慎樂觀；低接不追高；下降軌道未越→混震盪／壓回找點。",
+      "forecast_for_next": {
+        "target_day": "next_open_twii_day",
+        "written_before_peek": true,
+        "high_prob_zh": "區間震盪／壓回低接、不追高連推",
+        "low_prob_zh": "越下降軌道連推；或破35442續崩",
+        "basis_zh": "口播低接不追高＋軌道未越混震盪＋審慎樂觀",
+        "applied_fix_from": [
+          "HP-CAUTIOUS-OPTIMISM",
+          "HP-DIP-NO-CHASE",
+          "HP-CHANNEL-CONFIRM",
+          "HP-PREFER-CHOP"
+        ],
+        "status": "forecast_pending_live"
+      },
+      "confront_official": null,
+      "next_film_read": "pack_end_await_next_drive"
+    }
+  ],
+  "days_completed": [
+    "20261110",
+    "20261111",
+    "20261112",
+    "20261116",
+    "20261117",
+    "20261118",
+    "20261119",
+    "20261120",
+    "20261123",
+    "20261124",
+    "20261125",
+    "20261126",
+    "20261127"
+  ],
+  "live_forecast": {
+    "from_day": "20261127",
+    "target": "next_open_twii_day",
+    "written_before_peek": true,
+    "high_prob_zh": "區間震盪／壓回低接、不追高連推",
+    "low_prob_zh": "越下降軌道連推；或破35442續崩",
+    "basis_zh": "落底＋審慎樂觀＋低接不追高＋下降軌道未越→混震盪",
+    "applied_fix_from": [
+      "HP-CAUTIOUS-OPTIMISM",
+      "HP-DIP-NO-CHASE",
+      "HP-CHANNEL-CONFIRM",
+      "HP-PREFER-CHOP"
+    ],
+    "confront_official": "pending_live"
+  }
+}
