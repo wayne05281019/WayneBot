@@ -216,6 +216,14 @@ ASR／下載可平行預取，但 **forecast→confront 單線**；預取物密�
 
 ---
 
+
+### 7c. 持倉保命學習產出（見總彙整 §14b）
+
+- 每日必填：`exit_learn_zh`／`wave_progress`／`night_morning_line`／`holdings_env_gate`
+- 五件＋量價＋費半聯動：有講就記，不准只畫外形
+- 話筒：官方夜盤一句可顯示；浪％／出場自動推播仍 `phone_sync=blocked` 直到過閘
+- 禁止：未過閘用個股浪％當賣訊
+
 ## 8. 反隨便結案閘（沒過＝只能寫 collecting）
 
 宣稱「會判／有進步／pack 完成」前必須**同時**成立：

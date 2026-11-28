@@ -5974,10 +5974,25 @@ class WayneTelegramBot:
                 phone_html = brief or ""
             await self._stop_plain_wait(*wait_h)
             wait_h = (None, None, None)
-            if phone_html:
+            night_line = ""
+            try:
+                from taiwan_market import format_sox_tx_te_night_oneline
+                from tg_layout import html_escape
+
+                raw_night = (
+                    format_sox_tx_te_night_oneline(self.db_path) or ""
+                ).strip()
+                night_line = html_escape(raw_night) if raw_night else ""
+            except Exception:
+                logger.debug("波浪位階夜盤一句略過", exc_info=True)
+            if night_line:
+                head = night_line if not phone_html else f"{night_line}\n\n{phone_html}"
+            else:
+                head = phone_html
+            if head:
                 try:
                     await msg.reply_html(
-                        phone_html[:3500],
+                        head[:3500],
                         disable_web_page_preview=True,
                         reply_markup=self._keyboard(),
                     )
@@ -9762,8 +9777,15 @@ class WayneTelegramBot:
                     logger.exception("資金輪動補送失敗提示仍失敗")
 
     async def _send_portfolio(self, message, uid: str):
-        """持股＝手記真實買入，不是觀察、也不是 AI 模擬倉。"""
+        """持股＝手記真實買入，不是觀察、也不是 AI 模擬倉。有出場提醒先短喊再清單。"""
         holdings = get_user_portfolio(self.db_path, uid)
+        try:
+            alert = self.portfolio_engine.format_holdings_protect_alert_html(holdings)
+        except Exception:
+            logger.exception("持股出場提醒組句失敗")
+            alert = ""
+        if alert:
+            await message.reply_html(alert, disable_web_page_preview=True)
         mine = self.portfolio_engine.format_holdings_html(holdings)
         parts = chunk_telegram_html(mine, reflow=True)
         for i, part in enumerate(parts):

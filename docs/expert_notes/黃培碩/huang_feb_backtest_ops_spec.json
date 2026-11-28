@@ -1,5 +1,5 @@
 {
-  "as_of_taipei": "2026-11-28T17:20:00+0800",
+  "as_of_taipei": "2026-11-28T17:45:00+0800",
   "full_detail_audit": "2026-11-28T17:15:00+0800",
   "quality_first_lock": "2026-11-28T17:20:00+0800",
   "phone_sync": "blocked",
@@ -14,14 +14,21 @@
     "振幅／Fib／日量／必要時60分K量",
     "美股／台指期日夜／族群鏈同步",
     "隔日官方柱對質＋交叉學習＋滾動修正",
-    "讀完須變準；禁止漏測／忘記／還不會當結論"
+    "讀完須變準；禁止漏測／忘記／還不會當結論",
+    "出場學＋浪走完度／給回帶可對質",
+    "費半＋台指／電子夜 → 開盤前一句",
+    "持股環境閘（覆巢）先於個股操作"
   ],
   "agents_consulted": [
     "bc-8390efd8-8919-5779-8f0e-31ece2bd6185",
     "bc-3da1036f-dbb6-5add-b19f-fd717def6d2e",
     "bc-ac485767-3f05-5cff-93a6-6b4bdf81f005"
   ],
-  "film_status_enum": ["present", "absent_open", "closed"],
+  "film_status_enum": [
+    "present",
+    "absent_open",
+    "closed"
+  ],
   "absent_open_counts_toward_n": true,
   "closed_skips": true,
   "no_skip_open_days": {
@@ -40,11 +47,33 @@
   "volume_price_required": {
     "user_lock": "2026-11-28",
     "rule_zh": "量要比對價；不准只看價不看量；預估／刪去／對質都要把量價關係算進去",
-    "fields": ["price_dir", "vol", "vol_ma20", "vol_price_relation"],
-    "relation_enum": ["confirm", "deny", "neutral"],
-    "examples_zh": ["價漲量增", "價漲量縮", "破底放量", "破底縮量"],
-    "applies_on": ["present", "absent_open"],
-    "use_in": ["regime", "dual_branch_score", "forecast", "confront"],
+    "fields": [
+      "price_dir",
+      "vol",
+      "vol_ma20",
+      "vol_price_relation"
+    ],
+    "relation_enum": [
+      "confirm",
+      "deny",
+      "neutral"
+    ],
+    "examples_zh": [
+      "價漲量增",
+      "價漲量縮",
+      "破底放量",
+      "破底縮量"
+    ],
+    "applies_on": [
+      "present",
+      "absent_open"
+    ],
+    "use_in": [
+      "regime",
+      "dual_branch_score",
+      "forecast",
+      "confront"
+    ],
     "ignore_volume_blocks_complete": true,
     "escalate_60m_on_dispute": true
   },
@@ -54,7 +83,10 @@
     "iron_gates_no_unknown": true,
     "no_oral_contradiction": true
   },
-  "pass_pattern_count_range": [1, 3],
+  "pass_pattern_count_range": [
+    1,
+    3
+  ],
   "min_daily_quant": [
     "amp_ratios",
     "fib_or_skip_reason",
@@ -65,11 +97,28 @@
   "sync_compare_required": {
     "as_of": "2026-11-28",
     "user_lock": true,
-    "us": ["SOX", "TSM_ADR", "named_us_stocks_when_taught"],
-    "tx_futures": ["day_session", "night_session"],
-    "te_electronics_futures": ["day_session", "night_session"],
-    "twii": ["ohlc", "volume"],
-    "fields": ["sync_us[]", "sync_tx", "sync_te"],
+    "us": [
+      "SOX",
+      "TSM_ADR",
+      "named_us_stocks_when_taught"
+    ],
+    "tx_futures": [
+      "day_session",
+      "night_session"
+    ],
+    "te_electronics_futures": [
+      "day_session",
+      "night_session"
+    ],
+    "twii": [
+      "ohlc",
+      "volume"
+    ],
+    "fields": [
+      "sync_us[]",
+      "sync_tx",
+      "sync_te"
+    ],
     "rule_zh": "開市日一天一天必同步：加權＋費半＋台指期日／夜＋電子期日／夜（＋點名美股／ADR）；缺官方收標 missing，不准假數、不准跳鏈"
   },
   "peer_chain_required": {
@@ -91,9 +140,17 @@
   "rolling_cross_learn": {
     "as_of": "2026-11-28",
     "user_lock": true,
-    "fields": ["miss_anatomy_zh", "cross_learn_zh", "rolling_fix[]", "undiscussed_gap[]"],
+    "fields": [
+      "miss_anatomy_zh",
+      "cross_learn_zh",
+      "rolling_fix[]",
+      "undiscussed_gap[]"
+    ],
     "wave_def_draw_required": true,
-    "degrees": ["degree_main", "degree_micro"],
+    "degrees": [
+      "degree_main",
+      "degree_micro"
+    ],
     "forbid_diary_only": true
   },
   "auto_expand_after_absorb": {
@@ -107,7 +164,12 @@
       "start_collect_from_D_plus_1",
       "empty_array_means_checked_not_skipped"
     ],
-    "forbid": ["wait_user_per_symbol", "invent_basket", "phone_buy_signal", "name_silent_cover"]
+    "forbid": [
+      "wait_user_per_symbol",
+      "invent_basket",
+      "phone_buy_signal",
+      "name_silent_cover"
+    ]
   },
   "progress_gate_every_n_confronted": 20,
   "anti_casual_done_gate": {
@@ -174,5 +236,17 @@
     "samples": "huang_sample_register.json",
     "patterns": "docs/expert_notes/飆客/observe_manual/wave_micro_pattern_catalog.json"
   },
-  "spec_md": "docs/expert_notes/黃培碩/huang_feb_backtest_ops_spec.md"
+  "spec_md": "docs/expert_notes/黃培碩/huang_feb_backtest_ops_spec.md",
+  "holdings_protect_learn": {
+    "user_lock": "2026-11-28T17:45:00+0800",
+    "ref_zh": "huang_master_consolidate.md §14b",
+    "fields": [
+      "exit_learn_zh",
+      "wave_progress",
+      "night_morning_line",
+      "holdings_env_gate"
+    ],
+    "phone_sync": "blocked_until_gate",
+    "forbid_zh": "未過閘不准發明個股浪％當賣訊；夜盤一句只准官方數"
+  }
 }

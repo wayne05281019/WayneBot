@@ -28,9 +28,23 @@
     "align_with_huang": "same|skew|unknown"
   },
   "elim_rows": [],
-  "sync_us": [{"symbol": "SOX", "status": "missing|ok"}],
-  "sync_tx": {"day_session": null, "night_session": null, "status": "missing|ok"},
-  "sync_te": {"day_session": null, "night_session": null, "status": "missing|ok", "note_zh": "電子期日／夜"},
+  "sync_us": [
+    {
+      "symbol": "SOX",
+      "status": "missing|ok"
+    }
+  ],
+  "sync_tx": {
+    "day_session": null,
+    "night_session": null,
+    "status": "missing|ok"
+  },
+  "sync_te": {
+    "day_session": null,
+    "night_session": null,
+    "status": "missing|ok",
+    "note_zh": "電子期日／夜"
+  },
   "peer_chain": [],
   "teach_expand": [],
   "quant": {
@@ -72,7 +86,32 @@
     "confront_anatomy": false,
     "cross_learn": false,
     "rolling_fix_noted": false,
+    "exit_learn_filled": false,
+    "wave_progress_filled": false,
+    "night_morning_line_filled": false,
+    "holdings_env_gate_filled": false,
+    "five_vol_sox_noted": false,
     "day_complete": false,
     "ref_zh": "huang_master_consolidate.md §9–§14"
+  },
+  "exit_learn_zh": "",
+  "wave_progress": {
+    "degree_main_pct": null,
+    "degree_micro_pct": null,
+    "giveback_band_zh": "",
+    "status": "unknown|rough|locked",
+    "note_zh": ""
+  },
+  "night_morning_line": {
+    "sox": null,
+    "tx_night": null,
+    "te_night": null,
+    "line_zh": "",
+    "source_zh": "official_only"
+  },
+  "holdings_env_gate": {
+    "env": "risk_on|neutral|risk_off|unknown",
+    "why_zh": "",
+    "action_zh": "檢視重倉|維持觀察|unknown"
   }
 }

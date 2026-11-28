@@ -4,7 +4,8 @@
 **本檔＝單一真相源。** 細節契約另見 `huang_feb_backtest_ops_spec.md`／`.json`；每日欄位＝`huang_days/_TEMPLATE.json`。  
 讀完二月包若還說「少東少西／忘記測／還不會判」＝做錯。
 
-**及格線：** 能精準判斷並繪製**主波＋細微波**；分數板證明變準——不是看過片。
+**及格線：** 能精準判斷並繪製**主波＋細微波**；分數板證明變準——不是看過片。  
+**對使用者目標：** 學會後要能支撐「持倉保命」——大盤／費半環境一句、浪走完度與給回風險可對質、他何時減碼／出清可學；**仍** `phone_sync=blocked` 直到過閘，不准發明個股 5／9 當賣訊。
 
 ---
 
@@ -129,7 +130,8 @@
 | 7 | wave_def_draw 主＋細 | ✓ |
 | 8 | teach_expand[] | ✓ |
 | 9 | confront＋miss_anatomy＋cross_learn＋rolling_fix＋undiscussed_gap | ✓ |
-| 10 | `no_forget_audit` 全 true | ✓ |
+| 10 | `exit_learn`／`wave_progress`／`night_morning_line`／`holdings_env_gate`（§14b） | ✓ |
+| 11 | `no_forget_audit` 全 true | ✓ |
 
 ---
 
@@ -188,8 +190,23 @@
 
 ## 14. 每日自檢（`no_forget_audit`）
 
-regime？刪去？雙分支未偷看？量比價？SOX+TX+TE日夜+TWII？主細微波？peer（若有）？擴充已檢查？對質解剖？交叉？rolling？  
+regime？刪去？雙分支未偷看？量比價？SOX+TX+TE日夜+TWII？主細微波？peer（若有）？擴充已檢查？對質解剖？交叉？rolling？出場學？浪進度？夜盤一句？持股環境閘？五件／量價／費半聯動有講就記？  
 **任一否 → 不准 complete。**  
+
+---
+
+## 14b. 持倉保命學習產出（使用者 2026-11-28 宗旨・與 §14 並列）
+
+回測不是只練猜隔日高低。每天吸收還要收這四欄（缺＝當天不准當「學完」）：
+
+| 欄 | 內容 | 話筒 |
+|---|---|---|
+| `exit_learn_zh` | 他當日有無減碼／出清／勿追／趁反彈換股；無則寫「無」 | blocked；過閘後才可接持股提醒 |
+| `wave_progress` | 主／細微波主張的走完度粗估（％或區間）＋常見給回帶；不確定＝`unknown`＋原因 | blocked；不准未過閘推個股％ |
+| `night_morning_line` | 費半＋台指夜＋電子夜 → 開盤前一句（只官方數） | 顯示可用官方一句；預測浪號仍 blocked |
+| `holdings_env_gate` | 大盤／費半環境對「重倉是否該先檢視」：偏多／中性／偏空＋依據 | 環境閘可先顯示；個股浪仍不准發明 |
+
+另強制：飆大**五件**（波浪／形態／量價結構／關鍵K／碎形）＋**量價**＋**聰明錢／聯動**（費半優先）當日有講就記入 `regime_D`／`quant`／`cross_learn`，不准只畫外形。
 
 ---
 
