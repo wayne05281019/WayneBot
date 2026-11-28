@@ -1,0 +1,26 @@
+{
+  "as_of_taipei": "2026-11-28T13:20:00+08:00",
+  "as_of_day": "20261112",
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "chrono_index": 3,
+  "youtube": {
+    "title": "殺低又追高？操作節奏勿亂！20261112 黃培碩 分析師 運達證券投顧",
+    "drive_name": "1112黃培碩.mp4",
+    "drive_file_id": "12_RN9rsLBKjzbKNihFa5NceSGCJeWlm_"
+  },
+  "media_evidence": {
+    "asr": "/tmp/huang-drive-20261112/asr_full.txt",
+    "frames_n": 17
+  },
+  "market_verdict_zh": {
+    "now": "驗證勿追高會拉回（約1300點）；初步強彈小菜；壓回後第五大波才是大錢；低37837有效；個股將分歧",
+    "how_he_reads_zh": [
+      "昨日勿追→今日深拉驗證",
+      "三段修正結束＋低點有效；等五之二式拉回再布局",
+      "細微7段可結束或再一段；勿扭腳尖",
+      "節奏：殺低又追高＝亂；選股＞追指數"
+    ],
+    "levels_he_marked": ["37837", "44525", "44257", "2395", "2020", "351", "8997"]
+  }
+}

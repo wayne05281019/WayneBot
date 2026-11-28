@@ -1,5 +1,5 @@
 {
-  "as_of_taipei": "2026-11-28T13:05:00+0800",
+  "as_of_taipei": "2026-11-28T13:20:00+0800",
   "phone_sync": "blocked",
   "buy_signal": false,
   "method_zh": "每天同步跟他一起解盤：讀D→量化他的原則→自己先寫隔日高/低機率→隔天官方柱對答案→失敗碼累計→再讀D+1。從最早片往後；不准倒推。",
@@ -20,8 +20,8 @@
     "20261126",
     "20261127"
   ],
-  "cursor_day": "20261112",
-  "status_zh": "1110–1111 兩輪對質完成；下一個讀 1112 片。",
+  "cursor_day": "20261116",
+  "status_zh": "1110–1112 三輪對質完成；雲端無1113片，下一片1116（隔日對質目標已用1113官方柱）。",
   "days": [
     {
       "day": "20261110",
@@ -41,13 +41,27 @@
       },
       "confront_official": {
         "symbol": "TWII",
-        "bar": {"date": "20261111", "open": 43135.76, "high": 44257.15, "low": 42708.05, "close": 44257.15},
+        "bar": {
+          "date": "20261111",
+          "open": 43135.76,
+          "high": 44257.15,
+          "low": 42708.05,
+          "close": 44257.15
+        },
         "result": "miss_high_prob",
         "score_zh": "錯（高機率壓回未成）",
         "what_happened_zh": "續強收在高≈44257；僅淺回42708。",
         "why_wrong_zh": "標題壓過同場五小段偏多分支",
-        "failure_codes": ["F-TITLE-OVERWEIGHT", "F-UNDERWEIGHT-5UP"],
-        "principles_fired": ["HP-PRESSURE-NO-CHASE", "HP-WAIT-PULLBACK-FULL", "HP-5MICRO-UP-BULLISH", "HP-PARALLEL-BRANCHES"],
+        "failure_codes": [
+          "F-TITLE-OVERWEIGHT",
+          "F-UNDERWEIGHT-5UP"
+        ],
+        "principles_fired": [
+          "HP-PRESSURE-NO-CHASE",
+          "HP-WAIT-PULLBACK-FULL",
+          "HP-5MICRO-UP-BULLISH",
+          "HP-PARALLEL-BRANCHES"
+        ],
         "lesson_zh": "壓力＋五小段上時，續強須並列高機率"
       },
       "next_film_read": "done_20261111"
@@ -67,20 +81,81 @@
         "high_prob_zh": "再攻一小段或高檔淺整理後仍可建高（朝9波）；第二隻腳／破前低機會低；過程可壓回但非深第二腳",
         "low_prob_zh": "直接深打第二隻腳、大結構第五下跌破37837附近",
         "basis_zh": "口播『明天還差一小段／先建高』＋『7非完整要9』＋『第二隻腳不高』＋『明天不要追高會拉回』並列（吸收1110失敗課）",
-        "applied_fix_from": ["F-TITLE-OVERWEIGHT", "F-UNDERWEIGHT-5UP"]
+        "applied_fix_from": [
+          "F-TITLE-OVERWEIGHT",
+          "F-UNDERWEIGHT-5UP"
+        ]
       },
       "confront_official": {
         "symbol": "TWII",
-        "bar": {"date": "20261112", "open": 44180.46, "high": 44525.24, "low": 42943.5, "close": 43091.87},
+        "bar": {
+          "date": "20261112",
+          "open": 44180.46,
+          "high": 44525.24,
+          "low": 42943.5,
+          "close": 43091.87
+        },
         "result": "hit_high_prob_partial",
         "score_zh": "對（方向對；壓回深度偏深）",
         "what_happened_zh": "先創新高44525（再一小段），其後下殺至42943、收43092；未破37837、非第二隻腳。",
         "why_partial_zh": "建高腳命中；同日壓回幅度大於『稍微整理』，接近他『不要追高／會拉回』但深度偏強。",
-        "failure_codes": ["F-PULLBACK-DEPTH-UNDER"],
-        "principles_fired": ["HP-NO-SECOND-FOOT", "HP-7-NEEDS-9", "HP-PARALLEL-BRANCHES", "HP-5MICRO-UP-BULLISH"],
+        "failure_codes": [
+          "F-PULLBACK-DEPTH-UNDER"
+        ],
+        "principles_fired": [
+          "HP-NO-SECOND-FOOT",
+          "HP-7-NEEDS-9",
+          "HP-PARALLEL-BRANCHES",
+          "HP-5MICRO-UP-BULLISH"
+        ],
         "lesson_zh": "『還差一小段』與『不要追高會拉回』要同權：允許先高後中幅壓回，不只淺整理。"
       },
-      "next_film_read": "pending_20261112"
+      "next_film_read": "done_20261112"
+    },
+    {
+      "day": "20261112",
+      "film": "1112黃培碩.mp4",
+      "yt_title": "殺低又追高？操作節奏勿亂！",
+      "absorb_refs": [
+        "docs/expert_notes/飆客/decade_lab/huang_wave_method_20261112.md",
+        "docs/expert_notes/飆客/decade_lab/huang_oral_absorb_20261112.json"
+      ],
+      "his_read_zh": "驗證勿追高會拉回（約1300）；初步強彈小菜；壓回後第五大波才大錢；37837有效；個股分歧、勿殺低又追高。",
+      "forecast_for_next": {
+        "target_day": "20261113",
+        "note_zh": "下一交易日；雲端無1113片，只對官方柱",
+        "written_before_peek": true,
+        "high_prob_zh": "高檔震盪／延續壓回後反彈但不破37837；未必再創44525以上強勢新高；個股分歧",
+        "low_prob_zh": "V型直接狂攻大創新高且無整理，或反向打第二隻腳破修正低",
+        "basis_zh": "口播『壓回後再上才大錢』『等拉回』『低點不破』『勿追高』；吸收深度失敗課允許中幅震盪",
+        "applied_fix_from": [
+          "F-PULLBACK-DEPTH-UNDER",
+          "F-TITLE-OVERWEIGHT"
+        ]
+      },
+      "confront_official": {
+        "symbol": "TWII",
+        "bar": {
+          "date": "20261113",
+          "open": 43719.75,
+          "high": 44489.48,
+          "low": 43534.12,
+          "close": 43675.12
+        },
+        "result": "hit_high_prob",
+        "score_zh": "對",
+        "what_happened_zh": "1113 自43092附近反彈震盪：高44489未過1112高44525，低43534、收43675；未破37837。",
+        "why_hit_zh": "符合壓回後高檔震盪／反彈、不破修正低、未失控追價創新高主腳。",
+        "failure_codes": [],
+        "principles_fired": [
+          "HP-APPETIZER-THEN-BIG",
+          "HP-NO-SECOND-FOOT",
+          "HP-DONT-CHASE-THEN-PULL",
+          "HP-WAIT-PULLBACK-FULL"
+        ],
+        "lesson_zh": "『小菜後等壓回再上』日：隔日高機率用震盪／淺反彈而非立刻主升。"
+      },
+      "next_film_read": "pending_20261116"
     }
   ]
 }
