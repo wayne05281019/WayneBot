@@ -142,9 +142,34 @@
       "next_deep_pull_tx": 30719.0
     },
     "fib_used": {
-      "computed_at_taipei": "2026-11-28T23:26:37+08:00",
-      "rule_zh": "每日必算黃金切割＋等幅度；隔日觸及對質",
-      "index": null,
+      "computed_at_taipei": "2026-11-28T23:29:03+08:00",
+      "rule_zh": "資料夠就量化：黃金切割＋等幅度（指數／台積錨分開）；量化夠才推演",
+      "index": {
+        "R": 4477.39,
+        "anchor_lo": 27350.0,
+        "anchor_hi": 31827.390625,
+        "direction": "up",
+        "fib_retrace_from_hi": {
+          "0.236": 30770.73,
+          "0.382": 30117.03,
+          "0.5": 29588.7,
+          "0.618": 29060.36,
+          "0.786": 28308.16
+        },
+        "fib_ext_from_lo": {
+          "1.0": 31827.39,
+          "1.272": 33045.24,
+          "1.618": 34594.42,
+          "2.0": 36304.78
+        },
+        "equal_amp": {
+          "up_1R_from_lo": 31827.39,
+          "down_1R_from_hi": 27350.0,
+          "up_1R_from_hi": 36304.78,
+          "down_0_5R_from_hi": 29588.7,
+          "down_0_618R_from_hi": 29060.36
+        }
+      },
       "tsmc": {
         "R": 365.0,
         "anchor_lo": 1415.0,
@@ -172,6 +197,38 @@
         }
       },
       "confront_next": {
+        "twii": {
+          "next_low_touches": [],
+          "next_high_touches": [
+            {
+              "level": "fib.1.0",
+              "price": 31827.39,
+              "touch": 31759.99
+            },
+            {
+              "level": "eq.up_1R_from_lo",
+              "price": 31827.39,
+              "touch": 31759.99
+            }
+          ],
+          "next_close": 31759.990234375
+        },
+        "tx": {
+          "next_low_touches": [],
+          "next_high_touches": [
+            {
+              "level": "fib.1.0",
+              "price": 31827.39,
+              "touch": 31742.0
+            },
+            {
+              "level": "eq.up_1R_from_lo",
+              "price": 31827.39,
+              "touch": 31742.0
+            }
+          ],
+          "next_close": 31672.0
+        },
         "2330": {
           "next_low_touches": [],
           "next_high_touches": [
@@ -583,9 +640,34 @@
     "purpose_zh": "大盤波浪繪製／確認＋幅度對質；為破除限制累積勝率",
     "backfilled_at_taipei": "2026-11-28T22:40:11+08:00",
     "fib_equal_amp": {
-      "computed_at_taipei": "2026-11-28T23:26:37+08:00",
-      "rule_zh": "每日必算黃金切割＋等幅度；隔日觸及對質",
-      "index": null,
+      "computed_at_taipei": "2026-11-28T23:29:03+08:00",
+      "rule_zh": "資料夠就量化：黃金切割＋等幅度（指數／台積錨分開）；量化夠才推演",
+      "index": {
+        "R": 4477.39,
+        "anchor_lo": 27350.0,
+        "anchor_hi": 31827.390625,
+        "direction": "up",
+        "fib_retrace_from_hi": {
+          "0.236": 30770.73,
+          "0.382": 30117.03,
+          "0.5": 29588.7,
+          "0.618": 29060.36,
+          "0.786": 28308.16
+        },
+        "fib_ext_from_lo": {
+          "1.0": 31827.39,
+          "1.272": 33045.24,
+          "1.618": 34594.42,
+          "2.0": 36304.78
+        },
+        "equal_amp": {
+          "up_1R_from_lo": 31827.39,
+          "down_1R_from_hi": 27350.0,
+          "up_1R_from_hi": 36304.78,
+          "down_0_5R_from_hi": 29588.7,
+          "down_0_618R_from_hi": 29060.36
+        }
+      },
       "tsmc": {
         "R": 365.0,
         "anchor_lo": 1415.0,
@@ -613,6 +695,38 @@
         }
       },
       "confront_next": {
+        "twii": {
+          "next_low_touches": [],
+          "next_high_touches": [
+            {
+              "level": "fib.1.0",
+              "price": 31827.39,
+              "touch": 31759.99
+            },
+            {
+              "level": "eq.up_1R_from_lo",
+              "price": 31827.39,
+              "touch": 31759.99
+            }
+          ],
+          "next_close": 31759.990234375
+        },
+        "tx": {
+          "next_low_touches": [],
+          "next_high_touches": [
+            {
+              "level": "fib.1.0",
+              "price": 31827.39,
+              "touch": 31742.0
+            },
+            {
+              "level": "eq.up_1R_from_lo",
+              "price": 31827.39,
+              "touch": 31742.0
+            }
+          ],
+          "next_close": 31672.0
+        },
         "2330": {
           "next_low_touches": [],
           "next_high_touches": [

@@ -132,47 +132,110 @@
       "next_deep_pull_tx": 29544.0
     },
     "fib_used": {
-      "computed_at_taipei": "2026-11-28T23:26:37+08:00",
-      "rule_zh": "每日必算黃金切割＋等幅度；隔日觸及對質",
-      "index": null,
-      "tsmc": {
-        "R": 285.0,
-        "anchor_lo": 1415.0,
-        "anchor_hi": 1700.0,
+      "computed_at_taipei": "2026-11-28T23:29:03+08:00",
+      "rule_zh": "資料夠就量化：黃金切割＋等幅度（指數／台積錨分開）；量化夠才推演",
+      "index": {
+        "R": 3243.49,
+        "anchor_lo": 27350.0,
+        "anchor_hi": 30593.490234375,
         "direction": "up",
         "fib_retrace_from_hi": {
-          "0.236": 1632.74,
-          "0.382": 1591.13,
-          "0.5": 1557.5,
-          "0.618": 1523.87,
-          "0.786": 1475.99
+          "0.236": 29828.03,
+          "0.382": 29354.48,
+          "0.5": 28971.75,
+          "0.618": 28589.01,
+          "0.786": 28044.11
         },
         "fib_ext_from_lo": {
-          "1.0": 1700.0,
-          "1.272": 1777.52,
-          "1.618": 1876.13,
-          "2.0": 1985.0
+          "1.0": 30593.49,
+          "1.272": 31475.72,
+          "1.618": 32597.97,
+          "2.0": 33836.98
         },
         "equal_amp": {
-          "up_1R_from_lo": 1700.0,
+          "up_1R_from_lo": 30593.49,
+          "down_1R_from_hi": 27350.0,
+          "up_1R_from_hi": 33836.98,
+          "down_0_5R_from_hi": 28971.75,
+          "down_0_618R_from_hi": 28589.01
+        }
+      },
+      "tsmc": {
+        "R": 290.0,
+        "anchor_lo": 1415.0,
+        "anchor_hi": 1705.0,
+        "direction": "up",
+        "fib_retrace_from_hi": {
+          "0.236": 1636.56,
+          "0.382": 1594.22,
+          "0.5": 1560.0,
+          "0.618": 1525.78,
+          "0.786": 1477.06
+        },
+        "fib_ext_from_lo": {
+          "1.0": 1705.0,
+          "1.272": 1783.88,
+          "1.618": 1884.22,
+          "2.0": 1995.0
+        },
+        "equal_amp": {
+          "up_1R_from_lo": 1705.0,
           "down_1R_from_hi": 1415.0,
-          "up_1R_from_hi": 1985.0,
-          "down_0_5R_from_hi": 1557.5,
-          "down_0_618R_from_hi": 1523.87
+          "up_1R_from_hi": 1995.0,
+          "down_0_5R_from_hi": 1560.0,
+          "down_0_618R_from_hi": 1525.78
         }
       },
       "confront_next": {
+        "twii": {
+          "next_low_touches": [
+            {
+              "level": "fib.0.236",
+              "price": 29828.03,
+              "touch": 29925.49
+            }
+          ],
+          "next_high_touches": [
+            {
+              "level": "fib.1.0",
+              "price": 30593.49,
+              "touch": 30500.42
+            },
+            {
+              "level": "eq.up_1R_from_lo",
+              "price": 30593.49,
+              "touch": 30500.42
+            }
+          ],
+          "next_close": 30288.9609375
+        },
+        "tx": {
+          "next_low_touches": [],
+          "next_high_touches": [
+            {
+              "level": "fib.1.0",
+              "price": 30593.49,
+              "touch": 30578.0
+            },
+            {
+              "level": "eq.up_1R_from_lo",
+              "price": 30593.49,
+              "touch": 30578.0
+            }
+          ],
+          "next_close": 30456.0
+        },
         "2330": {
           "next_low_touches": [],
           "next_high_touches": [
             {
               "level": "fib.1.0",
-              "price": 1700.0,
+              "price": 1705.0,
               "touch": 1700.0
             },
             {
               "level": "eq.up_1R_from_lo",
-              "price": 1700.0,
+              "price": 1705.0,
               "touch": 1700.0
             }
           ],
@@ -619,47 +682,110 @@
     "purpose_zh": "大盤波浪繪製／確認＋幅度對質；為破除限制累積勝率",
     "backfilled_at_taipei": "2026-11-28T22:40:11+08:00",
     "fib_equal_amp": {
-      "computed_at_taipei": "2026-11-28T23:26:37+08:00",
-      "rule_zh": "每日必算黃金切割＋等幅度；隔日觸及對質",
-      "index": null,
-      "tsmc": {
-        "R": 285.0,
-        "anchor_lo": 1415.0,
-        "anchor_hi": 1700.0,
+      "computed_at_taipei": "2026-11-28T23:29:03+08:00",
+      "rule_zh": "資料夠就量化：黃金切割＋等幅度（指數／台積錨分開）；量化夠才推演",
+      "index": {
+        "R": 3243.49,
+        "anchor_lo": 27350.0,
+        "anchor_hi": 30593.490234375,
         "direction": "up",
         "fib_retrace_from_hi": {
-          "0.236": 1632.74,
-          "0.382": 1591.13,
-          "0.5": 1557.5,
-          "0.618": 1523.87,
-          "0.786": 1475.99
+          "0.236": 29828.03,
+          "0.382": 29354.48,
+          "0.5": 28971.75,
+          "0.618": 28589.01,
+          "0.786": 28044.11
         },
         "fib_ext_from_lo": {
-          "1.0": 1700.0,
-          "1.272": 1777.52,
-          "1.618": 1876.13,
-          "2.0": 1985.0
+          "1.0": 30593.49,
+          "1.272": 31475.72,
+          "1.618": 32597.97,
+          "2.0": 33836.98
         },
         "equal_amp": {
-          "up_1R_from_lo": 1700.0,
+          "up_1R_from_lo": 30593.49,
+          "down_1R_from_hi": 27350.0,
+          "up_1R_from_hi": 33836.98,
+          "down_0_5R_from_hi": 28971.75,
+          "down_0_618R_from_hi": 28589.01
+        }
+      },
+      "tsmc": {
+        "R": 290.0,
+        "anchor_lo": 1415.0,
+        "anchor_hi": 1705.0,
+        "direction": "up",
+        "fib_retrace_from_hi": {
+          "0.236": 1636.56,
+          "0.382": 1594.22,
+          "0.5": 1560.0,
+          "0.618": 1525.78,
+          "0.786": 1477.06
+        },
+        "fib_ext_from_lo": {
+          "1.0": 1705.0,
+          "1.272": 1783.88,
+          "1.618": 1884.22,
+          "2.0": 1995.0
+        },
+        "equal_amp": {
+          "up_1R_from_lo": 1705.0,
           "down_1R_from_hi": 1415.0,
-          "up_1R_from_hi": 1985.0,
-          "down_0_5R_from_hi": 1557.5,
-          "down_0_618R_from_hi": 1523.87
+          "up_1R_from_hi": 1995.0,
+          "down_0_5R_from_hi": 1560.0,
+          "down_0_618R_from_hi": 1525.78
         }
       },
       "confront_next": {
+        "twii": {
+          "next_low_touches": [
+            {
+              "level": "fib.0.236",
+              "price": 29828.03,
+              "touch": 29925.49
+            }
+          ],
+          "next_high_touches": [
+            {
+              "level": "fib.1.0",
+              "price": 30593.49,
+              "touch": 30500.42
+            },
+            {
+              "level": "eq.up_1R_from_lo",
+              "price": 30593.49,
+              "touch": 30500.42
+            }
+          ],
+          "next_close": 30288.9609375
+        },
+        "tx": {
+          "next_low_touches": [],
+          "next_high_touches": [
+            {
+              "level": "fib.1.0",
+              "price": 30593.49,
+              "touch": 30578.0
+            },
+            {
+              "level": "eq.up_1R_from_lo",
+              "price": 30593.49,
+              "touch": 30578.0
+            }
+          ],
+          "next_close": 30456.0
+        },
         "2330": {
           "next_low_touches": [],
           "next_high_touches": [
             {
               "level": "fib.1.0",
-              "price": 1700.0,
+              "price": 1705.0,
               "touch": 1700.0
             },
             {
               "level": "eq.up_1R_from_lo",
-              "price": 1700.0,
+              "price": 1705.0,
               "touch": 1700.0
             }
           ],

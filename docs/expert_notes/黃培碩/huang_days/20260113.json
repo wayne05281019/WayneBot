@@ -165,9 +165,34 @@
       "next_deep_pull_tx": 29948.0
     },
     "fib_used": {
-      "computed_at_taipei": "2026-11-28T23:26:37+08:00",
-      "rule_zh": "每日必算黃金切割＋等幅度；隔日觸及對質",
-      "index": null,
+      "computed_at_taipei": "2026-11-28T23:29:03+08:00",
+      "rule_zh": "資料夠就量化：黃金切割＋等幅度（指數／台積錨分開）；量化夠才推演",
+      "index": {
+        "R": 3623.85,
+        "anchor_lo": 27350.0,
+        "anchor_hi": 30973.849609375,
+        "direction": "up",
+        "fib_retrace_from_hi": {
+          "0.236": 30118.62,
+          "0.382": 29589.54,
+          "0.5": 29161.92,
+          "0.618": 28734.31,
+          "0.786": 28125.5
+        },
+        "fib_ext_from_lo": {
+          "1.0": 30973.85,
+          "1.272": 31959.54,
+          "1.618": 33213.39,
+          "2.0": 34597.7
+        },
+        "equal_amp": {
+          "up_1R_from_lo": 30973.85,
+          "down_1R_from_hi": 27350.0,
+          "up_1R_from_hi": 34597.7,
+          "down_0_5R_from_hi": 29161.92,
+          "down_0_618R_from_hi": 28734.31
+        }
+      },
       "tsmc": {
         "R": 305.0,
         "anchor_lo": 1415.0,
@@ -195,6 +220,33 @@
         }
       },
       "confront_next": {
+        "twii": {
+          "next_low_touches": [],
+          "next_high_touches": [
+            {
+              "level": "fib.1.0",
+              "price": 30973.85,
+              "touch": 30994.81
+            },
+            {
+              "level": "eq.up_1R_from_lo",
+              "price": 30973.85,
+              "touch": 30994.81
+            }
+          ],
+          "next_close": 30941.779296875
+        },
+        "tx": {
+          "next_low_touches": [
+            {
+              "level": "eq.up_1R_from_lo",
+              "price": 30973.85,
+              "touch": 30937.0
+            }
+          ],
+          "next_high_touches": [],
+          "next_close": 30982.0
+        },
         "2330": {
           "next_low_touches": [],
           "next_high_touches": [
@@ -716,9 +768,34 @@
     "purpose_zh": "大盤波浪繪製／確認＋幅度對質；為破除限制累積勝率",
     "backfilled_at_taipei": "2026-11-28T22:40:11+08:00",
     "fib_equal_amp": {
-      "computed_at_taipei": "2026-11-28T23:26:37+08:00",
-      "rule_zh": "每日必算黃金切割＋等幅度；隔日觸及對質",
-      "index": null,
+      "computed_at_taipei": "2026-11-28T23:29:03+08:00",
+      "rule_zh": "資料夠就量化：黃金切割＋等幅度（指數／台積錨分開）；量化夠才推演",
+      "index": {
+        "R": 3623.85,
+        "anchor_lo": 27350.0,
+        "anchor_hi": 30973.849609375,
+        "direction": "up",
+        "fib_retrace_from_hi": {
+          "0.236": 30118.62,
+          "0.382": 29589.54,
+          "0.5": 29161.92,
+          "0.618": 28734.31,
+          "0.786": 28125.5
+        },
+        "fib_ext_from_lo": {
+          "1.0": 30973.85,
+          "1.272": 31959.54,
+          "1.618": 33213.39,
+          "2.0": 34597.7
+        },
+        "equal_amp": {
+          "up_1R_from_lo": 30973.85,
+          "down_1R_from_hi": 27350.0,
+          "up_1R_from_hi": 34597.7,
+          "down_0_5R_from_hi": 29161.92,
+          "down_0_618R_from_hi": 28734.31
+        }
+      },
       "tsmc": {
         "R": 305.0,
         "anchor_lo": 1415.0,
@@ -746,6 +823,33 @@
         }
       },
       "confront_next": {
+        "twii": {
+          "next_low_touches": [],
+          "next_high_touches": [
+            {
+              "level": "fib.1.0",
+              "price": 30973.85,
+              "touch": 30994.81
+            },
+            {
+              "level": "eq.up_1R_from_lo",
+              "price": 30973.85,
+              "touch": 30994.81
+            }
+          ],
+          "next_close": 30941.779296875
+        },
+        "tx": {
+          "next_low_touches": [
+            {
+              "level": "eq.up_1R_from_lo",
+              "price": 30973.85,
+              "touch": 30937.0
+            }
+          ],
+          "next_high_touches": [],
+          "next_close": 30982.0
+        },
         "2330": {
           "next_low_touches": [],
           "next_high_touches": [
