@@ -1,5 +1,5 @@
 {
-  "as_of_taipei": "2026-11-28T19:50:58+08:00",
+  "as_of_taipei": "2026-11-28T20:03:34+08:00",
   "phone_sync": "blocked",
   "buy_signal": false,
   "recomputable": true,
@@ -101,10 +101,20 @@
           "TSMC_GATE_NEXTDAY_BREAK"
         ],
         "growth_zh": "台積平高閘隔日一過立刻改口"
+      },
+      {
+        "day": "20260113",
+        "target": "20260114",
+        "path": "hit",
+        "wave": "hit",
+        "amp": "hit",
+        "levels": "hit",
+        "fail_codes": [],
+        "growth_zh": "第五波結束要結構確認；單日急殺不夠"
       }
     ],
-    "n": 7,
-    "path_hit": 7,
-    "amp_hit": 6
+    "n": 8,
+    "path_hit": 8,
+    "amp_hit": 7
   }
 }
