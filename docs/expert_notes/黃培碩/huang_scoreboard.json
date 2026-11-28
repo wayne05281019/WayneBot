@@ -1,5 +1,5 @@
 {
-  "as_of_taipei": "2026-11-28T21:50:27+08:00",
+  "as_of_taipei": "2026-11-28T21:53:50+08:00",
   "phone_sync": "blocked",
   "buy_signal": false,
   "recomputable": true,
@@ -201,10 +201,20 @@
         "levels": "hit",
         "fail_codes": [],
         "growth_zh": "同步創高＋台積走低仍盤堅"
+      },
+      {
+        "day": "20260127",
+        "target": "20260128",
+        "path": "hit",
+        "wave": "hit",
+        "amp": "hit",
+        "levels": "hit",
+        "fail_codes": [],
+        "growth_zh": "記憶體分歧日指數仍盤堅"
       }
     ],
-    "n": 17,
-    "path_hit": 17,
-    "amp_hit": 16
+    "n": 18,
+    "path_hit": 18,
+    "amp_hit": 17
   }
 }
