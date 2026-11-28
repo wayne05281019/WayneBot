@@ -93,8 +93,10 @@
     "status": "ok"
   },
   "sync_te": {
+    "day_session": null,
+    "night_session": null,
     "status": "missing",
-    "note_zh": "缺列"
+    "note_zh": "庫內該日無TE列＝missing（不准假數）；對質以TX+TWII+SOX為準並記缺"
   },
   "peer_chain": [
     {
@@ -235,7 +237,11 @@
     "levels_frozen_ok": true,
     "us_session_noted": true,
     "day_complete": true,
-    "ref_zh": "huang_master_consolidate.md §9–§14"
+    "ref_zh": "huang_master_consolidate.md §0 全表（含0.7／0.8）",
+    "te_missing_noted": true,
+    "named_ohlcv_frozen": true,
+    "breadth_frozen": true,
+    "full_suite_evidence_ok": true
   },
   "exit_learn_zh": "期指區間：高空低多、假突破快回補；個股不追高。非大盤全面出清。",
   "wave_progress": {
@@ -302,7 +308,100 @@
     "down_tw": 591,
     "up_two": 291,
     "down_two": 508,
-    "source": "quotes",
-    "note_zh": "跌家數>漲＝指數高檔／個股分化"
+    "source": "quotes"
+  },
+  "named_stocks_ohlcv": {
+    "as_of": "20260108",
+    "bars": {
+      "2330": {
+        "o": 1660.0,
+        "h": 1700.0,
+        "l": 1655.0,
+        "c": 1685.0,
+        "v": 31441
+      },
+      "3481": {
+        "o": 22.0,
+        "h": 22.0,
+        "l": 20.55,
+        "c": 20.75,
+        "v": 222324
+      },
+      "6488": {
+        "o": 466.2,
+        "h": 467.69,
+        "l": 442.29,
+        "c": 448.27,
+        "v": 7363
+      },
+      "6013": {
+        "status": "missing_official"
+      },
+      "2327": {
+        "o": 256.0,
+        "h": 256.5,
+        "l": 236.0,
+        "c": 237.5,
+        "v": 58774
+      }
+    },
+    "rule_zh": "只凍他點名且有官方收的；未收不當收"
+  },
+  "biaoke_cross": {
+    "huang_themes_zh": [
+      "高檔政黨",
+      "第三波整理",
+      "升軌疊破區間",
+      "不追多追空",
+      "細晶圓下一棒",
+      "廣度弱"
+    ],
+    "buckets": {
+      "浪頂耗盡": "整理完基本還有一段→非末升出清",
+      "回檔回測": "拉回通常不深／下緣偏買→回測桶",
+      "細微中繼刪去": "第三波整理中→細微桶：中繼整理非失敗",
+      "費半台指夜": "費半收弱+TX震盪→聯動：高檔政黨",
+      "反彈止穩": "區間高空低多",
+      "出場學": "假突破快回補；個股不追高↔勿追桶"
+    },
+    "note_zh": "高檔震盪日六桶全勾"
+  },
+  "five_vol_sox_note_zh": "波浪：第三波整理；形態：升軌疊破區間；量價：廣度弱；關鍵K：假突破回；碎形：15分區間；費半：收弱",
+  "tf_escalate": {
+    "tf": "日線＋15分提及",
+    "why_zh": "口播15分區間／期指當沖點；升TF原因＝短線政黨操作"
+  },
+  "retract_chain_zh": "升軌疊破後改以區間高空低多（相對前幾日偏續推）",
+  "sample_register_touch_zh": "新觀察點已在 teach_expand；能量化者另進 huang_sample_register（本輪先登錄）",
+  "backfill_as_of_taipei": "2026-11-28T19:24:54+08:00",
+  "process_order_zh": "S1→S27 最高流程序",
+  "process_step_done": {
+    "S1": true,
+    "S2": true,
+    "S3": true,
+    "S4": true,
+    "S5": true,
+    "S6": true,
+    "S7": true,
+    "S8": true,
+    "S9": true,
+    "S10": true,
+    "S11": true,
+    "S12": true,
+    "S13": true,
+    "S14": true,
+    "S15": true,
+    "S16": true,
+    "S17": true,
+    "S18": true,
+    "S19": true,
+    "S20": true,
+    "S21": true,
+    "S22": true,
+    "S23": true,
+    "S24": true,
+    "S25": true,
+    "S26": true,
+    "S27": true
   }
 }

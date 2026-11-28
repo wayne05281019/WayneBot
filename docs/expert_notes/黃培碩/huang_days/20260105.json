@@ -97,7 +97,7 @@
     "day_session": null,
     "night_session": null,
     "status": "missing",
-    "note_zh": "電子期缺列則 missing"
+    "note_zh": "庫內該日無TE列＝missing（不准假數）；對質以TX+TWII+SOX為準並記缺"
   },
   "peer_chain": [
     {
@@ -249,7 +249,11 @@
     "levels_frozen_ok": true,
     "us_session_noted": true,
     "day_complete": true,
-    "ref_zh": "huang_master_consolidate.md §9–§14"
+    "ref_zh": "huang_master_consolidate.md §0 全表（含0.7／0.8）",
+    "te_missing_noted": true,
+    "named_ohlcv_frozen": true,
+    "breadth_frozen": true,
+    "full_suite_evidence_ok": true
   },
   "exit_learn_zh": "元金轉弱表態→全部出清換股；進場堅定出場果斷；推動形態失敗＝理由消失必出。非全面出清大盤。",
   "wave_progress": {
@@ -307,5 +311,120 @@
       "v": 6274000.0
     },
     "status": "ok"
+  },
+  "breadth_official": {
+    "date": "20260105",
+    "up": 414,
+    "down": 1399,
+    "flat": 99,
+    "up_tw": 250,
+    "down_tw": 750,
+    "up_two": 164,
+    "down_two": 649,
+    "source": "quotes"
+  },
+  "named_stocks_ohlcv": {
+    "as_of": "20260105",
+    "bars": {
+      "2330": {
+        "o": 1630.0,
+        "h": 1695.0,
+        "l": 1625.0,
+        "c": 1670.0,
+        "v": 75978
+      },
+      "3481": {
+        "o": 18.8,
+        "h": 19.9,
+        "l": 18.8,
+        "c": 19.9,
+        "v": 529597
+      },
+      "6770": {
+        "o": 43.6,
+        "h": 44.7,
+        "l": 42.6,
+        "c": 43.45,
+        "v": 390860
+      },
+      "2408": {
+        "o": 211.0,
+        "h": 213.0,
+        "l": 206.5,
+        "c": 208.0,
+        "v": 114892
+      },
+      "2454": {
+        "o": 1510.0,
+        "h": 1530.0,
+        "l": 1495.0,
+        "c": 1525.0,
+        "v": 14422
+      },
+      "2327": {
+        "o": 245.0,
+        "h": 249.0,
+        "l": 239.0,
+        "c": 244.0,
+        "v": 65497
+      }
+    },
+    "rule_zh": "只凍他點名且有官方收的；未收不當收"
+  },
+  "biaoke_cross": {
+    "huang_themes_zh": [
+      "第三小組生段續",
+      "指數強廣度弱",
+      "元金出清",
+      "千點級波動",
+      "群創強"
+    ],
+    "buckets": {
+      "浪頂耗盡": "黃未宣告大頂→無對齊出清大盤",
+      "回檔回測": "黃細微拉回可忽略→回測桶：結構內",
+      "細微中繼刪去": "黃w3微段→細微桶：持續推升",
+      "費半台指夜": "已凍SOX偏弱+TX日夜→聯動：指數跟台積",
+      "反彈止穩": "非反彈減碼日",
+      "出場學": "元金轉弱全部出清↔飆大如何賣／弱勢換股節奏對得上（個股）"
+    },
+    "note_zh": "出場學交叉：黃元金清倉＝弱勢果斷出，對照出清桶精神"
+  },
+  "five_vol_sox_note_zh": "波浪：w3微段；形態：推升；量價：指數強廣度弱；關鍵K：續創新高；碎形：兩長夾一短；費半：收弱仍凍",
+  "tf_escalate": {
+    "tf": "日線",
+    "why_zh": "口播日線推升"
+  },
+  "retract_chain_zh": "無同片明顯改口",
+  "sample_register_touch_zh": "新觀察點已在 teach_expand；能量化者另進 huang_sample_register（本輪先登錄）",
+  "backfill_as_of_taipei": "2026-11-28T19:24:54+08:00",
+  "process_order_zh": "S1→S27 最高流程序",
+  "process_step_done": {
+    "S1": true,
+    "S2": true,
+    "S3": true,
+    "S4": true,
+    "S5": true,
+    "S6": true,
+    "S7": true,
+    "S8": true,
+    "S9": true,
+    "S10": true,
+    "S11": true,
+    "S12": true,
+    "S13": true,
+    "S14": true,
+    "S15": true,
+    "S16": true,
+    "S17": true,
+    "S18": true,
+    "S19": true,
+    "S20": true,
+    "S21": true,
+    "S22": true,
+    "S23": true,
+    "S24": true,
+    "S25": true,
+    "S26": true,
+    "S27": true
   }
 }

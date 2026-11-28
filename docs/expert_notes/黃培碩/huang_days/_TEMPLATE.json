@@ -97,8 +97,12 @@
     "stop_expand_ok": false,
     "levels_frozen_ok": false,
     "us_session_noted": false,
+    "te_missing_noted": false,
+    "named_ohlcv_frozen": false,
+    "breadth_frozen": false,
+    "full_suite_evidence_ok": false,
     "day_complete": false,
-    "ref_zh": "huang_master_consolidate.md §9–§14"
+    "ref_zh": "huang_master_consolidate.md §0 全表（含0.7／0.8）"
   },
   "exit_learn_zh": "",
   "wave_progress": {
@@ -145,5 +149,71 @@
   "us_session_for_forecast": {
     "status": "closed|open|unknown",
     "note_zh": "隔日預估時費半／美指已收或未收"
+  },
+  "breadth_official": {
+    "date": "",
+    "up": null,
+    "down": null,
+    "flat": null,
+    "source": ""
+  },
+  "named_stocks_ohlcv": {
+    "as_of": "",
+    "bars": {},
+    "rule_zh": "只凍他點名官方OHLC+量"
+  },
+  "biaoke_cross": {
+    "huang_themes_zh": [],
+    "buckets": {
+      "浪頂耗盡": "",
+      "回檔回測": "",
+      "細微中繼刪去": "",
+      "費半台指夜": "",
+      "反彈止穩": "",
+      "出場學": ""
+    },
+    "note_zh": ""
+  },
+  "five_vol_sox_note_zh": "",
+  "tf_escalate": {
+    "tf": "",
+    "why_zh": ""
+  },
+  "retract_chain_zh": "",
+  "sample_register_touch_zh": "",
+  "sync_twii": {
+    "ohlc": null,
+    "status": "missing|ok"
+  },
+  "daily_gate_zh": "day_complete 僅在 full_suite_evidence_ok＋confront＋miss_anatomy 齊才准 true；不准只勾不寫",
+  "process_order_zh": "S1→S27 見 huang_daily_full_suite_gate.md；最高；不准並列略過",
+  "process_step_done": {
+    "S1": false,
+    "S2": false,
+    "S3": false,
+    "S4": false,
+    "S5": false,
+    "S6": false,
+    "S7": false,
+    "S8": false,
+    "S9": false,
+    "S10": false,
+    "S11": false,
+    "S12": false,
+    "S13": false,
+    "S14": false,
+    "S15": false,
+    "S16": false,
+    "S17": false,
+    "S18": false,
+    "S19": false,
+    "S20": false,
+    "S21": false,
+    "S22": false,
+    "S23": false,
+    "S24": false,
+    "S25": false,
+    "S26": false,
+    "S27": false
   }
 }

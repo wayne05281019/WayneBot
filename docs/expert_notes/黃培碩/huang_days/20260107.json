@@ -91,10 +91,10 @@
     "status": "ok"
   },
   "sync_te": {
-    "status": "missing",
     "day_session": null,
     "night_session": null,
-    "note_zh": "缺列"
+    "status": "missing",
+    "note_zh": "庫內該日無TE列＝missing（不准假數）；對質以TX+TWII+SOX為準並記缺"
   },
   "peer_chain": [
     {
@@ -239,7 +239,11 @@
     "levels_frozen_ok": true,
     "us_session_noted": true,
     "day_complete": true,
-    "ref_zh": "huang_master_consolidate.md §9–§14"
+    "ref_zh": "huang_master_consolidate.md §0 全表（含0.7／0.8）",
+    "te_missing_noted": true,
+    "named_ohlcv_frozen": true,
+    "breadth_frozen": true,
+    "full_suite_evidence_ok": true
   },
   "exit_learn_zh": "群創等幅基本打標＋警示→看整理再決策；非全面出清大盤。選股換股優先。",
   "wave_progress": {
@@ -308,5 +312,95 @@
     "up_two": 439,
     "down_two": 353,
     "source": "quotes"
+  },
+  "named_stocks_ohlcv": {
+    "as_of": "20260107",
+    "bars": {
+      "2330": {
+        "o": 1665.0,
+        "h": 1685.0,
+        "l": 1665.0,
+        "c": 1675.0,
+        "v": 54757
+      },
+      "3481": {
+        "o": 22.55,
+        "h": 23.6,
+        "l": 21.0,
+        "c": 22.15,
+        "v": 360934
+      },
+      "6770": {
+        "o": 50.0,
+        "h": 50.5,
+        "l": 48.0,
+        "c": 49.2,
+        "v": 535894
+      },
+      "6488": {
+        "o": 437.31,
+        "h": 470.18,
+        "l": 426.35,
+        "c": 468.19,
+        "v": 15452
+      }
+    },
+    "rule_zh": "只凍他點名且有官方收的；未收不當收"
+  },
+  "biaoke_cross": {
+    "huang_themes_zh": [
+      "第三小波休息",
+      "高檔震盪",
+      "群創警示打標",
+      "記憶體第五波",
+      "下一棒被動／機械投票"
+    ],
+    "buckets": {
+      "浪頂耗盡": "短線高候選但整體未完成→出清桶：無大盤出清",
+      "回檔回測": "休息是好事→回測桶：健康整理",
+      "細微中繼刪去": "微段可暫歇整體未完→細微桶",
+      "費半台指夜": "已凍",
+      "反彈止穩": "休息／震盪",
+      "出場學": "群創打標＋警示後看整理再決策↔勿追／換股"
+    },
+    "note_zh": "休息日對回測桶＋出場學（打標後）"
+  },
+  "five_vol_sox_note_zh": "波浪：第三小波休息；形態：高檔震盪；量價：休息首日；關鍵K：昨高今休；碎形：微段；費半：已收",
+  "tf_escalate": {
+    "tf": "日線",
+    "why_zh": "休息／震盪用日線"
+  },
+  "retract_chain_zh": "無同片明顯改口",
+  "sample_register_touch_zh": "新觀察點已在 teach_expand；能量化者另進 huang_sample_register（本輪先登錄）",
+  "backfill_as_of_taipei": "2026-11-28T19:24:54+08:00",
+  "process_order_zh": "S1→S27 最高流程序",
+  "process_step_done": {
+    "S1": true,
+    "S2": true,
+    "S3": true,
+    "S4": true,
+    "S5": true,
+    "S6": true,
+    "S7": true,
+    "S8": true,
+    "S9": true,
+    "S10": true,
+    "S11": true,
+    "S12": true,
+    "S13": true,
+    "S14": true,
+    "S15": true,
+    "S16": true,
+    "S17": true,
+    "S18": true,
+    "S19": true,
+    "S20": true,
+    "S21": true,
+    "S22": true,
+    "S23": true,
+    "S24": true,
+    "S25": true,
+    "S26": true,
+    "S27": true
   }
 }
