@@ -1,5 +1,5 @@
 {
-  "as_of_taipei": "2026-11-28T21:42:41+08:00",
+  "as_of_taipei": "2026-11-28T21:46:28+08:00",
   "phone_sync": "blocked",
   "buy_signal": false,
   "recomputable": true,
@@ -181,10 +181,20 @@
         "levels": "hit",
         "fail_codes": [],
         "growth_zh": "absent_open 沿用雙分支"
+      },
+      {
+        "day": "20260123",
+        "target": "20260126",
+        "path": "hit",
+        "wave": "hit",
+        "amp": "hit",
+        "levels": "hit",
+        "fail_codes": [],
+        "growth_zh": "末升候選週末後震盪帶"
       }
     ],
-    "n": 15,
-    "path_hit": 15,
-    "amp_hit": 14
+    "n": 16,
+    "path_hit": 16,
+    "amp_hit": 15
   }
 }
