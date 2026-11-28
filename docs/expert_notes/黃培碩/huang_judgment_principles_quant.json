@@ -1,17 +1,17 @@
 {
-  "as_of_taipei": "2026-11-28T13:20:00+0800",
+  "as_of_taipei": "2026-11-28T13:36:00+0800",
   "phone_sync": "blocked",
   "buy_signal": false,
   "purpose_zh": "記取並量化：①黃的判斷原則 ②我隔日預估失敗原因。每chrono日更新；n不足不准改話筒。",
   "tz": "Asia/Taipei",
-  "n_days_absorbed": 3,
-  "n_forecasts_confronted": 3,
+  "n_days_absorbed": 4,
+  "n_forecasts_confronted": 4,
   "my_forecast_score": {
-    "hit_high_prob": 1,
+    "hit_high_prob": 2,
     "hit_high_prob_partial": 1,
     "miss_high_prob": 1,
-    "hit_rate_high_prob_strict": 0.3333333333333333,
-    "hit_rate_high_prob_incl_partial": 0.6666666666666666
+    "hit_rate_high_prob_strict": 0.5,
+    "hit_rate_high_prob_incl_partial": 0.75
   },
   "principles": [
     {
@@ -70,11 +70,12 @@
       "rule_zh": "大三段低點已現＋龍頭越關鍵／斜率破壞 → 第二隻腳／第五下跌機率低",
       "source_days": [
         "20261111",
-        "20261112"
+        "20261112",
+        "20261116"
       ],
-      "n_seen": 2,
+      "n_seen": 3,
       "next_day_broke_correction_low": 0,
-      "next_day_held_above_low": 2
+      "next_day_held_above_low": 3
     },
     {
       "id": "HP-DONT-CHASE-THEN-PULL",
@@ -119,9 +120,10 @@
       "id": "HP-APPETIZER-THEN-BIG",
       "rule_zh": "初步強彈＝小菜；壓回後再上（第五大波）才是大錢",
       "source_days": [
-        "20261112"
+        "20261112",
+        "20261116"
       ],
-      "n_seen": 1,
+      "n_seen": 2,
       "next_day_range_chop_or_bounce": 1
     },
     {
@@ -139,6 +141,23 @@
         "20261112"
       ],
       "n_seen": 1
+    },
+    {
+      "id": "HP-FALSE-BREAK-OR-RETEST",
+      "rule_zh": "回測刺椅／支撐破不破都先站觀察買方；回馬槍＝多頭擊殺後買點候選（非亂喊）",
+      "source_days": [
+        "20261116"
+      ],
+      "n_seen": 1
+    },
+    {
+      "id": "HP-RETRACE-052-TO-0618",
+      "rule_zh": "五之一後拉回常見0.5附近；0.618最漂亮禮物；未到可再低一點",
+      "source_days": [
+        "20261116"
+      ],
+      "n_seen": 1,
+      "next_day_went_deeper": 1
     }
   ],
   "my_failure_taxonomy": [

@@ -1,5 +1,5 @@
 {
-  "as_of_taipei": "2026-11-28T13:20:00+0800",
+  "as_of_taipei": "2026-11-28T13:36:00+0800",
   "phone_sync": "blocked",
   "buy_signal": false,
   "method_zh": "每天同步跟他一起解盤：讀D→量化他的原則→自己先寫隔日高/低機率→隔天官方柱對答案→失敗碼累計→再讀D+1。從最早片往後；不准倒推。",
@@ -20,8 +20,8 @@
     "20261126",
     "20261127"
   ],
-  "cursor_day": "20261116",
-  "status_zh": "1110–1112 三輪對質完成；雲端無1113片，下一片1116（隔日對質目標已用1113官方柱）。",
+  "cursor_day": "20261117",
+  "status_zh": "1110–1116 四輪對質完成（無1113片）；下一個讀1117片。",
   "days": [
     {
       "day": "20261110",
@@ -155,7 +155,51 @@
         ],
         "lesson_zh": "『小菜後等壓回再上』日：隔日高機率用震盪／淺反彈而非立刻主升。"
       },
-      "next_film_read": "pending_20261116"
+      "next_film_read": "done_20261116"
+    },
+    {
+      "day": "20261116",
+      "film": "1116黃培碩.mp4",
+      "yt_title": "追高又殺低？有第二隻腳？",
+      "absorb_refs": [
+        "docs/expert_notes/飆客/decade_lab/huang_wave_method_20261116.md",
+        "docs/expert_notes/飆客/decade_lab/huang_oral_absorb_20261116.json"
+      ],
+      "his_read_zh": "大黑回撤約0.52至41040；第二隻腳仍不高；屬預期拉回／回馬槍候選；可再低一點無關；選股找買點勿亂節奏。",
+      "forecast_for_next": {
+        "target_day": "20261117",
+        "written_before_peek": true,
+        "high_prob_zh": "可再低一點（朝0.618／41040下緣再測）或附近回馬槍反彈；不破37837第二腳；個股分歧",
+        "low_prob_zh": "直接打第二腳近／破37837，或無再測就V大噴離場",
+        "basis_zh": "口播『再多一點點無關』『0.52未到0.618』『第二腳不高』『回馬槍買點候選』",
+        "applied_fix_from": [
+          "F-PULLBACK-DEPTH-UNDER",
+          "HP-PARALLEL-BRANCHES"
+        ]
+      },
+      "confront_official": {
+        "symbol": "TWII",
+        "bar": {
+          "date": "20261117",
+          "open": 40546.64,
+          "high": 41533.84,
+          "low": 39786.45,
+          "close": 40092.11
+        },
+        "result": "hit_high_prob",
+        "score_zh": "對",
+        "what_happened_zh": "1117 續低至39786後反彈高41534、收40092；明顯再低一截，未破37837。",
+        "why_hit_zh": "符合『可再多一點點』深測＋非第二腳；收在低區偏弱但仍在修正低之上。",
+        "failure_codes": [],
+        "principles_fired": [
+          "HP-NO-SECOND-FOOT",
+          "HP-DONT-CHASE-THEN-PULL",
+          "HP-APPETIZER-THEN-BIG",
+          "HP-FALSE-BREAK-OR-RETEST"
+        ],
+        "lesson_zh": "回撤未到0.618時，隔日高機率保留『再低一點』權重，不要因單日大黑就改口第二腳。"
+      },
+      "next_film_read": "pending_20261117"
     }
   ]
 }
