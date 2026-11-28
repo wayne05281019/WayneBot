@@ -32,6 +32,15 @@
     "escalate_60m_when_gated",
     "micro_example_only_if_named"
   ],
+  "sync_compare_required": {
+    "as_of": "2026-11-28",
+    "user_lock": true,
+    "us": ["SOX", "TSM_ADR", "named_us_stocks_when_taught"],
+    "tx_futures": ["day_session", "night_session"],
+    "twii": ["ohlc", "volume"],
+    "fields": ["sync_us[]", "sync_tx"],
+    "rule_zh": "每天解盤／隔日預估必須同步美股鏈＋台指期日／夜盤＋加權；缺官方收標 missing，不准假數；預估若綁定該鏈則隔日一併對質"
+  },
   "progress_gate_every_n_confronted": 20,
   "anti_casual_done_gate": {
     "n_valid_confronted_ge": 20,
