@@ -1,5 +1,5 @@
 {
-  "as_of_taipei": "2026-11-28T13:36:00+0800",
+  "as_of_taipei": "2026-11-28T13:53:00+0800",
   "phone_sync": "blocked",
   "buy_signal": false,
   "method_zh": "每天同步跟他一起解盤：讀D→量化他的原則→自己先寫隔日高/低機率→隔天官方柱對答案→失敗碼累計→再讀D+1。從最早片往後；不准倒推。",
@@ -20,8 +20,8 @@
     "20261126",
     "20261127"
   ],
-  "cursor_day": "20261117",
-  "status_zh": "1110–1116 四輪對質完成（無1113片）；下一個讀1117片。",
+  "cursor_day": "20261118",
+  "status_zh": "1110–1117 五輪對質完成；下一個讀1118片。",
   "days": [
     {
       "day": "20261110",
@@ -199,7 +199,52 @@
         ],
         "lesson_zh": "回撤未到0.618時，隔日高機率保留『再低一點』權重，不要因單日大黑就改口第二腳。"
       },
-      "next_film_read": "pending_20261117"
+      "next_film_read": "done_20261117"
+    },
+    {
+      "day": "20261117",
+      "film": "1117黃培碩.mp4",
+      "yt_title": "個股表現差異大！手握低本益比股！",
+      "absorb_refs": [
+        "docs/expert_notes/飆客/decade_lab/huang_wave_method_20261117.md",
+        "docs/expert_notes/飆客/decade_lab/huang_oral_absorb_20261117.json"
+      ],
+      "his_read_zh": "承認第二腳／深度判斷錯；改第二腳候選；最好再低測腳；破不破站買方若非推動下跌；低本益、高星不碰。",
+      "forecast_for_next": {
+        "target_day": "20261118",
+        "written_before_peek": true,
+        "high_prob_zh": "再探低／開低測第二腳帶（近37837或假破）；若止穩反彈；不當作已確認推動五段破底主腳",
+        "low_prob_zh": "不再探低直接大V；或確認推動下跌持續破底無止穩",
+        "basis_zh": "口播『最好明天再開低／再一個低點更漂亮』『第二腳成形』『破不破站買方』＋改口承認",
+        "applied_fix_from": [
+          "HP-PARALLEL-BRANCHES",
+          "HP-ADMIT-RETRACT"
+        ]
+      },
+      "confront_official": {
+        "symbol": "TWII",
+        "bar": {
+          "date": "20261118",
+          "open": 40720.09,
+          "high": 40938.2,
+          "low": 39260.99,
+          "close": 40194.91
+        },
+        "result": "hit_high_prob_partial",
+        "score_zh": "部分命中（有再低；未開低）",
+        "what_happened_zh": "1118 開高40720非開低；盤中低39260再探低（更近37837），收40195反彈；未破37837。",
+        "why_partial_zh": "『再一個低點』命中；『最好開低』未中。",
+        "failure_codes": [
+          "F-OPEN-DIRECTION-OVERWEIGHT"
+        ],
+        "principles_fired": [
+          "HP-ADMIT-RETRACT",
+          "HP-SECOND-FOOT-NOW",
+          "HP-RETEST-STAND-BUY-IF-NOT-IMPULSE"
+        ],
+        "lesson_zh": "他說『最好開低』是偏好不是必然；高機率用『再探低或測腳』，開盤方向當次條件。"
+      },
+      "next_film_read": "pending_20261118"
     }
   ]
 }

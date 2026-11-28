@@ -1,23 +1,26 @@
 {
-  "as_of_taipei": "2026-11-28T13:36:00+0800",
+  "as_of_taipei": "2026-11-28T13:53:00+0800",
   "phone_sync": "blocked",
   "buy_signal": false,
   "purpose_zh": "記取並量化：①黃的判斷原則 ②我隔日預估失敗原因。每chrono日更新；n不足不准改話筒。",
   "tz": "Asia/Taipei",
-  "n_days_absorbed": 4,
-  "n_forecasts_confronted": 4,
+  "n_days_absorbed": 5,
+  "n_forecasts_confronted": 5,
   "my_forecast_score": {
     "hit_high_prob": 2,
-    "hit_high_prob_partial": 1,
+    "hit_high_prob_partial": 2,
     "miss_high_prob": 1,
-    "hit_rate_high_prob_strict": 0.5,
-    "hit_rate_high_prob_incl_partial": 0.75
+    "hit_rate_high_prob_strict": 0.4,
+    "hit_rate_high_prob_incl_partial": 0.8
   },
   "principles": [
     {
       "id": "HP-NEST-135-5_24-3",
       "rule_zh": "上升浪①–⑤：①③⑤走五波、②④走三波；下降ABC：A＝五或三（走不了五可三）、B＝三、C＝一定五",
-      "source_days": ["user_20261128", "public_elliott"],
+      "source_days": [
+        "user_20261128",
+        "public_elliott"
+      ],
       "n_seen": 1,
       "ops_check_zh": "細拆：①③⑤／C 應五波；②④／B 應三波；A 優先五、否則三（3-3-5）。C 不准收成三波當完。"
     },
@@ -82,7 +85,9 @@
       ],
       "n_seen": 3,
       "next_day_broke_correction_low": 0,
-      "next_day_held_above_low": 3
+      "next_day_held_above_low": 3,
+      "status": "retracted_by_huang_20261117",
+      "retract_note_zh": "1117親口承認先前不容易第二腳判斷錯誤；改第二腳候選"
     },
     {
       "id": "HP-DONT-CHASE-THEN-PULL",
@@ -165,6 +170,31 @@
       ],
       "n_seen": 1,
       "next_day_went_deeper": 1
+    },
+    {
+      "id": "HP-ADMIT-RETRACT",
+      "rule_zh": "看出錯就即時改口；短線深度錯不推翻長線三段／非推動破底主架構",
+      "source_days": [
+        "20261117"
+      ],
+      "n_seen": 1
+    },
+    {
+      "id": "HP-SECOND-FOOT-NOW",
+      "rule_zh": "1117起：第二隻腳成形候選（可薄／離前低稍遠）；越低越好若非推動下跌",
+      "source_days": [
+        "20261117"
+      ],
+      "n_seen": 1,
+      "next_day_lower_low": 1
+    },
+    {
+      "id": "HP-RETEST-STAND-BUY-IF-NOT-IMPULSE",
+      "rule_zh": "回測前低破不破都站買方——前提＝判定非推動往下",
+      "source_days": [
+        "20261117"
+      ],
+      "n_seen": 1
     }
   ],
   "my_failure_taxonomy": [
@@ -194,6 +224,15 @@
         "20261111→20261112"
       ],
       "fix_zh": "『建高＋勿追高』同權時，高機率允許先高後中幅壓回（仍不破修正低＝非第二腳）"
+    },
+    {
+      "id": "F-OPEN-DIRECTION-OVERWEIGHT",
+      "def_zh": "把『最好開低』偏好當成隔日必開低",
+      "n": 1,
+      "days": [
+        "20261117→20261118"
+      ],
+      "fix_zh": "開盤方向降為次條件；主腳用再探低／測腳帶"
     }
   ],
   "next_ops_zh": [
