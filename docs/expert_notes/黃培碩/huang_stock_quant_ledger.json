@@ -1,12 +1,12 @@
 {
-  "as_of_taipei": "2026-11-29T03:08:07+08:00",
+  "as_of_taipei": "2026-11-29T03:52:10+08:00",
   "purpose_zh": "點名個股隔日方向＋幅度對質總帳；與大盤分數板同步更新。",
   "phone_apply": "pending_gate",
   "summary": {
-    "n_rows": 119,
+    "n_rows": 121,
     "n_missing": 6,
-    "path_hit_rate": 0.5378151260504201,
-    "amp_hit_rate": 0.42016806722689076,
+    "path_hit_rate": 0.5454545454545454,
+    "amp_hit_rate": 0.4297520661157025,
     "by_stock": {
       "1528": {
         "n": 1,
@@ -23,15 +23,20 @@
         "path_hit_rate": 0.0,
         "amp_hit_rate": 0.0
       },
+      "2317": {
+        "n": 1,
+        "path_hit_rate": 1.0,
+        "amp_hit_rate": 1.0
+      },
       "2327": {
         "n": 5,
         "path_hit_rate": 0.0,
         "amp_hit_rate": 0.4
       },
       "2330": {
-        "n": 31,
-        "path_hit_rate": 0.8387096774193549,
-        "amp_hit_rate": 0.7741935483870968
+        "n": 32,
+        "path_hit_rate": 0.84375,
+        "amp_hit_rate": 0.78125
       },
       "2344": {
         "n": 9,
@@ -2085,6 +2090,38 @@
       "band": [
         1925.7,
         2004.3
+      ]
+    },
+    {
+      "day": "20260225",
+      "target": "20260226",
+      "stock_id": "2330",
+      "status": "ok",
+      "expect": "chop",
+      "c0": 2015.0,
+      "c1": 1995.0,
+      "pct": -0.993,
+      "path": "hit",
+      "amp": "hit",
+      "band": [
+        1974.7,
+        2055.3
+      ]
+    },
+    {
+      "day": "20260225",
+      "target": "20260226",
+      "stock_id": "2317",
+      "status": "ok",
+      "expect": "chop",
+      "c0": 246.5,
+      "c1": 243.0,
+      "pct": -1.42,
+      "path": "hit",
+      "amp": "hit",
+      "band": [
+        241.57,
+        251.43
       ]
     }
   ]
