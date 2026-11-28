@@ -36,13 +36,31 @@ ASR／下載可平行預取，但 **forecast→confront 單線**；預取物密�
 | `iron_gate_14` | `pass`\|`fail`\|`diagonal_exempt`\|`unknown` |
 | `iron_gate_w3` | `pass`\|`fail`\|`unknown` |
 | `named_symbols[]` | 他點名才填；沒點＝`[]`，不准發明 |
-| `us_link_hyp` | 美股聯動一句＋隔日台股假設（無片日可簡） |
+| `us_link_hyp` | 美股聯動一句＋隔日台股假設（摘要；細節見 §1b） |
 | `kill_levels[]` | ≥1 殺分支價 |
 | `confirm_levels[]` | ≥1 活分支價 |
 
 體制一行：`{degree} {phase}｜中繼={relay}｜14={…}｜W3={…}｜殺／活=…`
 
 **開市無片：** 仍填上表；材料＝官方大盤 OHLC＋量；前窗已點名教具股可帶；`film_status=absent_open` **計入**對質 n（休市 `closed` 才跳過）。
+
+### 1b. 同步比對鏈（使用者 2026-11-28 確認要納入）
+
+每天解盤／隔日預估**不准只看加權**。必須同步填（有官方收才凍；盤中未收不當收）：
+
+| 鏈 | 必比對 | 怎麼用 |
+|---|---|---|
+| **美股／美指** | 費半（SOX）、台積 ADR；他當日點名的美股（例美光） | 結構段位＋相對高低；對台股隔日假設寫進高／低分支；破底／假跌破要標 |
+| **台指期** | 日盤指數＋**夜盤**指數（有官方／可核對來源才寫） | 與加權同窗對齊：夜盤「有驚無險／破底」是否在隔日日盤兌現 |
+| **加權 TWII** | 開高低收＋量 | 主對質柱（既有） |
+
+欄位（進 `huang_days/YYYYMMDD.json`）：
+
+- `sync_us[]`：`{symbol, ohlc?, structure_note, vs_prior_low_high, link_to_tw_hyp}`
+- `sync_tx`：`{day_session{...}, night_session{...}, vs_twii, note_zh}`
+- 缺資料＝`status=missing`＋原因；**不准假數**。缺美股或夜盤不得假裝「已同步」。
+
+隔日對質：除 TWII 外，若預估綁定了美股破底／夜盤方向，該鏈也要打 hit／partial／miss（可 `partial` 若只台股對、美股／夜盤未驗證）。
 
 ---
 
