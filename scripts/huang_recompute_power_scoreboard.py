@@ -20,6 +20,8 @@ OUT_SB = ROOT / "docs/expert_notes/黃培碩/huang_scoreboard.json"
 OUT_STOCK = ROOT / "docs/expert_notes/黃培碩/huang_stock_quant_ledger.json"
 OUT_VNEXT = ROOT / "docs/expert_notes/黃培碩/huang_vnext_candidates.json"
 OUT_PRIN = ROOT / "docs/expert_notes/黃培碩/huang_judgment_principles_quant.json"
+OUT_CLOSURE = ROOT / "docs/expert_notes/黃培碩/huang_chrono_closure_report.md"
+FILM_INDEX = ROOT / "docs/expert_notes/黃培碩/huang_film_index.json"
 TZ = ZoneInfo("Asia/Taipei")
 
 
@@ -418,6 +420,7 @@ def main() -> None:
     }
     prin["power_track_zh"] = "破除限制：波浪繪製確認＋幅度＋大盤／個股勝率；過閘必換。"
     OUT_PRIN.write_text(json.dumps(prin, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    write_closure_report(sb)
 
     print(
         json.dumps(
@@ -428,10 +431,114 @@ def main() -> None:
                 "stock_n": len(stock_ok),
                 "stock_path": stock_pack["path_hit_rate"],
                 "stock_amp": stock_pack["amp_hit_rate"],
+                "closure": str(OUT_CLOSURE.name),
             },
             ensure_ascii=False,
         )
     )
+
+
+def write_closure_report(sb: dict) -> None:
+    """Living draft of daily growth trajectory; finalize when chrono completes."""
+    days = (sb.get("chrono_2026") or {}).get("days") or []
+    stock = sb.get("stock_quant") or {}
+    gate = sb.get("gate_section8") or {}
+    w20 = (sb.get("windows") or {}).get("W20") or {}
+    c = sb.get("chrono_2026") or {}
+    now = datetime.now(TZ).strftime("%Y-%m-%d %H:%M Asia/Taipei")
+    lines: list[str] = []
+    lines.append("# 黃培碩chrono 結案報告・成長軌跡（進行中稿）")
+    lines.append("")
+    lines.append(f"更新：{now}")
+    lines.append(
+        "非買訊。目標：波浪理論＋驗證；大盤＋個股隔日預估覆盤；"
+        "資料夠→量化→推演；過閘換編碼。"
+    )
+    lines.append("")
+    lines.append(
+        "> **完成定義：** Drive 自 2026-01-02 起開市日全日序關完＋"
+        "`huang_daily_audit.py` 全綠＋分數板／個股總帳／vnext 齊＋本報告定稿。"
+    )
+    lines.append("")
+    lines.append("## 1. 總覽（截至目前）")
+    lines.append("")
+    lines.append(f"- 已對質開市日 n＝**{c.get('n', 0)}**（起點 20260102）")
+    lines.append(f"- 大盤方向 hit：{c.get('path_hit', 0)}/{c.get('n', 0)}")
+    lines.append(f"- 大盤幅度 hit：{c.get('amp_hit', 0)}/{c.get('n', 0)}")
+    if w20:
+        lines.append(
+            f"- W20：path {w20.get('path_hit_rate'):.2f}／wave {w20.get('wave_hit_rate'):.2f}／"
+            f"amp {w20.get('amp_hit_rate'):.2f}／嚴格全中 {w20.get('strict_all_hit_rate'):.2f}"
+        )
+    lines.append(
+        f"- 個股列數：{stock.get('n_rows')}；path≈{stock.get('path_hit_rate')}；"
+        f"amp≈{stock.get('amp_hit_rate')}"
+    )
+    lines.append(f"- 閘門狀態：`{gate.get('status')}`")
+    lines.append("")
+    lines.append("## 2. 每日成長軌跡（對質日）")
+    lines.append("")
+    lines.append("| 日 | 對質日 | path | wave | amp | levels | 成長／失敗碼 |")
+    lines.append("|---|---|---|---|---|---|---|")
+    for r in days:
+        codes = ",".join(r.get("fail_codes") or []) or "—"
+        growth = (r.get("growth_zh") or "").replace("|", "／")
+        lines.append(
+            f"| {r['day']} | {r.get('target', '')} | {r.get('path')} | {r.get('wave')} | "
+            f"{r.get('amp')} | {r.get('levels')} | {codes}；{growth} |"
+        )
+    lines.append("")
+    lines.append("## 3. 規則進化（滾動課）")
+    lines.append("")
+    seen: list[str] = []
+    for r in days:
+        for code in r.get("fail_codes") or []:
+            if code not in seen:
+                seen.append(code)
+    for code in seen:
+        hits = [r["day"] for r in days if code in (r.get("fail_codes") or [])]
+        lines.append(f"- `{code}` ← 首次／出現於 {', '.join(hits)}")
+    lines.append("")
+    lines.append("## 4. 大盤 vs 個股")
+    lines.append("")
+    lines.append("- 大盤：方向已穩；幅度課（加寬上下緣／破線後日）已在滾動生效。")
+    lines.append(
+        "- 個股：獨立期望對質中；**不准用大盤命中冒充個股**；目前個股勝率仍需拉升才過閘。"
+    )
+    lines.append(
+        "- 每日必含：波浪鐵律驗證、黃金切割＋等幅度、量價（量／20日均）、"
+        "market_power＋stock_quant。"
+    )
+    lines.append("")
+    lines.append("## 5. 尚未完成")
+    lines.append("")
+    pending: list[str] = []
+    if FILM_INDEX.exists():
+        idx = json.loads(FILM_INDEX.read_text(encoding="utf-8"))
+        done = {r["day"] for r in days}
+        pending = [
+            x["day"]
+            for x in idx.get("days") or []
+            if x.get("day", "") >= "20260204"
+            and x.get("film_status") in ("present", "absent_open")
+            and x["day"] not in done
+        ]
+    lines.append(f"- 下一待關：{pending[0] if pending else '（chrono 已追到 index 尾或需更新 index）'}")
+    if pending:
+        lines.append("- 待關清單（節錄）：" + ", ".join(pending[:12]))
+    lines.append(
+        "- 結案時本檔改「定稿」、補總結句：學到什麼、哪個規則過閘、話筒換了什麼。"
+    )
+    lines.append("")
+    lines.append("## 6. 定稿欄（完成時填）")
+    lines.append("")
+    lines.append("- 定稿日時（Asia/Taipei）：")
+    lines.append("- 最終 n／大盤勝率／個股勝率：")
+    lines.append("- 過閘項目：")
+    lines.append("- 已換話筒編碼／Render git_sha：")
+    lines.append("- 再生下一版候選：")
+    lines.append("")
+    OUT_CLOSURE.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":
