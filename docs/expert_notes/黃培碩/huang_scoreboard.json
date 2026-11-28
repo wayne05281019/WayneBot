@@ -1,5 +1,5 @@
 {
-  "as_of_taipei": "2026-11-28T20:26:29+08:00",
+  "as_of_taipei": "2026-11-28T20:30:55+08:00",
   "phone_sync": "blocked",
   "buy_signal": false,
   "recomputable": true,
@@ -121,10 +121,20 @@
         "levels": "hit",
         "fail_codes": [],
         "growth_zh": "第五出後未大拉回→緩步假設"
+      },
+      {
+        "day": "20260115",
+        "target": "20260116",
+        "path": "hit",
+        "wave": "hit",
+        "amp": "hit",
+        "levels": "hit",
+        "fail_codes": [],
+        "growth_zh": "法說閘以台積漲跌優先於廣度"
       }
     ],
-    "n": 9,
-    "path_hit": 9,
-    "amp_hit": 8
+    "n": 10,
+    "path_hit": 10,
+    "amp_hit": 9
   }
 }
