@@ -449,7 +449,8 @@
     "fib_equal_amp_filled": true,
     "golden_cut_synced": true,
     "vol_price_numeric": true,
-    "vol_ma20_filled": true
+    "vol_ma20_filled": true,
+    "biaoke_volume_noted": true
   },
   "exit_learn_zh": "群創等幅基本打標＋警示→看整理再決策；非全面出清大盤。選股換股優先。",
   "wave_progress": {
@@ -569,7 +570,8 @@
       "反彈止穩": "休息／震盪",
       "出場學": "群創打標＋警示後看整理再決策↔勿追／換股"
     },
-    "note_zh": "休息日對回測桶＋出場學（打標後）"
+    "note_zh": "休息日對回測桶＋出場學（打標後）；飆大量觀察：震盪量平（量/均=0.99）",
+    "volume_important_zh": "飆大：量的觀察很重要；每日必對官方量／量均"
   },
   "five_vol_sox_note_zh": "波浪：第三小波休息；形態：高檔震盪；量價：休息首日；關鍵K：昨高今休；碎形：微段；費半：已收",
   "tf_escalate": {

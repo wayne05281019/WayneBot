@@ -31,7 +31,7 @@
 | S5 | 紙圖／口播點位凍 | `kill`／`confirm`／`paper_levels` |
 | S6 | 同片改口鏈 | `retract_chain_zh` |
 | S7 | 刪去表 | `elim_rows` |
-| S8 | 量價（價方向＋量vs20日均；廣度不准代替量） | `quant.vol_price`（含數字） |
+| S8 | 量價（對齊飆大：量很重要；價方向＋量vs20日均；廣度不准代替量） | `quant.vol_price`（含數字） |
 | S9 | TWII＋SOX＋TX日夜＋TE日夜（缺＝missing） | `sync_*` |
 | S10 | 廣度官方凍 | `breadth_official` |
 | S11 | 點名股官方 OHLC＋量 | `named_stocks_ohlcv` |
@@ -42,8 +42,8 @@
 | S16 | 浪頂／回檔／反彈帶 | `wave_progress` |
 | S17 | 夜盤一句 | `night_morning_line` |
 | S18 | 持股環境閘 | `holdings_env_gate` |
-| S19 | 五件＋費半聯動（要有文字） | `five_vol_sox_note_zh` |
-| S20 | 飆大交叉六桶（要有文字） | `biaoke_cross.buckets` |
+| S19 | 五件＋費半聯動（要有文字；**必含量**） | `five_vol_sox_note_zh` |
+| S20 | 飆大交叉六桶（要有文字；**必含量價觀察**） | `biaoke_cross.buckets` |
 | S21 | 隔夜美股已收／未收 | `us_session_for_forecast` |
 | S22 | 雙分支隔日預估（未偷看） | `forecast_for_next` |
 | S23 | 樣本登錄觸碰 | `sample_register_touch_zh` |

@@ -33,7 +33,7 @@
 4. 發現少做 → **從 2026-01-02 第一則起回頭補**，再往下走。  
 5. 重算入口：`scripts/huang_recompute_power_scoreboard.py` → `huang_scoreboard.json`／`huang_stock_quant_ledger.json`／`huang_vnext_candidates.json`。  
 6. **每日必同步算黃金切割＋等幅度**（衝動段 R→0.382／0.5／0.618／0.786 回撤、1／1.272／1.618 延伸、等幅 1R／0.5R／0.618R）；寫進 `quant.fib_used`，隔日高低是否觸及一併對質。不准只寫震盪％帶就略過。  
-7. **每日必同步量價**：價方向＋成交量 vs 20日均（台指期＋點名股）；`confirm`／`deny`／`neutral` 要有數字。廣度只輔助，**不准代替成交量**。隔日量價一併對質。
+7. **每日必同步量價**（對齊飆大：量的觀察很重要）：價方向＋成交量 vs 20日均（台指期＋點名股）；`confirm`／`deny`／`neutral` 要有數字。廣度只輔助，**不准代替成交量**。隔日量價一併對質。`five_vol_sox_note_zh` 與 `biaoke_cross` 六桶都要寫到量（放量／縮量／量價背離），不准只寫價。
 
 
 ### 0.0b 每日影片查閱・流程序（使用者 2026-11-28 鎖・不可並列為最高）

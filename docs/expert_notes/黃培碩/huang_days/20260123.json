@@ -431,7 +431,8 @@
     "fib_equal_amp_filled": true,
     "golden_cut_synced": true,
     "vol_price_numeric": true,
-    "vol_ma20_filled": true
+    "vol_ma20_filled": true,
+    "biaoke_volume_noted": true
   },
   "exit_learn_zh": "投機強勢等拉回；不追。群創被巴來拔去勿追高。非大盤全面出清。",
   "wave_progress": {
@@ -523,7 +524,8 @@
       "反彈止穩": "A-B安全期",
       "出場學": "投機等拉回↔操作桶"
     },
-    "note_zh": "六桶全勾；非買訊"
+    "note_zh": "六桶全勾；非買訊；飆大量觀察：價漲量平（量/均=1.05）",
+    "volume_important_zh": "飆大：量的觀察很重要；每日必對官方量／量均"
   },
   "five_vol_sox_note_zh": "波浪：末升小五候選；形態：創高背離台積；量價：廣度平；關鍵K：32166；碎形：大中小；費半：弱",
   "tf_escalate": {

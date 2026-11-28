@@ -440,7 +440,8 @@
     "fib_equal_amp_filled": true,
     "golden_cut_synced": true,
     "vol_price_numeric": true,
-    "vol_ma20_filled": true
+    "vol_ma20_filled": true,
+    "biaoke_volume_noted": true
   },
   "exit_learn_zh": "群創勿現抄；美食／鉅橡等拉回。非大盤出清。",
   "wave_progress": {
@@ -546,7 +547,8 @@
       "反彈止穩": "28日僅一黑",
       "出場學": "群創勿抄↔操作桶"
     },
-    "note_zh": "六桶全勾；非買訊"
+    "note_zh": "六桶全勾；非買訊；飆大量觀察：價漲量縮（量/均=0.89）",
+    "volume_important_zh": "飆大：量的觀察很重要；每日必對官方量／量均"
   },
   "five_vol_sox_note_zh": "波浪：擴延；形態：創高；量價：資金瘋；關鍵K：1820；碎形：兩長夾一短；費半：強",
   "tf_escalate": {

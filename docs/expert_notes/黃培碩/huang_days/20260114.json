@@ -458,7 +458,8 @@
     "fib_equal_amp_filled": true,
     "golden_cut_synced": true,
     "vol_price_numeric": true,
-    "vol_ma20_filled": true
+    "vol_ma20_filled": true,
+    "biaoke_volume_noted": true
   },
   "exit_learn_zh": "群創大型有量持有／加碼邏輯；細晶圓獲利中勿酸民式亂猜。非大盤出清。",
   "wave_progress": {
@@ -578,7 +579,8 @@
       "反彈止穩": "黏高可接受",
       "出場學": "大型有量珍惜↔選股桶"
     },
-    "note_zh": "六桶全勾；非買訊"
+    "note_zh": "六桶全勾；非買訊",
+    "volume_important_zh": "飆大：量的觀察很重要；每日必對官方量／量均"
   },
   "five_vol_sox_note_zh": "波浪：第五緩步；形態：台積平高；量價：廣度強；關鍵K：1720未破；碎形：小時第五出；費半：偏弱相對",
   "tf_escalate": {

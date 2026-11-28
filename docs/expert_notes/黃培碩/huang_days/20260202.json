@@ -680,7 +680,8 @@
     "fib_equal_amp_filled": true,
     "golden_cut_synced": true,
     "vol_price_numeric": true,
-    "vol_ma20_filled": true
+    "vol_ma20_filled": true,
+    "biaoke_volume_noted": true
   },
   "exit_learn_zh": "破線後反彈用來調持股／減不健康；少數領性拉回才接。非全面出清唯一解。",
   "wave_progress": {
@@ -772,7 +773,8 @@
       "反彈止穩": "B反彈調倉",
       "出場學": "反彈減不健康↔操作桶"
     },
-    "note_zh": "六桶全勾；非買訊"
+    "note_zh": "六桶全勾；非買訊；飆大量觀察：價跌量增（量/均=1.49）",
+    "volume_important_zh": "飆大：量的觀察很重要；每日必對官方量／量均"
   },
   "five_vol_sox_note_zh": "波浪：破線進整理；形態：大陰；量價：廣度極弱；關鍵K：破線；碎形：31200；費半：平",
   "tf_escalate": {

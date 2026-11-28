@@ -640,7 +640,8 @@
     "fib_equal_amp_filled": true,
     "golden_cut_synced": true,
     "vol_price_numeric": true,
-    "vol_ma20_filled": true
+    "vol_ma20_filled": true,
+    "biaoke_volume_noted": true
   },
   "exit_learn_zh": "口播：大盤推升形成後細微拉回不影響個股操作；部分弱勢／假突破（如金居）站賣方；正瀚電勿殺低等反彈。無全面出清句。",
   "wave_progress": {
@@ -843,7 +844,8 @@
       "反彈止穩": "黃偏續推非反彈減碼→對照反彈桶：無減碼節奏",
       "出場學": "黃無全面出清→對照如何賣：無"
     },
-    "note_zh": "交叉＝主題對桶；Jan黃 vs 近一年飆大桶（非同日偷看）"
+    "note_zh": "交叉＝主題對桶；Jan黃 vs 近一年飆大桶（非同日偷看）；飆大量觀察：價漲量增（量/均=1.16）",
+    "volume_important_zh": "飆大：量的觀察很重要；每日必對官方量／量均"
   },
   "five_vol_sox_note_zh": "波浪：推升形成；形態：整理後啟推；量價：價漲創高；關鍵K：標掌29500；碎形：未細拆；費半：0102已收凍入",
   "tf_escalate": {

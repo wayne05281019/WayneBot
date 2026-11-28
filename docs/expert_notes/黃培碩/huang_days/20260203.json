@@ -719,7 +719,8 @@
     "fib_equal_amp_filled": true,
     "golden_cut_synced": true,
     "vol_price_numeric": true,
-    "vol_ma20_filled": true
+    "vol_ma20_filled": true,
+    "biaoke_volume_noted": true
   },
   "exit_learn_zh": "年前偏不曝險調倉；群創暫休。非買訊。",
   "wave_progress": {
@@ -810,7 +811,8 @@
       "反彈止穩": "強彈滿足觀察",
       "出場學": "年前調倉↔操作桶"
     },
-    "note_zh": "六桶；非買訊"
+    "note_zh": "六桶；非買訊；飆大量觀察：價漲量增（量/均=1.12）",
+    "volume_important_zh": "飆大：量的觀察很重要；每日必對官方量／量均"
   },
   "five_vol_sox_note_zh": "波浪：整理；形態：強彈；量價：廣度轉強；關鍵K：破線後；碎形：0.618；費半：弱",
   "tf_escalate": {

@@ -394,7 +394,8 @@
     "fib_equal_amp_filled": true,
     "golden_cut_synced": true,
     "vol_price_numeric": true,
-    "vol_ma20_filled": true
+    "vol_ma20_filled": true,
+    "biaoke_volume_noted": true
   },
   "exit_learn_zh": "期指區間：高空低多、假突破快回補；個股不追高。非大盤全面出清。",
   "wave_progress": {
@@ -517,7 +518,8 @@
       "反彈止穩": "區間高空低多",
       "出場學": "假突破快回補；個股不追高↔勿追桶"
     },
-    "note_zh": "高檔震盪日六桶全勾"
+    "note_zh": "高檔震盪日六桶全勾；飆大量觀察：震盪量平（量/均=1.07）",
+    "volume_important_zh": "飆大：量的觀察很重要；每日必對官方量／量均"
   },
   "five_vol_sox_note_zh": "波浪：第三波整理；形態：升軌疊破區間；量價：廣度弱；關鍵K：假突破回；碎形：15分區間；費半：收弱",
   "tf_escalate": {

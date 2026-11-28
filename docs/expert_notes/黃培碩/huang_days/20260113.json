@@ -499,7 +499,8 @@
     "fib_equal_amp_filled": true,
     "golden_cut_synced": true,
     "vol_price_numeric": true,
-    "vol_ma20_filled": true
+    "vol_ma20_filled": true,
+    "biaoke_volume_noted": true
   },
   "exit_learn_zh": "鉅橡半出後看第五波能否過癮再全出或加回；底部股推不出→小賺換股。非大盤全面出清。",
   "wave_progress": {
@@ -626,7 +627,8 @@
       "反彈止穩": "拉回可接受非崩",
       "出場學": "鉅橡半出看過癮／底部推不出小賺換↔決策桶"
     },
-    "note_zh": "六桶全勾；非買訊"
+    "note_zh": "六桶全勾；非買訊；飆大量觀察：價漲量增（量/均=1.26）",
+    "volume_important_zh": "飆大：量的觀察很重要；每日必對官方量／量均"
   },
   "five_vol_sox_note_zh": "波浪：第五波候選；形態：衝高長上影拉回；量價：廣度弱；關鍵K：台積1720；碎形：5-1可能；費半：收強",
   "tf_escalate": {

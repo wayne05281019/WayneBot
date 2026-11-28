@@ -439,7 +439,8 @@
     "fib_equal_amp_filled": true,
     "golden_cut_synced": true,
     "vol_price_numeric": true,
-    "vol_ma20_filled": true
+    "vol_ma20_filled": true,
+    "biaoke_volume_noted": true
   },
   "exit_learn_zh": "群創1/19高點先賣半；出關回檔穿價才加。非大盤出清。",
   "wave_progress": {
@@ -533,7 +534,8 @@
       "反彈止穩": "個股暫無特別影響",
       "出場學": "群創高點先賣半↔操作桶"
     },
-    "note_zh": "六桶全勾；非買訊"
+    "note_zh": "六桶全勾；非買訊；飆大量觀察：價跌量平（量/均=0.95）",
+    "volume_important_zh": "飆大：量的觀察很重要；每日必對官方量／量均"
   },
   "five_vol_sox_note_zh": "波浪：第五臨界；形態：黑棒；量價：廣度弱；關鍵K：黑棒底；碎形：5之擴延；費半：強",
   "tf_escalate": {

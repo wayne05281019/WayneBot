@@ -460,7 +460,8 @@
     "fib_equal_amp_filled": true,
     "golden_cut_synced": true,
     "vol_price_numeric": true,
-    "vol_ma20_filled": true
+    "vol_ma20_filled": true,
+    "biaoke_volume_noted": true
   },
   "exit_learn_zh": "群創高檔警示區間上緣減／下緣加；非大盤出清。高位主流不甜→換低位轉強。",
   "wave_progress": {
@@ -577,7 +578,8 @@
       "反彈止穩": "無崩跌；選股做多強股",
       "出場學": "高位主流不甜／區間上緣減↔換股桶"
     },
-    "note_zh": "六桶全勾；非買訊"
+    "note_zh": "六桶全勾；非買訊；飆大量觀察：價漲量平（量/均=0.96）",
+    "volume_important_zh": "飆大：量的觀察很重要；每日必對官方量／量均"
   },
   "five_vol_sox_note_zh": "波浪：指數過高台積未過；形態：平台假突破候選；量價：過高量不爆；關鍵K：台積平高1705；碎形：12/18起推升；費半：平強",
   "tf_escalate": {

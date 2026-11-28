@@ -447,7 +447,8 @@
     "fib_equal_amp_filled": true,
     "golden_cut_synced": true,
     "vol_price_numeric": true,
-    "vol_ma20_filled": true
+    "vol_ma20_filled": true,
+    "biaoke_volume_noted": true
   },
   "exit_learn_zh": "持股少而精；有變化第一時間換出；進場堅定出場果斷。非全面空指數。",
   "wave_progress": {
@@ -567,7 +568,8 @@
       "反彈止穩": "無",
       "出場學": "持股少而精、有變化第一時間換↔出清桶節奏"
     },
-    "note_zh": "創高恐懼日強制對出清桶：黃主張不停在全面出清"
+    "note_zh": "創高恐懼日強制對出清桶：黃主張不停在全面出清；飆大量觀察：價漲量平（量/均=1.03）",
+    "volume_important_zh": "飆大：量的觀察很重要；每日必對官方量／量均"
   },
   "five_vol_sox_note_zh": "波浪：第三組小推動；形態：續推；量價：量滾量個股；關鍵K：創高；碎形：細微難釘；費半：偏強",
   "tf_escalate": {

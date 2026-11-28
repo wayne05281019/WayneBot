@@ -404,7 +404,8 @@
     "fib_equal_amp_filled": true,
     "golden_cut_synced": true,
     "vol_price_numeric": true,
-    "vol_ma20_filled": true
+    "vol_ma20_filled": true,
+    "biaoke_volume_noted": true
   },
   "exit_learn_zh": "破後用B反彈調持股；今日勿殺低。群創滿足短反非追新推。",
   "wave_progress": {
@@ -496,7 +497,8 @@
       "反彈止穩": "B反彈調倉用",
       "出場學": "破後調持股↔操作桶"
     },
-    "note_zh": "六桶全勾；非買訊"
+    "note_zh": "六桶全勾；非買訊；飆大量觀察：價跌量增（量/均=1.21）",
+    "volume_important_zh": "飆大：量的觀察很重要；每日必對官方量／量均"
   },
   "five_vol_sox_note_zh": "波浪：臨界雙分支；形態：大黑棒；量價：廣度極弱；關鍵K：候選未確認；碎形：軌道切線；費半：弱",
   "tf_escalate": {

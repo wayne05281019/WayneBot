@@ -424,7 +424,8 @@
     "fib_equal_amp_filled": true,
     "golden_cut_synced": true,
     "vol_price_numeric": true,
-    "vol_ma20_filled": true
+    "vol_ma20_filled": true,
+    "biaoke_volume_noted": true
   },
   "exit_learn_zh": "群創未減碼（警示創高仍第三波主張）；若台積破臨界則個股先把部分獲利放口袋。非大盤全面出清。",
   "wave_progress": {
@@ -530,7 +531,8 @@
       "反彈止穩": "指數未深破",
       "出場學": "臨界破才先落袋部分↔風險桶"
     },
-    "note_zh": "六桶全勾；非買訊"
+    "note_zh": "六桶全勾；非買訊；飆大量觀察：震盪量平（量/均=1.00）",
+    "volume_important_zh": "飆大：量的觀察很重要；每日必對官方量／量均"
   },
   "five_vol_sox_note_zh": "波浪：第五臨界；形態：緩升軌下緣；量價：廣度中性；關鍵K：1680；碎形：法說閘；費半：收強",
   "tf_escalate": {

@@ -410,7 +410,8 @@
     "fib_equal_amp_filled": true,
     "golden_cut_synced": true,
     "vol_price_numeric": true,
-    "vol_ma20_filled": true
+    "vol_ma20_filled": true,
+    "biaoke_volume_noted": true
   },
   "exit_learn_zh": "群創未賣；信昌電拉回觀察能否再推。非大盤出清。",
   "wave_progress": {
@@ -517,7 +518,8 @@
       "反彈止穩": "臨界守住",
       "出場學": "大型有量續抱↔選股桶"
     },
-    "note_zh": "六桶全勾；非買訊"
+    "note_zh": "六桶全勾；非買訊",
+    "volume_important_zh": "飆大：量的觀察很重要；每日必對官方量／量均"
   },
   "five_vol_sox_note_zh": "波浪：第五確認；形態：衝破臨界；量價：齊創高；關鍵K：1750；碎形：5-3；費半：收強",
   "tf_escalate": {

@@ -477,7 +477,8 @@
     "fib_equal_amp_filled": true,
     "golden_cut_synced": true,
     "vol_price_numeric": true,
-    "vol_ma20_filled": true
+    "vol_ma20_filled": true,
+    "biaoke_volume_noted": true
   },
   "exit_learn_zh": "元金轉弱表態→全部出清換股；進場堅定出場果斷；推動形態失敗＝理由消失必出。非全面出清大盤。",
   "wave_progress": {
@@ -611,7 +612,8 @@
       "反彈止穩": "非反彈減碼日",
       "出場學": "元金轉弱全部出清↔飆大如何賣／弱勢換股節奏對得上（個股）"
     },
-    "note_zh": "出場學交叉：黃元金清倉＝弱勢果斷出，對照出清桶精神"
+    "note_zh": "出場學交叉：黃元金清倉＝弱勢果斷出，對照出清桶精神；飆大量觀察：價漲量增（量/均=1.65）",
+    "volume_important_zh": "飆大：量的觀察很重要；每日必對官方量／量均"
   },
   "five_vol_sox_note_zh": "波浪：w3微段；形態：推升；量價：指數強廣度弱；關鍵K：續創新高；碎形：兩長夾一短；費半：收弱仍凍",
   "tf_escalate": {

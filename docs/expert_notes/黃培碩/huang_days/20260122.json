@@ -415,7 +415,8 @@
     "fib_equal_amp_filled": true,
     "golden_cut_synced": true,
     "vol_price_numeric": true,
-    "vol_ma20_filled": true
+    "vol_ma20_filled": true,
+    "biaoke_volume_noted": true
   },
   "exit_learn_zh": "無片無新出場句；沿用前窗群創穿價才加。",
   "wave_progress": {
@@ -504,7 +505,8 @@
       "反彈止穩": "廣度轉強",
       "出場學": "沿用前窗↔操作桶"
     },
-    "note_zh": "六桶全勾；非買訊"
+    "note_zh": "六桶全勾；非買訊；飆大量觀察：價漲量增（量/均=1.13）",
+    "volume_important_zh": "飆大：量的觀察很重要；每日必對官方量／量均"
   },
   "five_vol_sox_note_zh": "波浪：第五未鎖；形態：反彈；量價：廣度轉強；關鍵K：反彈柱；碎形：沿用；費半：平",
   "tf_escalate": {

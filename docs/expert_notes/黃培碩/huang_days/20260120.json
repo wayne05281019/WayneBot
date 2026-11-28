@@ -403,7 +403,8 @@
     "fib_equal_amp_filled": true,
     "golden_cut_synced": true,
     "vol_price_numeric": true,
-    "vol_ma20_filled": true
+    "vol_ma20_filled": true,
+    "biaoke_volume_noted": true
   },
   "exit_learn_zh": "群創出關密切關注；望拉回加碼非追高。華邦臨界未鎖死出清。非大盤出清。",
   "wave_progress": {
@@ -509,7 +510,8 @@
       "反彈止穩": "指數無崩",
       "出場學": "出關密切／望拉回加↔操作桶"
     },
-    "note_zh": "六桶全勾；非買訊"
+    "note_zh": "六桶全勾；非買訊；飆大量觀察：震盪放量（量/均=1.32）",
+    "volume_important_zh": "飆大：量的觀察很重要；每日必對官方量／量均"
   },
   "five_vol_sox_note_zh": "波浪：盤堅第五；形態：未重疊1720；量價：廣度弱記憶震；關鍵K：華邦105.5；碎形：五之推；費半：弱",
   "tf_escalate": {

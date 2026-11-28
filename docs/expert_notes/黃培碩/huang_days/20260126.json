@@ -434,7 +434,8 @@
     "fib_equal_amp_filled": true,
     "golden_cut_synced": true,
     "vol_price_numeric": true,
-    "vol_ma20_filled": true
+    "vol_ma20_filled": true,
+    "biaoke_volume_noted": true
   },
   "exit_learn_zh": "美食／記憶體等拉回切入；不追高。非大盤出清。",
   "wave_progress": {
@@ -533,7 +534,8 @@
       "反彈止穩": "健康",
       "出場學": "主題等拉回↔操作桶"
     },
-    "note_zh": "六桶全勾；非買訊"
+    "note_zh": "六桶全勾；非買訊；飆大量觀察：震盪量平（量/均=0.87）",
+    "volume_important_zh": "飆大：量的觀察很重要；每日必對官方量／量均"
   },
   "five_vol_sox_note_zh": "波浪：盤堅第五；形態：創高；量價：廣度可；關鍵K：320守；碎形：緩升；費半：弱",
   "tf_escalate": {

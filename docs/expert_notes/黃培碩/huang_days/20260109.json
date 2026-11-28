@@ -481,7 +481,8 @@
     "fib_equal_amp_filled": true,
     "golden_cut_synced": true,
     "vol_price_numeric": true,
-    "vol_ma20_filled": true
+    "vol_ma20_filled": true,
+    "biaoke_volume_noted": true
   },
   "exit_learn_zh": "宇瞻8271：09:08附近出清高點133.5（彈中交易證據）；力積電6770：0107 12:32附近出清高50.5。記憶體／面板暫休該出就出；非大盤全面出清。",
   "wave_progress": {
@@ -606,7 +607,8 @@
       "反彈止穩": "急殺快回＝低點交代漂亮",
       "出場學": "宇瞻／力積電高點出清證據↔該出就出桶"
     },
-    "note_zh": "六桶全勾；非買訊"
+    "note_zh": "六桶全勾；非買訊；飆大量觀察：震盪放量（量/均=1.36）",
+    "volume_important_zh": "飆大：量的觀察很重要；每日必對官方量／量均"
   },
   "five_vol_sox_note_zh": "波浪：高檔震盪仍有高點；形態：今低長下影回收；量價：指數量縮、記憶體殺；關鍵K：急殺快回；碎形：小時線1415–1530；費半：收強",
   "tf_escalate": {
