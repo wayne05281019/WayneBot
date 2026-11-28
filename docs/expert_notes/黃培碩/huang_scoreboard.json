@@ -1,5 +1,5 @@
 {
-  "as_of_taipei": "2026-11-28T22:13:10+08:00",
+  "as_of_taipei": "2026-11-28T22:26:28+08:00",
   "phone_sync": "blocked",
   "buy_signal": false,
   "recomputable": true,
@@ -233,10 +233,20 @@
           "POST_FRENZY_D2_WIDEN_FLOOR"
         ],
         "growth_zh": "第二日拉回要加寬下緣"
+      },
+      {
+        "day": "20260130",
+        "target": "20260202",
+        "path": "hit",
+        "wave": "hit",
+        "amp": "hit",
+        "levels": "hit",
+        "fail_codes": [],
+        "growth_zh": "臨界黑棒後加寬下緣生效"
       }
     ],
-    "n": 20,
-    "path_hit": 20,
-    "amp_hit": 18
+    "n": 21,
+    "path_hit": 21,
+    "amp_hit": 19
   }
 }
