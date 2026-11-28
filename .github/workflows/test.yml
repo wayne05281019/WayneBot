@@ -55,19 +55,71 @@ jobs:
   # needs smoke：同一 PR 不准 smoke／full 並搶兩席（24 PR 排隊時峰值約腰斬）；
   # smoke 紅就不開 full，省 runner。仍兩職都綠才合（對齊 #969）。
   # 詳見 docs/ci_queue_concurrency_strategy_20261123.md
+  # full-suite：預設全跑。僅「這一推」全是黃培碩筆記／分數板／結案稿時跳過 DB＋pytest，
+  # 職名仍叫 full-suite 且 success（避免 required check 卡住）。任何 .py／tests／_TEMPLATE／
+  # workflow／requirements → 必跑。跳過綠≠證明未測 Python；合主仍要碼變過的 tip 真全綠。
   full-suite:
     needs: smoke-no-db
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect Huang-notes-only push
+        id: gate
+        run: |
+          set -euo pipefail
+          CHANGED=""
+          if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
+            CHANGED=$(git diff --name-only HEAD~1 HEAD || true)
+          fi
+          if [ -z "${CHANGED}" ]; then
+            echo "no prior commit diff → need full-suite"
+            echo "need_full=1" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "changed files:"
+          echo "$CHANGED"
+          NEED=0
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            case "$f" in
+              docs/expert_notes/黃培碩/huang_days/_TEMPLATE.json) NEED=1 ;;
+              docs/expert_notes/黃培碩/huang_days/*) ;;
+              docs/expert_notes/黃培碩/huang_chrono_*) ;;
+              docs/expert_notes/黃培碩/huang_scoreboard.json) ;;
+              docs/expert_notes/黃培碩/huang_stock_quant_ledger.json) ;;
+              docs/expert_notes/黃培碩/huang_vnext_candidates.json) ;;
+              docs/expert_notes/黃培碩/huang_judgment_principles_quant.json) ;;
+              docs/expert_notes/黃培碩/huang_film_index.json) ;;
+              docs/expert_notes/黃培碩/huang_sample_register.json) ;;
+              docs/expert_notes/黃培碩/*.md) ;;
+              *) NEED=1 ;;
+            esac
+          done <<< "$CHANGED"
+          echo "need_full=$NEED" >> "$GITHUB_OUTPUT"
+          if [ "$NEED" = "0" ]; then
+            echo "Huang notes-only push → skip DB/pytest (job stays green)"
+          else
+            echo "code/contract-relevant paths → run full-suite"
+          fi
+
+      - name: Huang notes-only skip (full-suite stays green)
+        if: steps.gate.outputs.need_full != '1'
+        run: |
+          echo "skipped full pytest for allowlisted Huang note paths only"
+          echo "merge tip with untested Python still requires a prior/code push that ran full-suite"
 
       - uses: actions/setup-python@v5
+        if: steps.gate.outputs.need_full == '1'
         with:
           python-version: '3.12'
           cache: 'pip'
 
       - name: 安裝依賴
+        if: steps.gate.outputs.need_full == '1'
         run: |
           python -m pip install --upgrade pip
           ok=0
@@ -83,6 +135,7 @@ jobs:
           python -c "import kiwisolver, matplotlib; print('deps ok', kiwisolver.__version__)"
 
       - name: 從 Releases 下載核心資料庫
+        if: steps.gate.outputs.need_full == '1'
         run: |
           mkdir -p data
           curl -fL -o waynebot_production_complete.zip \
@@ -94,6 +147,7 @@ jobs:
           ls -l data/wayne_market.db
 
       - name: 確認庫是生產規模（否則 production_db 測試會安靜跳過）
+        if: steps.gate.outputs.need_full == '1'
         run: |
           python - <<'PY'
           import os
@@ -109,6 +163,7 @@ jobs:
           PY
 
       - name: 全套測試
+        if: steps.gate.outputs.need_full == '1'
         env:
           WAYNE_DB_PATH: data/wayne_market.db
           MPLBACKEND: Agg
@@ -118,6 +173,7 @@ jobs:
           python -m pytest -q --strict-markers -rs 2>&1 | tee /tmp/full-suite.txt
 
       - name: 確認需要真實資料的測試真的跑了
+        if: steps.gate.outputs.need_full == '1'
         env:
           WAYNE_DB_PATH: data/wayne_market.db
           MPLBACKEND: Agg
