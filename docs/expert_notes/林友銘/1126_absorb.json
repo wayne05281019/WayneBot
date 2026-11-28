@@ -1,0 +1,122 @@
+{
+  "as_of_taipei": "2026-11-27T12:00:00+08:00",
+  "source": {
+    "drive_folder_id": "1SIJ_PBvu6-Sck3YGMA0X9MUJM9Po0cKj",
+    "drive_file_id": "1BIzlyfparN_OiSc6WWB-9bCfoWBpKBrw",
+    "filename": "1126林友銘.mp4",
+    "local_path": "data/lin_youming/1126林友銘.mp4",
+    "duration_sec": 2634.65,
+    "asr": "whisper_tiny_zh",
+    "frames_dir": "/opt/cursor/artifacts/lin_youming/frames/",
+    "key_frames": [
+      "key/01_failed_C_1990.jpg",
+      "key/02_running_B_rule.jpg",
+      "key/04_C_ext_1618_AI.jpg",
+      "key/05_C_ext_compare.jpg",
+      "key/06_attack_strategy_ma.jpg",
+      "key/07_2368_chart_draw.jpg"
+    ]
+  },
+  "phone_sync": "blocked",
+  "buy_signal": false,
+  "not_buy_signal": true,
+  "certainty": false,
+  "title_zh": "林友銘1126：黃金切割延伸＋奔走B／失敗C畫法（非買訊）",
+  "fib_ratios_he_used": {
+    "retrace_bounce_mentioned_oral": [0.382, 0.5, 0.618],
+    "retrace_note_zh": "口播開頭批評市場常講「反彈到0.382／0.5／0.618」；他認為若判回升格局則不該用這套反彈壓讀法當上限。ASR tiny 把數字黏在一起（0.380.5.0.618），以影格＋語境校正。",
+    "extension_c_of_a": [1.0, 1.382, 1.444, 1.5, 1.618],
+    "extension_how_zh": "C 長＝A 長 × 比率；量法＝自 B 高往下投影（B − A段長×比率）。歷史案例另標實際落到 1.444；當代案例標 1.618 為極限帶。",
+    "not_seen_this_ep": [0.75, 0.786],
+    "not_seen_note_zh": "本集影格／口播未強調 0.75／0.786；本庫 DEFAULT_RETRACE 仍保留這兩率＝不衝突、只是他這集沒講。"
+  },
+  "measure_anchors_twii_slide": {
+    "peak_tri3": 48218,
+    "A": 39384,
+    "span_A": 8834,
+    "B_running": 49968,
+    "C_targets": {
+      "1.0": 41134,
+      "1.382": 37760,
+      "1.618": 35675
+    },
+    "C_or_tri4_label": 35442,
+    "formula_zh": "C_target = B − (peak_tri3 − A) × ratio"
+  },
+  "official_ohlc_confront": {
+    "symbol": "TWII",
+    "timezone": "Asia/Taipei",
+    "bars": {
+      "peak_tri3": {"date": "20260623", "high": 48218.87},
+      "A_low": {"date": "20260729", "low": 39384.85},
+      "B_high": {"date": "20261006", "high": 49968.92},
+      "C_low": {"date": "20261123", "low": 35442.41}
+    },
+    "actual_c_over_a_ratio": 1.6443,
+    "vs_1618_zh": "官方低 35442 略深於投影 1.618＝35675（差約 −232 點）；落在他標的「1.618 極限／三-4」附近，可當延伸觀測對質，不構成買訊、不過閘。",
+    "rebound_from_C_asof_20261127": {
+      "close": 39037.77,
+      "depth_toward_B": 0.2475,
+      "note_zh": "自 C 低往 B 高回升深度約 0.25，尚未到口播常提的 0.382／0.5／0.618 反彈帶（若用 B−C 段）。僅觀察。"
+    },
+    "gate": "n_episode=1；遠低於 n≥20 替換閘；phone_sync=blocked"
+  },
+  "drawing_habits": {
+    "classroom_title": "波浪小教室",
+    "compare_layout_zh": "左歷史週線案例｜右當代日線對照（同結構並陳）",
+    "labels": ["A/B/C 大紅字", "①–⑤ 圈號細微波", "【三-3】【三-4】層級標", "失敗C浪／奔走B浪 文字框"],
+    "lines": ["藍實線連樞紐", "虛線箭頭＝後續預估路徑", "綠陰影三角＝A／C 跌幅視覺比較", "水平虛線＝延伸％價"],
+    "live_chart_zh": "個股用券商軟體日K＋均線；紅筆圈底／畫 W；手指數低點當量測起點（例 2368 高1310／低657）",
+    "clarity_zh": "比率與價同框、違規理由黃字框寫死；遠近案例並排＝教具清晰度高，可當畫圖參考（非選股）。"
+  },
+  "wave_rules_oral_visual": {
+    "impulse_invalid_if": ["①④重疊", "③最短"],
+    "then_read_as": "奔走創高的誘多反彈 B 浪（非攻擊五波）",
+    "failed_C": "C 不破 A 底＝失敗 C",
+    "align_biaoke_zh": "與飆大課綱／黃軌「③不准最短、1–4 不重疊」同鐵律方向；林另強調「違規→改讀奔走B／失敗C」的改判流程。"
+  },
+  "vs_repo": {
+    "agree": [
+      "回撤常用 0.382／0.5／0.618（口播提及市場用法；本庫 DEFAULT_RETRACE 含這三率）",
+      "延伸含 1.0／1.382／1.618（本庫 DEFAULT_EXT 有 1.0／1.272／1.618／2.618；他這集重 1.382／1.618）",
+      "攻擊波鐵律：③非最短、①④不重疊（課綱／mine_wave_rules 同向）",
+      "C=A 倍數投影自 B 端＝可對接 decade_lab_wave_fib_targets extension 語意"
+    ],
+    "conflict_or_gap": [
+      "他標 1.444／近 1.5 為歷史實落延伸；本庫 DEFAULT_EXT 無 1.382／1.444（有 1.272）→ 可列靜默觀測候選，未過閘不准改預設",
+      "飆大公開課綱近窗反彈壓主標 0.382／0.618／0.75；他這集對「回升格局」反對把 0.382–0.618 當反彈上限",
+      "個股發明浪／選股表（年線攻擊策略＋點名股）≠ 本庫黃金買點；不准混寫"
+    ],
+    "fillable_observe_only": [
+      "C 對 A 延伸帶：1.0／1.382／1.618（+觀測 1.444）靜默對質",
+      "奔走 B／失敗 C 改判條件（重疊＋③最短）→ 標籤觀察，不上話筒浪號",
+      "教具並排：歷史案例｜當代同構＋綠陰影段長比較"
+    ]
+  },
+  "effective_for_us": {
+    "label": "可接現有 Fib／教具／觀察（明確非買訊）",
+    "items": [
+      "延伸投影公式與官方柱對得上（B／A／C 錨已核）→ 可進靜默 decade_lab 觀測筆記",
+      "違規改判奔走B／失敗C 的文字框標準 → 可補強教具說明（仍跟飆大點過的位）",
+      "畫圖清楚度：比率價同框、左右案例對照 → 活畫排版參考"
+    ]
+  },
+  "parked_reference": {
+    "label": "暫存參考",
+    "items": [
+      "回升 vs 反彈 的口播立場（未量化勝率）",
+      "1.444／1.5 延伸實落率（僅一則歷史＋一則當代）",
+      "年線／季線／半年線「攻擊型」守線層級（均線策略≠Fib；未過閘）",
+      "個股手繪 W／紅圈（2368 等）— 型態觀察用語，未驗證"
+    ]
+  },
+  "forbidden_product": {
+    "label": "不准進產品",
+    "items": [
+      "攻擊型選股表／點名股當海選或黃金買點",
+      "「2100 甜甜價」等未經驗證進場句",
+      "把未點過的浪號／價寫進飆大回覆或話筒",
+      "改 DEFAULT_RETRACE／黃金買點公式／phone_update_note（本吸收不上產品面）"
+    ]
+  }
+}
