@@ -305,18 +305,24 @@
       "family": "huang_morph",
       "structure_code": "osc_relay",
       "subwave_formula": "pending_teach",
-      "degree_hint": "趨勢中的震盪中繼（非趨勢終結）；細拆時與三角形／平坦／複合並列刪去，不准先當頭部或底部",
+      "degree_hint": "大盤：從「最近高點」往下數，第 2 段＝震盪中繼（非趨勢終結頭部）；第 1 段先走完下殺／推進後才進中繼窗。細拆時與三角形／平坦／複合並列刪去，不准先當頭部或底部。",
       "tf_prefer": ["daily", "60m", "15m"],
       "iron_gates": ["WR-IRON-14-OVERLAP"],
       "overlap_policy": "中繼窗內多重疊常見；破中繼邊界才升權續行或反轉候選——細節待對教具／影片原文",
       "source_kind": "huang_teach",
       "provenance": [
-        "user 2026-11-28：黃培碩說過震盪中繼型態（口述補錄；教具原文／時間碼待核）"
+        "user 2026-11-28：黃培碩說過震盪中繼型態（口述補錄；教具原文／時間碼待核）",
+        "user 2026-11-28 補：一大盤來講，從最近的高點往下之後，第二段就是中繼型態"
       ],
+      "anchor_example_silent": {
+        "symbol": "TWII",
+        "note_zh": "靜默對質錨：近高候選＝官方日K峰（例 2026-10-06 high≈49969）；往下第1段→第2段中繼。非話筒浪號、非買訊。",
+        "asof_bar_hint": "20261006"
+      },
       "sample_stocks": [],
       "verify_status": "pending_source",
       "phone_ok": false,
-      "note_zh": "先前 16 條骨架漏收；本條補入。子浪公式／進出邊界未對到黃原文前不准發明。"
+      "note_zh": "位階讀法已收：近高↓ → 段1 → 段2＝震盪中繼。子浪公式／進出邊界未對到黃原文前不准發明段號。"
     }
   ]
 }
