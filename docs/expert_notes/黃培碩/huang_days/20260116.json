@@ -1,0 +1,410 @@
+{
+  "meta": {
+    "day": "20260116",
+    "film_status": "present",
+    "film": "0116黃培碩.mp4",
+    "written_before_peek": true,
+    "phone_sync": "blocked",
+    "buy_signal": false,
+    "chrono_start": "2026-01-02",
+    "drive_id": "1BTGfa7Mok_InFL_nFXmn-DZlUZgJrkwh",
+    "asr_status": "whisper_ok_tiny",
+    "prior_lesson_applied": [
+      "EARNINGS_TSMC_DIR_GATE"
+    ],
+    "push_policy_zh": "本機連續做；一段落才推／CI",
+    "process_note_zh": "S1→S27＝一件有序流程；不准並列為多條最高"
+  },
+  "regime_D": {
+    "anchor_peak": 1750,
+    "anchor_trough": 27350,
+    "degree_now": "w5_running_confirmed_gate_pass",
+    "phase_label": "法說閘過：台積衝1750守住盤堅；第五波運行；大盤偏5-3",
+    "nest_state": "推升未改；高檔勿拒高症；選股優先",
+    "relay_bin": "N_up",
+    "iron_gate_14": "unknown",
+    "iron_gate_w3": "unknown",
+    "named_symbols": [
+      "2330",
+      "3481",
+      "6173",
+      "2327"
+    ],
+    "kill_levels": [
+      1680,
+      1650,
+      27350
+    ],
+    "confirm_levels": [
+      1750,
+      1720,
+      31536
+    ]
+  },
+  "wave_def_draw": {
+    "degree_main": {
+      "label_zh": "第五波運行確認（閘過）",
+      "now_zh": "台積／大盤推升脈動未改"
+    },
+    "degree_micro": {
+      "label_zh": "群創第三波；信昌電另一推回檔正常；被動看國巨"
+    },
+    "draw_notes_zh": "1680臨界守住→1750。大盤5-3、高31536。群創26.6。6173小時五小波後拉回。",
+    "label_lock": "candidate",
+    "align_with_huang": "same"
+  },
+  "elim_rows": [
+    {
+      "elim": "w5_ended_at_1720",
+      "why_zh": "閘過且創1750→結束說否決"
+    },
+    {
+      "elim": "fear_height_now",
+      "why_zh": "口播勿拒高症；重點選股"
+    },
+    {
+      "elim": "chase_small_spec",
+      "why_zh": "大型有量（群創）優於小標股"
+    }
+  ],
+  "sync_us": [
+    {
+      "symbol": "SOX",
+      "status": "ok",
+      "ohlc": {
+        "c": 7927.41015625
+      },
+      "note_zh": "費半0116收強"
+    }
+  ],
+  "sync_tx": {
+    "day_session": {
+      "o": 31382.0,
+      "h": 31536.0,
+      "l": 31157.0,
+      "c": 31474.0,
+      "v": 72871
+    },
+    "night_session": {
+      "o": 31182.0,
+      "h": 31543.0,
+      "l": 31119.0,
+      "c": 31335.0,
+      "v": 65948
+    },
+    "status": "ok"
+  },
+  "sync_te": {
+    "status": "missing",
+    "note_zh": "庫內無TE＝missing",
+    "day_session": null,
+    "night_session": null
+  },
+  "sync_twii": {
+    "ohlc": {
+      "o": 30844.630859375,
+      "h": 31475.220703125,
+      "l": 30844.630859375,
+      "c": 31408.69921875
+    },
+    "status": "ok"
+  },
+  "peer_chain": [
+    {
+      "us": "TSM",
+      "tw_leader": "2330",
+      "peers_zh": "群創3481；信昌電6173；被動看2327",
+      "note_zh": "面板＋被動觀察"
+    }
+  ],
+  "teach_expand": [
+    {
+      "item_zh": "法說閘過＝盤堅／第五續確認",
+      "observe": "2330 1750",
+      "status": "logged"
+    },
+    {
+      "item_zh": "大盤5-3脈動；選股>拒高",
+      "observe": "TWII",
+      "status": "logged"
+    }
+  ],
+  "quant": {
+    "amp_ratios": {
+      "tx_close": 31474.0,
+      "next_chop_band_tx": [
+        31002.0,
+        32103.0
+      ],
+      "next_stretch_tx": [
+        32103.0,
+        32576.0
+      ],
+      "next_deep_pull_tx": 30530.0
+    },
+    "fib_used": [],
+    "fib_skip_reason": "第五運行",
+    "vol_price": {
+      "price_dir": "up",
+      "vol": null,
+      "vol_ma20": null,
+      "vol_price_relation": "confirm",
+      "paired_zh": "台積／指數齊創高",
+      "used_in_forecast": true,
+      "used_in_confront": true
+    },
+    "vol_60m": null
+  },
+  "forecast_for_next": {
+    "target_day": "20260119",
+    "written_at_taipei": "2026-11-28T21:03:10+08:00",
+    "written_before_peek": true,
+    "high_prob": {
+      "path_zh": "第五波續／高檔震盪偏多；選股優先",
+      "wave_zh": "第五運行；大盤5-3",
+      "levels_zh": "台積1680防禦；1750觀察伸",
+      "amp_zh": "台指收參31474：高機率31002～32103（約-1.5%～+2%）",
+      "breadth_zh": "今日廣度偏弱可分化",
+      "prob": 0.62
+    },
+    "low_prob": {
+      "path_zh": "失速回測1680臨界",
+      "wave_zh": "第五暫歇",
+      "amp_zh": "收盤落在帶外",
+      "prob": 0.38
+    },
+    "single_branch_ok": false,
+    "required_zh": "下一開市日＝0119（週休）"
+  },
+  "confront_official": {
+    "as_of": "20260119",
+    "twii": {
+      "o": 31336.76953125,
+      "h": 31827.390625,
+      "l": 31285.529296875,
+      "c": 31639.2890625,
+      "pct_vs_prev_close": 0.73
+    },
+    "tx_day": {
+      "o": 31272.0,
+      "h": 31774.0,
+      "l": 31208.0,
+      "c": 31669.0,
+      "v": 89177
+    },
+    "tsmc": {
+      "o": 1725.0,
+      "h": 1780.0,
+      "l": 1725.0,
+      "c": 1760.0,
+      "pct": 1.15
+    },
+    "breadth_d1": {
+      "up": 988,
+      "down": 803
+    },
+    "amp_band_check": {
+      "close": 31669.0,
+      "band": [
+        31002,
+        32103
+      ],
+      "in_band": true
+    },
+    "verdict": {
+      "path": "hit",
+      "wave": "hit",
+      "amp": "hit",
+      "levels": "hit"
+    },
+    "high_prob_won": true,
+    "confronted_at_taipei": "2026-11-28T21:03:10+08:00"
+  },
+  "miss_anatomy_zh": "隔日20260119 加權收31639（+0.73%）；台指日收31669；台積1760。帶31002～32103：命中。第五續敘事成立。",
+  "cross_learn_zh": "閘過後週末開再續推；選股優先於指數拒高。",
+  "rolling_fix": [
+    {
+      "code": "GATE_PASS_KEEP_W5",
+      "note_zh": "臨界閘過後維持第五運行假設直到結構改口"
+    }
+  ],
+  "undiscussed_gap": [
+    {
+      "item_zh": "8210秦成觀眾問＝長線第四波整理耐心；非當日主線",
+      "status": "logged"
+    }
+  ],
+  "no_forget_audit": {
+    "regime_complete": true,
+    "elim_catalog_full": true,
+    "dual_branch_no_peek": true,
+    "vol_price_filled": true,
+    "sync_sox_tx_te_day_night": true,
+    "wave_main_micro": true,
+    "peer_chain_ok_or_na": true,
+    "teach_expand_checked": true,
+    "open_day_not_skipped": true,
+    "confront_anatomy": true,
+    "cross_learn": true,
+    "rolling_fix_noted": true,
+    "exit_learn_filled": true,
+    "wave_progress_filled": true,
+    "night_morning_line_filled": true,
+    "holdings_env_gate_filled": true,
+    "five_vol_sox_noted": true,
+    "biaoke_cross_checked": true,
+    "stop_expand_ok": true,
+    "levels_frozen_ok": true,
+    "us_session_noted": true,
+    "day_complete": true,
+    "ref_zh": "huang_master_consolidate.md §0 全表（含0.7／0.8）",
+    "te_missing_noted": true,
+    "named_ohlcv_frozen": true,
+    "breadth_frozen": true,
+    "full_suite_evidence_ok": true
+  },
+  "exit_learn_zh": "群創未賣；信昌電拉回觀察能否再推。非大盤出清。",
+  "wave_progress": {
+    "degree_main_pct": 78,
+    "degree_micro_pct": 50,
+    "peak_claim": {
+      "price": 1750,
+      "degree": "micro",
+      "status": "candidate",
+      "note_zh": "台積第五運行高"
+    },
+    "pullback_band": {
+      "lo": 1680.0,
+      "hi": 1720.0,
+      "role_zh": "臨界防禦"
+    },
+    "rebound_band": {
+      "lo": 1750.0,
+      "hi": 1800.0,
+      "role_zh": "續推觀察"
+    },
+    "giveback_band_zh": "閘過後給回空間縮小",
+    "status": "rough",
+    "note_zh": "第五確認運行",
+    "confront_peak_zh": "0119台積1780再伸"
+  },
+  "night_morning_line": {
+    "sox": 7927.41015625,
+    "tx_night": 31335.0,
+    "te_night": null,
+    "line_zh": "費半收7927.41；台指夜31335；日盤台指收31474；TE缺",
+    "source_zh": "official_only"
+  },
+  "holdings_env_gate": {
+    "env": "risk_on",
+    "why_zh": "閘過第五續；選股環境仍在",
+    "action_zh": "積極選股；勿拒高空砍"
+  },
+  "teach_expand_rule_zh": "發現值得注意的先停登錄再走；不准讀完再補",
+  "paper_levels": {
+    "kill_levels_note": "1680／1650",
+    "confirm_levels_note": "1750／31536"
+  },
+  "us_session_for_forecast": {
+    "status": "closed",
+    "note_zh": "預估0119時費半0116已收"
+  },
+  "breadth_official": {
+    "date": "20260116",
+    "up": 762,
+    "down": 1006,
+    "flat": 144,
+    "source": "quotes"
+  },
+  "named_stocks_ohlcv": {
+    "as_of": "20260116",
+    "bars": {
+      "2330": {
+        "o": 1735.0,
+        "h": 1750.0,
+        "l": 1710.0,
+        "c": 1740.0,
+        "v": 57848
+      },
+      "3481": {
+        "o": 25.6,
+        "h": 26.65,
+        "l": 25.4,
+        "c": 26.6,
+        "v": 199325
+      },
+      "6173": {
+        "o": 74.01,
+        "h": 75.6,
+        "l": 70.63,
+        "c": 73.81,
+        "v": 18776
+      },
+      "2327": {
+        "o": 279.0,
+        "h": 284.0,
+        "l": 268.0,
+        "c": 283.0,
+        "v": 80889,
+        "note_zh": "被動觀察龍頭"
+      }
+    },
+    "rule_zh": "只凍他點名且有官方收的"
+  },
+  "biaoke_cross": {
+    "huang_themes_zh": [
+      "閘過第五續",
+      "5-3",
+      "選股優先",
+      "群創新高",
+      "信昌回檔",
+      "勿拒高"
+    ],
+    "buckets": {
+      "浪頂耗盡": "第五運行中→非末升出清",
+      "回檔回測": "信昌回檔正常",
+      "細微中繼刪去": "閘過＝續推非失敗",
+      "費半台指夜": "費半強＋TX高",
+      "反彈止穩": "臨界守住",
+      "出場學": "大型有量續抱↔選股桶"
+    },
+    "note_zh": "六桶全勾；非買訊"
+  },
+  "five_vol_sox_note_zh": "波浪：第五確認；形態：衝破臨界；量價：齊創高；關鍵K：1750；碎形：5-3；費半：收強",
+  "tf_escalate": {
+    "tf": "日線＋小時線",
+    "why_zh": "信昌電小時五小波結束拉回"
+  },
+  "retract_chain_zh": "相對0115臨界擔憂：閘過後改口為第五確認運行",
+  "sample_register_touch_zh": "GATE_PASS_KEEP_W5 已登錄",
+  "process_order_zh": "S1→S27 一件有序流程；不准並列為多條最高",
+  "process_step_done": {
+    "S1": true,
+    "S2": true,
+    "S3": true,
+    "S4": true,
+    "S5": true,
+    "S6": true,
+    "S7": true,
+    "S8": true,
+    "S9": true,
+    "S10": true,
+    "S11": true,
+    "S12": true,
+    "S13": true,
+    "S14": true,
+    "S15": true,
+    "S16": true,
+    "S17": true,
+    "S18": true,
+    "S19": true,
+    "S20": true,
+    "S21": true,
+    "S22": true,
+    "S23": true,
+    "S24": true,
+    "S25": true,
+    "S26": true,
+    "S27": true
+  }
+}
