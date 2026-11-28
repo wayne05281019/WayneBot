@@ -1,0 +1,311 @@
+{
+  "meta": {
+    "day": "20260106",
+    "film_status": "present",
+    "film": "0106黃培碩.mp4",
+    "written_before_peek": true,
+    "phone_sync": "blocked",
+    "buy_signal": false,
+    "chrono_start": "2026-01-02",
+    "drive_id": "1XqHepjpx2NO2g1DZKQuL0RWXab6hlxR4",
+    "asr_status": "whisper_tiny_ok",
+    "prior_lesson_applied": [
+      "AMP_UNDERSHOOT_UPSIDE",
+      "BREADTH_NOT_FROZEN"
+    ]
+  },
+  "regime_D": {
+    "anchor_peak": null,
+    "anchor_trough": 27350,
+    "degree_now": "impulse_w3_micro",
+    "phase_label": "台積／大盤／期指仍在小推動第三組；高檔選股＝賺賠差",
+    "nest_state": "上升軌道續；細微若回補前高缺口區才可能暫歇",
+    "relay_bin": "N_up",
+    "iron_gate_14": "unknown",
+    "iron_gate_w3": "unknown",
+    "named_symbols": [
+      "2330",
+      "3481",
+      "6770",
+      "2454"
+    ],
+    "kill_levels": [
+      27350,
+      27457
+    ],
+    "confirm_levels": [
+      30617,
+      30672
+    ]
+  },
+  "wave_def_draw": {
+    "degree_main": {
+      "label_zh": "與台積同步小推動持續；日線同軌第三組",
+      "now_zh": "期指收30617.0續創高"
+    },
+    "degree_micro": {
+      "label_zh": "細微波未明；若高檔回測前高區可能暫歇一組"
+    },
+    "draw_notes_zh": "指數強不代表個股；記憶體／面板第五大波仍運行；操作個股可少管大盤",
+    "label_lock": "candidate",
+    "align_with_huang": "same"
+  },
+  "elim_rows": [
+    {
+      "elim": "cut_leeks_top_now",
+      "why_zh": "口播：結構仍在小推動，不必因創高就認定被割"
+    },
+    {
+      "elim": "short_fifth_wave_groups",
+      "why_zh": "第五大波族群仍運行中不准亂空"
+    }
+  ],
+  "sync_us": [
+    {
+      "symbol": "SOX",
+      "status": "ok",
+      "ohlc": {
+        "o": 7542.60986328125,
+        "h": 7665.77001953125,
+        "l": 7521.9501953125,
+        "c": 7650.93017578125
+      },
+      "note_zh": "費半0106已收偏強"
+    }
+  ],
+  "sync_tx": {
+    "day_session": {
+      "o": 30271.0,
+      "h": 30672.0,
+      "l": 30183.0,
+      "c": 30617.0,
+      "v": 59699
+    },
+    "night_session": {
+      "o": 30358.0,
+      "h": 30418.0,
+      "l": 30209.0,
+      "c": 30290.0,
+      "v": 37930
+    },
+    "status": "ok"
+  },
+  "sync_te": {
+    "day_session": null,
+    "night_session": null,
+    "status": "missing",
+    "note_zh": "電子期缺列"
+  },
+  "peer_chain": [
+    {
+      "us": "TSM",
+      "tw_leader": "2330",
+      "peers_zh": "面板群創／立積／記憶體第五波組",
+      "note_zh": "選對選錯＝賺賠"
+    }
+  ],
+  "teach_expand": [
+    {
+      "item_zh": "高檔指數下選股差＝賠錢差非賺多賺少",
+      "observe": "廣度與標的",
+      "status": "logged"
+    },
+    {
+      "item_zh": "細微回補前高缺口＝可能暫歇一組推動",
+      "observe": "0107是否回測",
+      "status": "logged"
+    }
+  ],
+  "quant": {
+    "amp_ratios": {
+      "tx_close": 30617.0,
+      "next_high_band_tx": [
+        30617.0,
+        31076.0
+      ],
+      "next_stretch_tx": [
+        31076.0,
+        31536.0
+      ],
+      "next_pullback_ok_tx": [
+        30158.0,
+        30617.0
+      ]
+    },
+    "fib_used": [],
+    "fib_skip_reason": "以結構續推／選股為主",
+    "vol_price": {
+      "price_dir": "up",
+      "vol": 6867900.0,
+      "vol_ma20": null,
+      "vol_price_relation": "confirm",
+      "paired_zh": "續創新高；廣度見 breadth_official",
+      "used_in_forecast": true,
+      "used_in_confront": true
+    },
+    "vol_60m": null
+  },
+  "forecast_for_next": {
+    "target_day": "20260107",
+    "written_at_taipei": "2026-11-28T18:43:49+08:00",
+    "written_before_peek": true,
+    "high_prob": {
+      "path_zh": "小推動續或高檔震盪偏多；個股續分化、選股優先",
+      "wave_zh": "第三組小推動未結束；第五波族群仍運行",
+      "levels_zh": "防禦 27350／27457；觀察能否守 306 附近推升節奏",
+      "amp_zh": "台指收參30617：高機率 30617～31076（0～+1.5%）；強伸 31076～31536；細微拉回可至 30158（-1.5%）仍持結構",
+      "breadth_zh": "今日廣度 up987/down757；隔日仍可能指數強、個股分化",
+      "prob": 0.6
+    },
+    "low_prob": {
+      "path_zh": "短線完整後回測前高／缺口區→微段暫歇",
+      "wave_zh": "一組細微推動結束轉整理（非大空）",
+      "levels_zh": "回補近期高檔轉折區後走勢轉緩",
+      "amp_zh": "台指深於 -1.5%（<30158）或單日失速",
+      "prob": 0.4
+    },
+    "single_branch_ok": false
+  },
+  "confront_official": {
+    "as_of": "20260107",
+    "twii": {
+      "o": 30412.3203125,
+      "h": 30570.259765625,
+      "l": 30306.16015625,
+      "c": 30435.470703125,
+      "v": 8350800.0,
+      "pct_vs_prev_close": -0.46
+    },
+    "tx_day": {
+      "o": 30609.0,
+      "h": 30676.0,
+      "l": 30448.0,
+      "c": 30516.0,
+      "v": 57861,
+      "pct_vs_prev_close": -0.33
+    },
+    "sox": {
+      "o": 7554.77978515625,
+      "h": 7601.06005859375,
+      "l": 7512.85986328125,
+      "c": 7574.8701171875
+    },
+    "breadth_d1": {
+      "up": 1057,
+      "down": 707,
+      "flat": 148
+    },
+    "amp_band_check": {
+      "close": 30516.0,
+      "pullback_ok_lo": 30158,
+      "high_band_hi": 31076,
+      "in_band": true
+    },
+    "verdict": {
+      "path": "hit",
+      "wave": "hit",
+      "amp": "hit",
+      "levels": "hit"
+    },
+    "high_prob_won": true,
+    "confronted_at_taipei": "2026-11-28T18:44:10+08:00"
+  },
+  "miss_anatomy_zh": "隔日20260107 加權收30435（-0.46%）；台指日收30516（-0.33%）。落在細微拉回帶 30158～30617.0／高機率上緣內＝對；浪未結束＝對。廣度凍：D日 up987/down757 → D+1 up1057/down707。本輪無方向／幅度失誤；維持數值帶＋廣度凍。",
+  "cross_learn_zh": "0107片未讀；官方柱＝高檔微拉仍持結構，吻合「細微拉回無所謂／選股優先」。",
+  "rolling_fix": [],
+  "undiscussed_gap": [],
+  "no_forget_audit": {
+    "regime_complete": true,
+    "elim_catalog_full": true,
+    "dual_branch_no_peek": true,
+    "vol_price_filled": true,
+    "sync_sox_tx_te_day_night": true,
+    "wave_main_micro": true,
+    "peer_chain_ok_or_na": true,
+    "teach_expand_checked": true,
+    "open_day_not_skipped": true,
+    "confront_anatomy": true,
+    "cross_learn": true,
+    "rolling_fix_noted": true,
+    "exit_learn_filled": true,
+    "wave_progress_filled": true,
+    "night_morning_line_filled": true,
+    "holdings_env_gate_filled": true,
+    "five_vol_sox_noted": true,
+    "biaoke_cross_checked": true,
+    "stop_expand_ok": true,
+    "levels_frozen_ok": true,
+    "us_session_noted": true,
+    "day_complete": true,
+    "ref_zh": "huang_master_consolidate.md §9–§14"
+  },
+  "exit_learn_zh": "持股少而精；有變化第一時間換出；進場堅定出場果斷。非全面空指數。",
+  "wave_progress": {
+    "degree_main_pct": 62,
+    "degree_micro_pct": 50,
+    "peak_claim": {
+      "price": null,
+      "degree": null,
+      "status": "unknown",
+      "note_zh": "未宣告大頂；創高恐懼≠頂"
+    },
+    "pullback_band": {
+      "lo": 30158.0,
+      "hi": 30617.0,
+      "role_zh": "細微拉回"
+    },
+    "rebound_band": {
+      "lo": 30617.0,
+      "hi": 31076.0,
+      "role_zh": "續推"
+    },
+    "giveback_band_zh": "個股另管；指數細微拉回可忽略",
+    "status": "rough",
+    "note_zh": "選股",
+    "confront_peak_zh": "未到頂；微拉非破結構"
+  },
+  "night_morning_line": {
+    "sox": 7650.93017578125,
+    "tx_night": 30290.0,
+    "te_night": null,
+    "line_zh": "費半收7650.93017578125；台指夜30290.0；日盤台指收30617.0",
+    "source_zh": "official_only"
+  },
+  "holdings_env_gate": {
+    "env": "risk_on",
+    "why_zh": "小推動續",
+    "action_zh": "檢視重倉／選股"
+  },
+  "teach_expand_rule_zh": "發現值得注意的先停登錄再走；不准讀完再補",
+  "paper_levels": {
+    "kill_levels_note": "27350/27457",
+    "confirm_levels_note": "30672高",
+    "spoken_restored_zh": "1415台積起/306期指"
+  },
+  "us_session_for_forecast": {
+    "status": "closed",
+    "note_zh": "費半0106已收偏強"
+  },
+  "sync_twii": {
+    "ohlc": {
+      "o": 29933.650390625,
+      "h": 30576.30078125,
+      "l": 29933.650390625,
+      "c": 30576.30078125,
+      "v": 6867900.0
+    },
+    "status": "ok"
+  },
+  "breadth_official": {
+    "date": "20260106",
+    "up": 987,
+    "down": 757,
+    "flat": 167,
+    "up_tw": 564,
+    "down_tw": 389,
+    "up_two": 423,
+    "down_two": 368,
+    "source": "quotes",
+    "note_zh": "套用 BREADTH_NOT_FROZEN：當日官方漲跌家數必凍"
+  }
+}

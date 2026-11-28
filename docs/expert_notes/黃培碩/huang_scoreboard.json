@@ -1,5 +1,5 @@
 {
-  "as_of_taipei": "2026-11-28T18:37:15+08:00",
+  "as_of_taipei": "2026-11-28T18:44:10+08:00",
   "phone_sync": "blocked",
   "buy_signal": false,
   "recomputable": true,
@@ -49,10 +49,20 @@
           "BREADTH_NOT_FROZEN"
         ],
         "growth_zh": "幅度帶命中；補廣度官方凍"
+      },
+      {
+        "day": "20260106",
+        "target": "20260107",
+        "path": "hit",
+        "wave": "hit",
+        "amp": "hit",
+        "levels": "hit",
+        "fail_codes": [],
+        "growth_zh": "廣度凍＋幅度帶雙到位"
       }
     ],
-    "n": 2,
-    "path_hit": 2,
-    "amp_hit": 1
+    "n": 3,
+    "path_hit": 3,
+    "amp_hit": 2
   }
 }
